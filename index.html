@@ -199,6 +199,45 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
           </button>
         </div>
       </div>
+
+      <!-- Options additionnelles (sources non-immo) ───────────────────────── -->
+      <div class="row g-3 mt-2">
+        <div class="col-12">
+          <div class="d-flex flex-wrap gap-3 align-items-center text-white small">
+            <span class="fw-semibold opacity-75"><i class="bi bi-sliders me-1"></i>Options :</span>
+
+            <div class="form-check form-check-inline" data-bs-toggle="tooltip"
+                 title="Identité légale, dirigeants et bénéficiaires effectifs (SCI, vendeur).">
+              <input class="form-check-input" type="checkbox" id="optEntreprise"/>
+              <label class="form-check-label" for="optEntreprise">
+                Vérifications légales d'entreprise
+              </label>
+            </div>
+
+            <div class="form-check form-check-inline opacity-50" data-bs-toggle="tooltip"
+                 title="Liasses fiscales et attestation URSSAF — pas d'API publique gratuite à ce jour.">
+              <input class="form-check-input" type="checkbox" id="optFinance" disabled/>
+              <label class="form-check-label" for="optFinance">
+                Santé financière partenaire <em>(bientôt)</em>
+              </label>
+            </div>
+
+            <div class="form-check form-check-inline opacity-50" data-bs-toggle="tooltip"
+                 title="Permis de construire SITADEL — accès en cours d'intégration (CSV agrégés).">
+              <input class="form-check-input" type="checkbox" id="optPermis" disabled/>
+              <label class="form-check-label" for="optPermis">
+                Permis de construire <em>(bientôt)</em>
+              </label>
+            </div>
+
+            <!-- Champ SIREN affiché si Entreprise coché -->
+            <div class="d-none ms-md-3" id="entrepriseQueryWrap" style="min-width:280px;">
+              <input type="text" class="form-control form-control-sm" id="inputEntrepriseQ"
+                     placeholder="SIREN, SIRET ou raison sociale (SCI, vendeur)"/>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -582,12 +621,29 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
       </div>
     </div>
 
+    <!-- Vérifications légales d'entreprise (option) ─────────────────────── -->
+    <div class="card shadow-sm mb-3 d-none" id="entrepriseSection">
+      <div class="card-header bg-white d-flex align-items-center">
+        <i class="bi bi-building-check me-2 text-primary"></i>
+        <strong>Vérifications légales d'entreprise</strong>
+        <span class="badge bg-secondary ms-2" id="entrepriseCount">—</span>
+        <small class="text-muted ms-auto">Source : Recherche Entreprises (data.gouv.fr / RNE / INPI)</small>
+      </div>
+      <div class="card-body" id="entrepriseBody">
+        <div class="text-center text-muted py-3">
+          <div class="spinner-border spinner-border-sm me-2"></div>
+          Recherche en cours…
+        </div>
+      </div>
+    </div>
+
     <!-- Sources -->
     <div class="sources-bar text-center mb-3">
       <i class="bi bi-info-circle me-1"></i>
       Sources : <strong>DVF</strong> Caisse des Dépôts · <strong>VALORIS</strong> (données DGFiP) ·
       <strong>ADEME</strong> DPE logements · <strong>BAN</strong> Géocodage ·
-      <strong>Géorisques</strong> BRGM · <strong>GéoAPI</strong> INSEE
+      <strong>Géorisques</strong> BRGM · <strong>GéoAPI</strong> INSEE ·
+      <strong>Recherche Entreprises</strong> (RNE/INPI)
       – Données publiques data.gouv.fr
     </div>
 
@@ -657,6 +713,13 @@ document.getElementById('inputAdresse').addEventListener('keydown', e => {
   if(e.key === 'Enter'){ hideAC(); lancerAnalyse(); }
 });
 document.getElementById('btnAnalyse').addEventListener('click', lancerAnalyse);
+
+// ─── Init tooltips Bootstrap + toggle option Entreprise ───────────────────────
+document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
+document.getElementById('optEntreprise').addEventListener('change', e => {
+  document.getElementById('entrepriseQueryWrap').classList.toggle('d-none', !e.target.checked);
+  if(e.target.checked) document.getElementById('inputEntrepriseQ').focus();
+});
 
 // ─── Animation des étapes ─────────────────────────────────────────────────────
 const STEPS = ['step-geo','step-dvf','step-prix','step-dpe','step-risques','step-score'];
@@ -738,6 +801,15 @@ async function lancerAnalyse(){
     window.scrollTo({top: document.getElementById('results-panel').offsetTop - 20, behavior:'smooth'});
     // Transactions chargées séparément (appel asynchrone indépendant)
     loadTransactionsAsync(data.localisation || {}, perimetre);
+
+    // Vérifications légales d'entreprise (option)
+    if(document.getElementById('optEntreprise').checked){
+      const q = document.getElementById('inputEntrepriseQ').value.trim();
+      if(q) loadEntrepriseAsync(q);
+      else  hideEntrepriseSection();
+    } else {
+      hideEntrepriseSection();
+    }
 
   }catch(err){
     clearTimeout(stepTimer);
@@ -1400,6 +1472,94 @@ function showTransSpinner(){
       <div class="spinner-border spinner-border-sm text-primary me-2"></div>
       Chargement des transactions DVF…
     </td></tr>`;
+}
+
+// ─── Vérifications légales d'entreprise (option) ─────────────────────────────
+function hideEntrepriseSection(){
+  document.getElementById('entrepriseSection').classList.add('d-none');
+}
+
+async function loadEntrepriseAsync(q){
+  const sec  = document.getElementById('entrepriseSection');
+  const body = document.getElementById('entrepriseBody');
+  const cnt  = document.getElementById('entrepriseCount');
+  sec.classList.remove('d-none');
+  cnt.textContent = '…';
+  body.innerHTML = `<div class="text-center text-muted py-3">
+    <div class="spinner-border spinner-border-sm me-2"></div>Recherche en cours…</div>`;
+  try{
+    const resp = await fetch('/api/entreprise', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({q}),
+    });
+    if(!resp.ok){
+      const err = await resp.json().catch(()=>({}));
+      cnt.textContent = '0';
+      body.innerHTML = `<div class="text-danger text-center py-3">
+        <i class="bi bi-exclamation-triangle me-1"></i>${err.error || 'Erreur recherche'}</div>`;
+      return;
+    }
+    const data = await resp.json();
+    cnt.textContent = String(data.total ?? (data.results || []).length);
+    renderEntreprise(data.results || []);
+  }catch(e){
+    cnt.textContent = '0';
+    body.innerHTML = `<div class="text-muted text-center py-3">Indisponible (${e.message})</div>`;
+  }
+}
+
+function renderEntreprise(results){
+  const body = document.getElementById('entrepriseBody');
+  if(!results.length){
+    body.innerHTML = `<div class="text-muted text-center py-3">
+      <i class="bi bi-search me-1"></i>Aucune entreprise trouvée pour cette recherche.</div>`;
+    return;
+  }
+  const html = results.map(e => {
+    const dirHtml = (e.dirigeants||[]).length
+      ? `<ul class="mb-1 small">${e.dirigeants.map(d =>
+          `<li><strong>${d.nom}</strong> — ${d.qualite}${d.annee_naissance? ' ('+d.annee_naissance+')':''}</li>`
+        ).join('')}</ul>`
+      : '<div class="small text-muted">Aucun dirigeant déclaré</div>';
+    const benHtml = (e.beneficiaires||[]).length
+      ? `<ul class="mb-1 small">${e.beneficiaires.map(b =>
+          `<li><strong>${b.nom}</strong>${b.annee_naissance? ' ('+b.annee_naissance+')':''}` +
+          (b.pourcentage_parts? ` — ${b.pourcentage_parts}% parts`:'') +
+          (b.pourcentage_votes? ` / ${b.pourcentage_votes}% votes`:'') + `</li>`
+        ).join('')}</ul>`
+      : '<div class="small text-muted">Aucun bénéficiaire effectif déclaré</div>';
+    const etat = e.etat_administratif === 'A'
+      ? '<span class="badge bg-success">Active</span>'
+      : `<span class="badge bg-secondary">${e.etat_administratif||'?'}</span>`;
+    return `
+      <div class="border rounded p-3 mb-2">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+          <div>
+            <h6 class="mb-1">${e.nom} ${etat}</h6>
+            <div class="small text-muted">
+              SIREN <code>${e.siren}</code> · ${e.forme_juridique} · ${e.activite_principale}
+              ${e.date_creation? '· créée le '+e.date_creation:''}
+            </div>
+            <div class="small text-muted">${e.siege_adresse}</div>
+          </div>
+          <div class="text-end small">
+            ${e.nb_etablissements? '<div>'+e.nb_etablissements+' étab. ('+(e.nb_etablissements_ouverts||0)+' ouverts)</div>':''}
+            ${e.tranche_effectif? '<div>Effectif : '+e.tranche_effectif+'</div>':''}
+          </div>
+        </div>
+        <div class="row mt-2 g-3">
+          <div class="col-md-6">
+            <div class="small fw-semibold text-primary"><i class="bi bi-people me-1"></i>Dirigeants</div>
+            ${dirHtml}
+          </div>
+          <div class="col-md-6">
+            <div class="small fw-semibold text-warning"><i class="bi bi-shield-check me-1"></i>Bénéficiaires effectifs</div>
+            ${benHtml}
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+  body.innerHTML = html;
 }
 
 async function loadTransactionsAsync(loc, perimetre){

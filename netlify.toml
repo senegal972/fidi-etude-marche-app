@@ -23,6 +23,11 @@
   to     = "/.netlify/functions/autocomplete"
   status = 200
 
+[[redirects]]
+  from   = "/api/entreprise"
+  to     = "/.netlify/functions/entreprise"
+  status = 200
+
 # ── SPA fallback : toute URL non trouvée → index.html ─────────────────────────
 [[redirects]]
   from   = "/*"
