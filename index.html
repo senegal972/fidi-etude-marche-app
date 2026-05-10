@@ -1,0 +1,1455 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Étude de Marché Immobilier – FIDI</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
+<link href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet"/>
+<style>
+:root{
+  --fidi-blue:#1a3a6e;
+  --fidi-blue-light:#2652a0;
+  --fidi-accent:#e8491d;
+  --fidi-gold:#f5a623;
+  --card-shadow:0 2px 12px rgba(0,0,0,.08);
+}
+body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#212529;}
+
+/* ─ Navbar ─────────────────────────────── */
+.navbar-fidi{background:linear-gradient(135deg,var(--fidi-blue) 0%,var(--fidi-blue-light) 100%);padding:.75rem 1.5rem;}
+.navbar-fidi .brand-text{font-size:1.25rem;font-weight:800;color:#fff;letter-spacing:.5px;}
+.navbar-fidi .brand-sub{font-size:.7rem;color:rgba(255,255,255,.7);letter-spacing:1px;text-transform:uppercase;}
+.navbar-fidi .badge-gov{background:rgba(255,255,255,.15);color:#fff;font-size:.65rem;border-radius:4px;padding:2px 6px;}
+
+/* ─ Search panel ────────────────────────── */
+.search-panel{background:linear-gradient(135deg,var(--fidi-blue) 0%,var(--fidi-blue-light) 100%);padding:2rem 1.5rem 2.5rem;}
+.search-panel h1{font-size:1.5rem;font-weight:700;color:#fff;margin-bottom:.25rem;}
+.search-panel p{color:rgba(255,255,255,.75);font-size:.9rem;margin-bottom:1.5rem;}
+.search-form{background:rgba(255,255,255,.12);border-radius:12px;padding:1.25rem 1.5rem;backdrop-filter:blur(6px);}
+.search-form .form-control,.search-form .form-select{background:rgba(255,255,255,.95);border:none;border-radius:8px;}
+.search-form .form-control:focus,.search-form .form-select:focus{box-shadow:0 0 0 3px rgba(248,165,35,.4);}
+.btn-analyse{background:var(--fidi-accent);border:none;color:#fff;font-weight:700;padding:.65rem 2rem;border-radius:8px;transition:all .2s;}
+.btn-analyse:hover{background:#c23a10;transform:translateY(-1px);box-shadow:0 4px 12px rgba(232,73,29,.4);}
+.autocomplete-dropdown{position:absolute;z-index:9999;background:#fff;border:1px solid #dee2e6;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);top:100%;left:0;right:0;max-height:220px;overflow-y:auto;}
+.autocomplete-item{padding:.6rem 1rem;cursor:pointer;font-size:.85rem;border-bottom:1px solid #f0f0f0;}
+.autocomplete-item:hover{background:#f8f9fa;}
+
+/* ─ Loading ─────────────────────────────── */
+#loading-panel{background:#fff;border-radius:12px;padding:3rem;text-align:center;box-shadow:var(--card-shadow);}
+.step-indicator{display:flex;flex-direction:column;gap:.5rem;text-align:left;max-width:320px;margin:.5rem auto 0;}
+.step-item{display:flex;align-items:center;gap:.6rem;font-size:.85rem;color:#6c757d;}
+.step-item.active{color:var(--fidi-blue);font-weight:600;}
+.step-item.done{color:#198754;}
+.step-icon{width:20px;text-align:center;}
+
+/* ─ Score card ──────────────────────────── */
+.score-card{background:#fff;border-radius:16px;box-shadow:var(--card-shadow);padding:1.5rem;height:100%;}
+.score-gauge-wrap{position:relative;width:160px;height:160px;margin:0 auto 1rem;}
+.score-value{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;}
+.score-number{font-size:2.4rem;font-weight:900;line-height:1;}
+.score-label{font-size:.7rem;color:#6c757d;text-transform:uppercase;letter-spacing:.5px;}
+.score-verdict{font-size:1.1rem;font-weight:700;text-align:center;margin-bottom:.75rem;}
+.axis-row{display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem;font-size:.78rem;}
+.axis-name{width:130px;flex-shrink:0;color:#495057;}
+.axis-bar-wrap{flex:1;background:#f0f2f5;border-radius:4px;height:8px;overflow:hidden;}
+.axis-bar{height:100%;border-radius:4px;transition:width .8s ease;}
+.axis-note{width:30px;text-align:right;font-weight:600;color:#495057;}
+
+/* ─ KPI cards ───────────────────────────── */
+.kpi-card{background:#fff;border-radius:12px;box-shadow:var(--card-shadow);padding:1.25rem 1rem;text-align:center;height:100%;}
+.kpi-icon{font-size:1.6rem;margin-bottom:.3rem;}
+.kpi-value{font-size:1.4rem;font-weight:800;color:var(--fidi-blue);}
+.kpi-label{font-size:.72rem;color:#6c757d;text-transform:uppercase;letter-spacing:.5px;}
+.kpi-sub{font-size:.75rem;color:#28a745;margin-top:.15rem;}
+.kpi-sub.neg{color:#dc3545;}
+
+/* ─ Map ──────────────────────────────────── */
+.map-card{background:#fff;border-radius:12px;box-shadow:var(--card-shadow);overflow:hidden;height:100%;}
+.map-card .map-header{background:var(--fidi-blue);color:#fff;padding:.6rem 1rem;font-size:.85rem;font-weight:600;}
+#map{height:320px;}
+
+/* ─ Chart cards ─────────────────────────── */
+.chart-card{background:#fff;border-radius:12px;box-shadow:var(--card-shadow);padding:1.25rem 1rem;}
+.chart-card h6{font-size:.8rem;text-transform:uppercase;letter-spacing:.5px;color:#6c757d;margin-bottom:1rem;}
+.chart-wrap{position:relative;height:200px;}
+
+/* ─ DPE ─────────────────────────────────── */
+.dpe-badge{display:inline-flex;align-items:center;justify-content:center;width:32px;height:24px;border-radius:4px;color:#fff;font-weight:700;font-size:.75rem;}
+.dpe-A{background:#00a651;} .dpe-B{background:#52b747;} .dpe-C{background:#afd136;}
+.dpe-D{background:#ffed00;color:#333;} .dpe-E{background:#f7a600;color:#333;}
+.dpe-F{background:#ef7d00;} .dpe-G{background:#e4241c;}
+.dpe-row{display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem;font-size:.8rem;}
+.dpe-bar-wrap{flex:1;background:#f0f2f5;border-radius:3px;height:7px;overflow:hidden;}
+.dpe-bar{height:100%;border-radius:3px;}
+.dpe-count{width:40px;text-align:right;color:#6c757d;}
+
+/* ─ Territoire card ─────────────────────── */
+.territoire-card{background:#fff;border-radius:12px;box-shadow:var(--card-shadow);padding:1.25rem;height:100%;}
+.info-row{display:flex;justify-content:space-between;align-items:center;padding:.4rem 0;border-bottom:1px solid #f0f2f5;font-size:.83rem;}
+.info-row:last-child{border-bottom:none;}
+.info-key{color:#6c757d;}
+.info-val{font-weight:600;color:#212529;}
+
+/* ─ Risques card ────────────────────────── */
+.risques-card{background:#fff;border-radius:12px;box-shadow:var(--card-shadow);padding:1.25rem;height:100%;}
+.risque-item{display:flex;align-items:flex-start;gap:.5rem;margin-bottom:.6rem;font-size:.82rem;}
+.risque-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:3px;}
+
+/* ─ Estimation card ─────────────────────── */
+.estimation-card{background:linear-gradient(135deg,var(--fidi-blue) 0%,var(--fidi-blue-light) 100%);color:#fff;border-radius:16px;box-shadow:0 4px 20px rgba(26,58,110,.3);padding:2rem;}
+.estimation-card .val-main{font-size:2.5rem;font-weight:900;}
+.estimation-card .val-range{font-size:.85rem;color:rgba(255,255,255,.75);}
+.estimation-card .price-band{background:rgba(255,255,255,.12);border-radius:8px;padding:.75rem 1rem;text-align:center;}
+
+/* ─ Sources badge ───────────────────────── */
+.sources-bar{background:#fff;border-radius:8px;padding:.6rem 1rem;font-size:.72rem;color:#6c757d;box-shadow:var(--card-shadow);}
+
+/* ─ Section titles ──────────────────────── */
+.section-title{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#6c757d;margin-bottom:.75rem;display:flex;align-items:center;gap:.4rem;}
+
+/* ─ Transactions table ──────────────────── */
+.trans-card{background:#fff;border-radius:12px;box-shadow:var(--card-shadow);padding:1.25rem 1rem;}
+.trans-card h6{font-size:.8rem;text-transform:uppercase;letter-spacing:.5px;color:#6c757d;margin-bottom:.5rem;}
+#transProchesTable th{font-size:.73rem;white-space:nowrap;cursor:pointer;user-select:none;}
+#transProchesTable th:hover{background:#e9ecef;}
+#transProchesTable td{font-size:.77rem;vertical-align:middle;}
+#transProchesTable tbody tr{cursor:pointer;}
+#transProchesTable tbody tr:hover{background:#e8f0fe!important;}
+#transProchesTable tbody tr.selected{background:#cce5ff!important;}
+#synthSectionTable th{font-size:.73rem;}
+#synthSectionTable td{font-size:.77rem;vertical-align:middle;}
+#synthSectionTable tbody tr:hover{background:#f0f4ff!important;}
+.type-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:middle;}
+.map-legend{background:#fff;border-radius:8px;box-shadow:0 1px 6px rgba(0,0,0,.15);padding:.4rem .7rem;font-size:.72rem;line-height:1.8;}
+.map-legend-item{display:flex;align-items:center;gap:.4rem;}
+
+/* ─ Print ───────────────────────────────── */
+@media print{
+  .search-panel,.btn-print,#loading-panel{display:none!important;}
+  .chart-wrap{height:160px!important;}
+}
+</style>
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav class="navbar-fidi d-flex align-items-center justify-content-between">
+  <div>
+    <div class="brand-text"><i class="bi bi-building me-2"></i>FIDI · Étude de Marché</div>
+    <div class="brand-sub">Immobilier · Données publiques françaises</div>
+  </div>
+  <div class="d-flex gap-2 align-items-center">
+    <span class="badge-gov"><i class="bi bi-database me-1"></i>data.gouv.fr</span>
+    <button class="btn btn-sm btn-outline-light btn-print d-none" id="btnPrint" onclick="window.print()">
+      <i class="bi bi-printer me-1"></i>Imprimer
+    </button>
+  </div>
+</nav>
+
+<!-- SEARCH PANEL -->
+<div class="search-panel">
+  <div class="container-xl">
+    <h1><i class="bi bi-search me-2"></i>Évaluation du potentiel d'un bien immobilier</h1>
+    <p>Renseignez l'adresse du bien pour obtenir une analyse complète du marché local à partir des données publiques officielles.</p>
+    <div class="search-form">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-4 position-relative">
+          <label class="form-label text-white small fw-semibold mb-1">Adresse du bien</label>
+          <input type="text" class="form-control" id="inputAdresse"
+                 placeholder="Ex : 15 rue de la Paix, Lyon" autocomplete="off"/>
+          <div class="autocomplete-dropdown d-none" id="autocompleteList"></div>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label text-white small fw-semibold mb-1">Type de bien</label>
+          <select class="form-select" id="selectType">
+            <option value="maison">Maison</option>
+            <option value="appartement">Appartement</option>
+            <option value="tous">Tous types</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label text-white small fw-semibold mb-1">Surface (m²)</label>
+          <input type="number" class="form-control" id="inputSurface" placeholder="Ex : 120" min="1" max="9999"/>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label text-white small fw-semibold mb-1"><i class="bi bi-geo-alt me-1"></i>Périmètre d'analyse</label>
+          <select class="form-select" id="selectPerimetre">
+            <optgroup label="Rayon autour de l'adresse">
+              <option value="rayon_500m">500 m</option>
+              <option value="rayon_1km" selected>1 km</option>
+              <option value="rayon_2km">2 km</option>
+              <option value="rayon_5km">5 km</option>
+              <option value="rayon_10km">10 km</option>
+              <option value="rayon_20km">20 km</option>
+              <option value="rayon_50km">50 km</option>
+            </optgroup>
+            <optgroup label="Zone administrative">
+              <option value="code_postal">Code postal</option>
+              <option value="section">Section cadastrale</option>
+              <option value="iris">Quartier IRIS</option>
+              <option value="commune">Commune entière</option>
+            </optgroup>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <button class="btn btn-analyse w-100" id="btnAnalyse">
+            <i class="bi bi-bar-chart-line me-2"></i>Lancer l'analyse
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN CONTENT -->
+<div class="container-xl py-4" id="mainContent">
+
+  <!-- État initial -->
+  <div id="init-panel" class="text-center py-5">
+    <i class="bi bi-map" style="font-size:4rem;color:#dee2e6;"></i>
+    <p class="text-muted mt-3">Saisissez une adresse et lancez l'analyse pour obtenir l'étude de marché.</p>
+    <div class="row g-3 justify-content-center mt-2" style="max-width:800px;margin:0 auto;">
+      <div class="col-6 col-md-3">
+        <div class="kpi-card">
+          <div class="kpi-icon text-primary"><i class="bi bi-graph-up-arrow"></i></div>
+          <div class="kpi-label">Prix du marché</div>
+          <div style="font-size:.72rem;color:#adb5bd;margin-top:.25rem;">DVF + VALORIS</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="kpi-card">
+          <div class="kpi-icon text-success"><i class="bi bi-lightning-charge"></i></div>
+          <div class="kpi-label">Perf. énergétique</div>
+          <div style="font-size:.72rem;color:#adb5bd;margin-top:.25rem;">ADEME · DPE</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="kpi-card">
+          <div class="kpi-icon text-warning"><i class="bi bi-shield-check"></i></div>
+          <div class="kpi-label">Risques naturels</div>
+          <div style="font-size:.72rem;color:#adb5bd;margin-top:.25rem;">Géorisques</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="kpi-card">
+          <div class="kpi-icon text-info"><i class="bi bi-people"></i></div>
+          <div class="kpi-label">Contexte territorial</div>
+          <div style="font-size:.72rem;color:#adb5bd;margin-top:.25rem;">INSEE · GéoAPI</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading-panel" class="d-none">
+    <div class="card border-0" style="border-radius:12px;box-shadow:var(--card-shadow);max-width:420px;margin:0 auto;padding:2rem;text-align:center;">
+      <div class="spinner-border text-primary mb-3" style="width:3rem;height:3rem;margin:0 auto;"></div>
+      <h5 class="mb-3" style="color:var(--fidi-blue);">Analyse en cours…</h5>
+      <div class="step-indicator" id="stepIndicator">
+        <div class="step-item" id="step-geo"><span class="step-icon"><i class="bi bi-circle"></i></span>Géocodage de l'adresse</div>
+        <div class="step-item" id="step-dvf"><span class="step-icon"><i class="bi bi-circle"></i></span>Transactions DVF (Caisse des Dépôts)</div>
+        <div class="step-item" id="step-prix"><span class="step-icon"><i class="bi bi-circle"></i></span>Prix médians VALORIS</div>
+        <div class="step-item" id="step-dpe"><span class="step-icon"><i class="bi bi-circle"></i></span>Diagnostics DPE (ADEME)</div>
+        <div class="step-item" id="step-risques"><span class="step-icon"><i class="bi bi-circle"></i></span>Risques naturels (Géorisques)</div>
+        <div class="step-item" id="step-score"><span class="step-icon"><i class="bi bi-circle"></i></span>Calcul du score de potentiel</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Résultats -->
+  <div id="results-panel" class="d-none">
+
+    <!-- Bandeau localisation -->
+    <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+      <div>
+        <h4 class="mb-0" id="res-titre" style="color:var(--fidi-blue);font-weight:800;"></h4>
+        <small class="text-muted" id="res-contexte"></small>
+      </div>
+      <div class="d-flex gap-2">
+        <span class="badge bg-secondary" id="res-date" style="font-size:.7rem;"></span>
+        <button class="btn btn-sm btn-outline-secondary btn-print" onclick="window.print()">
+          <i class="bi bi-printer me-1"></i>Imprimer
+        </button>
+      </div>
+    </div>
+
+    <!-- ROW 1 : Score + KPIs + Carte -->
+    <div class="row g-3 mb-3">
+
+      <!-- Score -->
+      <div class="col-md-4 col-lg-3">
+        <div class="score-card">
+          <div class="section-title"><i class="bi bi-trophy"></i>Score de potentiel</div>
+          <div class="score-gauge-wrap">
+            <canvas id="gaugeChart" width="160" height="160"></canvas>
+            <div class="score-value">
+              <div class="score-number" id="scoreNumber">—</div>
+              <div class="score-label">/ 100</div>
+            </div>
+          </div>
+          <div class="score-verdict" id="scoreVerdict"></div>
+          <div id="axesContainer"></div>
+        </div>
+      </div>
+
+      <!-- KPIs -->
+      <div class="col-md-4 col-lg-5">
+        <div class="row g-2 h-100">
+          <div class="col-6">
+            <div class="kpi-card">
+              <div class="kpi-icon" style="color:var(--fidi-blue);"><i class="bi bi-house-fill"></i></div>
+              <div class="kpi-value" id="kpi-prix-maison">—</div>
+              <div class="kpi-label">€/m² maison</div>
+              <div class="kpi-sub" id="kpi-evol-maison"></div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="kpi-card">
+              <div class="kpi-icon" style="color:#6f42c1;"><i class="bi bi-building"></i></div>
+              <div class="kpi-value" id="kpi-prix-appart">—</div>
+              <div class="kpi-label">€/m² appartement</div>
+              <div class="kpi-sub" id="kpi-evol-appart"></div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="kpi-card">
+              <div class="kpi-icon" style="color:#0d6efd;"><i class="bi bi-arrow-left-right"></i></div>
+              <div class="kpi-value" id="kpi-transactions">—</div>
+              <div class="kpi-label">Transactions / an</div>
+              <div class="kpi-sub" id="kpi-trans-sub"></div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="kpi-card">
+              <div class="kpi-icon" style="color:#198754;"><i class="bi bi-people-fill"></i></div>
+              <div class="kpi-value" id="kpi-population">—</div>
+              <div class="kpi-label">Habitants</div>
+              <div class="kpi-sub" id="kpi-pop-sub"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Carte -->
+      <div class="col-md-4 col-lg-4">
+        <div class="map-card">
+          <div class="map-header"><i class="bi bi-geo-alt me-1"></i>Localisation</div>
+          <div id="map"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROW 2 : Graphiques prix & transactions -->
+    <div class="row g-3 mb-3">
+      <div class="col-md-6">
+        <div class="chart-card">
+          <h6><i class="bi bi-graph-up-arrow me-1"></i>Évolution des prix au m² (DVF)</h6>
+          <div class="chart-wrap"><canvas id="prixChart"></canvas></div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="chart-card">
+          <h6><i class="bi bi-bar-chart me-1"></i>Volume de transactions par année (DVF)</h6>
+          <div class="chart-wrap"><canvas id="transChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROW 3 : DPE + Territoire + Risques -->
+    <div class="row g-3 mb-3">
+
+      <!-- DPE -->
+      <div class="col-md-4">
+        <div class="chart-card h-100">
+          <h6><i class="bi bi-lightning-charge me-1"></i>Distribution DPE (ADEME)</h6>
+          <div id="dpeContainer">
+            <p class="text-muted small text-center">Données non disponibles</p>
+          </div>
+          <div class="chart-wrap mt-2" style="height:160px;"><canvas id="dpeChart"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Territoire -->
+      <div class="col-md-4">
+        <div class="territoire-card">
+          <div class="section-title"><i class="bi bi-map"></i>Contexte territorial</div>
+          <div id="territoireContainer">
+            <p class="text-muted small">Données non disponibles</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Risques -->
+      <div class="col-md-4">
+        <div class="risques-card">
+          <div class="section-title"><i class="bi bi-shield-exclamation"></i>Risques naturels (Géorisques)</div>
+          <div id="risquesContainer">
+            <p class="text-muted small">Données non disponibles</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROW 4 : Estimation (si surface saisie) -->
+    <div id="estimationRow" class="row g-3 mb-3 d-none">
+      <div class="col-12">
+        <div class="estimation-card">
+          <div class="row align-items-center g-3">
+            <div class="col-md-5">
+              <div class="section-title" style="color:rgba(255,255,255,.7);">
+                <i class="bi bi-calculator"></i>Estimation vénale du bien
+              </div>
+              <div class="val-main" id="est-valeur">—</div>
+              <div class="val-range mt-1" id="est-base"></div>
+            </div>
+            <div class="col-md-7">
+              <div class="row g-2">
+                <div class="col-4">
+                  <div class="price-band">
+                    <div style="font-size:.7rem;color:rgba(255,255,255,.7);">Borne basse</div>
+                    <div style="font-size:1.1rem;font-weight:700;" id="est-min">—</div>
+                  </div>
+                </div>
+                <div class="col-4">
+                  <div class="price-band" style="background:rgba(255,255,255,.2);">
+                    <div style="font-size:.7rem;color:rgba(255,255,255,.85);">Valeur médiane</div>
+                    <div style="font-size:1.2rem;font-weight:800;" id="est-med">—</div>
+                  </div>
+                </div>
+                <div class="col-4">
+                  <div class="price-band">
+                    <div style="font-size:.7rem;color:rgba(255,255,255,.7);">Borne haute</div>
+                    <div style="font-size:1.1rem;font-weight:700;" id="est-max">—</div>
+                  </div>
+                </div>
+              </div>
+              <small style="color:rgba(255,255,255,.55);font-size:.68rem;margin-top:.5rem;display:block;">
+                * Estimation indicative basée sur le prix médian au m² du marché local (source VALORIS / DVF).
+                Fourchette : −15 % / +20 % selon l'état et la localisation précise du bien.
+              </small>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tableau DVF détaillé -->
+    <div class="row g-3 mb-3">
+      <div class="col-12">
+        <div class="chart-card">
+          <h6><i class="bi bi-table me-1"></i>Données DVF détaillées par année (Caisse des Dépôts)</h6>
+          <div class="table-responsive">
+            <table class="table table-sm table-hover" id="dvfTable">
+              <thead class="table-light">
+                <tr>
+                  <th>Année</th>
+                  <th class="text-end">Nb maisons</th>
+                  <th class="text-end">Prix m² maison</th>
+                  <th class="text-end">Nb appart.</th>
+                  <th class="text-end">Prix m² appart.</th>
+                  <th class="text-end">Total transactions</th>
+                </tr>
+              </thead>
+              <tbody id="dvfTableBody">
+                <tr><td colspan="6" class="text-muted text-center py-3">Aucune donnée disponible</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Synthèse par section cadastrale -->
+    <div class="row g-3 mb-3" id="synthSectionRow" style="display:none!important;">
+      <div class="col-12">
+        <div class="trans-card">
+          <h6><i class="bi bi-grid-3x3-gap me-1"></i>Synthèse des prix par section cadastrale</h6>
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered mb-0" id="synthSectionTable">
+              <thead class="table-dark">
+                <tr>
+                  <th>Section</th>
+                  <th class="text-end">Nb ventes</th>
+                  <th class="text-end">Prix moyen /m²</th>
+                  <th class="text-end">Prix médian /m²</th>
+                  <th class="text-end">Prix min</th>
+                  <th class="text-end">Prix max</th>
+                  <th class="text-end">Surface moy. bâtie</th>
+                </tr>
+              </thead>
+              <tbody id="synthSectionBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Transactions à proximité -->
+    <div class="row g-3 mb-3" id="transProchesRow">
+      <div class="col-12">
+        <div class="trans-card">
+
+          <!-- En-tête -->
+          <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-2">
+            <h6 class="mb-0">
+              <i class="bi bi-pin-map me-1"></i>Transactions enregistrées
+              <span class="badge bg-secondary ms-2 fw-normal" id="transProchesCount" style="font-size:.7rem;"></span>
+              <span class="text-muted fw-normal ms-1" id="transProchesZone" style="font-size:.72rem;text-transform:none;letter-spacing:0;"></span>
+            </h6>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              <span id="filterResultCount" class="text-muted" style="font-size:.75rem;"></span>
+              <button class="btn btn-sm btn-outline-secondary py-0" onclick="resetTransFilters()" title="Réinitialiser les filtres">
+                <i class="bi bi-x-circle me-1"></i>Réinitialiser
+              </button>
+            </div>
+          </div>
+
+          <!-- Barre de filtres rapides -->
+          <div class="row g-2 mb-3 p-2 rounded" style="background:#f8f9fa;border:1px solid #e9ecef;">
+            <div class="col-12 col-sm-4">
+              <label class="form-label mb-1" style="font-size:.72rem;color:#6c757d;font-weight:600;">
+                <i class="bi bi-search me-1"></i>Recherche (adresse, voie…)
+              </label>
+              <input type="text" class="form-control form-control-sm" id="filterTexte"
+                     placeholder="Ex : rue des roses" oninput="applyTransFilters()"/>
+            </div>
+            <div class="col-6 col-sm-2">
+              <label class="form-label mb-1" style="font-size:.72rem;color:#6c757d;font-weight:600;">
+                <i class="bi bi-house me-1"></i>Type de bien
+              </label>
+              <select class="form-select form-select-sm" id="filterType" onchange="applyTransFilters()">
+                <option value="">Tous</option>
+              </select>
+            </div>
+            <div class="col-6 col-sm-2">
+              <label class="form-label mb-1" style="font-size:.72rem;color:#6c757d;font-weight:600;">
+                <i class="bi bi-grid me-1"></i>Section cadastrale
+              </label>
+              <select class="form-select form-select-sm" id="filterSection" onchange="applyTransFilters()">
+                <option value="">Toutes</option>
+              </select>
+            </div>
+            <div class="col-6 col-sm-2">
+              <label class="form-label mb-1" style="font-size:.72rem;color:#6c757d;font-weight:600;">
+                <i class="bi bi-calendar me-1"></i>Année
+              </label>
+              <select class="form-select form-select-sm" id="filterAnnee" onchange="applyTransFilters()">
+                <option value="">Toutes</option>
+              </select>
+            </div>
+            <div class="col-6 col-sm-2">
+              <label class="form-label mb-1" style="font-size:.72rem;color:#6c757d;font-weight:600;">
+                <i class="bi bi-map me-1"></i>Code postal / Ville
+              </label>
+              <select class="form-select form-select-sm" id="filterCodePostal" onchange="applyTransFilters()">
+                <option value="">Tous</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Tableau individuel -->
+          <div class="table-responsive" style="max-height:460px;overflow-y:auto;">
+            <table class="table table-sm table-hover mb-0" id="transProchesTable">
+              <thead class="table-light sticky-top">
+                <tr>
+                  <th data-col="date" title="Trier">Date <i class="bi bi-arrow-down-up text-muted"></i></th>
+                  <th data-col="adresse">Adresse</th>
+                  <th data-col="section" title="Trier">Section <i class="bi bi-arrow-down-up text-muted"></i></th>
+                  <th data-col="id_parcelle">Réf. parcelle</th>
+                  <th data-col="type_local" title="Trier">Type <i class="bi bi-arrow-down-up text-muted"></i></th>
+                  <th class="text-end" data-col="surface_bati" title="Trier">Surface bâtie <i class="bi bi-arrow-down-up text-muted"></i></th>
+                  <th class="text-end" data-col="nb_pieces">Pièces</th>
+                  <th class="text-end" data-col="surface_terrain">Surf. terrain</th>
+                  <th class="text-end" data-col="valeur" title="Trier">Prix <i class="bi bi-arrow-down-up text-muted"></i></th>
+                  <th class="text-end" data-col="prix_m2" title="Trier">Prix/m² <i class="bi bi-arrow-down-up text-muted"></i></th>
+                  <th class="text-end" data-col="distance_m" title="Trier">Distance <i class="bi bi-arrow-down-up text-muted"></i></th>
+                </tr>
+              </thead>
+              <tbody id="transProchesBody">
+                <tr><td colspan="11" class="text-muted text-center py-3">Aucune donnée</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Légende + stats globales -->
+          <div class="mt-2 d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <div class="d-flex gap-3 flex-wrap" id="transLegend" style="font-size:.72rem;color:#6c757d;"></div>
+            <div id="transGlobalStats" style="font-size:.72rem;color:#6c757d;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sources -->
+    <div class="sources-bar text-center mb-3">
+      <i class="bi bi-info-circle me-1"></i>
+      Sources : <strong>DVF</strong> Caisse des Dépôts · <strong>VALORIS</strong> (données DGFiP) ·
+      <strong>ADEME</strong> DPE logements · <strong>BAN</strong> Géocodage ·
+      <strong>Géorisques</strong> BRGM · <strong>GéoAPI</strong> INSEE
+      – Données publiques data.gouv.fr
+    </div>
+
+  </div><!-- /results-panel -->
+
+</div><!-- /container -->
+
+<!-- JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ─── État global ──────────────────────────────────────────────────────────────
+let mapInstance = null;
+let markerInstance = null;
+let radiusCircle = null;
+let transMarkers = [];
+let prixChartInst = null;
+let transChartInst = null;
+let dpeChartInst   = null;
+let gaugeChartInst = null;
+let autocompleteTimer = null;
+let transSortCol = 'distance_m';
+let transSortAsc = true;
+let transData = [];
+
+const fmt = (n, dec=0) => n != null ? Number(n).toLocaleString('fr-FR',{minimumFractionDigits:dec,maximumFractionDigits:dec}) : '—';
+const fmtEur = n => n != null ? fmt(n) + ' €' : '—';
+const fmtM2  = n => n != null ? fmt(n) + ' €/m²' : '—';
+
+// ─── Autocomplete ─────────────────────────────────────────────────────────────
+document.getElementById('inputAdresse').addEventListener('input', function(){
+  clearTimeout(autocompleteTimer);
+  const q = this.value.trim();
+  if(q.length < 3){ hideAC(); return; }
+  autocompleteTimer = setTimeout(() => fetchAC(q), 280);
+});
+
+document.addEventListener('click', e => {
+  if(!e.target.closest('#inputAdresse') && !e.target.closest('#autocompleteList')) hideAC();
+});
+
+function hideAC(){ document.getElementById('autocompleteList').classList.add('d-none'); }
+
+async function fetchAC(q){
+  try{
+    const r = await fetch('/api/autocomplete?q='+encodeURIComponent(q));
+    const suggestions = await r.json();
+    const list = document.getElementById('autocompleteList');
+    if(!suggestions.length){ hideAC(); return; }
+    list.innerHTML = suggestions.map(s =>
+      `<div class="autocomplete-item" onclick="selectAC('${s.label.replace(/'/g,"\\'")}')">
+        <i class="bi bi-geo-alt text-muted me-1"></i>${s.label}
+      </div>`
+    ).join('');
+    list.classList.remove('d-none');
+  }catch(e){ hideAC(); }
+}
+
+function selectAC(label){
+  document.getElementById('inputAdresse').value = label;
+  hideAC();
+}
+
+// ─── Touche Entrée → analyser ─────────────────────────────────────────────────
+document.getElementById('inputAdresse').addEventListener('keydown', e => {
+  if(e.key === 'Enter'){ hideAC(); lancerAnalyse(); }
+});
+document.getElementById('btnAnalyse').addEventListener('click', lancerAnalyse);
+
+// ─── Animation des étapes ─────────────────────────────────────────────────────
+const STEPS = ['step-geo','step-dvf','step-prix','step-dpe','step-risques','step-score'];
+let stepTimer = null;
+let currentStep = 0;
+
+function startStepAnimation(){
+  currentStep = 0;
+  STEPS.forEach(id => {
+    const el = document.getElementById(id);
+    el.className = 'step-item';
+    el.querySelector('.step-icon').innerHTML = '<i class="bi bi-circle"></i>';
+  });
+  animateStep();
+}
+
+function animateStep(){
+  if(currentStep >= STEPS.length) return;
+  const prev = currentStep - 1;
+  if(prev >= 0){
+    const el = document.getElementById(STEPS[prev]);
+    el.className = 'step-item done';
+    el.querySelector('.step-icon').innerHTML = '<i class="bi bi-check-circle-fill text-success"></i>';
+  }
+  const cur = document.getElementById(STEPS[currentStep]);
+  cur.className = 'step-item active';
+  cur.querySelector('.step-icon').innerHTML = '<i class="bi bi-arrow-right-circle-fill" style="color:var(--fidi-blue)"></i>';
+  currentStep++;
+  stepTimer = setTimeout(animateStep, 700);
+}
+
+function finishSteps(){
+  clearTimeout(stepTimer);
+  STEPS.forEach(id => {
+    const el = document.getElementById(id);
+    el.className = 'step-item done';
+    el.querySelector('.step-icon').innerHTML = '<i class="bi bi-check-circle-fill text-success"></i>';
+  });
+}
+
+// ─── Appel principal ──────────────────────────────────────────────────────────
+async function lancerAnalyse(){
+  const adresse  = document.getElementById('inputAdresse').value.trim();
+  const typeBien = document.getElementById('selectType').value;
+  const surface  = parseFloat(document.getElementById('inputSurface').value) || 0;
+
+  if(!adresse){ alert('Veuillez saisir une adresse.'); return; }
+
+  // Affichage
+  document.getElementById('init-panel').classList.add('d-none');
+  document.getElementById('results-panel').classList.add('d-none');
+  document.getElementById('loading-panel').classList.remove('d-none');
+  startStepAnimation();
+
+  try{
+    const resp = await fetch('/api/analyse', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({adresse, type_bien: typeBien, surface, perimetre: document.getElementById('selectPerimetre').value})
+    });
+
+    finishSteps();
+    await new Promise(r => setTimeout(r, 400));
+
+    document.getElementById('loading-panel').classList.add('d-none');
+
+    if(!resp.ok){
+      const err = await resp.json();
+      alert('Erreur : ' + (err.error || 'Analyse impossible'));
+      document.getElementById('init-panel').classList.remove('d-none');
+      return;
+    }
+
+    const data = await resp.json();
+    const perimetre = document.getElementById('selectPerimetre').value;
+    renderResults(data);
+    document.getElementById('results-panel').classList.remove('d-none');
+    document.getElementById('btnPrint').classList.remove('d-none');
+    window.scrollTo({top: document.getElementById('results-panel').offsetTop - 20, behavior:'smooth'});
+    // Transactions chargées séparément (appel asynchrone indépendant)
+    loadTransactionsAsync(data.localisation || {}, perimetre);
+
+  }catch(err){
+    clearTimeout(stepTimer);
+    document.getElementById('loading-panel').classList.add('d-none');
+    document.getElementById('init-panel').classList.remove('d-none');
+    alert('Erreur réseau : ' + err.message);
+  }
+}
+
+// ─── Rendu des résultats ──────────────────────────────────────────────────────
+function renderResults(d){
+  const loc  = d.localisation  || {};
+  const info = d.commune_info  || {};
+  const val  = d.valoris       || {};
+  const dpe  = d.dpe           || {};
+  const dvfA = d.dvf_annees    || [];
+  const dvfP = d.dvf_periodes  || [];
+  const sc   = d.score         || {};
+  const est  = d.estimation;
+
+  // Titre
+  document.getElementById('res-titre').textContent   = loc.city || loc.label || '—';
+  document.getElementById('res-contexte').textContent = loc.context || '';
+  document.getElementById('res-date').textContent     = 'Analyse du ' + (d.generated_at || '');
+
+  // Score
+  renderScore(sc);
+
+  // KPIs prix
+  const vm = val.maison     || val.tous || {};
+  const va = val.appartement|| val.tous || {};
+  const pmMaison = vm.prix_median_m2;
+  const pmAppart = va.prix_median_m2;
+
+  document.getElementById('kpi-prix-maison').textContent = pmMaison ? fmt(pmMaison) + ' €' : '—';
+  document.getElementById('kpi-prix-appart').textContent = pmAppart ? fmt(pmAppart) + ' €' : '—';
+
+  if(vm.evolution_1an_pct != null){
+    const el = document.getElementById('kpi-evol-maison');
+    const pct = Number(vm.evolution_1an_pct).toFixed(1);
+    el.textContent = (pct>0?'+':'')+pct+'% / an';
+    el.className = 'kpi-sub' + (pct<0?' neg':'');
+  }
+  if(va.evolution_1an_pct != null){
+    const el = document.getElementById('kpi-evol-appart');
+    const pct = Number(va.evolution_1an_pct).toFixed(1);
+    el.textContent = (pct>0?'+':'')+pct+'% / an';
+    el.className = 'kpi-sub' + (pct<0?' neg':'');
+  }
+
+  // KPI transactions
+  let nbTrans = null;
+  if(dvfA.length){
+    const last = dvfA[dvfA.length-1];
+    nbTrans = last.nb_total || last.nb_maison || null;
+  }
+  if(dvfP.length && !nbTrans){
+    nbTrans = dvfP[0].nb_total;
+  }
+  document.getElementById('kpi-transactions').textContent = nbTrans != null ? fmt(nbTrans) : '—';
+  document.getElementById('kpi-trans-sub').textContent = dvfA.length ? `Dernière année connue` : '';
+
+  // KPI population
+  const pop = info.population;
+  document.getElementById('kpi-population').textContent = pop ? fmt(pop) : '—';
+  document.getElementById('kpi-pop-sub').textContent = info.codeDepartement ? 'Dépt '+info.codeDepartement : '';
+
+  // Carte
+  renderMap(loc.lat, loc.lon, loc.city);
+
+  // Graphiques
+  renderPrixChart(dvfA, d.type_bien);
+  renderTransChart(dvfA);
+  renderDpeSection(dpe);
+  renderTerritoire(info, loc);
+  renderRisques(d.risques || {});
+
+  // Tableau DVF
+  renderDvfTable(dvfA);
+
+  // Transactions chargées de façon asynchrone — spinner d'attente
+  showTransSpinner();
+
+  // Estimation
+  if(est){
+    renderEstimation(est, d.type_bien);
+    document.getElementById('estimationRow').classList.remove('d-none');
+  } else {
+    document.getElementById('estimationRow').classList.add('d-none');
+  }
+}
+
+// ─── Score ────────────────────────────────────────────────────────────────────
+function renderScore(sc){
+  if(!sc || sc.total == null) return;
+  const total   = sc.total;
+  const couleur = sc.couleur || '#6c757d';
+
+  document.getElementById('scoreNumber').textContent = total;
+  document.getElementById('scoreNumber').style.color = couleur;
+  document.getElementById('scoreVerdict').textContent = sc.verdict || '';
+  document.getElementById('scoreVerdict').style.color = couleur;
+
+  // Jauge (doughnut)
+  if(gaugeChartInst) gaugeChartInst.destroy();
+  gaugeChartInst = new Chart(document.getElementById('gaugeChart'), {
+    type: 'doughnut',
+    data:{
+      datasets:[{
+        data:[total, 100-total],
+        backgroundColor:[couleur,'#f0f2f5'],
+        borderWidth:0,
+        circumference:270,
+        rotation:225,
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      cutout:'72%',
+      plugins:{legend:{display:false},tooltip:{enabled:false}},
+      animation:{duration:1200}
+    }
+  });
+
+  // Axes
+  const axes = sc.axes || {};
+  const container = document.getElementById('axesContainer');
+  container.innerHTML = '';
+  Object.values(axes).forEach(a => {
+    const pct = (a.note/a.max)*100;
+    const color = pct>=80?'#198754':pct>=60?'#0d6efd':pct>=40?'#ffc107':'#dc3545';
+    container.innerHTML += `
+      <div class="axis-row" title="${a.detail}">
+        <div class="axis-name">${a.label}</div>
+        <div class="axis-bar-wrap">
+          <div class="axis-bar" style="width:${pct}%;background:${color}"></div>
+        </div>
+        <div class="axis-note">${a.note}</div>
+      </div>`;
+  });
+}
+
+// ─── Carte Leaflet ────────────────────────────────────────────────────────────
+function renderMap(lat, lon, city){
+  if(!lat || !lon) return;
+  if(!mapInstance){
+    mapInstance = L.map('map').setView([lat,lon],13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+      attribution:'© OpenStreetMap',maxZoom:18
+    }).addTo(mapInstance);
+  } else {
+    mapInstance.setView([lat,lon],13);
+    if(markerInstance) mapInstance.removeLayer(markerInstance);
+    if(radiusCircle){ mapInstance.removeLayer(radiusCircle); radiusCircle=null; }
+    transMarkers.forEach(m=>mapInstance.removeLayer(m));
+    transMarkers=[];
+  }
+  markerInstance = L.marker([lat,lon]).addTo(mapInstance)
+    .bindPopup(`<b><i class="bi bi-geo-alt"></i> ${city||''}</b><br><small>Adresse analysée</small>`).openPopup();
+  setTimeout(()=>mapInstance.invalidateSize(),200);
+}
+
+function addTransactionMarkers(transactions, rayon_km, latRef, lonRef){
+  if(!mapInstance) return;
+  if(radiusCircle){ mapInstance.removeLayer(radiusCircle); radiusCircle=null; }
+  transMarkers.forEach(m=>mapInstance.removeLayer(m));
+  transMarkers=[];
+
+  // Cercle de rayon
+  if(rayon_km > 0){
+    radiusCircle = L.circle([latRef,lonRef],{
+      radius: rayon_km*1000,
+      color:'#1a3a6e', weight:1.5, dashArray:'6 4',
+      fillColor:'#2652a0', fillOpacity:.06
+    }).addTo(mapInstance);
+  }
+
+  const TYPE_COLORS = {
+    'Maison':'#e4241c','Appartement':'#0d6efd',
+    'Local industriel. commercial ou assimilé':'#fd7e14',
+    'Dépendance':'#6c757d','Local':'#fd7e14'
+  };
+  const defaultColor = '#20c997';
+
+  transactions.forEach((t,i)=>{
+    if(!t.lat||!t.lon) return;
+    const color = TYPE_COLORS[t.type_local]||defaultColor;
+    const m = L.circleMarker([t.lat,t.lon],{
+      radius:7, color:'#fff', weight:1.5,
+      fillColor:color, fillOpacity:.85
+    }).addTo(mapInstance);
+    const prix = t.valeur ? Number(t.valeur).toLocaleString('fr-FR')+'&nbsp;€' : '—';
+    const surf = t.surface_bati ? t.surface_bati+'&nbsp;m²' : (t.surface_terrain ? t.surface_terrain+'&nbsp;m² terrain' : '—');
+    m.bindPopup(`
+      <strong>${t.type_local||'Bien'}</strong><br>
+      ${t.adresse||''}<br>
+      <small>${t.date||''}</small><br>
+      Parcelle&nbsp;: <code>${t.id_parcelle||'—'}</code><br>
+      Surface&nbsp;: ${surf}<br>
+      Prix&nbsp;: <strong>${prix}</strong>${t.prix_m2?'&nbsp;('+Number(t.prix_m2).toLocaleString('fr-FR')+'&nbsp;€/m²)':''}
+    `);
+    m._transIndex = i;
+    transMarkers.push(m);
+  });
+}
+
+// ─── Graphique prix ───────────────────────────────────────────────────────────
+function renderPrixChart(dvfA, typeBien){
+  const labels = dvfA.map(r => r.annee);
+  const maison = dvfA.map(r => r.prix_m2_maison);
+  const appart = dvfA.map(r => r.prix_m2_appart);
+
+  const hasData = maison.some(v=>v!=null) || appart.some(v=>v!=null);
+  if(!hasData){ return; }
+
+  if(prixChartInst) prixChartInst.destroy();
+  prixChartInst = new Chart(document.getElementById('prixChart'), {
+    type:'line',
+    data:{
+      labels,
+      datasets:[
+        {label:'Maison (€/m²)',data:maison,borderColor:'#1a3a6e',backgroundColor:'rgba(26,58,110,.1)',tension:.35,pointRadius:4,fill:true,spanGaps:true},
+        {label:'Appartement (€/m²)',data:appart,borderColor:'#6f42c1',backgroundColor:'rgba(111,66,193,.08)',tension:.35,pointRadius:4,fill:true,spanGaps:true},
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:11}}}},
+      scales:{
+        y:{ticks:{callback:v=>fmt(v)+' €'},grid:{color:'#f0f2f5'}},
+        x:{grid:{display:false}}
+      }
+    }
+  });
+}
+
+// ─── Graphique transactions ───────────────────────────────────────────────────
+function renderTransChart(dvfA){
+  const labels = dvfA.map(r => r.annee);
+  const maison = dvfA.map(r => r.nb_maison);
+  const appart = dvfA.map(r => r.nb_appart);
+
+  const hasData = maison.some(v=>v!=null) || appart.some(v=>v!=null);
+  if(!hasData) return;
+
+  if(transChartInst) transChartInst.destroy();
+  transChartInst = new Chart(document.getElementById('transChart'), {
+    type:'bar',
+    data:{
+      labels,
+      datasets:[
+        {label:'Maisons',data:maison,backgroundColor:'rgba(26,58,110,.75)',borderRadius:4},
+        {label:'Appartements',data:appart,backgroundColor:'rgba(111,66,193,.65)',borderRadius:4},
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:11}}}},
+      scales:{
+        y:{ticks:{stepSize:1},grid:{color:'#f0f2f5'}},
+        x:{grid:{display:false}},
+        stacked:false
+      }
+    }
+  });
+}
+
+// ─── DPE ──────────────────────────────────────────────────────────────────────
+const DPE_COLORS = {A:'#00a651',B:'#52b747',C:'#afd136',D:'#ffed00',E:'#f7a600',F:'#ef7d00',G:'#e4241c'};
+const LABELS_ORDER = ['A','B','C','D','E','F','G'];
+
+function renderDpeSection(dpe){
+  const total = Object.values(dpe).reduce((a,b)=>a+b,0);
+  const container = document.getElementById('dpeContainer');
+
+  if(!total){
+    container.innerHTML = '<p class="text-muted small text-center">Données DPE non disponibles pour cette commune</p>';
+    return;
+  }
+
+  container.innerHTML = LABELS_ORDER.map(l => {
+    const n   = dpe[l] || 0;
+    const pct = total ? Math.round(n/total*100) : 0;
+    return `<div class="dpe-row">
+      <span class="dpe-badge dpe-${l}">${l}</span>
+      <div class="dpe-bar-wrap"><div class="dpe-bar" style="width:${pct}%;background:${DPE_COLORS[l]}"></div></div>
+      <span class="dpe-count">${fmt(n)}</span>
+      <span style="font-size:.72rem;color:#6c757d;width:30px;">${pct}%</span>
+    </div>`;
+  }).join('');
+
+  // Chart donut DPE
+  if(dpeChartInst) dpeChartInst.destroy();
+  const vals  = LABELS_ORDER.map(l=>dpe[l]||0);
+  const colors = LABELS_ORDER.map(l=>DPE_COLORS[l]);
+  dpeChartInst = new Chart(document.getElementById('dpeChart'), {
+    type:'doughnut',
+    data:{labels:LABELS_ORDER,datasets:[{data:vals,backgroundColor:colors,borderWidth:2}]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:'right',labels:{boxWidth:12,font:{size:10}}}}
+    }
+  });
+}
+
+// ─── Territoire ───────────────────────────────────────────────────────────────
+function renderTerritoire(info, loc){
+  const rows = [
+    ['Commune',       info.nom || loc.city || '—'],
+    ['Code postal',   (info.codesPostaux||[loc.postcode]).join(', ') || '—'],
+    ['Code INSEE',    loc.citycode || '—'],
+    ['Département',   info.codeDepartement || loc.departement || '—'],
+    ['Région',        info.codeRegion || '—'],
+    ['Population',    info.population ? fmt(info.population)+' hab.' : '—'],
+    ['Superficie',    info.superficie ? fmt(info.superficie)+' km²' : '—'],
+    ['Densité',       (info.population && info.superficie) ?
+                       fmt(info.population/info.superficie)+' hab./km²' : '—'],
+  ];
+  document.getElementById('territoireContainer').innerHTML =
+    rows.map(([k,v])=>`<div class="info-row"><span class="info-key">${k}</span><span class="info-val">${v}</span></div>`).join('');
+}
+
+// ─── Risques ──────────────────────────────────────────────────────────────────
+function renderRisques(risques){
+  const container = document.getElementById('risquesContainer');
+  const items = [];
+
+  // Sismicité
+  const s = risques.sismicite;
+  if(s){
+    let zone = null;
+    if(Array.isArray(s) && s.length) zone = s[0].zone_sismicite || s[0].zone || s[0].libelle;
+    else if(typeof s==='object') zone = s.zone_sismicite || s.zone || s.libelle;
+    if(zone){
+      const z = String(zone).replace(/zone/i,'').trim();
+      const colors = {1:'#198754',2:'#20c997',3:'#ffc107',4:'#fd7e14',5:'#dc3545'};
+      const labels = {1:'Très faible',2:'Faible',3:'Modérée',4:'Moyenne',5:'Forte'};
+      const c = colors[z]||'#6c757d';
+      items.push(`<div class="risque-item">
+        <div class="risque-dot" style="background:${c}"></div>
+        <div><strong>Sismicité :</strong> Zone ${z} – ${labels[z]||zone}</div></div>`);
+    } else {
+      items.push(`<div class="risque-item"><div class="risque-dot" style="background:#6c757d"></div><div>Sismicité disponible</div></div>`);
+    }
+  } else {
+    items.push(`<div class="risque-item"><div class="risque-dot" style="background:#dee2e6"></div><div class="text-muted">Sismicité : données non disponibles</div></div>`);
+  }
+
+  // Radon
+  const r = risques.radon;
+  if(r){
+    let cat = null;
+    if(Array.isArray(r) && r.length) cat = r[0].categorie || r[0].classe_potentiel || r[0].libelle;
+    else if(typeof r==='object') cat = r.categorie || r.classe_potentiel || r.libelle;
+    if(cat){
+      const c = String(cat)===('3')?'#dc3545':String(cat)==='2'?'#ffc107':'#198754';
+      const l = {1:'Faible',2:'Modéré',3:'Élevé'}[String(cat)] || cat;
+      items.push(`<div class="risque-item">
+        <div class="risque-dot" style="background:${c}"></div>
+        <div><strong>Radon :</strong> Catégorie ${cat} – ${l}</div></div>`);
+    }
+  } else {
+    items.push(`<div class="risque-item"><div class="risque-dot" style="background:#dee2e6"></div><div class="text-muted">Radon : données non disponibles</div></div>`);
+  }
+
+  // PPR
+  const ppr = risques.ppr;
+  if(ppr){
+    const nbPpr = Array.isArray(ppr) ? ppr.length : (ppr.total || 0);
+    if(nbPpr > 0){
+      items.push(`<div class="risque-item"><div class="risque-dot" style="background:#fd7e14"></div>
+        <div><strong>PPR :</strong> ${nbPpr} plan(s) de prévention recensé(s)</div></div>`);
+    } else {
+      items.push(`<div class="risque-item"><div class="risque-dot" style="background:#198754"></div>
+        <div><strong>PPR :</strong> Aucun plan recensé dans ce secteur</div></div>`);
+    }
+  } else {
+    items.push(`<div class="risque-item"><div class="risque-dot" style="background:#dee2e6"></div><div class="text-muted">PPR : données non disponibles</div></div>`);
+  }
+
+  // ICPE
+  const icpe = risques.icpe;
+  if(icpe){
+    const nb = Array.isArray(icpe)?icpe.length:(icpe.total||0);
+    if(nb>0){
+      items.push(`<div class="risque-item"><div class="risque-dot" style="background:#ffc107"></div>
+        <div><strong>ICPE :</strong> ${nb} installation(s) classée(s) à proximité</div></div>`);
+    } else {
+      items.push(`<div class="risque-item"><div class="risque-dot" style="background:#198754"></div>
+        <div><strong>ICPE :</strong> Aucune installation classée à proximité</div></div>`);
+    }
+  }
+
+  if(!items.length){
+    container.innerHTML = '<p class="text-muted small">Données de risques non disponibles</p>';
+  } else {
+    container.innerHTML = items.join('');
+    // Note de synthèse
+    const noRisque = !s && !r && !ppr;
+    if(!noRisque){
+      container.innerHTML += `
+        <div class="mt-2 p-2 rounded" style="background:#f8f9fa;font-size:.72rem;color:#6c757d;">
+          <i class="bi bi-info-circle me-1"></i>
+          Consultez <a href="https://www.georisques.gouv.fr" target="_blank">georisques.gouv.fr</a>
+          pour l'intégralité des risques (inondation, retrait-gonflement des argiles, etc.)
+        </div>`;
+    }
+  }
+}
+
+// ─── Tableau DVF ──────────────────────────────────────────────────────────────
+function renderDvfTable(dvfA){
+  const tbody = document.getElementById('dvfTableBody');
+  if(!dvfA.length){
+    tbody.innerHTML = '<tr><td colspan="6" class="text-muted text-center py-3">Données DVF non disponibles pour cette commune</td></tr>';
+    return;
+  }
+  tbody.innerHTML = dvfA.slice().reverse().map(r=>`
+    <tr>
+      <td><strong>${r.annee}</strong></td>
+      <td class="text-end">${r.nb_maison!=null?fmt(r.nb_maison):'—'}</td>
+      <td class="text-end">${r.prix_m2_maison!=null?fmtM2(r.prix_m2_maison):'—'}</td>
+      <td class="text-end">${r.nb_appart!=null?fmt(r.nb_appart):'—'}</td>
+      <td class="text-end">${r.prix_m2_appart!=null?fmtM2(r.prix_m2_appart):'—'}</td>
+      <td class="text-end">${r.nb_total!=null?fmt(r.nb_total):'—'}</td>
+    </tr>`).join('');
+}
+
+// ─── Transactions à proximité ────────────────────────────────────────────────
+const TYPE_COLORS_CSS = {
+  'Maison':'#e4241c','Appartement':'#0d6efd',
+  'Local industriel. commercial ou assimilé':'#fd7e14',
+  'Dépendance':'#6c757d','Local':'#fd7e14'
+};
+let _transLatRef = null, _transLonRef = null;
+let _activeFilters = { texte:'', type:'', section:'', annee:'', cp:'' };
+
+function renderTransactions(transactions, rayon_km, latRef, lonRef, mode, meta){
+  transData = transactions || [];
+  const count = transData.length;
+  mode = mode || 'rayon';
+  meta = meta || {};
+  _transLatRef = latRef;
+  _transLonRef = lonRef;
+
+  // En-tête
+  let zoneLabel = '';
+  if(mode === 'rayon')       zoneLabel = rayon_km > 0 ? `– rayon ${rayon_km>=1?rayon_km+' km':(rayon_km*1000)+'m'}` : '– commune entière';
+  else if(mode === 'commune')     zoneLabel = '– commune entière';
+  else if(mode === 'code_postal') zoneLabel = `– code postal ${meta.code_postal||''}`;
+  else if(mode === 'section')     zoneLabel = `– section cadastrale ${meta.section||''}${meta.section_source?' ('+meta.section_source+')':''}`;
+  else if(mode === 'iris')        zoneLabel = `– quartier IRIS ${meta.iris_code||''}${meta.iris_name?' « '+meta.iris_name+' »':''}`;
+
+  document.getElementById('transProchesCount').textContent = count + ' vente' + (count>1?'s':'');
+  document.getElementById('transProchesZone').textContent  = zoneLabel;
+
+  // Cercle rayon sur carte
+  const rayonAffiche = (mode === 'rayon') ? rayon_km : 0;
+  if(latRef && lonRef) addTransactionMarkers(transData, rayonAffiche, latRef, lonRef);
+
+  // Légende types
+  const typesPresents = [...new Set(transData.map(t=>t.type_local).filter(Boolean))];
+  document.getElementById('transLegend').innerHTML = typesPresents.map(t=>{
+    const c = TYPE_COLORS_CSS[t]||'#20c997';
+    return `<span><span class="type-dot" style="background:${c}"></span>${t}</span>`;
+  }).join('');
+
+  // Peupler les dropdowns de filtres
+  _populateFilterDropdowns();
+
+  // Réinitialiser les filtres actifs
+  _activeFilters = { texte:'', type:'', section:'', annee:'', cp:'' };
+  document.getElementById('filterTexte').value    = '';
+  document.getElementById('filterType').value     = '';
+  document.getElementById('filterSection').value  = '';
+  document.getElementById('filterAnnee').value    = '';
+  document.getElementById('filterCodePostal').value = '';
+
+  // Synthèse par section
+  renderSynthSection(transData);
+
+  // Tri initial
+  transSortCol = 'distance_m'; transSortAsc = true;
+  applyTransFilters();
+
+  // En-têtes cliquables
+  document.querySelectorAll('#transProchesTable th[data-col]').forEach(th=>{
+    th.onclick = ()=>{
+      const col = th.dataset.col;
+      if(transSortCol===col) transSortAsc=!transSortAsc;
+      else{ transSortCol=col; transSortAsc=true; }
+      applyTransFilters();
+    };
+  });
+}
+
+function _populateFilterDropdowns(){
+  const types    = [...new Set(transData.map(t=>t.type_local).filter(Boolean))].sort();
+  const sections = [...new Set(transData.map(t=>t.section).filter(Boolean))].sort();
+  const annees   = [...new Set(transData.map(t=>t.date?.slice(0,4)).filter(Boolean))].sort().reverse();
+  const cps      = [...new Set(transData.map(t=>t.code_postal).filter(Boolean))].sort();
+
+  const fill = (id, items, prefix='') => {
+    const sel = document.getElementById(id);
+    const prev = sel.value;
+    sel.innerHTML = `<option value="">${prefix}Tous</option>`
+      + items.map(v=>`<option value="${v}">${v}</option>`).join('');
+    if(items.includes(prev)) sel.value = prev;
+  };
+  fill('filterType',       types,   '');
+  fill('filterSection',    sections,'');
+  fill('filterAnnee',      annees,  '');
+  fill('filterCodePostal', cps,     '');
+}
+
+function applyTransFilters(){
+  _activeFilters.texte   = document.getElementById('filterTexte').value.trim().toLowerCase();
+  _activeFilters.type    = document.getElementById('filterType').value;
+  _activeFilters.section = document.getElementById('filterSection').value;
+  _activeFilters.annee   = document.getElementById('filterAnnee').value;
+  _activeFilters.cp      = document.getElementById('filterCodePostal').value;
+  renderTransTable(_transLatRef, _transLonRef);
+}
+
+function resetTransFilters(){
+  document.getElementById('filterTexte').value    = '';
+  document.getElementById('filterType').value     = '';
+  document.getElementById('filterSection').value  = '';
+  document.getElementById('filterAnnee').value    = '';
+  document.getElementById('filterCodePostal').value = '';
+  applyTransFilters();
+}
+
+function _filteredTrans(){
+  const f = _activeFilters;
+  return transData.filter(t=>{
+    if(f.texte   && !(t.adresse||'').toLowerCase().includes(f.texte)) return false;
+    if(f.type    && t.type_local !== f.type)    return false;
+    if(f.section && t.section !== f.section)    return false;
+    if(f.annee   && !(t.date||'').startsWith(f.annee)) return false;
+    if(f.cp      && t.code_postal !== f.cp)     return false;
+    return true;
+  });
+}
+
+function renderTransTable(latRef, lonRef){
+  const tbody = document.getElementById('transProchesBody');
+  const filtered = _filteredTrans();
+
+  // Compteur filtré
+  const fc = document.getElementById('filterResultCount');
+  if(filtered.length < transData.length){
+    fc.textContent = `${filtered.length} / ${transData.length} affiché${filtered.length>1?'s':''}`;
+  } else {
+    fc.textContent = '';
+  }
+
+  if(!filtered.length){
+    tbody.innerHTML=`<tr><td colspan="11" class="text-muted text-center py-3">
+      Aucune transaction ne correspond aux filtres sélectionnés
+      <button class="btn btn-sm btn-link p-0 ms-2" onclick="resetTransFilters()">Réinitialiser</button>
+    </td></tr>`;
+    _updateGlobalStats([]);
+    return;
+  }
+
+  const sorted = [...filtered].sort((a,b)=>{
+    let va = a[transSortCol], vb = b[transSortCol];
+    if(va==null) return 1; if(vb==null) return -1;
+    if(typeof va==='string') return transSortAsc ? va.localeCompare(vb,'fr') : vb.localeCompare(va,'fr');
+    return transSortAsc ? va-vb : vb-va;
+  });
+
+  tbody.innerHTML = sorted.map(t=>{
+    const color = TYPE_COLORS_CSS[t.type_local]||'#20c997';
+    const dist  = t.distance_m!=null ? (t.distance_m<1000 ? Math.round(t.distance_m)+'m' : (t.distance_m/1000).toFixed(1)+'km') : '—';
+    const origIdx = transData.indexOf(t);
+    return `<tr data-idx="${origIdx}" onclick="highlightTrans(this)">
+      <td style="white-space:nowrap">${t.date||'—'}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(t.adresse||'').replace(/"/g,'')}">${t.adresse||'—'}</td>
+      <td><span class="badge bg-primary bg-opacity-10 text-primary fw-semibold" style="font-size:.7rem;">${t.section||'—'}</span></td>
+      <td><code style="font-size:.68rem;">${t.id_parcelle||'—'}</code></td>
+      <td><span class="type-dot" style="background:${color}"></span>${t.type_local||'—'}</td>
+      <td class="text-end">${t.surface_bati!=null ? fmt(t.surface_bati)+' m²' : '—'}</td>
+      <td class="text-end">${t.nb_pieces!=null ? t.nb_pieces : '—'}</td>
+      <td class="text-end">${t.surface_terrain!=null ? fmt(t.surface_terrain)+' m²' : '—'}</td>
+      <td class="text-end fw-semibold">${t.valeur!=null ? fmt(t.valeur)+' €' : '—'}</td>
+      <td class="text-end">${t.prix_m2!=null ? fmt(t.prix_m2)+' €' : '—'}</td>
+      <td class="text-end"><span class="badge bg-light text-dark border">${dist}</span></td>
+    </tr>`;
+  }).join('');
+
+  _updateGlobalStats(filtered);
+}
+
+function _updateGlobalStats(filtered){
+  const el = document.getElementById('transGlobalStats');
+  const pm2 = filtered.map(t=>t.prix_m2).filter(v=>v!=null&&v>0);
+  if(!pm2.length){ el.textContent=''; return; }
+  const avg = Math.round(pm2.reduce((a,b)=>a+b,0)/pm2.length);
+  const med = pm2.slice().sort((a,b)=>a-b)[Math.floor(pm2.length/2)];
+  el.innerHTML = `Prix/m² affiché : <strong>${fmt(avg)} €</strong> moyen · <strong>${fmt(med)} €</strong> médian · sur ${pm2.length} vente${pm2.length>1?'s':''} avec surface connue`;
+}
+
+function highlightTrans(row){
+  document.querySelectorAll('#transProchesTable tbody tr').forEach(r=>r.classList.remove('selected'));
+  row.classList.add('selected');
+  const idx = parseInt(row.dataset.idx);
+  const m = transMarkers[idx];
+  if(m && mapInstance){
+    mapInstance.setView(m.getLatLng(), 17, {animate:true});
+    m.openPopup();
+  }
+}
+
+// ─── Synthèse par section cadastrale ────────────────────────────────────────
+function renderSynthSection(data){
+  const row = document.getElementById('synthSectionRow');
+  const sections = [...new Set(data.map(t=>t.section).filter(Boolean))].sort();
+  if(sections.length < 2){ row.style.setProperty('display','none','important'); return; }
+
+  const stats = sections.map(sec=>{
+    const items = data.filter(t=>t.section===sec);
+    const pm2   = items.map(t=>t.prix_m2).filter(v=>v!=null&&v>0);
+    const vals  = items.map(t=>t.valeur).filter(v=>v!=null&&v>0);
+    const surfs = items.map(t=>t.surface_bati).filter(v=>v!=null&&v>0);
+    const avg   = pm2.length ? Math.round(pm2.reduce((a,b)=>a+b,0)/pm2.length) : null;
+    const sorted= pm2.slice().sort((a,b)=>a-b);
+    const med   = sorted.length ? sorted[Math.floor(sorted.length/2)] : null;
+    const min   = vals.length ? Math.min(...vals) : null;
+    const max   = vals.length ? Math.max(...vals) : null;
+    const avgS  = surfs.length ? Math.round(surfs.reduce((a,b)=>a+b,0)/surfs.length) : null;
+    return {sec, nb:items.length, avg, med, min, max, avgS};
+  });
+
+  document.getElementById('synthSectionBody').innerHTML = stats.map(s=>`
+    <tr style="cursor:pointer;" onclick="document.getElementById('filterSection').value='${s.sec}';applyTransFilters();" title="Filtrer sur la section ${s.sec}">
+      <td><strong>${s.sec}</strong></td>
+      <td class="text-end">${s.nb}</td>
+      <td class="text-end">${s.avg!=null?fmt(s.avg)+' €':'—'}</td>
+      <td class="text-end">${s.med!=null?fmt(s.med)+' €':'—'}</td>
+      <td class="text-end">${s.min!=null?fmt(s.min)+' €':'—'}</td>
+      <td class="text-end">${s.max!=null?fmt(s.max)+' €':'—'}</td>
+      <td class="text-end">${s.avgS!=null?fmt(s.avgS)+' m²':'—'}</td>
+    </tr>`).join('');
+
+  row.style.removeProperty('display');
+}
+
+// ─── Chargement asynchrone des transactions ───────────────────────────────────
+function showTransSpinner(){
+  document.getElementById('synthSectionRow').style.setProperty('display','none','important');
+  document.getElementById('transProchesCount').textContent = '';
+  document.getElementById('transProchesZone').textContent  = '';
+  document.getElementById('transLegend').innerHTML = '';
+  document.getElementById('transGlobalStats').innerHTML = '';
+  document.getElementById('filterResultCount').textContent = '';
+  document.getElementById('transProchesBody').innerHTML = `
+    <tr><td colspan="11" class="text-center py-4">
+      <div class="spinner-border spinner-border-sm text-primary me-2"></div>
+      Chargement des transactions DVF…
+    </td></tr>`;
+}
+
+async function loadTransactionsAsync(loc, perimetre){
+  if(!loc.citycode || !loc.lat || !loc.lon) return;
+  try{
+    const resp = await fetch('/api/transactions', {
+      method:  'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        code_insee: loc.citycode,
+        lat:        loc.lat,
+        lon:        loc.lon,
+        postcode:   loc.postcode || '',
+        perimetre:  perimetre || 'rayon_1km',
+      })
+    });
+    if(!resp.ok){
+      const err = await resp.json().catch(()=>({}));
+      document.getElementById('transProchesBody').innerHTML =
+        `<tr><td colspan="11" class="text-danger text-center py-3">
+          <i class="bi bi-exclamation-triangle me-1"></i>${err.error || 'Erreur chargement transactions'}
+        </td></tr>`;
+      return;
+    }
+    const tdata = await resp.json();
+    renderTransactions(
+      tdata.transactions  || [],
+      tdata.rayon_km      || 1,
+      loc.lat, loc.lon,
+      tdata.perimetre_mode || 'rayon',
+      tdata.perimetre_meta || {}
+    );
+  }catch(e){
+    document.getElementById('transProchesBody').innerHTML =
+      `<tr><td colspan="11" class="text-muted text-center py-3">
+        Transactions non disponibles (${e.message})
+      </td></tr>`;
+  }
+}
+
+// ─── Estimation ───────────────────────────────────────────────────────────────
+function renderEstimation(est, typeBien){
+  const typeLabel = typeBien==='appartement'?'Appartement':typeBien==='tous'?'Bien':' Maison';
+  document.getElementById('est-valeur').textContent = fmtEur(est.valeur_med);
+  document.getElementById('est-base').textContent   =
+    `${typeLabel} · ${est.surface} m² · Base : ${fmtM2(est.prix_m2)} (prix médian du marché)`;
+  document.getElementById('est-min').textContent = fmtEur(est.valeur_min);
+  document.getElementById('est-med').textContent = fmtEur(est.valeur_med);
+  document.getElementById('est-max').textContent = fmtEur(est.valeur_max);
+}
+</script>
+</body>
+</html>

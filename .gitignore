@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+env/
+
+# Netlify local
+.netlify/
+netlify-functions-serve/
+
+# Système Windows
+Thumbs.db
+desktop.ini
+*.lnk
+
+# Dropbox
+.dropbox
+.dropbox.cache
+*.dropbox
+
+# Éditeurs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Secrets (ne jamais committer)
+.env
+.env.*
+secrets.json
+credentials.json
+
+# Logs
+*.log
+
+# Fichiers temporaires (Claude Code editor)
+*.tmp
+*.tmp.*
+*.bak

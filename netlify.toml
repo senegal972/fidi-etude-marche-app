@@ -1,0 +1,33 @@
+[build]
+  publish   = "."
+  functions = "netlify/functions"
+  command   = ""
+
+[functions]
+  included_files = ["netlify/functions/*.py"]
+
+# ── Timeout étendu pour les transactions (CSV lourd) ──────────────────────────
+[functions."transactions"]
+  timeout = 26
+
+# ── Redirections API → Netlify Functions ──────────────────────────────────────
+[[redirects]]
+  from   = "/api/analyse"
+  to     = "/.netlify/functions/analyse"
+  status = 200
+
+[[redirects]]
+  from   = "/api/transactions"
+  to     = "/.netlify/functions/transactions"
+  status = 200
+
+[[redirects]]
+  from   = "/api/autocomplete"
+  to     = "/.netlify/functions/autocomplete"
+  status = 200
+
+# ── SPA fallback : toute URL non trouvée → index.html ─────────────────────────
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
