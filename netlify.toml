@@ -3,9 +3,6 @@
   functions = "netlify/functions"
   command   = ""
 
-[functions]
-  included_files = ["netlify/functions/*.py"]
-
 # ── Timeout étendu pour les transactions (CSV lourd) ──────────────────────────
 [functions."transactions"]
   timeout = 26
