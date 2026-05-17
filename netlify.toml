@@ -1,7 +1,7 @@
 [build]
   publish   = "."
   functions = "netlify/functions"
-  command   = ""
+  command   = "npm install --omit=dev --no-audit --no-fund"
 
 # ── Timeout étendu pour les fonctions DVF (fetch sections + Etalab) ───────────
 [functions."transactions"]
@@ -12,6 +12,12 @@
 
 [functions."batiment"]
   timeout = 20
+
+[functions."pappers"]
+  timeout = 12
+
+[functions."permis"]
+  timeout = 15
 
 # ── Redirections API → Netlify Functions ──────────────────────────────────────
 [[redirects]]
@@ -37,6 +43,16 @@
 [[redirects]]
   from   = "/api/batiment"
   to     = "/.netlify/functions/batiment"
+  status = 200
+
+[[redirects]]
+  from   = "/api/pappers"
+  to     = "/.netlify/functions/pappers"
+  status = 200
+
+[[redirects]]
+  from   = "/api/permis"
+  to     = "/.netlify/functions/permis"
   status = 200
 
 # ── SPA fallback : toute URL non trouvée → index.html ─────────────────────────

@@ -2,6 +2,8 @@
 // POST /api/analyse
 // Body JSON : { adresse, type_bien, surface, perimetre }
 
+import { cacheGet, cacheSet, cacheTag } from "./_cache.mjs";
+
 const TIMEOUT_MS = 8000;
 const DVF_YEARS_KEEP = [2021, 2022, 2023, 2024, 2025];
 const SECTION_BATCH  = 5;
@@ -200,6 +202,17 @@ async function fetchAllMutations(codeCommune) {
 }
 
 async function getDvfData(codeInsee) {
+  const cacheKey = cacheTag("dvf", codeInsee);
+  const cached = await cacheGet(cacheKey);
+  if (cached) return cached;
+  const result = await _computeDvfData(codeInsee);
+  if (result && (result.dvf_annees || []).length > 0) {
+    await cacheSet(cacheKey, result);
+  }
+  return result;
+}
+
+async function _computeDvfData(codeInsee) {
   const mutations = await fetchAllMutations(codeInsee);
   if (!mutations.length) {
     // Tentative fallback Caisse des Dépôts (dataset historique, peut être down)
@@ -244,9 +257,11 @@ async function getDvfData(codeInsee) {
   }
 
   let periodes = [];
+  let valorisLocal = {};
   if (yearsFound.length) {
     const pmM = prixM2List(allMaisons);
     const pmA = prixM2List(allApparts);
+    const pmT = prixM2List(allVentes);
     periodes = [{
       periode: `${Math.min(...yearsFound)}–${Math.max(...yearsFound)}`,
       nb_maison: allMaisons.length,
@@ -255,9 +270,13 @@ async function getDvfData(codeInsee) {
       prix_m2_maison: pmM.length ? Math.round(median(pmM)) : null,
       prix_m2_appart: pmA.length ? Math.round(median(pmA)) : null,
     }];
+    // Valoris calculé localement depuis DVF (remplace l'ancienne API valoris-immo.fr morte)
+    if (pmM.length) valorisLocal.maison      = { prix_median_m2: Math.round(median(pmM)), nb: pmM.length, source: "DVF local" };
+    if (pmA.length) valorisLocal.appartement = { prix_median_m2: Math.round(median(pmA)), nb: pmA.length, source: "DVF local" };
+    if (pmT.length) valorisLocal.tous        = { prix_median_m2: Math.round(median(pmT)), nb: pmT.length, source: "DVF local" };
   }
 
-  return { dvf_annees: annees, dvf_periodes: periodes };
+  return { dvf_annees: annees, dvf_periodes: periodes, valoris_local: valorisLocal };
 }
 
 async function dvfAnneesFallback(codeInsee) {
@@ -524,22 +543,23 @@ export const handler = async (event) => {
   const departement = geo.departement;
   const { lat, lon } = geo;
 
-  const [dvf, communeInfo, valoris, dpe, risques] = await Promise.all([
+  const [dvf, communeInfo, dpe, risques] = await Promise.all([
     getDvfData(codeInsee).catch(() => ({})),
     getCommuneInfo(codeInsee).catch(() => ({})),
-    getValoris(codeInsee, departement).catch(() => ({})),
     getDpe(codeInsee, geo.postcode, geo.city).catch(() => ({})),
     getRisques(lat, lon, codeInsee).catch(() => ({})),
   ]);
 
   const dvfAnnees = (dvf && dvf.dvf_annees) || [];
-  const dvfPer = (dvf && dvf.dvf_periodes) || [];
+  const dvfPer    = (dvf && dvf.dvf_periodes) || [];
+  // Valoris est désormais calculé localement depuis DVF (API valoris-immo.fr morte)
+  const valoris   = (dvf && dvf.valoris_local) || {};
 
   const allResults = {
     dvf_annees: dvfAnnees,
     dvf_periodes: dvfPer,
     commune_info: communeInfo || {},
-    valoris: valoris || {},
+    valoris,
     dpe: dpe || {},
     risques: risques || {},
   };

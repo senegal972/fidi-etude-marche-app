@@ -242,19 +242,19 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
               </label>
             </div>
 
-            <div class="form-check form-check-inline opacity-50" data-bs-toggle="tooltip"
-                 title="Liasses fiscales et attestation URSSAF — pas d'API publique gratuite à ce jour.">
-              <input class="form-check-input" type="checkbox" id="optFinance" disabled/>
+            <div class="form-check form-check-inline" data-bs-toggle="tooltip"
+                 title="Comptes annuels, ratios financiers, score solvabilité (API Pappers, clé requise).">
+              <input class="form-check-input" type="checkbox" id="optFinance"/>
               <label class="form-check-label" for="optFinance">
-                Santé financière partenaire <em>(bientôt)</em>
+                Santé financière (Pappers)
               </label>
             </div>
 
-            <div class="form-check form-check-inline opacity-50" data-bs-toggle="tooltip"
-                 title="Permis de construire SITADEL — accès en cours d'intégration (CSV agrégés).">
-              <input class="form-check-input" type="checkbox" id="optPermis" disabled/>
+            <div class="form-check form-check-inline" data-bs-toggle="tooltip"
+                 title="Permis de construire SITADEL + proxy logements neufs (ADEME DPE Neuf).">
+              <input class="form-check-input" type="checkbox" id="optPermis"/>
               <label class="form-check-label" for="optPermis">
-                Permis de construire <em>(bientôt)</em>
+                Permis & logements neufs
               </label>
             </div>
 
@@ -262,6 +262,11 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
             <div class="d-none ms-md-3" id="entrepriseQueryWrap" style="min-width:280px;">
               <input type="text" class="form-control form-control-sm" id="inputEntrepriseQ"
                      placeholder="SIREN, SIRET ou raison sociale (SCI, vendeur)"/>
+            </div>
+            <!-- Champ SIREN Pappers affiché si Finance coché -->
+            <div class="d-none" id="financeQueryWrap" style="min-width:200px;">
+              <input type="text" class="form-control form-control-sm" id="inputFinanceSiren"
+                     placeholder="SIREN (9 chiffres)" maxlength="11"/>
             </div>
           </div>
         </div>
@@ -675,6 +680,38 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
       </div>
     </div>
 
+    <!-- Permis & logements neufs (option) ─────────────────────────────────── -->
+    <div class="card shadow-sm mb-3 d-none" id="permisSection">
+      <div class="card-header bg-white d-flex align-items-center">
+        <i class="bi bi-hammer me-2 text-warning"></i>
+        <strong>Permis de construire & logements neufs</strong>
+        <span class="badge bg-secondary ms-2" id="permisCount">—</span>
+        <small class="text-muted ms-auto">Source : SITADEL + ADEME DPE Neuf</small>
+      </div>
+      <div class="card-body" id="permisBody">
+        <div class="text-center text-muted py-3">
+          <div class="spinner-border spinner-border-sm me-2"></div>
+          Chargement…
+        </div>
+      </div>
+    </div>
+
+    <!-- Santé financière Pappers (option) ─────────────────────────────────── -->
+    <div class="card shadow-sm mb-3 d-none" id="financeSection">
+      <div class="card-header bg-white d-flex align-items-center">
+        <i class="bi bi-cash-coin me-2 text-success"></i>
+        <strong>Santé financière</strong>
+        <span class="badge bg-secondary ms-2" id="financeBadge">—</span>
+        <small class="text-muted ms-auto">Source : Pappers (api.pappers.fr)</small>
+      </div>
+      <div class="card-body" id="financeBody">
+        <div class="text-center text-muted py-3">
+          <div class="spinner-border spinner-border-sm me-2"></div>
+          Recherche en cours…
+        </div>
+      </div>
+    </div>
+
     <!-- Vérifications légales d'entreprise (option) ─────────────────────── -->
     <div class="card shadow-sm mb-3 d-none" id="entrepriseSection">
       <div class="card-header bg-white d-flex align-items-center">
@@ -710,6 +747,27 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Sentry monitoring (opt-in via window.SENTRY_DSN) ───────────────────────── -->
+<script>
+  // Pour activer : créer un fichier /sentry.js exposant `window.SENTRY_DSN = "https://...@sentry.io/..."`
+  // OU définir la variable dans le HTML avant ce script.
+  if (typeof window.SENTRY_DSN === 'string' && window.SENTRY_DSN.length > 0) {
+    const s = document.createElement('script');
+    s.src = 'https://browser.sentry-cdn.com/7.119.0/bundle.min.js';
+    s.crossOrigin = 'anonymous';
+    s.onload = () => {
+      try {
+        window.Sentry.init({
+          dsn: window.SENTRY_DSN,
+          environment: location.hostname === 'fidi-etude-marche.netlify.app' ? 'production' : 'preview',
+          release: 'fidi-etude-marche@' + (window.APP_VERSION || 'dev'),
+          tracesSampleRate: 0.1,
+        });
+      } catch (e) { /* silent */ }
+    };
+    document.head.appendChild(s);
+  }
+</script>
 <script>
 // ─── État global ──────────────────────────────────────────────────────────────
 let mapInstance = null;
@@ -801,6 +859,10 @@ document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootst
 document.getElementById('optEntreprise').addEventListener('change', e => {
   document.getElementById('entrepriseQueryWrap').classList.toggle('d-none', !e.target.checked);
   if(e.target.checked) document.getElementById('inputEntrepriseQ').focus();
+});
+document.getElementById('optFinance').addEventListener('change', e => {
+  document.getElementById('financeQueryWrap').classList.toggle('d-none', !e.target.checked);
+  if(e.target.checked) document.getElementById('inputFinanceSiren').focus();
 });
 
 // ─── Animation des étapes ─────────────────────────────────────────────────────
@@ -895,6 +957,22 @@ async function lancerAnalyse(){
       else  hideEntrepriseSection();
     } else {
       hideEntrepriseSection();
+    }
+
+    // Santé financière Pappers (option)
+    if(document.getElementById('optFinance').checked){
+      const siren = (document.getElementById('inputFinanceSiren').value||'').replace(/\s+/g,'').trim();
+      if(/^\d{9}$/.test(siren)) loadFinanceAsync(siren);
+      else hideFinanceSection();
+    } else {
+      hideFinanceSection();
+    }
+
+    // Permis & logements neufs (option)
+    if(document.getElementById('optPermis').checked){
+      loadPermisAsync(data.localisation || {});
+    } else {
+      document.getElementById('permisSection').classList.add('d-none');
     }
 
   }catch(err){
@@ -1694,6 +1772,123 @@ function renderBatiment(data){
       </table>
     </div>
     ${data.items.length > 30 ? `<div class="text-muted small text-center">… et ${data.items.length-30} autres diagnostics.</div>` : ''}
+  `;
+}
+
+// ─── Permis de construire + logements neufs ──────────────────────────────────
+async function loadPermisAsync(loc){
+  const sec = document.getElementById('permisSection');
+  const body= document.getElementById('permisBody');
+  const cnt = document.getElementById('permisCount');
+  if(!loc.citycode){ sec.classList.add('d-none'); return; }
+  sec.classList.remove('d-none');
+  cnt.textContent = '…';
+  body.innerHTML = `<div class="text-center text-muted py-3">
+    <div class="spinner-border spinner-border-sm me-2"></div>Chargement…</div>`;
+  try{
+    const r = await fetch('/api/permis', {method:'POST',headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({code_insee: loc.citycode, postcode: loc.postcode||''})});
+    if(!r.ok){
+      cnt.textContent='0';
+      body.innerHTML = `<div class="text-muted text-center py-3">Indisponible</div>`;
+      return;
+    }
+    const d = await r.json();
+    const proxy = d.proxy_logements_neufs || {};
+    cnt.textContent = String(proxy.total || 0);
+    const years = Object.entries(proxy.par_annee||{}).sort((a,b)=>a[0].localeCompare(b[0]));
+    const yearsHtml = years.length
+      ? `<div class="small mb-2"><strong>Logements neufs par année (proxy DPE Neuf)</strong></div>
+         <div class="d-flex gap-2 flex-wrap mb-3">${years.map(([y,c]) =>
+           `<span class="badge bg-warning text-dark">${y} : ${c}</span>`).join('')}</div>`
+      : '<div class="text-muted small mb-3">Aucun logement neuf récent diagnostiqué.</div>';
+    const recentsHtml = (proxy.recents||[]).length
+      ? `<div class="small mb-1"><strong>Diagnostics récents (top 20)</strong></div>
+         <ul class="small mb-3" style="max-height:160px;overflow:auto;">
+           ${proxy.recents.map(r => `<li>${r.date||'—'} — ${r.adresse} (${r.type||'?'}, ${r.surface||'?'} m², DPE ${r.dpe||'?'})</li>`).join('')}
+         </ul>`
+      : '';
+    const sourcesHtml = (d.sources_officielles||[]).map(s =>
+      `<li><a href="${s.url}" target="_blank" rel="noopener"><strong>${s.nom}</strong></a><br><small class="text-muted">${s.description}</small></li>`
+    ).join('');
+    body.innerHTML = `
+      ${yearsHtml}
+      ${recentsHtml}
+      <div class="small fw-semibold mt-3 mb-1"><i class="bi bi-link-45deg"></i> Sources officielles SITADEL</div>
+      <ul class="small">${sourcesHtml}</ul>
+      <div class="alert alert-light small mb-0 mt-2"><i class="bi bi-info-circle me-1"></i>${d.note||''}</div>
+    `;
+  }catch(e){
+    cnt.textContent='0';
+    body.innerHTML = `<div class="text-muted text-center py-3">Indisponible (${e.message})</div>`;
+  }
+}
+
+// ─── Santé financière Pappers ────────────────────────────────────────────────
+function hideFinanceSection(){ document.getElementById('financeSection').classList.add('d-none'); }
+async function loadFinanceAsync(siren){
+  const sec = document.getElementById('financeSection');
+  const body= document.getElementById('financeBody');
+  const badge=document.getElementById('financeBadge');
+  sec.classList.remove('d-none');
+  badge.textContent='…';
+  body.innerHTML = `<div class="text-center text-muted py-3">
+    <div class="spinner-border spinner-border-sm me-2"></div>Recherche Pappers…</div>`;
+  try{
+    const r = await fetch('/api/pappers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({siren})});
+    if(r.status === 503){
+      const err = await r.json();
+      badge.textContent='config requise';
+      body.innerHTML = `<div class="alert alert-warning small mb-0">
+        <i class="bi bi-key me-1"></i><strong>Pappers non configuré.</strong>
+        ${err.error||''}<br>
+        Souscrire un plan sur <a href="https://www.pappers.fr/api" target="_blank" rel="noopener">pappers.fr/api</a>
+        puis ajouter <code>PAPPERS_API_KEY</code> dans les variables d'environnement Netlify.</div>`;
+      return;
+    }
+    if(!r.ok){
+      const err = await r.json().catch(()=>({}));
+      badge.textContent='0';
+      body.innerHTML = `<div class="text-danger text-center py-3">${err.error||'Erreur'}</div>`;
+      return;
+    }
+    const d = await r.json();
+    renderFinance(d.entreprise);
+  }catch(e){
+    badge.textContent='0';
+    body.innerHTML = `<div class="text-muted text-center py-3">Indisponible (${e.message})</div>`;
+  }
+}
+
+function renderFinance(e){
+  const body = document.getElementById('financeBody');
+  const badge= document.getElementById('financeBadge');
+  if(!e){ body.innerHTML='<div class="text-muted">Aucune donnée</div>'; return; }
+  badge.textContent = e.score_solvabilite ? `Score ${e.score_solvabilite}/10` : 'OK';
+  const fmtEur = n => n!=null ? Number(n).toLocaleString('fr-FR')+' €' : '—';
+  const comptesHtml = (e.comptes_sociaux||[]).length
+    ? `<div class="table-responsive"><table class="table table-sm">
+        <thead><tr><th>Année</th><th class="text-end">CA</th><th class="text-end">Résultat</th><th class="text-end">Effectif</th><th class="text-end">EBE</th><th class="text-end">Endettement</th><th class="text-end">Trésorerie</th></tr></thead>
+        <tbody>${e.comptes_sociaux.map(c =>
+          `<tr><td>${c.annee||'—'}</td><td class="text-end">${fmtEur(c.chiffre_affaires)}</td>
+           <td class="text-end ${c.resultat>=0?'text-success':'text-danger'}">${fmtEur(c.resultat)}</td>
+           <td class="text-end">${c.effectif||'—'}</td>
+           <td class="text-end">${fmtEur(c.excedent_brut_exploitation)}</td>
+           <td class="text-end">${fmtEur(c.endettement)}</td>
+           <td class="text-end">${fmtEur(c.tresorerie)}</td></tr>`).join('')}
+        </tbody></table></div>`
+    : '<div class="text-muted small">Aucun compte annuel disponible.</div>';
+  const procHtml = (e.procedures_collectives||[]).length
+    ? `<div class="alert alert-warning small mt-2"><i class="bi bi-exclamation-triangle me-1"></i>
+       <strong>Procédures collectives :</strong> ${e.procedures_collectives.length} enregistrée(s)</div>` : '';
+  body.innerHTML = `
+    <div class="d-flex flex-wrap gap-3 mb-2">
+      <div><strong>${e.nom}</strong> <small class="text-muted">SIREN ${e.siren}</small></div>
+      <div class="small text-muted">${e.forme_juridique} · ${e.libelle_naf} (${e.code_naf})</div>
+      <div class="small text-muted">Capital : ${fmtEur(e.capital)} · Créée : ${e.date_creation||'—'}</div>
+    </div>
+    ${comptesHtml}
+    ${procHtml}
   `;
 }
 

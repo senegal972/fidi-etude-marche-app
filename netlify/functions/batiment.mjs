@@ -6,6 +6,8 @@
 // principale de chauffage, type de ventilation, qualité isolation, distance
 // depuis l'adresse analysée.
 
+import { cacheGet, cacheSet, cacheTag } from "./_cache.mjs";
+
 const TIMEOUT_MS = 10000;
 const DPE_V2_URL = "https://data.ademe.fr/data-fair/api/v1/datasets/meg-83tjwtg8dyz4vv7h1dqe/lines";
 const DPE_NEUF_URL = "https://data.ademe.fr/data-fair/api/v1/datasets/g3cgx7jb3cmys5voxz1mrm22/lines";
@@ -178,12 +180,17 @@ export const handler = async (event) => {
   const lon = parseFloat(body.lon);
   const hasGeo = Number.isFinite(lat) && Number.isFinite(lon);
 
-  // Fetch DPE existant + neuf en parallèle
-  const [existing, neuf] = await Promise.all([
-    fetchDpeRecords(DPE_V2_URL, codeInsee),
-    fetchDpeRecords(DPE_NEUF_URL, codeInsee),
-  ]);
-  const allRaw = [...existing, ...neuf];
+  // Cache 24h sur la liste brute (indépendante de la géo de l'adresse)
+  const cacheKey = cacheTag("batiment", codeInsee);
+  let allRaw = await cacheGet(cacheKey);
+  if (!allRaw) {
+    const [existing, neuf] = await Promise.all([
+      fetchDpeRecords(DPE_V2_URL, codeInsee),
+      fetchDpeRecords(DPE_NEUF_URL, codeInsee),
+    ]);
+    allRaw = [...existing, ...neuf];
+    if (allRaw.length) await cacheSet(cacheKey, allRaw);
+  }
   const items = allRaw.map((r) => normalize(r, hasGeo ? lat : null, hasGeo ? lon : null));
 
   // Tri : distance si géo dispo, sinon date DPE descendante

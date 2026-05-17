@@ -1,0 +1,13 @@
+{
+  "name": "fidi-etude-marche",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "FIDI · Étude de Marché Immobilier — Netlify Functions + Static SPA",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
+  }
+}
