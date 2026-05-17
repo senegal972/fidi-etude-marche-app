@@ -2,12 +2,14 @@
 // POST /api/analyse
 // Body JSON : { adresse, type_bien, surface, perimetre }
 
-const TIMEOUT_MS = 7000;
-const GEO_DVF_YEARS = [2022, 2023, 2024];
+const TIMEOUT_MS = 8000;
+const DVF_YEARS_KEEP = [2021, 2022, 2023, 2024, 2025];
+const SECTION_BATCH  = 5;
 
 const BAN_URL          = "https://api-adresse.data.gouv.fr/search/";
 const GEO_COMMUNES     = "https://geo.api.gouv.fr/communes";
-const GEO_DVF_BASE     = "https://files.data.gouv.fr/geo-dvf/latest/csv";
+const IGN_DIVISION_URL = "https://apicarto.ign.fr/api/cadastre/division";
+const DVF_ETALAB_BASE  = "https://app.dvf.etalab.gouv.fr/api/mutations3";
 const DVF_ANNEES_URL   = "https://opendata.caissedesdepots.fr/api/explore/v2.1/catalog/datasets/donnees-valeurs-foncieres-a-la-commune-annee-par-annee/records";
 const DVF_PERIODES_URL = "https://opendata.caissedesdepots.fr/api/explore/v2.1/catalog/datasets/donnees-valeurs-foncieres-a-la-commune-par-periode/records";
 const VALORIS_URL      = "https://www.valoris-immo.fr/api/v1/prix-median";
@@ -148,35 +150,81 @@ async function getCommuneInfo(codeInsee) {
   }) || {};
 }
 
-// ─── DVF CSV geo-dvf ──────────────────────────────────────────────────────────
-async function fetchDvfCsv(codeCommune, year) {
-  const dept = deptFolder(codeCommune);
-  const url = `${GEO_DVF_BASE}/${year}/communes/${dept}/${codeCommune}.csv`;
+// ─── DVF via Etalab API (sections IGN + mutations3) ───────────────────────────
+// files.data.gouv.fr/geo-dvf bloque les IPs Lambda (403). On utilise donc
+// l'API publique app.dvf.etalab.gouv.fr en énumérant les sections cadastrales
+// via apicarto IGN.
+async function getSections(codeCommune) {
   try {
-    const r = await fetchTimeout(url, TIMEOUT_MS);
-    if (r.status === 404) return [];
+    const r = await fetchTimeout(
+      `${IGN_DIVISION_URL}?code_insee=${encodeURIComponent(codeCommune)}`,
+      TIMEOUT_MS,
+    );
     if (!r.ok) return [];
-    const text = await r.text();
-    return parseCSV(text);
-  } catch (e) {
-    return [];
+    const data = await r.json();
+    const set = new Set();
+    for (const f of data.features || []) {
+      const p = f.properties || {};
+      const prefixe = String(p.code_arr || p.prefixe || "000").padStart(3, "0");
+      const section = String(p.section || "").padStart(2, "0");
+      if (section) set.add(prefixe + section);
+    }
+    return [...set];
+  } catch (e) { return []; }
+}
+
+async function fetchEtalabSection(codeCommune, sectionCode) {
+  try {
+    const r = await fetchTimeout(
+      `${DVF_ETALAB_BASE}/${encodeURIComponent(codeCommune)}/${encodeURIComponent(sectionCode)}`,
+      TIMEOUT_MS,
+    );
+    if (!r.ok) return [];
+    const data = await r.json();
+    return data.mutations || [];
+  } catch (e) { return []; }
+}
+
+async function fetchAllMutations(codeCommune) {
+  const sections = await getSections(codeCommune);
+  if (!sections.length) return [];
+  const all = [];
+  for (let i = 0; i < sections.length; i += SECTION_BATCH) {
+    const batch = sections.slice(i, i + SECTION_BATCH);
+    const results = await Promise.all(
+      batch.map((s) => fetchEtalabSection(codeCommune, s))
+    );
+    for (const rows of results) all.push(...rows);
   }
+  return all;
 }
 
 async function getDvfData(codeInsee) {
-  const yearRows = {};
-  await Promise.all(GEO_DVF_YEARS.map(async (y) => {
-    yearRows[y] = await fetchDvfCsv(codeInsee, y);
-  }));
+  const mutations = await fetchAllMutations(codeInsee);
+  if (!mutations.length) {
+    // Tentative fallback Caisse des Dépôts (dataset historique, peut être down)
+    return {
+      dvf_annees: await dvfAnneesFallback(codeInsee),
+      dvf_periodes: await dvfPeriodesFallback(codeInsee),
+    };
+  }
+
+  // Regroupe par année (filtrée sur DVF_YEARS_KEEP) et nature_mutation=Vente
+  const byYear = {};
+  for (const m of mutations) {
+    const year = parseInt((m.date_mutation || "").slice(0, 4));
+    if (!year || !DVF_YEARS_KEEP.includes(year)) continue;
+    if (m.nature_mutation !== "Vente") continue;
+    (byYear[year] ||= []).push(m);
+  }
 
   const annees = [];
   let allVentes = [], allMaisons = [], allApparts = [];
   const yearsFound = [];
+  const years = Object.keys(byYear).map(Number).sort((a, b) => a - b);
 
-  for (const year of [...GEO_DVF_YEARS].sort()) {
-    const rows = yearRows[year] || [];
-    if (!rows.length) continue;
-    const ventes = rows.filter((r) => r.nature_mutation === "Vente");
+  for (const year of years) {
+    const ventes  = byYear[year];
     const maisons = ventes.filter((r) => r.type_local === "Maison");
     const apparts = ventes.filter((r) => r.type_local === "Appartement");
     const pmM = prixM2List(maisons);
@@ -189,16 +237,17 @@ async function getDvfData(codeInsee) {
       prix_m2_maison: pmM.length ? Math.round(median(pmM)) : null,
       prix_m2_appart: pmA.length ? Math.round(median(pmA)) : null,
     });
-    allVentes = allVentes.concat(ventes);
+    allVentes  = allVentes.concat(ventes);
     allMaisons = allMaisons.concat(maisons);
     allApparts = allApparts.concat(apparts);
     yearsFound.push(year);
   }
 
+  let periodes = [];
   if (yearsFound.length) {
     const pmM = prixM2List(allMaisons);
     const pmA = prixM2List(allApparts);
-    const periodes = [{
+    periodes = [{
       periode: `${Math.min(...yearsFound)}–${Math.max(...yearsFound)}`,
       nb_maison: allMaisons.length,
       nb_appart: allApparts.length,
@@ -206,14 +255,9 @@ async function getDvfData(codeInsee) {
       prix_m2_maison: pmM.length ? Math.round(median(pmM)) : null,
       prix_m2_appart: pmA.length ? Math.round(median(pmA)) : null,
     }];
-    return { dvf_annees: annees.sort((a, b) => a.annee - b.annee), dvf_periodes: periodes };
   }
 
-  // Fallback Caisse des Dépôts
-  return {
-    dvf_annees: await dvfAnneesFallback(codeInsee),
-    dvf_periodes: await dvfPeriodesFallback(codeInsee),
-  };
+  return { dvf_annees: annees, dvf_periodes: periodes };
 }
 
 async function dvfAnneesFallback(codeInsee) {
