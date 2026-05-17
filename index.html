@@ -125,11 +125,26 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
 .map-legend{background:#fff;border-radius:8px;box-shadow:0 1px 6px rgba(0,0,0,.15);padding:.4rem .7rem;font-size:.72rem;line-height:1.8;}
 .map-legend-item{display:flex;align-items:center;gap:.4rem;}
 
-/* ─ Print ───────────────────────────────── */
+/* ─ Print / PDF ─────────────────────────── */
 @media print{
-  .search-panel,.btn-print,#loading-panel{display:none!important;}
-  .chart-wrap{height:160px!important;}
+  body{background:#fff!important;}
+  .navbar-fidi,.search-panel,.btn-print,.btn-pdf,#loading-panel,#init-panel{display:none!important;}
+  .card{break-inside:avoid;page-break-inside:avoid;box-shadow:none!important;border:1px solid #dee2e6!important;}
+  .chart-wrap{height:180px!important;}
+  table{font-size:.7rem;}
+  .sources-bar{font-size:.65rem;}
+  a[href]:after{content:"";}
+  @page{size:A4;margin:12mm;}
 }
+/* Mode PDF (capture html2pdf) */
+.pdf-mode .navbar-fidi,
+.pdf-mode .search-panel,
+.pdf-mode .btn-print,
+.pdf-mode .btn-pdf,
+.pdf-mode #loading-panel,
+.pdf-mode #init-panel{display:none!important;}
+.pdf-mode body{background:#fff;}
+.pdf-mode .card{box-shadow:none;border:1px solid #dee2e6;break-inside:avoid;}
 </style>
 </head>
 <body>
@@ -142,6 +157,9 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
   </div>
   <div class="d-flex gap-2 align-items-center">
     <span class="badge-gov"><i class="bi bi-database me-1"></i>data.gouv.fr</span>
+    <button class="btn btn-sm btn-outline-light btn-pdf d-none" id="btnPdf" onclick="exportPdf()">
+      <i class="bi bi-file-earmark-pdf me-1"></i>Télécharger PDF
+    </button>
     <button class="btn btn-sm btn-outline-light btn-print d-none" id="btnPrint" onclick="window.print()">
       <i class="bi bi-printer me-1"></i>Imprimer
     </button>
@@ -308,6 +326,9 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
       </div>
       <div class="d-flex gap-2">
         <span class="badge bg-secondary" id="res-date" style="font-size:.7rem;"></span>
+        <button class="btn btn-sm btn-danger btn-pdf" onclick="exportPdf()">
+          <i class="bi bi-file-earmark-pdf me-1"></i>Télécharger PDF
+        </button>
         <button class="btn btn-sm btn-outline-secondary btn-print" onclick="window.print()">
           <i class="bi bi-printer me-1"></i>Imprimer
         </button>
@@ -655,6 +676,7 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script>
 // ─── État global ──────────────────────────────────────────────────────────────
 let mapInstance = null;
@@ -713,6 +735,46 @@ document.getElementById('inputAdresse').addEventListener('keydown', e => {
   if(e.key === 'Enter'){ hideAC(); lancerAnalyse(); }
 });
 document.getElementById('btnAnalyse').addEventListener('click', lancerAnalyse);
+
+// ─── Export PDF (html2pdf.js) ─────────────────────────────────────────────────
+async function exportPdf(){
+  const target = document.getElementById('results-panel');
+  if(!target || target.classList.contains('d-none')){
+    alert('Lancez une analyse avant d\'exporter en PDF.');
+    return;
+  }
+  const titre = (document.getElementById('res-titre').textContent || 'etude-marche')
+    .toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,60);
+  const date = new Date().toISOString().slice(0,10);
+  const filename = `etude-marche-${titre || 'rapport'}-${date}.pdf`;
+
+  const btnPdf  = document.getElementById('btnPdf');
+  const btnPrnt = document.getElementById('btnPrint');
+  const origPdf = btnPdf.innerHTML;
+  btnPdf.disabled = true;
+  btnPdf.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Génération…';
+
+  document.body.classList.add('pdf-mode');
+  // Laisse le navigateur appliquer le mode pdf
+  await new Promise(r => setTimeout(r, 200));
+
+  try{
+    await html2pdf().set({
+      margin:       [10, 8, 10, 8],
+      filename,
+      image:        { type: 'jpeg', quality: 0.92 },
+      html2canvas:  { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
+      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak:    { mode: ['css', 'legacy'], avoid: ['.card','.chart-wrap','tr'] },
+    }).from(target).save();
+  }catch(e){
+    alert('Erreur génération PDF : ' + e.message);
+  }finally{
+    document.body.classList.remove('pdf-mode');
+    btnPdf.disabled = false;
+    btnPdf.innerHTML = origPdf;
+  }
+}
 
 // ─── Init tooltips Bootstrap + toggle option Entreprise ───────────────────────
 document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
@@ -798,6 +860,7 @@ async function lancerAnalyse(){
     renderResults(data);
     document.getElementById('results-panel').classList.remove('d-none');
     document.getElementById('btnPrint').classList.remove('d-none');
+    document.getElementById('btnPdf').classList.remove('d-none');
     window.scrollTo({top: document.getElementById('results-panel').offsetTop - 20, behavior:'smooth'});
     // Transactions chargées séparément (appel asynchrone indépendant)
     loadTransactionsAsync(data.localisation || {}, perimetre);
