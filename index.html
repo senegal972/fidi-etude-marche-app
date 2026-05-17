@@ -142,9 +142,17 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
 .pdf-mode .btn-print,
 .pdf-mode .btn-pdf,
 .pdf-mode #loading-panel,
-.pdf-mode #init-panel{display:none!important;}
+.pdf-mode #init-panel,
+.pdf-mode #map,
+.pdf-mode .leaflet-container{display:none!important;}
 .pdf-mode body{background:#fff;}
 .pdf-mode .card{box-shadow:none;border:1px solid #dee2e6;break-inside:avoid;}
+.pdf-mode #pdfMapNote{display:flex!important;}
+#pdfMapNote{display:none;}
+@media print{
+  #map,.leaflet-container{display:none!important;}
+  #pdfMapNote{display:flex!important;}
+}
 </style>
 </head>
 <body>
@@ -397,6 +405,13 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
         <div class="map-card">
           <div class="map-header"><i class="bi bi-geo-alt me-1"></i>Localisation</div>
           <div id="map"></div>
+          <div id="pdfMapNote" class="align-items-center justify-content-center text-muted text-center p-4"
+               style="min-height:180px;background:#f8f9fa;border:1px dashed #ced4da;border-radius:6px;">
+            <div>
+              <i class="bi bi-map" style="font-size:2rem;opacity:.5;"></i>
+              <div class="mt-2 small">Carte interactive disponible sur la version en ligne</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -763,7 +778,7 @@ async function exportPdf(){
       margin:       [10, 8, 10, 8],
       filename,
       image:        { type: 'jpeg', quality: 0.92 },
-      html2canvas:  { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
+      html2canvas:  { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff', imageTimeout: 0 },
       jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
       pagebreak:    { mode: ['css', 'legacy'], avoid: ['.card','.chart-wrap','tr'] },
     }).from(target).save();
@@ -1021,7 +1036,7 @@ function renderMap(lat, lon, city){
   if(!mapInstance){
     mapInstance = L.map('map').setView([lat,lon],13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-      attribution:'© OpenStreetMap',maxZoom:18
+      attribution:'© OpenStreetMap',maxZoom:18,crossOrigin:'anonymous'
     }).addTo(mapInstance);
   } else {
     mapInstance.setView([lat,lon],13);
