@@ -14,7 +14,7 @@ const DVF_ANNEES_URL   = "https://opendata.caissedesdepots.fr/api/explore/v2.1/c
 const DVF_PERIODES_URL = "https://opendata.caissedesdepots.fr/api/explore/v2.1/catalog/datasets/donnees-valeurs-foncieres-a-la-commune-par-periode/records";
 const VALORIS_URL      = "https://www.valoris-immo.fr/api/v1/prix-median";
 const DPE_URL          = "https://data.ademe.fr/data-fair/api/v1/datasets/dpe-france/lines";
-const DPE_V2_URL       = "https://data.ademe.fr/data-fair/api/v1/datasets/dpe-v2-logements-existants/lines";
+const DPE_V2_URL       = "https://data.ademe.fr/data-fair/api/v1/datasets/meg-83tjwtg8dyz4vv7h1dqe/lines";
 const GEORISQUES_URL   = "https://georisques.gouv.fr/api/v1";
 
 const CORS_HEADERS = {
@@ -320,20 +320,26 @@ function parseDpeLines(lines, labelField) {
   return dist;
 }
 
-async function getDpe(communeName, postcode) {
+async function getDpe(codeInsee, postcode, communeName) {
   let dist = {};
-  const dataOld = await safeGetJson(DPE_URL, {
-    size: 1000, select: "Etiquette_DPE,Code_postal_BAN",
-    q: postcode || communeName, q_fields: "Code_postal_BAN",
-  });
-  if (dataOld && dataOld.results) dist = parseDpeLines(dataOld.results, "Etiquette_DPE");
-  const dataV2 = await safeGetJson(DPE_V2_URL, {
-    size: 1000, select: "etiquette_dpe,code_postal_ban",
-    q: postcode || communeName, q_fields: "code_postal_ban",
-  });
-  if (dataV2 && dataV2.results) {
-    const d2 = parseDpeLines(dataV2.results, "etiquette_dpe");
-    for (const [k, v] of Object.entries(d2)) dist[k] = (dist[k] || 0) + v;
+  // Legacy DPE (avant juillet 2021) — recherche par code postal
+  if (postcode) {
+    const dataOld = await safeGetJson(DPE_URL, {
+      size: 1000, select: "Etiquette_DPE,Code_postal_BAN",
+      q: postcode, q_fields: "Code_postal_BAN",
+    });
+    if (dataOld && dataOld.results) dist = parseDpeLines(dataOld.results, "Etiquette_DPE");
+  }
+  // DPE V2 (depuis juillet 2021) — filtre prioritaire par code_insee_ban (plus fiable)
+  if (codeInsee) {
+    const dataV2 = await safeGetJson(DPE_V2_URL, {
+      size: 1000, select: "etiquette_dpe,code_insee_ban",
+      q: codeInsee, q_fields: "code_insee_ban",
+    });
+    if (dataV2 && dataV2.results) {
+      const d2 = parseDpeLines(dataV2.results, "etiquette_dpe");
+      for (const [k, v] of Object.entries(d2)) dist[k] = (dist[k] || 0) + v;
+    }
   }
   return dist;
 }
@@ -522,7 +528,7 @@ export const handler = async (event) => {
     getDvfData(codeInsee).catch(() => ({})),
     getCommuneInfo(codeInsee).catch(() => ({})),
     getValoris(codeInsee, departement).catch(() => ({})),
-    getDpe(geo.city, geo.postcode).catch(() => ({})),
+    getDpe(codeInsee, geo.postcode, geo.city).catch(() => ({})),
     getRisques(lat, lon, codeInsee).catch(() => ({})),
   ]);
 

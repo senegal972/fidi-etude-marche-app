@@ -659,6 +659,22 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
       </div>
     </div>
 
+    <!-- Caractéristiques bâti (BDNB-like via ADEME DPE V2) ───────────────── -->
+    <div class="card shadow-sm mb-3" id="batimentSection">
+      <div class="card-header bg-white d-flex align-items-center flex-wrap gap-2">
+        <i class="bi bi-building-fill-gear me-2 text-success"></i>
+        <strong>Caractéristiques du bâti — Diagnostics DPE détaillés</strong>
+        <span class="badge bg-secondary" id="batimentCount">…</span>
+        <small class="text-muted ms-auto">Source : ADEME DPE V2 (logements existants + neufs)</small>
+      </div>
+      <div class="card-body" id="batimentBody">
+        <div class="text-center text-muted py-3">
+          <div class="spinner-border spinner-border-sm me-2"></div>
+          Chargement des diagnostics DPE…
+        </div>
+      </div>
+    </div>
+
     <!-- Vérifications légales d'entreprise (option) ─────────────────────── -->
     <div class="card shadow-sm mb-3 d-none" id="entrepriseSection">
       <div class="card-header bg-white d-flex align-items-center">
@@ -681,7 +697,8 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
       Sources : <strong>DVF</strong> Caisse des Dépôts · <strong>VALORIS</strong> (données DGFiP) ·
       <strong>ADEME</strong> DPE logements · <strong>BAN</strong> Géocodage ·
       <strong>Géorisques</strong> BRGM · <strong>GéoAPI</strong> INSEE ·
-      <strong>Recherche Entreprises</strong> (RNE/INPI)
+      <strong>Recherche Entreprises</strong> (RNE/INPI) ·
+      <strong>BDNB / DPE V2</strong> ADEME
       – Données publiques data.gouv.fr
     </div>
 
@@ -867,6 +884,9 @@ async function lancerAnalyse(){
     window.scrollTo({top: document.getElementById('results-panel').offsetTop - 20, behavior:'smooth'});
     // Transactions chargées séparément (appel asynchrone indépendant)
     loadTransactionsAsync(data.localisation || {}, perimetre);
+
+    // Caractéristiques bâti (chargement asynchrone systématique)
+    loadBatimentAsync(data.localisation || {});
 
     // Vérifications légales d'entreprise (option)
     if(document.getElementById('optEntreprise').checked){
@@ -1538,6 +1558,143 @@ function showTransSpinner(){
       <div class="spinner-border spinner-border-sm text-primary me-2"></div>
       Chargement des transactions DVF…
     </td></tr>`;
+}
+
+// ─── Caractéristiques bâti (BDNB-like via ADEME DPE V2) ──────────────────────
+const DPE_COLORS = { A:'#00a651', B:'#52b153', C:'#c8d400', D:'#fff200', E:'#fdb913', F:'#f37021', G:'#ed1c24' };
+
+async function loadBatimentAsync(loc){
+  const sec  = document.getElementById('batimentSection');
+  const body = document.getElementById('batimentBody');
+  const cnt  = document.getElementById('batimentCount');
+  if(!loc.citycode){
+    sec.classList.add('d-none');
+    return;
+  }
+  cnt.textContent = '…';
+  try{
+    const resp = await fetch('/api/batiment', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        code_insee: loc.citycode,
+        lat: loc.lat, lon: loc.lon,
+        postcode: loc.postcode || '',
+      }),
+    });
+    if(!resp.ok){
+      cnt.textContent = '0';
+      body.innerHTML = `<div class="text-muted text-center py-3">
+        <i class="bi bi-info-circle me-1"></i>Diagnostics DPE indisponibles pour cette commune.</div>`;
+      return;
+    }
+    const data = await resp.json();
+    cnt.textContent = String(data.count || 0);
+    renderBatiment(data);
+  }catch(e){
+    cnt.textContent = '0';
+    body.innerHTML = `<div class="text-muted text-center py-3">Indisponible (${e.message})</div>`;
+  }
+}
+
+function renderBatiment(data){
+  const body = document.getElementById('batimentBody');
+  if(!data.items || !data.items.length){
+    body.innerHTML = `<div class="text-muted text-center py-3">
+      <i class="bi bi-search me-1"></i>Aucun diagnostic DPE trouvé pour cette commune.</div>`;
+    return;
+  }
+  const s = data.summary || {};
+  // Sections : synthèse + tableau (top 30 plus proches/récents)
+  const top = data.items.slice(0, 30);
+  const distrHtml = (label, dist, palette) => {
+    const total = Object.values(dist||{}).reduce((a,b)=>a+b,0);
+    if(!total) return '';
+    const order = ['A','B','C','D','E','F','G'];
+    return `<div class="small mb-1"><strong>${label}</strong>
+      <span class="text-muted">(${total})</span></div>
+      <div class="d-flex" style="height:18px;border-radius:4px;overflow:hidden;">
+        ${order.map(l => {
+          const c = dist[l] || 0; if(!c) return '';
+          const w = (c/total*100).toFixed(1);
+          return `<div title="${l}: ${c} (${w}%)" style="width:${w}%;background:${palette[l]};"></div>`;
+        }).join('')}
+      </div>`;
+  };
+  const periodes = Object.entries(s.periodes_construction||{}).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const types    = Object.entries(s.types_batiment||{}).sort((a,b)=>b[1]-a[1]);
+  const energies = Object.entries(s.energies_chauffage||{}).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+  const synthHtml = `
+    <div class="row g-3 mb-3">
+      <div class="col-md-6">
+        ${distrHtml('Distribution DPE', s.dpe_distribution, DPE_COLORS)}
+        <div class="mt-2">${distrHtml('Distribution GES', s.ges_distribution, DPE_COLORS)}</div>
+      </div>
+      <div class="col-md-6">
+        <div class="row g-2 small">
+          <div class="col-6">
+            <div class="text-muted">Surface moyenne</div>
+            <div class="fw-bold">${s.surface_moyenne ? s.surface_moyenne+' m²' : '—'}</div>
+          </div>
+          <div class="col-6">
+            <div class="text-muted">Conso moyenne</div>
+            <div class="fw-bold">${s.conso_ef_m2_moyenne ? s.conso_ef_m2_moyenne+' kWh/m²' : '—'}</div>
+          </div>
+          <div class="col-12 mt-2">
+            <div class="text-muted small">Types de bâtiment</div>
+            ${types.map(([k,v]) => `<span class="badge bg-light text-dark border me-1">${k} : ${v}</span>`).join('') || '—'}
+          </div>
+          <div class="col-12 mt-1">
+            <div class="text-muted small">Périodes de construction (top 6)</div>
+            ${periodes.map(([k,v]) => `<span class="badge bg-light text-dark border me-1">${k} : ${v}</span>`).join('') || '—'}
+          </div>
+          <div class="col-12 mt-1">
+            <div class="text-muted small">Énergies de chauffage (top 5)</div>
+            ${energies.map(([k,v]) => `<span class="badge bg-light text-dark border me-1">${k} : ${v}</span>`).join('') || '—'}
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  const rowsHtml = top.map(it => {
+    const dpeBadge = it.etiquette_dpe
+      ? `<span class="badge" style="background:${DPE_COLORS[it.etiquette_dpe]||'#888'};color:#000;">${it.etiquette_dpe}</span>`
+      : '—';
+    const gesBadge = it.etiquette_ges
+      ? `<span class="badge" style="background:${DPE_COLORS[it.etiquette_ges]||'#888'};color:#000;">${it.etiquette_ges}</span>`
+      : '—';
+    return `<tr>
+      <td>${it.date_dpe || '—'}</td>
+      <td class="small">${it.adresse}</td>
+      <td>${it.type_batiment}</td>
+      <td class="text-end">${it.surface != null ? it.surface+' m²' : '—'}</td>
+      <td>${it.periode_construction}</td>
+      <td class="text-center">${dpeBadge}</td>
+      <td class="text-center">${gesBadge}</td>
+      <td class="text-end small">${it.conso_ef_m2 != null ? it.conso_ef_m2+' kWh' : '—'}</td>
+      <td class="small">${it.energie_chauffage}</td>
+      <td class="text-end small">${it.distance_m != null ? it.distance_m+' m' : '—'}</td>
+    </tr>`;
+  }).join('');
+
+  body.innerHTML = `
+    ${synthHtml}
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>Date DPE</th><th>Adresse</th><th>Type</th>
+            <th class="text-end">Surface</th><th>Construction</th>
+            <th class="text-center">DPE</th><th class="text-center">GES</th>
+            <th class="text-end">Conso/m²</th><th>Chauffage</th>
+            <th class="text-end">Dist.</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>
+    ${data.items.length > 30 ? `<div class="text-muted small text-center">… et ${data.items.length-30} autres diagnostics.</div>` : ''}
+  `;
 }
 
 // ─── Vérifications légales d'entreprise (option) ─────────────────────────────

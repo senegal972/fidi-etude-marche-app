@@ -10,6 +10,9 @@
 [functions."analyse"]
   timeout = 26
 
+[functions."batiment"]
+  timeout = 20
+
 # ── Redirections API → Netlify Functions ──────────────────────────────────────
 [[redirects]]
   from   = "/api/analyse"
@@ -29,6 +32,11 @@
 [[redirects]]
   from   = "/api/entreprise"
   to     = "/.netlify/functions/entreprise"
+  status = 200
+
+[[redirects]]
+  from   = "/api/batiment"
+  to     = "/.netlify/functions/batiment"
   status = 200
 
 # ── SPA fallback : toute URL non trouvée → index.html ─────────────────────────
