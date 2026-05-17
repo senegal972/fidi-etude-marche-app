@@ -3,8 +3,11 @@
   functions = "netlify/functions"
   command   = ""
 
-# ── Timeout étendu pour les transactions (CSV lourd) ──────────────────────────
+# ── Timeout étendu pour les fonctions DVF (fetch sections + Etalab) ───────────
 [functions."transactions"]
+  timeout = 26
+
+[functions."analyse"]
   timeout = 26
 
 # ── Redirections API → Netlify Functions ──────────────────────────────────────
