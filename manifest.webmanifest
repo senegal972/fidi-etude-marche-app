@@ -1,0 +1,29 @@
+{
+  "name": "FIDI · Étude de Marché Immobilier",
+  "short_name": "FIDI Marché",
+  "description": "Évaluation du potentiel d'un bien immobilier à partir des données publiques data.gouv.fr (DVF, BDNB, BAN, Géorisques, INSEE).",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f0f2f5",
+  "theme_color": "#1a3a6e",
+  "lang": "fr",
+  "categories": ["business", "productivity", "finance"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Nouvelle analyse",
+      "short_name": "Analyse",
+      "url": "/?source=shortcut",
+      "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    }
+  ]
+}

@@ -2,7 +2,25 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<meta name="description" content="Étude de marché immobilier — FIDI. Analyse complète d'une adresse à partir des données publiques data.gouv.fr (DVF, BDNB, BAN, Géorisques)."/>
+<meta name="theme-color" content="#1a3a6e"/>
+<meta name="color-scheme" content="light"/>
+<meta name="format-detection" content="telephone=no"/>
+<!-- PWA -->
+<link rel="manifest" href="/manifest.webmanifest"/>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml"/>
+<link rel="apple-touch-icon" href="/favicon.svg"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="FIDI Marché"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<!-- Open Graph -->
+<meta property="og:title" content="FIDI · Étude de Marché Immobilier"/>
+<meta property="og:description" content="Évaluation complète d'un bien à partir des données publiques."/>
+<meta property="og:type" content="website"/>
+<meta property="og:url" content="https://fidi-etude-marche.netlify.app/"/>
+<meta property="og:image" content="https://fidi-etude-marche.netlify.app/favicon.svg"/>
 <title>Étude de Marché Immobilier – FIDI</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
@@ -126,6 +144,41 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
 .map-legend-item{display:flex;align-items:center;gap:.4rem;}
 
 /* ─ Print / PDF ─────────────────────────── */
+/* ─ Mobile / Responsive ────────────────── */
+@media (max-width: 768px){
+  .navbar-fidi{padding:.5rem .75rem;flex-wrap:wrap;gap:.5rem;}
+  .brand-text{font-size:1rem;}
+  .brand-sub{font-size:.7rem;}
+  .search-panel{padding:1rem .75rem;}
+  .search-form{padding:.75rem;}
+  .search-form .row > [class*="col-"]{margin-bottom:.5rem;}
+  .btn-analyse{font-size:.95rem;padding:.5rem;}
+  .form-check-inline{margin-right:.5rem;}
+  .card-body{padding:.75rem;}
+  .card-header{padding:.5rem .75rem;font-size:.9rem;}
+  .table{font-size:.75rem;}
+  .table-responsive{font-size:.7rem;}
+  .chart-wrap{height:200px!important;}
+  #map{height:240px!important;}
+  /* Empile les options en colonne */
+  .search-form .d-flex.flex-wrap.gap-3{flex-direction:column;align-items:flex-start;gap:.5rem!important;}
+  #entrepriseQueryWrap,#financeQueryWrap{width:100%;min-width:0!important;margin-left:0!important;}
+  /* Réduction badges */
+  .badge{font-size:.65rem;}
+  /* Score gauge plus petit */
+  .gauge-wrap canvas{max-height:140px;}
+}
+/* iOS safe-area (notch) */
+@supports (padding: env(safe-area-inset-top)){
+  .navbar-fidi{padding-top:max(.75rem, env(safe-area-inset-top));}
+  body{padding-bottom:env(safe-area-inset-bottom);}
+}
+/* Active touch hover */
+@media (hover: none){
+  .btn:active{transform:scale(0.97);}
+  .table-hover tbody tr:active{background:rgba(26,58,110,.08);}
+}
+
 @media print{
   body{background:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
   .navbar-fidi,.search-panel,.btn-print,.btn-pdf,#loading-panel,#init-panel{display:none!important;}
