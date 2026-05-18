@@ -1803,18 +1803,63 @@ async function loadPermisAsync(loc){
            `<span class="badge bg-warning text-dark">${y} : ${c}</span>`).join('')}</div>`
       : '<div class="text-muted small mb-3">Aucun logement neuf récent diagnostiqué.</div>';
     const recentsHtml = (proxy.recents||[]).length
-      ? `<div class="small mb-1"><strong>Diagnostics récents (top 20)</strong></div>
-         <ul class="small mb-3" style="max-height:160px;overflow:auto;">
-           ${proxy.recents.map(r => `<li>${r.date||'—'} — ${r.adresse} (${r.type||'?'}, ${r.surface||'?'} m², DPE ${r.dpe||'?'})</li>`).join('')}
-         </ul>`
+      ? `<div class="small mb-1"><strong>Diagnostics récents (top 30) — numéro DPE officiel</strong></div>
+         <div class="table-responsive mb-3" style="max-height:280px;overflow:auto;">
+           <table class="table table-sm table-hover mb-0">
+             <thead class="table-light"><tr>
+               <th>Date</th><th>N° DPE</th><th>Adresse</th><th>Type</th>
+               <th class="text-end">Surface</th><th>Année</th>
+               <th class="text-center">DPE</th><th class="text-center">GES</th>
+             </tr></thead>
+             <tbody>
+               ${proxy.recents.map(r => `<tr>
+                 <td class="small">${r.date||'—'}</td>
+                 <td class="small"><code>${r.numero_dpe||'—'}</code></td>
+                 <td class="small">${r.adresse||'—'}${r.complement?'<br><span class="text-muted">'+r.complement+'</span>':''}</td>
+                 <td class="small">${r.type||'—'}</td>
+                 <td class="text-end small">${r.surface!=null?r.surface+' m²':'—'}</td>
+                 <td class="small">${r.annee_construction||'—'}</td>
+                 <td class="text-center"><span class="badge" style="background:${DPE_COLORS[r.dpe]||'#888'};color:#000;">${r.dpe||'?'}</span></td>
+                 <td class="text-center"><span class="badge" style="background:${DPE_COLORS[r.ges]||'#888'};color:#000;">${r.ges||'?'}</span></td>
+               </tr>`).join('')}
+             </tbody>
+           </table>
+         </div>`
       : '';
+    const m = d.mairie || {};
+    const mairieHtml = m && m.nom
+      ? `<div class="card border-info mb-3"><div class="card-body p-3">
+           <div class="d-flex justify-content-between flex-wrap gap-2 mb-2">
+             <div><i class="bi bi-bank2 me-1 text-info"></i><strong>${m.nom}</strong> <span class="text-muted small">(SIRET ${m.siret||'—'})</span></div>
+             ${m.url_service_public?`<a href="${m.url_service_public}" target="_blank" rel="noopener" class="small">Fiche officielle ↗</a>`:''}
+           </div>
+           <div class="row g-2 small">
+             ${m.adresse_complete?`<div class="col-md-6"><i class="bi bi-geo-alt me-1"></i>${m.adresse_complete}</div>`:''}
+             ${m.telephone?`<div class="col-md-3"><i class="bi bi-telephone me-1"></i>${m.telephone}</div>`:''}
+             ${m.courriel?`<div class="col-md-3"><i class="bi bi-envelope me-1"></i><a href="mailto:${m.courriel}">${m.courriel}</a></div>`:''}
+             ${m.site_internet?`<div class="col-md-6"><i class="bi bi-globe me-1"></i><a href="${m.site_internet}" target="_blank" rel="noopener">${m.site_internet}</a></div>`:''}
+             ${m.formulaire_contact?`<div class="col-md-6"><i class="bi bi-chat-text me-1"></i><a href="${m.formulaire_contact}" target="_blank" rel="noopener">Formulaire contact</a></div>`:''}
+           </div>
+           ${m.horaires && m.horaires.length ? `<div class="mt-2 small"><strong>Horaires :</strong>
+             ${m.horaires.map(h => `<span class="badge bg-light text-dark border me-1">${h.jour} ${h.matin}${h.apresmidi?' / '+h.apresmidi:''}</span>`).join('')}
+           </div>` : ''}
+         </div></div>`
+      : '';
+    const disc = d.disclaimer || {};
+    const disclaimerHtml = disc.message
+      ? `<div class="alert alert-warning small">
+           <i class="bi bi-exclamation-triangle me-1"></i><strong>${disc.titre||'Information'}</strong><br>${disc.message}
+         </div>` : '';
     const sourcesHtml = (d.sources_officielles||[]).map(s =>
       `<li><a href="${s.url}" target="_blank" rel="noopener"><strong>${s.nom}</strong></a><br><small class="text-muted">${s.description}</small></li>`
     ).join('');
     body.innerHTML = `
       ${yearsHtml}
       ${recentsHtml}
-      <div class="small fw-semibold mt-3 mb-1"><i class="bi bi-link-45deg"></i> Sources officielles SITADEL</div>
+      <div class="small fw-semibold mt-3 mb-2"><i class="bi bi-bank2"></i> Service urbanisme — Mairie pour demande PC/DP</div>
+      ${mairieHtml || '<div class="text-muted small mb-3">Contact mairie indisponible.</div>'}
+      ${disclaimerHtml}
+      <div class="small fw-semibold mt-3 mb-1"><i class="bi bi-link-45deg"></i> Sources officielles SITADEL & PC/DP</div>
       <ul class="small">${sourcesHtml}</ul>
       <div class="alert alert-light small mb-0 mt-2"><i class="bi bi-info-circle me-1"></i>${d.note||''}</div>
     `;
