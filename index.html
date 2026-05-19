@@ -237,7 +237,14 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
     <div class="search-form">
       <div class="row g-2 align-items-end">
         <div class="col-md-4 position-relative">
-          <label class="form-label text-white small fw-semibold mb-1">Adresse du bien</label>
+          <label class="form-label text-white small fw-semibold mb-1">
+            Adresse du bien
+            <button type="button" class="btn btn-sm btn-link p-0 ms-1 text-warning text-decoration-none"
+                    id="btnGeoloc" title="Utiliser ma position actuelle"
+                    style="font-size:.75rem;vertical-align:baseline;">
+              <i class="bi bi-geo-alt-fill"></i> Ma position
+            </button>
+          </label>
           <input type="text" class="form-control" id="inputAdresse"
                  placeholder="Ex : 15 rue de la Paix, Lyon" autocomplete="off"/>
           <div class="autocomplete-dropdown d-none" id="autocompleteList"></div>
@@ -879,6 +886,50 @@ document.getElementById('inputAdresse').addEventListener('keydown', e => {
   if(e.key === 'Enter'){ hideAC(); lancerAnalyse(); }
 });
 document.getElementById('btnAnalyse').addEventListener('click', lancerAnalyse);
+
+// ─── Géolocalisation du navigateur → reverse geocode BAN ──────────────────────
+document.getElementById('btnGeoloc').addEventListener('click', async () => {
+  const btn = document.getElementById('btnGeoloc');
+  const input = document.getElementById('inputAdresse');
+  if(!('geolocation' in navigator)){
+    alert('Géolocalisation non supportée par ce navigateur.');
+    return;
+  }
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:.8rem;height:.8rem;"></span> Localisation…';
+  try{
+    const pos = await new Promise((res, rej) => {
+      navigator.geolocation.getCurrentPosition(res, rej, {
+        enableHighAccuracy: true, timeout: 15000, maximumAge: 60000,
+      });
+    });
+    const { latitude: lat, longitude: lon, accuracy } = pos.coords;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:.8rem;height:.8rem;"></span> Adresse…';
+    const r = await fetch(`https://api-adresse.data.gouv.fr/reverse/?lat=${lat}&lon=${lon}&limit=1`);
+    if(!r.ok) throw new Error('Reverse géocodage indisponible');
+    const data = await r.json();
+    const feat = (data.features || [])[0];
+    if(!feat){
+      alert(`Aucune adresse trouvée à cette position (précision ${Math.round(accuracy)} m).`);
+      return;
+    }
+    input.value = feat.properties.label;
+    hideAC();
+    // Focus input pour permettre ajustement
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  }catch(err){
+    let msg = err.message || 'Erreur';
+    if(err.code === 1) msg = 'Permission refusée. Autorisez la géolocalisation dans les paramètres du navigateur.';
+    else if(err.code === 2) msg = 'Position indisponible. Vérifiez le GPS / Wi-Fi.';
+    else if(err.code === 3) msg = 'Délai d\'attente dépassé.';
+    alert('Géolocalisation : ' + msg);
+  }finally{
+    btn.disabled = false;
+    btn.innerHTML = orig;
+  }
+});
 
 // ─── Export PDF (impression navigateur → "Enregistrer en PDF") ────────────────
 // Approche fiable : utilise le moteur d'impression natif du navigateur via les
