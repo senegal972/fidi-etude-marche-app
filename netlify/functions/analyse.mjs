@@ -11,6 +11,7 @@ const SECTION_BATCH  = 5;
 const BAN_URL          = "https://api-adresse.data.gouv.fr/search/";
 const GEO_COMMUNES     = "https://geo.api.gouv.fr/communes";
 const IGN_DIVISION_URL = "https://apicarto.ign.fr/api/cadastre/division";
+const CADASTRE_GEOJSON  = "https://cadastre.data.gouv.fr/data/etalab-cadastre/latest/geojson/communes";
 const DVF_ETALAB_BASE  = "https://app.dvf.etalab.gouv.fr/api/mutations3";
 const DVF_ANNEES_URL   = "https://opendata.caissedesdepots.fr/api/explore/v2.1/catalog/datasets/donnees-valeurs-foncieres-a-la-commune-annee-par-annee/records";
 const DVF_PERIODES_URL = "https://opendata.caissedesdepots.fr/api/explore/v2.1/catalog/datasets/donnees-valeurs-foncieres-a-la-commune-par-periode/records";
@@ -155,8 +156,29 @@ async function getCommuneInfo(codeInsee) {
 // ─── DVF via Etalab API (sections IGN + mutations3) ───────────────────────────
 // files.data.gouv.fr/geo-dvf bloque les IPs Lambda (403). On utilise donc
 // l'API publique app.dvf.etalab.gouv.fr en énumérant les sections cadastrales
-// via apicarto IGN.
-async function getSections(codeCommune) {
+// via cadastre.data.gouv.fr (source primaire, plus complète) avec fallback IGN.
+async function _fetchSectionsCadastre(codeCommune) {
+  const dept = deptFolder(codeCommune);
+  const url  = `${CADASTRE_GEOJSON}/${dept}/${codeCommune}/cadastre-${codeCommune}-sections.json.gz`;
+  try {
+    const r = await fetchTimeout(url, TIMEOUT_MS);
+    if (!r.ok) return [];
+    const decompressed = r.body.pipeThrough(new DecompressionStream("gzip"));
+    const text = await new Response(decompressed).text();
+    const data = JSON.parse(text);
+    const set = new Set();
+    for (const f of data.features || []) {
+      const p = f.properties || {};
+      const prefixe = String(p.prefixe || "000").padStart(3, "0");
+      // cadastre.data.gouv.fr expose le code section dans .code (ex: "AB") ou .section
+      const code    = String(p.code || p.section || "").padStart(2, "0");
+      if (code && code !== "00") set.add(prefixe + code);
+    }
+    return [...set];
+  } catch (e) { return []; }
+}
+
+async function _fetchSectionsIGN(codeCommune) {
   try {
     const r = await fetchTimeout(
       `${IGN_DIVISION_URL}?code_insee=${encodeURIComponent(codeCommune)}`,
@@ -173,6 +195,12 @@ async function getSections(codeCommune) {
     }
     return [...set];
   } catch (e) { return []; }
+}
+
+async function getSections(codeCommune) {
+  const a = await _fetchSectionsCadastre(codeCommune);
+  if (a.length) return a;
+  return await _fetchSectionsIGN(codeCommune);
 }
 
 async function fetchEtalabSection(codeCommune, sectionCode) {

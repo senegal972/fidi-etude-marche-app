@@ -5,6 +5,7 @@ const TIMEOUT_MS = 10000;
 const DVF_YEARS_KEEP = [2021, 2022, 2023, 2024, 2025];
 const SECTION_BATCH  = 6;
 const IGN_DIVISION_URL = "https://apicarto.ign.fr/api/cadastre/division";
+const CADASTRE_GEOJSON  = "https://cadastre.data.gouv.fr/data/etalab-cadastre/latest/geojson/communes";
 const DVF_ETALAB_BASE  = "https://app.dvf.etalab.gouv.fr/api/mutations3";
 
 const RAYON_MAP = {
@@ -58,7 +59,27 @@ function extractSection(idParcelle) {
 }
 
 // ─── DVF via Etalab API (sections IGN + mutations3) ───────────────────────────
-async function getSections(codeCommune) {
+async function _fetchSectionsCadastre(codeCommune) {
+  const dept = deptFolder(codeCommune);
+  const url  = `${CADASTRE_GEOJSON}/${dept}/${codeCommune}/cadastre-${codeCommune}-sections.json.gz`;
+  try {
+    const r = await fetchTimeout(url, TIMEOUT_MS);
+    if (!r.ok) return [];
+    const decompressed = r.body.pipeThrough(new DecompressionStream("gzip"));
+    const text = await new Response(decompressed).text();
+    const data = JSON.parse(text);
+    const set = new Set();
+    for (const f of data.features || []) {
+      const p = f.properties || {};
+      const prefixe = String(p.prefixe || "000").padStart(3, "0");
+      const code    = String(p.code || p.section || "").padStart(2, "0");
+      if (code && code !== "00") set.add(prefixe + code);
+    }
+    return [...set];
+  } catch (e) { return []; }
+}
+
+async function _fetchSectionsIGN(codeCommune) {
   try {
     const r = await fetchTimeout(
       `${IGN_DIVISION_URL}?code_insee=${encodeURIComponent(codeCommune)}`,
@@ -75,6 +96,12 @@ async function getSections(codeCommune) {
     }
     return [...set];
   } catch (e) { return []; }
+}
+
+async function getSections(codeCommune) {
+  const a = await _fetchSectionsCadastre(codeCommune);
+  if (a.length) return a;
+  return await _fetchSectionsIGN(codeCommune);
 }
 
 async function fetchEtalabSection(codeCommune, sectionCode) {
