@@ -55,13 +55,22 @@ async function fetchDpeNeuf(codeInsee) {
   } catch (e) { return []; }
 }
 
+// Map arrondissement INSEE → commune mère (Paris, Lyon, Marseille)
+function resolveCommuneMere(code) {
+  if (/^751[0-2][0-9]$/.test(code)) return "75056";                 // Paris arr → Paris
+  if (/^6938[1-9]$/.test(code))     return "69123";                 // Lyon arr → Lyon
+  if (/^132[0-1][0-9]$/.test(code) && parseInt(code) <= 13216) return "13055"; // Marseille arr → Marseille
+  return code;
+}
+
 // Service urbanisme / mairie via API service-public.fr
 async function fetchMairie(codeInsee) {
-  const cacheKey = cacheTag("mairie", codeInsee);
+  const codeQuery = resolveCommuneMere(codeInsee);
+  const cacheKey = cacheTag("mairie", codeQuery);
   const cached = await cacheGet(cacheKey);
   if (cached) return cached;
   try {
-    const where = encodeURIComponent(`code_insee_commune="${codeInsee}" AND pivot LIKE "mairie"`);
+    const where = encodeURIComponent(`code_insee_commune="${codeQuery}" AND pivot LIKE "mairie"`);
     const url = `${ANNUAIRE_URL}?where=${where}&limit=1`;
     const r = await fetchTimeout(url, TIMEOUT_MS);
     if (!r.ok) return null;
