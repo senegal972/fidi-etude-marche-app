@@ -77,6 +77,28 @@
 .av-live .av-live-k{color:var(--av-grey);font-size:.66rem;text-transform:uppercase;letter-spacing:.5px;}
 .av-live .av-live-v{font-weight:800;color:var(--av-blue);}
 
+/* ── Grille comparables (ACM) ───────────────────────────────── */
+.av-cmp{border:1px solid var(--av-grey-light);border-radius:8px;padding:.6rem .7rem;margin-bottom:.6rem;background:#fff;}
+.av-cmp-off{opacity:.5;background:#f6f7f9;}
+.av-cmp-head{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem;}
+.av-cmp-head select,.av-cmp-head input{font-size:.8rem;padding:.25rem .4rem;border:1px solid #ced4da;border-radius:5px;}
+.av-cmp-head select{max-width:130px;}
+.av-cmp-head input{flex:1;min-width:90px;}
+.av-cmp-inc{font-size:.72rem;font-weight:600;color:var(--av-grey);display:flex;align-items:center;gap:.25rem;white-space:nowrap;cursor:pointer;}
+.av-cmp-head .av-del{margin-left:auto;}
+.av-cmp-calc{font-weight:700;color:var(--av-ink);padding:.35rem 0;}
+.av-cmp-calc.hl{color:var(--av-blue);}
+.av-inline2{display:flex;gap:.3rem;}
+.av-inline2 input{width:50%;}
+
+/* ── Méthodes & pondération (section Valeur) ────────────────── */
+.av-method-row{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;padding:.35rem 0;border-bottom:1px dashed var(--av-grey-light);}
+.av-method-row:last-of-type{border-bottom:none;}
+.av-method-on{font-size:.82rem;font-weight:600;color:var(--av-ink);display:flex;align-items:center;gap:.35rem;flex:1;min-width:180px;cursor:pointer;}
+.av-method-poids{font-size:.72rem;color:var(--av-grey);white-space:nowrap;}
+.av-method-poids input{width:56px;font-size:.8rem;padding:.2rem .35rem;border:1px solid #ced4da;border-radius:5px;}
+.av-method-val{font-weight:800;color:var(--av-blue);min-width:90px;text-align:right;}
+
 /* ── Aperçu live ────────────────────────────────────────────── */
 .av-preview{background:#525659;padding:1rem;max-height:72vh;overflow-y:auto;}
 .av-preview-page{background:#fff;box-shadow:0 2px 16px rgba(0,0,0,.3);padding:2rem 2.2rem;font-family:Calibri,Arial,sans-serif;color:#000;font-size:11px;line-height:1.45;}

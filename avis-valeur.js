@@ -54,6 +54,17 @@
       },
       loyers: [{ type: '', surface: '', loyer: '', secteur: '' }],
       calcul: { tauxCapi: 6.5, decoteOccupation: 10, valeurOccupeeBasseManuel: '', valeurOccupeeHauteManuel: '' },
+      comparables: [],
+      acm: { prixM2Manuel: '' },
+      ponderation: { active: false,
+        coefTerrasse: 0.3, coefBalcon: 0.5, coefParking: 0.5, coefJardin: 0.1,
+        surfBalcon: '', surfParking: '', surfJardin: '' },
+      methodes: {
+        comparaison:     { on: true,  poids: 50 },
+        surfacePonderee: { on: false, poids: 0 },
+        capitalisation:  { on: true,  poids: 20 },
+        cout:            { on: false, poids: 0, valeurTerrain: '', coutConstructionM2: '', vetustePct: '' }
+      },
       atouts: [''],
       vigilances: [''],
       conclusion: { texte: '', potentielBas: '', potentielHaut: '' },
@@ -194,19 +205,95 @@
   }
 
   // ── Calculs ─────────────────────────────────────────────────
+  function median(a) {
+    if (!a.length) return 0;
+    var s = a.slice().sort(function (x, y) { return x - y; });
+    var m = Math.floor(s.length / 2);
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  }
+  // Statistiques ACM : €/m² ajustés des comparables inclus
+  function acmStats(data) {
+    var arr = [];
+    (data.comparables || []).forEach(function (cp) {
+      if (cp.inclus === false) return;
+      var su = num(cp.surface), pr = num(cp.prix);
+      if (su > 0 && pr > 0) arr.push((pr / su) * (1 + num(cp.ajustementPct) / 100));
+    });
+    var mean = arr.length ? arr.reduce(function (a, b) { return a + b; }, 0) / arr.length : 0;
+    return { count: arr.length, median: arr.length ? Math.round(median(arr)) : 0, mean: Math.round(mean) };
+  }
+  // €/m² ACM retenu : override manuel > médiane comparables > moyenne de l'étude (fallback)
+  function acmRetenuM2(data) {
+    if (data.acm && data.acm.prixM2Manuel) return num(data.acm.prixM2Manuel);
+    var st = acmStats(data);
+    if (st.count) return st.median;
+    return num(data.marche.moyenneMoyen);
+  }
+  function surfacePonderee(data) {
+    var b = data.bien, po = data.ponderation || {};
+    return num(b.surfaceCarrez)
+      + num(b.terrasse) * num(po.coefTerrasse)
+      + num(po.surfBalcon) * num(po.coefBalcon)
+      + num(po.surfParking) * num(po.coefParking)
+      + num(po.surfJardin) * num(po.coefJardin);
+  }
+
   function compute(data) {
-    var b = data.bien, m = data.marche, c = data.calcul;
+    var b = data.bien, m = data.marche, c = data.calcul, M = data.methodes || {};
     var s = num(b.surfaceCarrez), p = num(b.prixVente), loyer = num(b.loyer);
     var taux = num(c.tauxCapi), decote = num(c.decoteOccupation);
+    var occ = b.statut === 'occupe';
+
     var prixM2 = s > 0 && p > 0 ? p / s : 0;
     var rendementBrut = p > 0 && loyer > 0 ? (loyer * 12 / p) * 100 : 0;
-    var valeurCapi = loyer > 0 && taux > 0 ? Math.round((loyer * 12 / (taux / 100)) / 500) * 500 : 0;
+
+    // Référence étude (comparaison brute, conservée pour affichage)
     var vlBas = Math.round(s * num(m.moyenneBas));
     var vlMoy = Math.round(s * num(m.moyenneMoyen));
     var vlHaut = Math.round(s * num(m.moyenneHaut));
-    var voccBas = c.valeurOccupeeBasseManuel ? num(c.valeurOccupeeBasseManuel) : Math.round(vlBas * (1 - decote / 100) / 1000) * 1000;
-    var voccHaut = c.valeurOccupeeHauteManuel ? num(c.valeurOccupeeHauteManuel) : Math.round(vlMoy * (1 - decote / 100) / 1000) * 1000;
-    return { prixM2: prixM2, rendementBrut: rendementBrut, valeurCapi: valeurCapi, vlBas: vlBas, vlMoy: vlMoy, vlHaut: vlHaut, voccBas: voccBas, voccHaut: voccHaut };
+
+    // ── Méthodes ──
+    var acm = acmRetenuM2(data);
+    var stats = acmStats(data);
+    var sPond = surfacePonderee(data);
+    var valComparaison = acm > 0 && s > 0 ? Math.round(acm * s / 1000) * 1000 : 0;
+    var valSurfPond = acm > 0 && sPond > 0 ? Math.round(acm * sPond / 1000) * 1000 : 0;
+    var valeurCapi = loyer > 0 && taux > 0 ? Math.round((loyer * 12 / (taux / 100)) / 500) * 500 : 0;
+    var cout = M.cout || {};
+    var valCout = (num(cout.coutConstructionM2) > 0 && s > 0)
+      ? Math.round((num(cout.valeurTerrain) + num(cout.coutConstructionM2) * s * (1 - num(cout.vetustePct) / 100)) / 1000) * 1000
+      : 0;
+
+    var methodes = [
+      { key: 'comparaison', label: 'Comparaison directe (ACM)', on: !!(M.comparaison && M.comparaison.on), poids: num(M.comparaison && M.comparaison.poids), val: valComparaison },
+      { key: 'surfacePonderee', label: 'Surface pondérée', on: !!(M.surfacePonderee && M.surfacePonderee.on), poids: num(M.surfacePonderee && M.surfacePonderee.poids), val: valSurfPond },
+      { key: 'capitalisation', label: 'Capitalisation du revenu', on: !!(M.capitalisation && M.capitalisation.on), poids: num(M.capitalisation && M.capitalisation.poids), val: valeurCapi },
+      { key: 'cout', label: 'Coût (sol + construction)', on: !!(M.cout && M.cout.on), poids: num(M.cout && M.cout.poids), val: valCout }
+    ];
+    var wsum = 0, vsum = 0;
+    methodes.forEach(function (e) {
+      e.actif = e.on && e.val > 0 && e.poids > 0;
+      if (e.actif) { wsum += e.poids; vsum += e.val * e.poids; }
+    });
+    methodes.forEach(function (e) { e.contribution = e.actif ? Math.round(e.val * e.poids / wsum) : 0; });
+    var valPonderee = wsum > 0 ? Math.round((vsum / wsum) / 1000) * 1000 : 0;
+
+    // Valeur retenue (fourchette) — pondérée, décote d'occupation si occupé, override manuel conservé
+    var central = valPonderee || vlMoy;
+    var centralFinal = occ ? central * (1 - decote / 100) : central;
+    var autoBas = Math.round(centralFinal * 0.95 / 1000) * 1000;
+    var autoHaut = Math.round(centralFinal * 1.05 / 1000) * 1000;
+    var voccBas = c.valeurOccupeeBasseManuel ? num(c.valeurOccupeeBasseManuel) : autoBas;
+    var voccHaut = c.valeurOccupeeHauteManuel ? num(c.valeurOccupeeHauteManuel) : autoHaut;
+
+    return {
+      prixM2: prixM2, rendementBrut: rendementBrut, valeurCapi: valeurCapi,
+      vlBas: vlBas, vlMoy: vlMoy, vlHaut: vlHaut,
+      acmM2: acm, acmMedian: stats.median, acmMean: stats.mean, acmCount: stats.count,
+      surfacePond: sPond, valComparaison: valComparaison, valSurfPond: valSurfPond, valCout: valCout,
+      methodes: methodes, valPonderee: valPonderee,
+      voccBas: voccBas, voccHaut: voccHaut
+    };
   }
 
   // ── État ────────────────────────────────────────────────────
@@ -216,13 +303,23 @@
     { id: 'metadata', label: '1. Référence' },
     { id: 'bien', label: '2. Le bien' },
     { id: 'marche', label: '3. Marché' },
-    { id: 'loyers', label: '4. Loyers' },
-    { id: 'calcul', label: '5. Valeur' },
-    { id: 'swot', label: '6. Atouts & vigilance' },
-    { id: 'conclusion', label: '7. Conclusion' },
-    { id: 'reserves', label: '8. Réserves' },
-    { id: 'signature', label: '9. Signataire' }
+    { id: 'comparables', label: '4. Comparables (ACM)' },
+    { id: 'loyers', label: '5. Loyers' },
+    { id: 'calcul', label: '6. Valeur' },
+    { id: 'swot', label: '7. Atouts & vigilance' },
+    { id: 'conclusion', label: '8. Conclusion' },
+    { id: 'reserves', label: '9. Réserves' },
+    { id: 'signature', label: '10. Signataire' }
   ];
+
+  var PORTAILS = ['Leboncoin', 'SeLoger', 'Bien’ici', 'Logic-Immo', 'PAP', 'Figaro Immo', 'DVF', 'Autre'];
+  var ETATS = ['', 'Neuf', 'Excellent', 'Bon', 'À rafraîchir', 'À rénover'];
+  function comparableTemplate(over) {
+    return Object.assign({
+      nature: 'annonce', source: 'Leboncoin', type: '', secteur: '', surface: '', prix: '',
+      date: '', etat: '', etage: '', exposition: '', annexes: '', lien: '', ajustementPct: '', inclus: true, note: ''
+    }, over || {});
+  }
 
   // ── Champs réutilisables ────────────────────────────────────
   function fld(label, path, opts) {
@@ -239,6 +336,11 @@
     } else input = '<input type="' + type + '" value="' + v + '" ' + attrs + '/>';
     return '<div class="av-field"><label>' + esc(label) + (opts.flag ? '<span class="av-prefill-flag">étude</span>' : '') + '</label>' + input +
       (opts.tip ? '<div class="av-tip">' + esc(opts.tip) + '</div>' : '') + '</div>';
+  }
+
+  function fldRaw(path, value, type, step) {
+    return '<input type="' + (type || 'text') + '"' + (step ? ' step="' + step + '"' : '') +
+      ' value="' + esc(value == null ? '' : value) + '" data-p="' + path + '"/>';
   }
 
   function renderSection(id) {
@@ -284,6 +386,53 @@
         '<div class="av-grid-2">' + fld('Évolution 12 mois', 'marche.evol12m', { ph: '+3 %' }) + fld('Évolution 3 mois', 'marche.evol3m', { ph: '+6 %' }) + '</div>' +
         fld('Commentaire de tendance', 'marche.commentaire', { type: 'textarea', rows: 2, flag: true });
     }
+    if (id === 'comparables') {
+      var nbDvf = (window.__fidiTransactions || []).length;
+      var cards = (d.comparables || []).map(function (cp, i) {
+        var vendu = cp.nature === 'vendu';
+        var badge = vendu
+          ? '<span style="background:#198754;color:#fff;font-size:.6rem;font-weight:700;border-radius:3px;padding:1px 5px;">VENDU · DVF</span>'
+          : '<span style="background:#0d6efd;color:#fff;font-size:.6rem;font-weight:700;border-radius:3px;padding:1px 5px;">ANNONCE</span>';
+        function li(key, ph, type) {
+          return '<input type="' + (type || 'text') + '" placeholder="' + esc(ph) + '" value="' + esc(cp[key]) + '" data-list="comparables" data-idx="' + i + '" data-key="' + key + '"/>';
+        }
+        function sel(key, opts) {
+          return '<select data-list="comparables" data-idx="' + i + '" data-key="' + key + '">' + opts.map(function (o) {
+            return '<option' + (String(o) === String(cp[key]) ? ' selected' : '') + '>' + esc(o) + '</option>';
+          }).join('') + '</select>';
+        }
+        return '<div class="av-cmp' + (cp.inclus === false ? ' av-cmp-off' : '') + '">' +
+          '<div class="av-cmp-head">' +
+          '<label class="av-cmp-inc"><input type="checkbox"' + (cp.inclus === false ? '' : ' checked') + ' data-list="comparables" data-idx="' + i + '" data-key="inclus"/> inclus</label>' +
+          badge + sel('source', PORTAILS) + li('type', 'Type (T2…)') +
+          '<button class="av-del" data-listdel="comparables" data-idx="' + i + '" title="Supprimer">✕</button></div>' +
+          '<div class="av-grid-4">' +
+          '<div class="av-field"><label>Surface (m²)</label>' + li('surface', '', 'number') + '</div>' +
+          '<div class="av-field"><label>Prix (€)</label>' + li('prix', '', 'number') + '</div>' +
+          '<div class="av-field"><label>€/m²</label><div class="av-cmp-calc" data-acm-m2="' + i + '">—</div></div>' +
+          '<div class="av-field"><label>Ajustement %</label>' + li('ajustementPct', '0', 'number') + '</div>' +
+          '</div><div class="av-grid-4">' +
+          '<div class="av-field"><label>€/m² ajusté</label><div class="av-cmp-calc hl" data-acm-adj="' + i + '">—</div></div>' +
+          '<div class="av-field"><label>État</label>' + sel('etat', ETATS) + '</div>' +
+          '<div class="av-field"><label>Étage / expo</label>' + li('etage', 'ex : 2e / Sud') + '</div>' +
+          '<div class="av-field"><label>Secteur</label>' + li('secteur', 'quartier') + '</div>' +
+          '</div>' +
+          '<div class="av-field"><label>Lien annonce (traçabilité)</label>' + li('lien', 'https://…') + '</div>' +
+          '</div>';
+      }).join('');
+      return head('Analyse comparative de marché (ACM)', 'Comparables vendus (DVF) et annonces des portails, avec ajustements') +
+        '<div class="av-tip" style="margin-bottom:.6rem;">Astuce : un <b>ajustement</b> positif si le comparable est <i>meilleur</i> que le bien (on rehausse sa valeur de référence), négatif s\'il est moins bien. Les comparables « inclus » alimentent le €/m² retenu.</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.6rem;">' +
+        '<button class="btn btn-sm btn-outline-success" data-action="import-dvf"><i class="bi bi-download me-1"></i>Importer ventes DVF proches (' + nbDvf + ')</button>' +
+        '<button class="av-add" data-listadd="comparables" style="border:1px solid var(--av-blue);border-radius:6px;padding:.25rem .6rem;">+ Ajouter une annonce</button>' +
+        '<button class="btn btn-sm btn-outline-secondary" data-action="toggle-paste"><i class="bi bi-clipboard me-1"></i>Coller une annonce</button>' +
+        '</div>' +
+        '<div id="avPasteWrap" style="display:none;margin-bottom:.6rem;">' +
+        '<textarea id="avPasteText" rows="3" placeholder="Collez ici le texte d\'une annonce (le prix, la surface et le type seront extraits automatiquement)…" style="width:100%;font-size:.8rem;"></textarea>' +
+        '<button class="btn btn-sm btn-primary mt-1" data-action="parse-paste"><i class="bi bi-magic me-1"></i>Analyser le texte</button></div>' +
+        (cards || '<div class="av-tip" style="padding:1rem;text-align:center;">Aucun comparable. Importez les ventes DVF ou ajoutez une annonce.</div>') +
+        '<div class="av-box" id="avAcmSynth">' + renderAcmSynth() + '</div>';
+    }
     if (id === 'loyers') {
       var lrows = d.loyers.map(function (l, i) {
         return '<div class="av-row" style="grid-template-columns:1fr 70px 70px 1fr 28px;">' +
@@ -297,9 +446,38 @@
         '<div style="display:flex;justify-content:flex-end;margin-bottom:.4rem;"><button class="av-add" data-listadd="loyers">+ Ajouter un comparable</button></div>' + lrows;
     }
     if (id === 'calcul') {
-      return head('Calcul de la valeur vénale', 'Paramètres et résultats') +
-        '<div class="av-grid-2">' + fld('Taux de capitalisation (%)', 'calcul.tauxCapi', { type: 'number', step: '0.1', tip: '6 à 7 % typique studio/T2 Martinique' }) +
-        fld("Décote d'occupation (%)", 'calcul.decoteOccupation', { type: 'number', step: '1', tip: '0 si libre — 5 à 15 % si occupé' }) + '</div>' +
+      var M = d.methodes, po = d.ponderation;
+      function methodRow(key, label) {
+        var mm = M[key] || {};
+        return '<div class="av-method-row">' +
+          '<label class="av-method-on"><input type="checkbox"' + (mm.on ? ' checked' : '') + ' data-p="methodes.' + key + '.on"/> ' + esc(label) + '</label>' +
+          '<span class="av-method-poids">poids <input type="number" min="0" max="100" value="' + esc(mm.poids) + '" data-p="methodes.' + key + '.poids"/> %</span>' +
+          '<span class="av-method-val" data-method-val="' + key + '">—</span></div>';
+      }
+      var acmPlace = acmStats(d).median || num(d.marche.moyenneMoyen) || 0;
+      return head('Détermination de la valeur vénale', 'Méthodes combinées en une valeur retenue pondérée') +
+        '<div class="av-grid-3">' +
+        fld('€/m² ACM retenu', 'acm.prixM2Manuel', { type: 'number', tip: 'Vide = médiane comparables (' + (acmPlace ? fmt(acmPlace) + ' €' : '—') + ')', ph: acmPlace ? String(acmPlace) : '' }) +
+        fld('Taux de capitalisation (%)', 'calcul.tauxCapi', { type: 'number', step: '0.1', tip: '6 à 7 % typique Martinique' }) +
+        fld("Décote d'occupation (%)", 'calcul.decoteOccupation', { type: 'number', step: '1', tip: '0 libre — 5 à 15 % occupé' }) +
+        '</div>' +
+        '<div class="av-box"><div class="av-box-title">Méthodes & pondération</div>' +
+        methodRow('comparaison', 'Comparaison directe (ACM)') +
+        methodRow('surfacePonderee', 'Surface pondérée') +
+        methodRow('capitalisation', 'Capitalisation du revenu') +
+        methodRow('cout', 'Coût (sol + construction)') +
+        '<div class="av-tip" style="margin-top:.4rem;">Les méthodes cochées avec un poids &gt; 0 et une valeur calculable sont combinées (moyenne pondérée).</div></div>' +
+        (M.surfacePonderee.on ? '<div class="av-box"><div class="av-box-title">Surface pondérée (coefficients)</div><div class="av-grid-4">' +
+          '<div class="av-field"><label>Terrasse ' + (d.bien.terrasse ? '(' + esc(d.bien.terrasse) + ' m²)' : '') + '</label>' + fldRaw('ponderation.coefTerrasse', d.ponderation.coefTerrasse, 'number', '0.01') + '</div>' +
+          '<div class="av-field"><label>Balcon : m² × coef</label><div class="av-inline2">' + fldRaw('ponderation.surfBalcon', d.ponderation.surfBalcon, 'number') + fldRaw('ponderation.coefBalcon', d.ponderation.coefBalcon, 'number', '0.01') + '</div></div>' +
+          '<div class="av-field"><label>Parking : m² × coef</label><div class="av-inline2">' + fldRaw('ponderation.surfParking', d.ponderation.surfParking, 'number') + fldRaw('ponderation.coefParking', d.ponderation.coefParking, 'number', '0.01') + '</div></div>' +
+          '<div class="av-field"><label>Jardin : m² × coef</label><div class="av-inline2">' + fldRaw('ponderation.surfJardin', d.ponderation.surfJardin, 'number') + fldRaw('ponderation.coefJardin', d.ponderation.coefJardin, 'number', '0.01') + '</div></div>' +
+          '</div></div>' : '') +
+        (M.cout.on ? '<div class="av-box"><div class="av-box-title">Méthode du coût</div><div class="av-grid-3">' +
+          fld('Valeur du terrain (€)', 'methodes.cout.valeurTerrain', { type: 'number' }) +
+          fld('Coût construction (€/m²)', 'methodes.cout.coutConstructionM2', { type: 'number' }) +
+          fld('Vétusté (%)', 'methodes.cout.vetustePct', { type: 'number' }) +
+          '</div></div>' : '') +
         '<div id="avResultBlock">' + renderResultBlock() + '</div>' +
         '<div class="av-retained"><div class="av-r-label" style="margin-bottom:.5rem;">Valeur retenue ' + (b.statut === 'occupe' ? "en l'état occupé" : 'bien libre') + '</div>' +
         '<div class="av-grid-2">' +
@@ -336,17 +514,29 @@
   }
   function head(t, s) { return '<div class="av-sec-head"><h5>' + esc(t) + '</h5><div class="av-sub">' + esc(s) + '</div></div>'; }
 
+  function renderAcmSynth() {
+    var d = state.data, st = acmStats(d), retenu = acmRetenuM2(d);
+    return '<div class="av-box-title">€/m² issu des comparables</div>' +
+      '<div class="av-live" style="gap:1.2rem;">' +
+      liveItem('Comparables inclus', st.count) +
+      liveItem('Médiane €/m² ajusté', st.median ? fmt(st.median) + ' €' : '—') +
+      liveItem('Moyenne €/m² ajusté', st.mean ? fmt(st.mean) + ' €' : '—') +
+      liveItem('€/m² ACM retenu', retenu ? fmt(retenu) + ' €' : '—') +
+      '</div>';
+  }
   function renderResultBlock() {
     var d = state.data, c = compute(d), occ = d.bien.statut === 'occupe';
     function rr(l, v, hl) { return '<div class="av-r-row' + (hl ? ' hl' : '') + '"><span>' + l + '</span><span>' + v + '</span></div>'; }
-    var html = '<div class="av-result"><div class="av-box-title" style="display:flex;align-items:center;gap:.4rem;">✨ Résultats automatiques</div>' +
-      rr('Comparaison borne basse (' + (d.bien.surfaceCarrez || '—') + ' m² × ' + fmt(num(d.marche.moyenneBas)) + ' €)', fmtE(c.vlBas)) +
-      rr('Comparaison valeur moyenne (' + (d.bien.surfaceCarrez || '—') + ' m² × ' + fmt(num(d.marche.moyenneMoyen)) + ' €)', fmtE(c.vlMoy)) +
-      rr('Capitalisation du revenu locatif', fmtE(c.valeurCapi)) +
-      rr('Valeur libre estimée', fmtE(c.vlBas) + ' – ' + fmtE(c.vlMoy), true) +
-      rr("Décote pour occupation (-" + d.calcul.decoteOccupation + '%)', occ ? '- ' + fmtE(Math.round(c.vlBas * num(d.calcul.decoteOccupation) / 100)) : 'non applicable') +
+    var rows = c.methodes.map(function (e) {
+      return rr(e.label + (e.actif ? ' · poids ' + e.poids + '%' : ' (inactif)'),
+        e.val ? fmtE(e.val) + (e.actif ? ' → ' + fmtE(e.contribution) : '') : '—');
+    }).join('');
+    return '<div class="av-result"><div class="av-box-title">✨ Synthèse multi-méthodes</div>' +
+      rr('Référence étude (comparaison brute)', fmtE(c.vlBas) + ' – ' + fmtE(c.vlMoy)) +
+      rows +
+      rr('Valeur pondérée (hors décote)', fmtE(c.valPonderee), true) +
+      (occ ? rr("Après décote d'occupation (-" + d.calcul.decoteOccupation + '%)', fmtE(Math.round(c.valPonderee * (1 - num(d.calcul.decoteOccupation) / 100)))) : '') +
       '</div>';
-    return html;
   }
 
   // ── Refresh des sorties (sans toucher aux inputs en cours) ──
@@ -362,6 +552,21 @@
     }
     var rb = document.getElementById('avResultBlock');
     if (rb) rb.innerHTML = renderResultBlock();
+    // €/m² par comparable (cellules de sortie de la grille ACM)
+    (state.data.comparables || []).forEach(function (cp, i) {
+      var su = num(cp.surface), pr = num(cp.prix);
+      var m2 = su > 0 && pr > 0 ? pr / su : 0;
+      var adj = m2 * (1 + num(cp.ajustementPct) / 100);
+      var e1 = document.querySelector('[data-acm-m2="' + i + '"]'); if (e1) e1.textContent = m2 ? fmt(Math.round(m2)) + ' €' : '—';
+      var e2 = document.querySelector('[data-acm-adj="' + i + '"]'); if (e2) e2.textContent = adj ? fmt(Math.round(adj)) + ' €' : '—';
+    });
+    var synth = document.getElementById('avAcmSynth');
+    if (synth) synth.innerHTML = renderAcmSynth();
+    // valeurs par méthode (section Valeur)
+    c.methodes.forEach(function (e) {
+      var sp = document.querySelector('[data-method-val="' + e.key + '"]');
+      if (sp) { sp.textContent = e.val ? fmtE(e.val) : '—'; sp.style.opacity = e.actif ? '1' : '.5'; }
+    });
     // placeholders auto des bornes retenues
     var pb = document.querySelector('[data-p="calcul.valeurOccupeeBasseManuel"]');
     var ph = document.querySelector('[data-p="calcul.valeurOccupeeHauteManuel"]');
@@ -433,11 +638,15 @@
 
   function onInput(e) {
     var el = e.target;
-    if (el.dataset.p) setPath(state.data, el.dataset.p, el.value);
-    else if (el.dataset.list) { var arr = getPath(state.data, el.dataset.list); arr[+el.dataset.idx][el.dataset.key] = el.value; }
-    else if (el.dataset.simplelist) { getPath(state.data, el.dataset.simplelist)[+el.dataset.idx] = el.value; }
-    else if (el.dataset.radio) { setPath(state.data, el.dataset.radio, el.value); showSection(state.section); return; }
+    var isCb = el.type === 'checkbox';
+    var val = isCb ? el.checked : el.value;
+    if (el.dataset.p) setPath(state.data, el.dataset.p, val);
+    else if (el.dataset.list) { var arr = getPath(state.data, el.dataset.list); arr[+el.dataset.idx][el.dataset.key] = val; }
+    else if (el.dataset.simplelist) { getPath(state.data, el.dataset.simplelist)[+el.dataset.idx] = val; }
+    else if (el.dataset.radio) { setPath(state.data, el.dataset.radio, val); showSection(state.section); return; }
     else return;
+    // Une case à cocher peut modifier la structure affichée (méthodes, inclus…) → re-render
+    if (isCb) { showSection(state.section); return; }
     refreshOutputs();
   }
 
@@ -446,8 +655,11 @@
     if (!t) return;
     if (t.dataset.sec) { showSection(t.dataset.sec); return; }
     if (t.dataset.listadd) {
-      var tpl = t.dataset.listadd === 'loyers' ? { type: '', surface: '', loyer: '', secteur: '' } : { nom: '', bas: '', moyen: '', haut: '' };
-      getPath(state.data, t.dataset.listadd).push(tpl); showSection(state.section); return;
+      var key = t.dataset.listadd, tpl;
+      if (key === 'loyers') tpl = { type: '', surface: '', loyer: '', secteur: '' };
+      else if (key === 'comparables') tpl = comparableTemplate();
+      else tpl = { nom: '', bas: '', moyen: '', haut: '' };
+      getPath(state.data, key).push(tpl); showSection(state.section); return;
     }
     if (t.dataset.listdel) { getPath(state.data, t.dataset.listdel).splice(+t.dataset.idx, 1); showSection(state.section); return; }
     if (t.dataset.simpleadd) { getPath(state.data, t.dataset.simpleadd).push(''); showSection(state.section); return; }
@@ -462,8 +674,72 @@
     else if (a === 'load') doLoad();
     else if (a === 'delete') doDelete();
     else if (a === 'save-sign') { if (saveSignataire(state.data.signataire)) toast('Signataire mémorisé'); }
+    else if (a === 'import-dvf') importDvf();
+    else if (a === 'toggle-paste') { var w = document.getElementById('avPasteWrap'); if (w) w.style.display = w.style.display === 'none' ? 'block' : 'none'; }
+    else if (a === 'parse-paste') parsePaste();
     else if (a === 'word') exportWord();
     else if (a === 'pdf') exportPdf();
+  }
+
+  // Importe les ventes DVF proches (transactions individuelles de l'étude) comme comparables
+  function importDvf() {
+    var tx = window.__fidiTransactions || [];
+    if (!tx.length) { toast('Aucune transaction DVF chargée', true); return; }
+    var typeBien = (state.data.bien.type || '').toLowerCase();
+    var wantMaison = /maison|villa/.test(typeBien);
+    var sref = num(state.data.bien.surfaceCarrez);
+    // Filtre par type, surface bâtie présente, puis tri par proximité de surface
+    var rows = tx.filter(function (r) {
+      if (!num(r.surface_bati) || !num(r.prix)) return false;
+      var tl = (r.type_local || '').toLowerCase();
+      if (wantMaison) return tl.indexOf('maison') >= 0;
+      return tl.indexOf('appartement') >= 0;
+    });
+    rows.sort(function (x, y) { return Math.abs(num(x.surface_bati) - sref) - Math.abs(num(y.surface_bati) - sref); });
+    var top = rows.slice(0, 8);
+    if (!top.length) { toast('Aucune vente du même type', true); return; }
+    var existing = {};
+    state.data.comparables.forEach(function (c) { if (c.nature === 'vendu') existing[c.adresse + '|' + c.prix] = true; });
+    var added = 0;
+    top.forEach(function (r) {
+      var keyD = (r.adresse || '') + '|' + r.prix;
+      if (existing[keyD]) return;
+      state.data.comparables.push(comparableTemplate({
+        nature: 'vendu', source: 'DVF', type: r.type_local || '', secteur: r.adresse || '',
+        surface: r.surface_bati, prix: r.prix, date: r.date || '', adresse: r.adresse || ''
+      }));
+      added++;
+    });
+    showSection('comparables');
+    toast(added + ' vente(s) DVF importée(s)');
+  }
+
+  // Extraction best-effort depuis le texte d'une annonce collée
+  function parsePaste() {
+    var ta = document.getElementById('avPasteText');
+    var txt = ta ? ta.value : '';
+    if (!txt.trim()) { toast('Collez d\'abord un texte', true); return; }
+    var t = txt.replace(/ /g, ' ');
+    // Prix : plus grand nombre suivi de € (ou précédé de "prix")
+    var prix = '';
+    var prixMatches = t.match(/(\d[\d .]{2,})\s*€/g) || [];
+    if (prixMatches.length) {
+      var vals = prixMatches.map(function (s) { return num(s.replace(/[^\d]/g, '')); });
+      prix = String(Math.max.apply(null, vals));
+    }
+    // Surface : nombre suivi de m²/m2
+    var surf = '';
+    var sm = t.match(/(\d+(?:[.,]\d+)?)\s*m(?:²|2)/i);
+    if (sm) surf = sm[1].replace(',', '.');
+    // Type
+    var type = '';
+    var tm = t.match(/\b(studio|T\s?[1-6]|F\s?[1-6]|maison|villa|appartement)\b/i);
+    if (tm) type = tm[1].toUpperCase().replace(/\s+/g, '');
+    if (!prix && !surf) { toast('Rien d\'exploitable trouvé', true); return; }
+    state.data.comparables.push(comparableTemplate({ nature: 'annonce', source: 'Autre', type: type, surface: surf, prix: prix, note: 'Importé par collage' }));
+    if (ta) ta.value = '';
+    showSection('comparables');
+    toast('Annonce ajoutée (à vérifier)');
   }
 
   function navSection(dir) {
@@ -632,13 +908,34 @@
         '<tr style="background:#eaf0f8;"><td class="bold">Bien évalué (occupé)</td><td class="center bold">' + (b.surfaceCarrez ? esc(b.surfaceCarrez) + ' m²' : '—') + '</td><td class="center bold">' + fmtE(b.loyer) + '</td><td class="center bold">' + (b.surfaceCarrez && b.loyer ? (num(b.loyer) / num(b.surfaceCarrez)).toFixed(1) + ' €/m²' : '—') + '</td><td class="bold">' + esc(b.adresse || '—') + '</td></tr></table>';
     }
 
-    html += '<h1>5. Détermination de la valeur vénale</h1><table><tr><th>Méthode de calcul</th><th class="center">Résultat</th></tr>' +
-      '<tr><td>Comparaison – borne basse (' + (b.surfaceCarrez || '—') + ' m² × ' + fmt(num(m.moyenneBas)) + ' €)</td><td class="center bold">' + fmtE(calc.vlBas) + '</td></tr>' +
-      '<tr><td>Comparaison – valeur moyenne (' + (b.surfaceCarrez || '—') + ' m² × ' + fmt(num(m.moyenneMoyen)) + ' €)</td><td class="center bold">' + fmtE(calc.vlMoy) + '</td></tr>' +
-      '<tr style="background:#eaf0f8;"><td class="bold">Valeur libre estimée</td><td class="center bold">' + fmtE(calc.vlBas) + ' – ' + fmtE(calc.vlMoy) + '</td></tr>' +
-      (occ ? '<tr><td>Décote pour occupation locative (-' + data.calcul.decoteOccupation + ' %)</td><td class="center">- ' + fmtE(Math.round(calc.vlBas * num(data.calcul.decoteOccupation) / 100)) + '</td></tr>' +
-        '<tr><td>Capitalisation du revenu (' + fmtE(num(b.loyer) * 12) + ' / ' + data.calcul.tauxCapi + ' %)</td><td class="center bold">≈ ' + fmtE(calc.valeurCapi) + '</td></tr>' : '') +
-      '<tr class="gold-row"><td>VALEUR VÉNALE ' + (occ ? "EN L'ÉTAT OCCUPÉ" : 'BIEN LIBRE') + ' – fourchette retenue</td><td class="center">' + fmtE(calc.voccBas) + ' – ' + fmtE(calc.voccHaut) + '</td></tr></table>';
+    // 4.3 — Analyse comparative de marché (comparables inclus)
+    var comps = (data.comparables || []).filter(function (cp) { return cp.inclus !== false && num(cp.surface) > 0 && num(cp.prix) > 0; });
+    if (comps.length) {
+      html += '<h2>4.3 Analyse comparative de marché</h2>' +
+        '<p style="font-size:9px;color:#5c6470;">Comparables <b>vendus</b> = prix réels constatés (DVF). <b>Annonces</b> = prix demandés sur les portails, généralement supérieurs au prix de vente final. Les valeurs sont ajustées pour refléter les écarts avec le bien évalué.</p>' +
+        '<table><tr><th>Source</th><th>Nature</th><th>Type</th><th class="center">Surface</th><th class="center">Prix</th><th class="center">€/m²</th><th class="center">Ajust.</th><th class="center">€/m² ajusté</th></tr>' +
+        comps.map(function (cp) {
+          var su = num(cp.surface), pr = num(cp.prix), pm2 = pr / su, adj = pm2 * (1 + num(cp.ajustementPct) / 100);
+          return '<tr><td>' + esc(cp.source) + '</td><td>' + (cp.nature === 'vendu' ? 'Vendu' : 'Annonce') + '</td><td>' + esc(cp.type || '—') + '</td>' +
+            '<td class="center">' + fmt(su) + ' m²</td><td class="center">' + fmtE(pr) + '</td><td class="center">' + fmt(Math.round(pm2)) + ' €</td>' +
+            '<td class="center">' + (cp.ajustementPct ? (num(cp.ajustementPct) > 0 ? '+' : '') + cp.ajustementPct + ' %' : '—') + '</td>' +
+            '<td class="center bold">' + fmt(Math.round(adj)) + ' €</td></tr>';
+        }).join('') +
+        '<tr style="background:#eaf0f8;"><td class="bold" colspan="7">€/m² ACM retenu (médiane des €/m² ajustés)</td><td class="center bold">' + fmt(calc.acmM2) + ' €</td></tr></table>';
+    }
+
+    html += '<h1>5. Détermination de la valeur vénale</h1>' +
+      '<p>La valeur retenue résulte de la <b>combinaison pondérée</b> des méthodes applicables au bien :</p>' +
+      '<table><tr><th>Méthode</th><th class="center">Valeur</th><th class="center">Poids</th><th class="center">Contribution</th></tr>' +
+      calc.methodes.map(function (e) {
+        return '<tr' + (e.actif ? '' : ' style="color:#9aa0a6;"') + '><td>' + esc(e.label) + '</td>' +
+          '<td class="center">' + (e.val ? fmtE(e.val) : '—') + '</td>' +
+          '<td class="center">' + (e.actif ? e.poids + ' %' : '—') + '</td>' +
+          '<td class="center bold">' + (e.actif ? fmtE(e.contribution) : '—') + '</td></tr>';
+      }).join('') +
+      '<tr style="background:#eaf0f8;"><td class="bold">Valeur pondérée (hors décote)</td><td class="center bold" colspan="3">' + fmtE(calc.valPonderee) + '</td></tr>' +
+      (occ ? '<tr><td>Décote pour occupation locative (-' + data.calcul.decoteOccupation + ' %)</td><td class="center" colspan="3">' + fmtE(Math.round(calc.valPonderee * (1 - num(data.calcul.decoteOccupation) / 100))) + '</td></tr>' : '') +
+      '<tr class="gold-row"><td>VALEUR VÉNALE ' + (occ ? "EN L'ÉTAT OCCUPÉ" : 'BIEN LIBRE') + ' – fourchette retenue</td><td class="center" colspan="3">' + fmtE(calc.voccBas) + ' – ' + fmtE(calc.voccHaut) + '</td></tr></table>';
 
     if (b.prixVente) {
       html += '<h2>Analyse de cohérence – prix de cession</h2>' +

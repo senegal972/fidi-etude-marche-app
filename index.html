@@ -2163,6 +2163,8 @@ async function loadTransactionsAsync(loc, perimetre){
       return;
     }
     const tdata = await resp.json();
+    // Expose les transactions DVF individuelles au module Avis de valeur (ACM)
+    window.__fidiTransactions = tdata.transactions || [];
     renderTransactions(
       tdata.transactions  || [],
       tdata.rayon_km      || 1,
