@@ -72,6 +72,15 @@ function median(arr) {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
+// Champ DVF prix au m² selon le type de bien demandé
+function fieldForType(typeBien) {
+  const t = (typeBien || "").toLowerCase();
+  if (t.includes("maison")) return "prix_m2_maison";
+  if (t.includes("terrain")) return "prix_m2_terrain";
+  if (t.includes("local")) return "prix_m2_local";
+  return "prix_m2_appart";
+}
+
 function deptFolder(code) {
   if (code.startsWith("2A") || code.startsWith("2B")) return code.slice(0, 2);
   if (code.length >= 3 && (code.startsWith("97") || code.startsWith("98"))) return code.slice(0, 3);
@@ -120,6 +129,18 @@ function prixM2List(transactions) {
     const val = parseFloatSafe(t.valeur_fonciere);
     const surf = parseFloatSafe(t.surface_reelle_bati);
     if (val && surf && surf >= 10 && val >= 5000) out.push(val / surf);
+  }
+  return out;
+}
+
+// Prix au m² de terrain : ventes sans bâti, sur la surface de terrain
+function terrainM2List(transactions) {
+  const out = [];
+  for (const t of transactions) {
+    const val = parseFloatSafe(t.valeur_fonciere);
+    const sb = parseFloatSafe(t.surface_reelle_bati);
+    const st = parseFloatSafe(t.surface_terrain);
+    if (val && st && !sb && st >= 50 && val >= 1000) out.push(val / st);
   }
   return out;
 }
@@ -260,7 +281,7 @@ async function _computeDvfData(codeInsee) {
   }
 
   const annees = [];
-  let allVentes = [], allMaisons = [], allApparts = [];
+  let allVentes = [], allMaisons = [], allApparts = [], allLocaux = [], allTerrains = [];
   const yearsFound = [];
   const years = Object.keys(byYear).map(Number).sort((a, b) => a - b);
 
@@ -268,19 +289,28 @@ async function _computeDvfData(codeInsee) {
     const ventes  = byYear[year];
     const maisons = ventes.filter((r) => r.type_local === "Maison");
     const apparts = ventes.filter((r) => r.type_local === "Appartement");
+    const locaux  = ventes.filter((r) => /local/i.test(r.type_local || ""));
     const pmM = prixM2List(maisons);
     const pmA = prixM2List(apparts);
+    const pmL = prixM2List(locaux);
+    const pmTer = terrainM2List(ventes);
     annees.push({
       annee: year,
       nb_maison: maisons.length,
       nb_appart: apparts.length,
+      nb_local: locaux.length,
+      nb_terrain: pmTer.length,
       nb_total: ventes.length,
       prix_m2_maison: pmM.length ? Math.round(median(pmM)) : null,
       prix_m2_appart: pmA.length ? Math.round(median(pmA)) : null,
+      prix_m2_local: pmL.length ? Math.round(median(pmL)) : null,
+      prix_m2_terrain: pmTer.length ? Math.round(median(pmTer)) : null,
     });
     allVentes  = allVentes.concat(ventes);
     allMaisons = allMaisons.concat(maisons);
     allApparts = allApparts.concat(apparts);
+    allLocaux  = allLocaux.concat(locaux);
+    allTerrains = allTerrains.concat(ventes);
     yearsFound.push(year);
   }
 
@@ -289,6 +319,8 @@ async function _computeDvfData(codeInsee) {
   if (yearsFound.length) {
     const pmM = prixM2List(allMaisons);
     const pmA = prixM2List(allApparts);
+    const pmL = prixM2List(allLocaux);
+    const pmTer = terrainM2List(allTerrains);
     const pmT = prixM2List(allVentes);
     periodes = [{
       periode: `${Math.min(...yearsFound)}–${Math.max(...yearsFound)}`,
@@ -297,10 +329,14 @@ async function _computeDvfData(codeInsee) {
       nb_total: allVentes.length,
       prix_m2_maison: pmM.length ? Math.round(median(pmM)) : null,
       prix_m2_appart: pmA.length ? Math.round(median(pmA)) : null,
+      prix_m2_local: pmL.length ? Math.round(median(pmL)) : null,
+      prix_m2_terrain: pmTer.length ? Math.round(median(pmTer)) : null,
     }];
     // Valoris calculé localement depuis DVF (remplace l'ancienne API valoris-immo.fr morte)
     if (pmM.length) valorisLocal.maison      = { prix_median_m2: Math.round(median(pmM)), nb: pmM.length, source: "DVF local" };
     if (pmA.length) valorisLocal.appartement = { prix_median_m2: Math.round(median(pmA)), nb: pmA.length, source: "DVF local" };
+    if (pmL.length) valorisLocal.local       = { prix_median_m2: Math.round(median(pmL)), nb: pmL.length, source: "DVF local" };
+    if (pmTer.length) valorisLocal.terrain    = { prix_median_m2: Math.round(median(pmTer)), nb: pmTer.length, source: "DVF local (terrain)" };
     if (pmT.length) valorisLocal.tous        = { prix_median_m2: Math.round(median(pmT)), nb: pmT.length, source: "DVF local" };
   }
 
@@ -423,7 +459,7 @@ function noteActivite(dvfPeriodes, dvfAnnees) {
 }
 
 function noteTendance(dvfAnnees, typeBien) {
-  const field = typeBien.includes("maison") ? "prix_m2_maison" : "prix_m2_appart";
+  const field = fieldForType(typeBien);
   const prices = dvfAnnees.filter((r) => r[field]).map((r) => [r.annee, r[field]]);
   if (prices.length < 2) return [10, "Tendance non calculable"];
   prices.sort((a, b) => a[0] - b[0]);
@@ -527,7 +563,7 @@ function estimateBien(valoris, dvfAnnees, dvfPeriodes, typeBien, surface) {
   const v = valoris[typeBien] || valoris.tous;
   if (v) prixM2 = v.prix_median_m2;
   if (prixM2 === null || prixM2 === undefined) {
-    const field = typeBien.includes("maison") ? "prix_m2_maison" : "prix_m2_appart";
+    const field = fieldForType(typeBien);
     for (let i = dvfAnnees.length - 1; i >= 0; i--) {
       if (dvfAnnees[i][field]) { prixM2 = parseFloat(dvfAnnees[i][field]); break; }
     }

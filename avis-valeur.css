@@ -28,7 +28,7 @@
 @media (max-width:991px){.av-layout.av-with-preview{grid-template-columns:minmax(0,1fr);}}
 
 /* ── Colonne formulaire ─────────────────────────────────────── */
-.av-form{padding:1.25rem 1.5rem;max-height:72vh;overflow-y:auto;}
+.av-form{padding:1.25rem 1.5rem;max-height:calc(100vh - 210px);overflow-y:auto;}
 .av-form-section{display:none;}
 .av-form-section.active{display:block;}
 .av-sec-head{border-bottom:2px solid var(--av-gold);padding-bottom:.5rem;margin-bottom:1rem;}
@@ -99,8 +99,19 @@
 .av-method-poids input{width:56px;font-size:.8rem;padding:.2rem .35rem;border:1px solid #ced4da;border-radius:5px;}
 .av-method-val{font-weight:800;color:var(--av-blue);min-width:90px;text-align:right;}
 
+/* ── Bibliothèque « Mes avis » ──────────────────────────────── */
+.av-lib-item{display:flex;align-items:center;justify-content:space-between;gap:.6rem;padding:.6rem .7rem;border:1px solid var(--av-grey-light);border-radius:8px;margin-bottom:.5rem;}
+.av-lib-ref{font-weight:700;color:var(--av-blue);font-size:.9rem;}
+.av-lib-sub{font-size:.72rem;color:var(--av-grey);}
+.av-lib-val{font-weight:700;color:var(--av-ink);font-size:.82rem;}
+
+/* ── Carte localisation ─────────────────────────────────────── */
+.av-map-wrap{position:relative;display:inline-block;max-width:100%;border:1px solid var(--av-grey-light);border-radius:8px;overflow:hidden;}
+.av-map-img{display:block;max-width:100%;height:auto;background:#eef1f4;min-height:120px;}
+.av-map-pin{position:absolute;top:50%;left:50%;transform:translate(-50%,-100%);font-size:1.6rem;filter:drop-shadow(0 1px 2px rgba(0,0,0,.4));pointer-events:none;}
+
 /* ── Aperçu live ────────────────────────────────────────────── */
-.av-preview{background:#525659;padding:1rem;max-height:72vh;overflow-y:auto;}
+.av-preview{background:#525659;padding:1rem;max-height:calc(100vh - 210px);overflow-y:auto;}
 .av-preview-page{background:#fff;box-shadow:0 2px 16px rgba(0,0,0,.3);padding:2rem 2.2rem;font-family:Calibri,Arial,sans-serif;color:#000;font-size:11px;line-height:1.45;}
 
 /* ── Document (partagé aperçu + impression + word) ──────────── */

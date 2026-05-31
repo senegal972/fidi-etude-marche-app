@@ -53,7 +53,12 @@
         moyenneBas: '', moyenneMoyen: '', moyenneHaut: '', evol12m: '', evol3m: '', commentaire: ''
       },
       loyers: [{ type: '', surface: '', loyer: '', secteur: '' }],
-      calcul: { tauxCapi: 6.5, decoteOccupation: 10, valeurOccupeeBasseManuel: '', valeurOccupeeHauteManuel: '' },
+      calcul: { tauxCapi: 6.5, decoteOccupation: 10, decoteEtat: '', valeurOccupeeBasseManuel: '', valeurOccupeeHauteManuel: '' },
+      etat: {
+        composants: { structure: 0, toiture: 0, facades: 0, electricite: 0, plomberie: 0, cuisinesdb: 0, revetements: 0, chauffage: 0 },
+        vetusteManuel: '', commentaire: ''
+      },
+      loc: { adresse: '', lat: '', lon: '', sismicite: '', radon: '', ppr: '', icpe: '', risquesDetail: '', commentaire: '' },
       comparables: [],
       acm: { prixM2Manuel: '' },
       ponderation: { active: false,
@@ -148,6 +153,56 @@
     return out;
   }
 
+  // Extraction des risques pour la section Localisation (persistés dans l'avis)
+  function extractLocRisques(fidi) {
+    var r = (fidi && fidi.risques) || {}, out = { sismicite: '', radon: '', ppr: '', detail: '' };
+    var sismo = r.sismicite, zone = null;
+    if (Array.isArray(sismo) && sismo.length) zone = sismo[0].zone_sismicite || sismo[0].zone;
+    else if (sismo && typeof sismo === 'object') zone = sismo.zone_sismicite || sismo.zone;
+    if (zone) out.sismicite = 'Zone ' + String(zone).replace(/zone/i, '').trim();
+    var radon = r.radon, cat = null;
+    if (Array.isArray(radon) && radon.length) cat = radon[0].categorie || radon[0].classe_potentiel;
+    else if (radon && typeof radon === 'object') cat = radon.categorie || radon.classe_potentiel;
+    if (cat) out.radon = 'Catégorie ' + String(cat).trim();
+    var ppr = r.ppr, pprArr = Array.isArray(ppr) ? ppr : (ppr && ppr.data) ? ppr.data : [];
+    if (pprArr && pprArr.length) {
+      var libs = pprArr.map(function (p) { return p.libelle_risque_long || p.libelle || p.lib_risque_jo || p.risque || ''; }).filter(Boolean);
+      out.ppr = libs.length ? Array.from(new Set(libs)).slice(0, 4).join(' ; ') : pprArr.length + ' plan(s) de prévention recensé(s)';
+    }
+    if (fidi && fidi.score && fidi.score.axes && fidi.score.axes.risques) out.detail = fidi.score.axes.risques.detail || '';
+    return out;
+  }
+  // Carte statique IGN Géoplateforme (sans clé API) centrée sur le bien
+  function ignStaticMapUrl(lat, lon) {
+    if (!lat || !lon) return '';
+    var dLat = 0.010, dLon = 0.015;
+    var bbox = (lat - dLat) + ',' + (lon - dLon) + ',' + (lat + dLat) + ',' + (lon + dLon);
+    var p = { SERVICE: 'WMS', VERSION: '1.3.0', REQUEST: 'GetMap', LAYERS: 'GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2', STYLES: '', CRS: 'EPSG:4326', BBOX: bbox, WIDTH: 640, HEIGHT: 420, FORMAT: 'image/png' };
+    return 'https://data.geopf.fr/wms-r/wms?' + Object.keys(p).map(function (k) { return k + '=' + encodeURIComponent(p[k]); }).join('&');
+  }
+  function renderLocalisation(d) {
+    var L = d.loc || {};
+    var hasGeo = L.lat && L.lon;
+    var mapsUrl = hasGeo ? 'https://www.google.com/maps?q=' + L.lat + ',' + L.lon : '';
+    var mapImg = hasGeo ? ignStaticMapUrl(num(L.lat), num(L.lon)) : '';
+    return head('Localisation & risques', 'Carte du bien, risques naturels et PPRN') +
+      (hasGeo
+        ? '<div class="av-map-wrap"><img class="av-map-img" src="' + esc(mapImg) + '" alt="Carte de localisation (IGN)"/><span class="av-map-pin" title="Bien">📍</span></div>'
+        : '<div class="av-tip" style="padding:.8rem;">Lancez une analyse dans l\'étude (ou renseignez latitude/longitude) pour afficher la carte.</div>') +
+      '<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin:.5rem 0;">' +
+      (mapsUrl ? '<a class="btn btn-sm btn-outline-primary" href="' + mapsUrl + '" target="_blank" rel="noopener"><i class="bi bi-geo-alt me-1"></i>Voir sur Google Maps</a>' : '') +
+      '<a class="btn btn-sm btn-outline-secondary" href="https://www.georisques.gouv.fr/" target="_blank" rel="noopener"><i class="bi bi-shield-exclamation me-1"></i>Géorisques</a>' +
+      '</div>' +
+      '<div class="av-grid-2">' + fld('Adresse', 'loc.adresse', { flag: true }) +
+      '<div class="av-grid-2">' + fld('Latitude', 'loc.lat') + fld('Longitude', 'loc.lon') + '</div></div>' +
+      '<div class="av-box"><div class="av-box-title">Risques naturels & technologiques</div><div class="av-grid-2">' +
+      fld('Sismicité', 'loc.sismicite', { flag: true }) + fld('Radon', 'loc.radon', { flag: true }) +
+      fld('PPRN', 'loc.ppr', { flag: true, tip: 'Plan(s) de prévention des risques naturels' }) +
+      fld('Synthèse risques', 'loc.risquesDetail', { flag: true }) +
+      '</div></div>' +
+      fld('Commentaire localisation / environnement', 'loc.commentaire', { type: 'textarea', rows: 2 });
+  }
+
   function buildPrefillFromEtude(fidi, inputs) {
     var d = defaultData();
     var sig = loadSignataire();
@@ -195,6 +250,13 @@
     var tendDetail = score.axes && score.axes.tendance ? score.axes.tendance.detail : '';
     if (evo) d.marche.commentaire = 'Évolution observée ' + (evo.pct >= 0 ? '+' : '') + evo.pct + ' % sur la période ' + evo.periode + (tendDetail ? ' (' + tendDetail + ')' : '') + '.';
     else if (tendDetail) d.marche.commentaire = tendDetail + '.';
+
+    // Localisation & risques (persistés dans l'avis)
+    d.loc.adresse = (inputs && inputs.adresse) || loc.label || '';
+    d.loc.lat = loc.lat != null ? String(loc.lat) : '';
+    d.loc.lon = loc.lon != null ? String(loc.lon) : '';
+    var lr = extractLocRisques(fidi);
+    d.loc.sismicite = lr.sismicite; d.loc.radon = lr.radon; d.loc.ppr = lr.ppr; d.loc.risquesDetail = lr.detail;
 
     var vig = risquesToVigilances(fidi.risques, score.axes);
     if (vig.length) d.vigilances = vig;
@@ -259,9 +321,13 @@
     var valComparaison = acm > 0 && s > 0 ? Math.round(acm * s / 1000) * 1000 : 0;
     var valSurfPond = acm > 0 && sPond > 0 ? Math.round(acm * sPond / 1000) * 1000 : 0;
     var valeurCapi = loyer > 0 && taux > 0 ? Math.round((loyer * 12 / (taux / 100)) / 500) * 500 : 0;
+    // Vétusté / état → décote d'état (auto depuis la grille, override via calcul.decoteEtat)
+    var vetuste = vetusteGlobale(data);
+    var decoteEtat = (c.decoteEtat !== '' && c.decoteEtat != null) ? num(c.decoteEtat) : vetuste;
     var cout = M.cout || {};
+    var vetCout = num(cout.vetustePct) || vetuste; // la méthode coût utilise la vétusté si non saisie
     var valCout = (num(cout.coutConstructionM2) > 0 && s > 0)
-      ? Math.round((num(cout.valeurTerrain) + num(cout.coutConstructionM2) * s * (1 - num(cout.vetustePct) / 100)) / 1000) * 1000
+      ? Math.round((num(cout.valeurTerrain) + num(cout.coutConstructionM2) * s * (1 - vetCout / 100)) / 1000) * 1000
       : 0;
 
     var methodes = [
@@ -278,9 +344,10 @@
     methodes.forEach(function (e) { e.contribution = e.actif ? Math.round(e.val * e.poids / wsum) : 0; });
     var valPonderee = wsum > 0 ? Math.round((vsum / wsum) / 1000) * 1000 : 0;
 
-    // Valeur retenue (fourchette) — pondérée, décote d'occupation si occupé, override manuel conservé
+    // Valeur retenue (fourchette) — pondérée, décote d'état puis d'occupation, override manuel conservé
     var central = valPonderee || vlMoy;
-    var centralFinal = occ ? central * (1 - decote / 100) : central;
+    var centralEtat = Math.round(central * (1 - decoteEtat / 100));
+    var centralFinal = occ ? centralEtat * (1 - decote / 100) : centralEtat;
     var autoBas = Math.round(centralFinal * 0.95 / 1000) * 1000;
     var autoHaut = Math.round(centralFinal * 1.05 / 1000) * 1000;
     var voccBas = c.valeurOccupeeBasseManuel ? num(c.valeurOccupeeBasseManuel) : autoBas;
@@ -292,6 +359,7 @@
       acmM2: acm, acmMedian: stats.median, acmMean: stats.mean, acmCount: stats.count,
       surfacePond: sPond, valComparaison: valComparaison, valSurfPond: valSurfPond, valCout: valCout,
       methodes: methodes, valPonderee: valPonderee,
+      vetuste: vetuste, decoteEtat: decoteEtat, centralEtat: centralEtat,
       voccBas: voccBas, voccHaut: voccHaut
     };
   }
@@ -302,18 +370,40 @@
   var SECTIONS = [
     { id: 'metadata', label: '1. Référence' },
     { id: 'bien', label: '2. Le bien' },
-    { id: 'marche', label: '3. Marché' },
-    { id: 'comparables', label: '4. Comparables (ACM)' },
-    { id: 'loyers', label: '5. Loyers' },
-    { id: 'calcul', label: '6. Valeur' },
-    { id: 'swot', label: '7. Atouts & vigilance' },
-    { id: 'conclusion', label: '8. Conclusion' },
-    { id: 'reserves', label: '9. Réserves' },
-    { id: 'signature', label: '10. Signataire' }
+    { id: 'etat', label: '3. État & vétusté' },
+    { id: 'localisation', label: '4. Localisation & risques' },
+    { id: 'marche', label: '5. Marché' },
+    { id: 'comparables', label: '6. Comparables (ACM)' },
+    { id: 'loyers', label: '7. Loyers' },
+    { id: 'calcul', label: '8. Valeur' },
+    { id: 'swot', label: '9. Atouts & vigilance' },
+    { id: 'conclusion', label: '10. Conclusion' },
+    { id: 'reserves', label: '11. Réserves' },
+    { id: 'signature', label: '12. Signataire' }
   ];
 
   var PORTAILS = ['Leboncoin', 'SeLoger', 'Bien’ici', 'Logic-Immo', 'PAP', 'Figaro Immo', 'DVF', 'Autre'];
   var ETATS = ['', 'Neuf', 'Excellent', 'Bon', 'À rafraîchir', 'À rénover'];
+  var VET_COMPOSANTS = [
+    { key: 'structure', label: 'Structure / gros œuvre', poids: 25 },
+    { key: 'toiture', label: 'Toiture / étanchéité', poids: 15 },
+    { key: 'facades', label: 'Façades & menuiseries ext.', poids: 15 },
+    { key: 'electricite', label: 'Électricité', poids: 10 },
+    { key: 'plomberie', label: 'Plomberie / sanitaires', poids: 10 },
+    { key: 'cuisinesdb', label: 'Cuisine / salle de bains', poids: 10 },
+    { key: 'revetements', label: 'Revêtements sols & murs', poids: 10 },
+    { key: 'chauffage', label: 'Chauffage / climatisation', poids: 5 }
+  ];
+  var VET_NIVEAUX = [
+    { label: 'Neuf', v: 0 }, { label: 'Bon', v: 10 }, { label: 'Moyen', v: 25 },
+    { label: 'À rénover', v: 50 }, { label: 'Vétuste / HS', v: 80 }
+  ];
+  function vetusteGlobale(data) {
+    var co = (data.etat && data.etat.composants) || {};
+    if (data.etat && data.etat.vetusteManuel !== '' && data.etat.vetusteManuel != null) return num(data.etat.vetusteManuel);
+    var s = 0; VET_COMPOSANTS.forEach(function (c) { s += c.poids * num(co[c.key]); });
+    return Math.round(s / 100);
+  }
   function comparableTemplate(over) {
     return Object.assign({
       nature: 'annonce', source: 'Leboncoin', type: '', secteur: '', surface: '', prix: '',
@@ -368,6 +458,37 @@
         (occ ? '<div class="av-grid-3">' + fld('Loyer mensuel (€)', 'bien.loyer', { type: 'number' }) + fld('Début du bail', 'bien.bailDateDebut', { type: 'date' }) + fld('Durée bail (mois)', 'bien.bailDuree', { type: 'number' }) + '</div>' : '') +
         '</div>' +
         fld('Prix de cession / proposé (€)', 'bien.prixVente', { type: 'number', flag: true, tip: "Net vendeur, hors frais d'agence" });
+    }
+    if (id === 'etat') {
+      function nivSel(key) {
+        var cur = num(getPath(d, 'etat.composants.' + key));
+        return '<select data-p="etat.composants.' + key + '">' + VET_NIVEAUX.map(function (n) {
+          return '<option value="' + n.v + '"' + (n.v === cur ? ' selected' : '') + '>' + n.label + ' (' + n.v + ' %)</option>';
+        }).join('') + '</select>';
+      }
+      var rows = VET_COMPOSANTS.map(function (cmp) {
+        return '<div class="av-method-row"><span class="av-method-on">' + esc(cmp.label) + ' <span style="opacity:.5;font-weight:400;">· ' + cmp.poids + ' %</span></span>' +
+          '<span style="flex:1;min-width:160px;">' + nivSel(cmp.key) + '</span></div>';
+      }).join('');
+      return head('État & vétusté du bien', 'Grille d\'expertise → décote d\'état appliquée à la valeur') +
+        '<div class="av-tip" style="margin-bottom:.5rem;">Préréglages rapides (ajustables ensuite composant par composant) :</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.8rem;">' +
+        '<button class="btn btn-sm btn-outline-success" data-action="etat-preset" data-preset="0">Neuf</button>' +
+        '<button class="btn btn-sm btn-outline-success" data-action="etat-preset" data-preset="10">Bon état</button>' +
+        '<button class="btn btn-sm btn-outline-secondary" data-action="etat-preset" data-preset="25">À rafraîchir</button>' +
+        '<button class="btn btn-sm btn-outline-warning" data-action="etat-preset" data-preset="50">Abîmé / endommagé</button>' +
+        '<button class="btn btn-sm btn-outline-danger" data-action="etat-preset" data-preset="80">En ruine</button>' +
+        '</div>' +
+        '<div class="av-box"><div class="av-box-title">Grille de vétusté (pondérée)</div>' + rows + '</div>' +
+        '<div class="av-grid-2">' +
+        fld('Vétusté manuelle (%)', 'etat.vetusteManuel', { type: 'number', tip: 'Vide = calcul automatique depuis la grille' }) +
+        fld("Décote d'état appliquée (%)", 'calcul.decoteEtat', { type: 'number', tip: 'Vide = égale à la vétusté globale' }) +
+        '</div>' +
+        '<div class="av-result"><div class="av-r-row hl"><span>Vétusté globale calculée</span><span data-vet-global>—</span></div></div>' +
+        fld('Commentaire sur l\'état', 'etat.commentaire', { type: 'textarea', rows: 2 });
+    }
+    if (id === 'localisation') {
+      return renderLocalisation(d);
     }
     if (id === 'marche') {
       var rows = d.marche.sources.map(function (s, i) {
@@ -535,7 +656,9 @@
       rr('Référence étude (comparaison brute)', fmtE(c.vlBas) + ' – ' + fmtE(c.vlMoy)) +
       rows +
       rr('Valeur pondérée (hors décote)', fmtE(c.valPonderee), true) +
-      (occ ? rr("Après décote d'occupation (-" + d.calcul.decoteOccupation + '%)', fmtE(Math.round(c.valPonderee * (1 - num(d.calcul.decoteOccupation) / 100)))) : '') +
+      (c.decoteEtat > 0 ? rr("Décote d'état / vétusté (-" + c.decoteEtat + '%)', fmtE(c.centralEtat)) : '') +
+      (occ ? rr("Après décote d'occupation (-" + d.calcul.decoteOccupation + '%)', fmtE(Math.round(c.centralEtat * (1 - num(d.calcul.decoteOccupation) / 100)))) : '') +
+      rr('Valeur retenue (fourchette)', fmtE(c.voccBas) + ' – ' + fmtE(c.voccHaut), true) +
       '</div>';
   }
 
@@ -562,6 +685,8 @@
     });
     var synth = document.getElementById('avAcmSynth');
     if (synth) synth.innerHTML = renderAcmSynth();
+    var vg = document.querySelector('[data-vet-global]');
+    if (vg) vg.textContent = c.vetuste + ' %  ·  décote d\'état appliquée : ' + c.decoteEtat + ' %';
     // valeurs par méthode (section Valeur)
     c.methodes.forEach(function (e) {
       var sp = document.querySelector('[data-method-val="' + e.key + '"]');
@@ -595,7 +720,7 @@
     var tabs = SECTIONS.map(function (s) { return '<button class="av-tab" data-sec="' + s.id + '">' + esc(s.label) + '</button>'; }).join('');
     root.innerHTML =
       '<div class="modal fade" id="avisModal" tabindex="-1" aria-hidden="true">' +
-      '<div class="modal-dialog modal-fullscreen-lg-down modal-xl modal-dialog-scrollable">' +
+      '<div class="modal-dialog modal-fullscreen modal-dialog-scrollable">' +
       '<div class="modal-content">' +
       '<div class="modal-header"><div><h5 class="modal-title">Avis de valeur<small>FIDI · document professionnel</small></h5></div>' +
       '<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button></div>' +
@@ -674,6 +799,12 @@
     else if (a === 'load') doLoad();
     else if (a === 'delete') doDelete();
     else if (a === 'save-sign') { if (saveSignataire(state.data.signataire)) toast('Signataire mémorisé'); }
+    else if (a === 'etat-preset') {
+      var pv = num(t.dataset.preset);
+      VET_COMPOSANTS.forEach(function (cmp) { state.data.etat.composants[cmp.key] = pv; });
+      state.data.etat.vetusteManuel = '';
+      showSection('etat');
+    }
     else if (a === 'import-dvf') importDvf();
     else if (a === 'toggle-paste') { var w = document.getElementById('avPasteWrap'); if (w) w.style.display = w.style.display === 'none' ? 'block' : 'none'; }
     else if (a === 'parse-paste') parsePaste();
@@ -757,12 +888,58 @@
   }
 
   // ── Actions ─────────────────────────────────────────────────
+  // Métadonnées d'un avis sauvegardé (pour picker + bibliothèque)
+  function avisMeta(ref) {
+    try {
+      var raw = localStorage.getItem(AVIS_PREFIX + ref);
+      if (!raw) return { ref: ref };
+      var d = JSON.parse(raw), c = compute(d);
+      return {
+        ref: ref,
+        date: (d.metadata && d.metadata.date) || '',
+        commune: (d.bien && d.bien.commune) || (d.loc && d.loc.adresse) || '',
+        type: (d.bien && d.bien.type) || '',
+        valeur: (c.voccBas && c.voccHaut) ? (fmt(c.voccBas) + ' – ' + fmt(c.voccHaut) + ' €') : ''
+      };
+    } catch (e) { return { ref: ref }; }
+  }
+  function avisList() { return listSavedAvis().map(avisMeta); }
+
   function refreshSavedSelect() {
     var sel = document.getElementById('avSavedSelect');
     if (!sel) return;
-    var keys = listSavedAvis();
-    sel.innerHTML = '<option value="">— Avis sauvegardés (' + keys.length + ') —</option>' +
-      keys.map(function (k) { return '<option value="' + esc(k) + '">' + esc(k) + '</option>'; }).join('');
+    var metas = avisList();
+    sel.innerHTML = '<option value="">— Avis sauvegardés (' + metas.length + ') —</option>' +
+      metas.map(function (m) {
+        var lbl = m.ref + (m.commune ? ' · ' + m.commune : '') + (m.valeur ? ' · ' + m.valeur : '');
+        return '<option value="' + esc(m.ref) + '">' + esc(lbl) + '</option>';
+      }).join('');
+  }
+
+  // Bibliothèque « Mes avis de valeur » (accessible depuis l'étude)
+  function openLibrary() {
+    if (typeof bootstrap === 'undefined') { alert('Bootstrap non chargé.'); return; }
+    var root = document.getElementById('avisLibRoot');
+    if (!root) { root = document.createElement('div'); root.id = 'avisLibRoot'; document.body.appendChild(root); }
+    var metas = avisList();
+    var rows = metas.length ? metas.map(function (m) {
+      return '<div class="av-lib-item">' +
+        '<div class="av-lib-info"><div class="av-lib-ref">' + esc(m.ref) + '</div>' +
+        '<div class="av-lib-sub">' + esc((m.type ? m.type + ' · ' : '') + (m.commune || '') + (m.date ? ' · ' + m.date : '')) + '</div>' +
+        '<div class="av-lib-val">' + (m.valeur || '—') + '</div></div>' +
+        '<div class="av-lib-act">' +
+        '<button class="btn btn-sm btn-primary" onclick="AvisValeur.open(\'' + esc(m.ref).replace(/'/g, "\\'") + '\')">Ouvrir</button>' +
+        '</div></div>';
+    }).join('') : '<div class="av-tip" style="padding:1rem;text-align:center;">Aucun avis sauvegardé pour le moment.</div>';
+    root.innerHTML = '<div class="modal fade" id="avisLibModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-dialog-scrollable"><div class="modal-content">' +
+      '<div class="modal-header" style="background:#1a3a6e;color:#fff;"><h5 class="modal-title">Mes avis de valeur</h5>' +
+      '<button type="button" class="btn-close" style="filter:invert(1)" data-bs-dismiss="modal"></button></div>' +
+      '<div class="modal-body" id="avisLibBody">' + rows + '</div>' +
+      '<div class="modal-footer"><button class="btn btn-sm btn-outline-primary" onclick="AvisValeur.open()">+ Nouvel avis</button></div>' +
+      '</div></div></div>';
+    var el = document.getElementById('avisLibModal');
+    el.addEventListener('hidden.bs.modal', function () { el.remove(); });
+    new bootstrap.Modal(el).show();
   }
   function doNew() {
     state.data = buildPrefillFromEtude(null, null);
@@ -884,7 +1061,24 @@
       row('Taxe foncière', b.taxeFonciere ? fmtE(b.taxeFonciere) + ' / an' : '') +
       (occ ? row('Situation locative', 'Bien occupé – loyer ' + fmtE(b.loyer) + '/mois' + (b.bailDateDebut ? ' – bail du ' + formatDateFR(b.bailDateDebut) : '') + (b.bailDuree ? ' (durée ' + esc(b.bailDuree) + ' mois)' : '')) : row('Situation locative', 'Bien libre')) +
       (occ && b.loyer ? row('Rapport locatif annuel', fmtE(num(b.loyer) * 12) + ' / an (hors charges)') : '') +
+      ((calc.vetuste > 0 || data.etat.commentaire) ? row('État / vétusté', (calc.vetuste ? 'Vétusté estimée ' + calc.vetuste + ' %' : '') + (data.etat.commentaire ? (calc.vetuste ? ' — ' : '') + esc(data.etat.commentaire) : '')) : '') +
       '</table>';
+
+    // 2.1 — Localisation & risques (carte IGN + PPRN)
+    var L = data.loc || {};
+    var mapImg = (L.lat && L.lon) ? ignStaticMapUrl(num(L.lat), num(L.lon)) : '';
+    var riskLines = [
+      L.sismicite ? ['Sismicité', L.sismicite] : null,
+      L.radon ? ['Radon', L.radon] : null,
+      L.ppr ? ['PPRN — plans de prévention', L.ppr] : null,
+      L.risquesDetail ? ['Synthèse risques', L.risquesDetail] : null
+    ].filter(Boolean);
+    if (mapImg || riskLines.length) {
+      html += '<h2>2.1 Localisation & risques naturels</h2>';
+      if (mapImg) html += '<div style="text-align:center;margin:8px 0;"><img src="' + esc(mapImg) + '" alt="Carte de localisation (IGN)" style="max-width:100%;border:1px solid #bfbfbf;"/><div style="font-size:8px;color:#5c6470;">Fond cartographique © IGN — Géoplateforme</div></div>';
+      if (riskLines.length) html += '<table>' + riskLines.map(function (r) { return row(r[0], esc(r[1])); }).join('') + '</table>';
+      if (L.commentaire) html += '<p>' + esc(L.commentaire) + '</p>';
+    }
 
     html += '<h1>3. Méthodologie d\'évaluation</h1>' +
       '<p>L\'évaluation a été conduite selon ' + (occ ? 'deux méthodes complémentaires' : 'la méthode par comparaison directe') + ' :</p>' +
@@ -934,7 +1128,8 @@
           '<td class="center bold">' + (e.actif ? fmtE(e.contribution) : '—') + '</td></tr>';
       }).join('') +
       '<tr style="background:#eaf0f8;"><td class="bold">Valeur pondérée (hors décote)</td><td class="center bold" colspan="3">' + fmtE(calc.valPonderee) + '</td></tr>' +
-      (occ ? '<tr><td>Décote pour occupation locative (-' + data.calcul.decoteOccupation + ' %)</td><td class="center" colspan="3">' + fmtE(Math.round(calc.valPonderee * (1 - num(data.calcul.decoteOccupation) / 100))) + '</td></tr>' : '') +
+      (calc.decoteEtat > 0 ? '<tr><td>Décote d\'état / vétusté (-' + calc.decoteEtat + ' %)</td><td class="center" colspan="3">' + fmtE(calc.centralEtat) + '</td></tr>' : '') +
+      (occ ? '<tr><td>Décote pour occupation locative (-' + data.calcul.decoteOccupation + ' %)</td><td class="center" colspan="3">' + fmtE(Math.round(calc.centralEtat * (1 - num(data.calcul.decoteOccupation) / 100))) + '</td></tr>' : '') +
       '<tr class="gold-row"><td>VALEUR VÉNALE ' + (occ ? "EN L'ÉTAT OCCUPÉ" : 'BIEN LIBRE') + ' – fourchette retenue</td><td class="center" colspan="3">' + fmtE(calc.voccBas) + ' – ' + fmtE(calc.voccHaut) + '</td></tr></table>';
 
     if (b.prixVente) {
@@ -986,9 +1181,16 @@
   }
 
   // ── API publique ────────────────────────────────────────────
-  function open() {
+  function open(ref) {
     if (typeof bootstrap === 'undefined') { alert('Bootstrap non chargé.'); return; }
     if (!state.built) buildModal();
+    // Ouverture d'un avis mémorisé (depuis le picker ou la bibliothèque)
+    if (ref && typeof ref === 'string') {
+      try { var raw = localStorage.getItem(AVIS_PREFIX + ref); if (raw) { state.data = JSON.parse(raw); state.section = 'metadata'; } }
+      catch (e) { toast('Erreur de chargement', true); }
+      var lib = document.getElementById('avisLibModal');
+      if (lib && bootstrap.Modal.getInstance(lib)) bootstrap.Modal.getInstance(lib).hide();
+    }
     if (!state.data) {
       state.data = window.__fidiData ? buildPrefillFromEtude(window.__fidiData, window.__fidiInputs) : buildPrefillFromEtude(null, null);
     }
@@ -997,5 +1199,5 @@
     state.modal.show();
   }
 
-  window.AvisValeur = { open: open, _compute: compute, _prefill: buildPrefillFromEtude };
+  window.AvisValeur = { open: open, openLibrary: openLibrary, listAvis: avisList, _compute: compute, _prefill: buildPrefillFromEtude };
 })();

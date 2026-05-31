@@ -221,6 +221,9 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
   </div>
   <div class="d-flex gap-2 align-items-center">
     <span class="badge-gov"><i class="bi bi-database me-1"></i>data.gouv.fr</span>
+    <button class="btn btn-sm btn-outline-light" id="btnAvisLib" onclick="AvisValeur.openLibrary()" title="Mes avis de valeur sauvegardés">
+      <i class="bi bi-folder2 me-1"></i>Mes avis
+    </button>
     <button class="btn btn-sm btn-outline-light d-none" id="btnAvis" onclick="AvisValeur.open()" title="Générer un avis de valeur à partir de cette étude">
       <i class="bi bi-file-earmark-text me-1"></i>Avis de valeur
     </button>
@@ -256,8 +259,24 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
         <div class="col-md-2">
           <label class="form-label text-white small fw-semibold mb-1">Type de bien</label>
           <select class="form-select" id="selectType">
-            <option value="maison">Maison</option>
-            <option value="appartement">Appartement</option>
+            <optgroup label="Résidentiel">
+              <option value="maison">Maison</option>
+              <option value="appartement">Appartement</option>
+              <option value="tous">Immeuble</option>
+            </optgroup>
+            <optgroup label="Terrain">
+              <option value="terrain">Terrain à bâtir</option>
+              <option value="terrain">Terrain agricole</option>
+              <option value="terrain">Terrain de loisirs</option>
+            </optgroup>
+            <optgroup label="Professionnel">
+              <option value="local">Local commercial</option>
+              <option value="local">Entrepôt</option>
+              <option value="local">Bureau</option>
+              <option value="local">Bâtiment industriel</option>
+              <option value="local">Parking / garage</option>
+              <option value="tous">Bien mixte (habitation + pro)</option>
+            </optgroup>
             <option value="tous">Tous types</option>
           </select>
         </div>
@@ -1668,7 +1687,7 @@ function renderTransTable(latRef, lonRef){
     const origIdx = transData.indexOf(t);
     return `<tr data-idx="${origIdx}" onclick="highlightTrans(this)">
       <td style="white-space:nowrap">${t.date||'—'}</td>
-      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(t.adresse||'').replace(/"/g,'')}">${t.adresse||'—'}</td>
+      <td style="max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(t.adresse||'').replace(/"/g,'')}">${(t.lat&&t.lon)?`<a href="https://www.google.com/maps?q=${t.lat},${t.lon}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="text-decoration-none" title="Voir sur Google Maps"><i class="bi bi-geo-alt-fill text-danger me-1" style="font-size:.72rem;"></i></a>`:''}${t.adresse||'—'}</td>
       <td><span class="badge bg-primary bg-opacity-10 text-primary fw-semibold" style="font-size:.7rem;">${t.section||'—'}</span></td>
       <td><code style="font-size:.68rem;">${t.id_parcelle||'—'}</code></td>
       <td><span class="type-dot" style="background:${color}"></span>${t.type_local||'—'}</td>
