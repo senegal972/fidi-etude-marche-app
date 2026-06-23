@@ -55,6 +55,21 @@
   to     = "/.netlify/functions/permis"
   status = 200
 
+[[redirects]]
+  from   = "/api/notion-save"
+  to     = "/.netlify/functions/notion-save"
+  status = 200
+
+[[redirects]]
+  from   = "/api/notion-list"
+  to     = "/.netlify/functions/notion-list"
+  status = 200
+
+[[redirects]]
+  from   = "/api/notion-get"
+  to     = "/.netlify/functions/notion-get"
+  status = 200
+
 # ── SPA fallback : toute URL non trouvée → index.html ─────────────────────────
 [[redirects]]
   from   = "/*"
