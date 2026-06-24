@@ -1006,10 +1006,12 @@
       .then(function (r) { return r.json(); })
       .then(function (j) {
         if (j && j.data) {
-          state.data = j.data;
+          // Écrit en cache local puis ouvre l'éditeur via open(ref) (construit+affiche la modale)
           try { localStorage.setItem(AVIS_PREFIX + ref, JSON.stringify(j.data)); } catch (e) {}
-          refreshSavedSelect(); showSection('metadata'); toast('☁️ Avis chargé depuis Notion');
-          var m = document.getElementById('avisCloudModal'); if (m && bootstrap) { var bm = bootstrap.Modal.getInstance(m); if (bm) bm.hide(); }
+          var m = document.getElementById('avisCloudModal');
+          if (m && bootstrap) { var bm = bootstrap.Modal.getInstance(m); if (bm) bm.hide(); }
+          // Laisse la modale cloud se fermer avant d'ouvrir l'éditeur (évite conflit de backdrop)
+          setTimeout(function () { open(ref); toast('☁️ Avis chargé depuis Notion'); }, 250);
         } else { toast('Introuvable dans Notion', true); }
       })
       .catch(function () { toast('Erreur chargement cloud', true); });
