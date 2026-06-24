@@ -609,6 +609,23 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
       </div>
     </div>
 
+    <!-- Rendement locatif estimé -->
+    <div id="rendementRow" class="row g-3 mb-3 d-none">
+      <div class="col-12">
+        <div class="chart-card">
+          <h6 class="d-flex align-items-center flex-wrap gap-2">
+            <i class="bi bi-cash-stack me-1 text-success"></i>Rendement locatif estimé
+            <span class="badge bg-light text-dark border" id="rendementSource" style="font-weight:500;"></span>
+          </h6>
+          <div id="rendementBody">
+            <div class="text-muted small py-2">
+              <span class="spinner-border spinner-border-sm me-2"></span>Calcul du rendement…
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Tableau DVF détaillé -->
     <div class="row g-3 mb-3">
       <div class="col-12">
@@ -1090,6 +1107,9 @@ async function lancerAnalyse(){
     // Caractéristiques bâti (chargement asynchrone systématique)
     loadBatimentAsync(data.localisation || {});
 
+    // Rendement locatif estimé (chargement asynchrone)
+    loadLoyersAsync(data.localisation || {}, data);
+
     // Vérifications légales d'entreprise (option)
     if(document.getElementById('optEntreprise').checked){
       const q = document.getElementById('inputEntrepriseQ').value.trim();
@@ -1223,8 +1243,86 @@ async function reopenEtude(ref){
     document.getElementById('btnAvis').classList.remove('d-none');
     const m = document.getElementById('etudesLibModal'); if(m && bootstrap){ const bm = bootstrap.Modal.getInstance(m); if(bm) bm.hide(); }
     window.scrollTo({top: document.getElementById('results-panel').offsetTop - 20, behavior:'smooth'});
-    if(d.localisation){ loadTransactionsAsync(d.localisation, inputs.perimetre || 'rayon_1km'); loadBatimentAsync(d.localisation); }
+    if(d.localisation){ loadTransactionsAsync(d.localisation, inputs.perimetre || 'rayon_1km'); loadBatimentAsync(d.localisation); loadLoyersAsync(d.localisation, d); }
   }catch(e){ alert('Réouverture impossible : ' + e.message); }
+}
+
+// ─── Rendement locatif estimé (Carte des loyers) ─────────────────────────────
+async function loadLoyersAsync(loc, d){
+  const row = document.getElementById('rendementRow');
+  const body = document.getElementById('rendementBody');
+  const src = document.getElementById('rendementSource');
+  if(!loc || !loc.citycode){ row.classList.add('d-none'); return; }
+  row.classList.remove('d-none');
+  body.innerHTML = '<div class="text-muted small py-2"><span class="spinner-border spinner-border-sm me-2"></span>Calcul du rendement…</div>';
+  try{
+    const r = await fetch('/api/loyers', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code_insee: loc.citycode})});
+    const j = await r.json();
+    if(!j || j.disponible === false){
+      src.textContent = '';
+      body.innerHTML = '<div class="text-muted small py-2"><i class="bi bi-info-circle me-1"></i>Loyers de marché non disponibles pour cette commune.</div>';
+      return;
+    }
+    src.textContent = 'Carte des loyers ' + (j.annee || '') + ' · DHUP/MEF';
+    // Détermine le loyer pertinent selon le type de bien analysé
+    const typeBien = (d.type_bien || (window.__fidiInputs && window.__fidiInputs.typeBien) || 'maison').toLowerCase();
+    const isMaison = typeBien.indexOf('maison') >= 0;
+    const loyerM2 = isMaison ? j.loyer_m2_maison : j.loyer_m2_appartement;
+    const loyerM2Other = isMaison ? j.loyer_m2_appartement : j.loyer_m2_maison;
+    // Prix de vente au m² (étude) pour le rendement
+    const per = (d.dvf_periodes && d.dvf_periodes[0]) || {};
+    const prixVenteM2 = (d.estimation && d.estimation.prix_m2) ||
+                        (isMaison ? per.prix_m2_maison : per.prix_m2_appart) ||
+                        per.prix_m2_maison || per.prix_m2_appart || null;
+    const surface = (window.__fidiInputs && window.__fidiInputs.surface) || (d.estimation && d.estimation.surface) || null;
+
+    const eur = n => n!=null ? Math.round(n).toLocaleString('fr-FR') : '—';
+    const eur2 = n => n!=null ? n.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
+
+    // Rendement brut = loyer annuel /m² ÷ prix vente /m²
+    let rendement = null;
+    if(loyerM2 && prixVenteM2) rendement = (loyerM2 * 12 / prixVenteM2) * 100;
+
+    // Loyer mensuel estimé pour la surface du bien
+    const loyerMensuel = (loyerM2 && surface) ? loyerM2 * surface : null;
+    const loyerAnnuel = loyerMensuel ? loyerMensuel * 12 : null;
+
+    let rendClass = 'secondary', rendLabel = '';
+    if(rendement != null){
+      if(rendement >= 7){ rendClass='success'; rendLabel='Excellent'; }
+      else if(rendement >= 5){ rendClass='primary'; rendLabel='Bon'; }
+      else if(rendement >= 3.5){ rendClass='info'; rendLabel='Correct'; }
+      else { rendClass='warning'; rendLabel='Faible'; }
+    }
+
+    body.innerHTML =
+      '<div class="row g-3">' +
+        '<div class="col-6 col-md-3">' +
+          '<div class="text-muted small">Loyer marché ' + (isMaison?'maison':'appart.') + '</div>' +
+          '<div class="fw-bold fs-5">' + eur2(loyerM2) + ' €/m²/mois</div>' +
+          (loyerM2Other ? '<div class="text-muted small">' + (isMaison?'appart.':'maison') + ' : ' + eur2(loyerM2Other) + ' €/m²</div>' : '') +
+        '</div>' +
+        '<div class="col-6 col-md-3">' +
+          '<div class="text-muted small">Loyer mensuel estimé' + (surface?' ('+surface+' m²)':'') + '</div>' +
+          '<div class="fw-bold fs-5">' + eur(loyerMensuel) + ' €</div>' +
+          (loyerAnnuel ? '<div class="text-muted small">soit ' + eur(loyerAnnuel) + ' €/an</div>' : '') +
+        '</div>' +
+        '<div class="col-6 col-md-3">' +
+          '<div class="text-muted small">Prix de vente /m²</div>' +
+          '<div class="fw-bold fs-5">' + eur(prixVenteM2) + ' €/m²</div>' +
+        '</div>' +
+        '<div class="col-6 col-md-3">' +
+          '<div class="text-muted small">Rendement locatif brut</div>' +
+          '<div class="fw-bold fs-4 text-' + rendClass + '">' + (rendement!=null ? eur2(rendement)+' %' : '—') + '</div>' +
+          (rendLabel ? '<span class="badge bg-'+rendClass+'">'+rendLabel+'</span>' : '') +
+        '</div>' +
+      '</div>' +
+      '<div class="text-muted mt-2" style="font-size:.68rem;">' +
+        '* Loyer d\'annonce médian (' + (j.libelle||'') + ', ' + (j.annee||'') + '). Rendement brut = loyer annuel ÷ prix d\'achat, hors charges, taxe foncière et vacance. Indicatif.' +
+      '</div>';
+  }catch(e){
+    body.innerHTML = '<div class="text-muted small py-2">Rendement indisponible (' + e.message + ')</div>';
+  }
 }
 
 function escHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }

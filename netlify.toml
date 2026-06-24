@@ -19,6 +19,9 @@
 [functions."permis"]
   timeout = 15
 
+[functions."loyers"]
+  timeout = 20
+
 # ── Redirections API → Netlify Functions ──────────────────────────────────────
 [[redirects]]
   from   = "/api/analyse"
@@ -53,6 +56,11 @@
 [[redirects]]
   from   = "/api/permis"
   to     = "/.netlify/functions/permis"
+  status = 200
+
+[[redirects]]
+  from   = "/api/loyers"
+  to     = "/.netlify/functions/loyers"
   status = 200
 
 [[redirects]]
