@@ -121,17 +121,17 @@
   function risquesToVigilances(risques, scoreAxes) {
     var out = [];
     if (!risques) risques = {};
-    var sismo = risques.sismicite, zone = null;
-    if (Array.isArray(sismo) && sismo.length) zone = sismo[0].zone_sismicite || sismo[0].zone;
-    else if (sismo && typeof sismo === 'object') zone = sismo.zone_sismicite || sismo.zone;
+    var sismo = risques.sismicite;
+    var zone = (sismo && typeof sismo === 'object') ? (sismo.zone || '') : '';
     if (zone) {
       var z = String(zone).replace(/zone/i, '').trim();
       out.push('Zone de sismicité ' + z + ' — application des normes parasismiques (contexte antillais).');
     }
-    var radon = risques.radon, cat = null;
-    if (Array.isArray(radon) && radon.length) cat = radon[0].categorie || radon[0].classe_potentiel;
-    else if (radon && typeof radon === 'object') cat = radon.categorie || radon.classe_potentiel;
+    var radon = risques.radon;
+    var cat = (radon && typeof radon === 'object') ? (radon.classe || '') : '';
     if (cat && String(cat).trim() === '3') out.push('Potentiel radon de catégorie 3 (élevé) sur la commune.');
+    var syn = Array.isArray(risques.synthese) ? risques.synthese : [];
+    if (syn.length) out.push('Risques recensés sur la commune : ' + syn.join(', ') + '.');
     if (scoreAxes && scoreAxes.risques && scoreAxes.risques.detail &&
         scoreAxes.risques.detail.toLowerCase().indexOf('aucun risque') < 0) {
       out.push('Risques naturels : ' + scoreAxes.risques.detail + '.');
@@ -156,19 +156,15 @@
   // Extraction des risques pour la section Localisation (persistés dans l'avis)
   function extractLocRisques(fidi) {
     var r = (fidi && fidi.risques) || {}, out = { sismicite: '', radon: '', ppr: '', detail: '' };
-    var sismo = r.sismicite, zone = null;
-    if (Array.isArray(sismo) && sismo.length) zone = sismo[0].zone_sismicite || sismo[0].zone;
-    else if (sismo && typeof sismo === 'object') zone = sismo.zone_sismicite || sismo.zone;
-    if (zone) out.sismicite = 'Zone ' + String(zone).replace(/zone/i, '').trim();
-    var radon = r.radon, cat = null;
-    if (Array.isArray(radon) && radon.length) cat = radon[0].categorie || radon[0].classe_potentiel;
-    else if (radon && typeof radon === 'object') cat = radon.categorie || radon.classe_potentiel;
-    if (cat) out.radon = 'Catégorie ' + String(cat).trim();
-    var ppr = r.ppr, pprArr = Array.isArray(ppr) ? ppr : (ppr && ppr.data) ? ppr.data : [];
-    if (pprArr && pprArr.length) {
-      var libs = pprArr.map(function (p) { return p.libelle_risque_long || p.libelle || p.lib_risque_jo || p.risque || ''; }).filter(Boolean);
-      out.ppr = libs.length ? Array.from(new Set(libs)).slice(0, 4).join(' ; ') : pprArr.length + ' plan(s) de prévention recensé(s)';
+    var sismo = r.sismicite;
+    if (sismo && typeof sismo === 'object' && sismo.zone) {
+      out.sismicite = sismo.libelle || ('Zone ' + String(sismo.zone).replace(/zone/i, '').trim());
     }
+    var radon = r.radon;
+    if (radon && typeof radon === 'object' && radon.classe) out.radon = 'Catégorie ' + String(radon.classe).trim();
+    // PPRN / synthèse : liste des risques recensés (gaspar)
+    var syn = Array.isArray(r.synthese) ? r.synthese : [];
+    if (syn.length) out.ppr = Array.from(new Set(syn)).slice(0, 6).join(' ; ');
     if (fidi && fidi.score && fidi.score.axes && fidi.score.axes.risques) out.detail = fidi.score.axes.risques.detail || '';
     return out;
   }

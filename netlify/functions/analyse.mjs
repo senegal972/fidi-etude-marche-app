@@ -428,18 +428,48 @@ async function getDpe(codeInsee, postcode, communeName) {
 }
 
 // ─── Géorisques ───────────────────────────────────────────────────────────────
+// Endpoints corrects : zonage_sismique (param code_insee), radon (code_insee),
+// gaspar/risques (synthèse), installations_classees (code_insee).
 async function getRisques(lat, lon, codeInsee) {
   const risques = {};
-  const [sismo, radon, ppr, icpe] = await Promise.all([
-    safeGetJson(`${GEORISQUES_URL}/zonage_sismicite`, { latlon: `${lat},${lon}` }),
-    safeGetJson(`${GEORISQUES_URL}/radon`, { codeInsee }),
-    safeGetJson(`${GEORISQUES_URL}/ppr`, { latlon: `${lat},${lon}`, rayon: 1000 }),
-    safeGetJson(`${GEORISQUES_URL}/installations_classees`, { codeInsee, rayon: 3000 }),
+  const [sismo, radon, gaspar, icpe] = await Promise.all([
+    safeGetJson(`${GEORISQUES_URL}/zonage_sismique`, { code_insee: codeInsee }),
+    safeGetJson(`${GEORISQUES_URL}/radon`, { code_insee: codeInsee }),
+    safeGetJson(`${GEORISQUES_URL}/gaspar/risques`, { code_insee: codeInsee }),
+    safeGetJson(`${GEORISQUES_URL}/installations_classees`, { code_insee: codeInsee, rayon: 3000 }),
   ]);
-  if (sismo) risques.sismicite = sismo;
-  if (radon) risques.radon = radon;
-  if (ppr) risques.ppr = ppr;
-  if (icpe) risques.icpe = icpe;
+
+  // Sismicité → { zone, libelle }
+  const sd = sismo && sismo.data && sismo.data[0];
+  if (sd) {
+    risques.sismicite = {
+      zone: sd.code_zone || (sd.zone_sismicite || "").split(" ")[0] || "",
+      libelle: sd.zone_sismicite || "",
+    };
+  }
+
+  // Radon → { classe }
+  const rd = radon && radon.data && radon.data[0];
+  if (rd) {
+    risques.radon = { classe: String(rd.classe_potentiel || "").trim() };
+  }
+
+  // Synthèse des risques (gaspar) → liste de libellés uniques
+  const gd = gaspar && gaspar.data && gaspar.data[0];
+  if (gd && Array.isArray(gd.risques_detail)) {
+    const set = [];
+    for (const r of gd.risques_detail) {
+      const lib = r.libelle_risque_long || r.libelle_risque || "";
+      if (lib && set.indexOf(lib) === -1) set.push(lib);
+    }
+    risques.synthese = set;
+  }
+
+  // ICPE (installations classées) → comptage local
+  if (icpe && icpe.data) {
+    risques.icpe = { count: icpe.results || icpe.data.length || 0, data: (icpe.data || []).slice(0, 10) };
+  }
+
   return risques;
 }
 
@@ -510,28 +540,22 @@ function noteRisques(risques) {
   let note = 20;
   const details = [];
   const sismo = risques.sismicite;
-  if (sismo) {
-    let zone = null;
-    if (Array.isArray(sismo) && sismo.length) zone = sismo[0].zone_sismicite || sismo[0].zone;
-    else if (typeof sismo === "object") zone = sismo.zone_sismicite || sismo.zone;
-    if (zone) {
-      const z = String(zone).replace("zone", "").trim();
-      if (z === "4" || z === "5") { note -= 8; details.push(`Sismicité élevée (zone ${z})`); }
-      else if (z === "3") { note -= 5; details.push(`Sismicité modérée (zone ${z})`); }
-      else if (z === "1" || z === "2") { note -= 2; details.push(`Sismicité faible (zone ${z})`); }
-    }
+  if (sismo && sismo.zone) {
+    const z = String(sismo.zone).replace("zone", "").trim();
+    if (z === "4" || z === "5") { note -= 8; details.push(`Sismicité élevée (zone ${z})`); }
+    else if (z === "3") { note -= 5; details.push(`Sismicité modérée (zone ${z})`); }
+    else if (z === "1" || z === "2") { note -= 2; details.push(`Sismicité faible (zone ${z})`); }
   }
   const radon = risques.radon;
-  if (radon) {
-    let cat = null;
-    if (Array.isArray(radon) && radon.length) cat = radon[0].categorie || radon[0].classe_potentiel;
-    else if (typeof radon === "object") cat = radon.categorie || radon.classe_potentiel;
-    if (cat) {
-      const c = String(cat).trim();
-      if (c === "3") { note -= 4; details.push("Radon élevé (cat. 3)"); }
-      else if (c === "2") { note -= 2; details.push("Radon modéré (cat. 2)"); }
-    }
+  if (radon && radon.classe) {
+    const c = String(radon.classe).trim();
+    if (c === "3") { note -= 4; details.push("Radon élevé (cat. 3)"); }
+    else if (c === "2") { note -= 2; details.push("Radon modéré (cat. 2)"); }
   }
+  // Pénalité légère selon le nombre de risques recensés (gaspar)
+  const syn = Array.isArray(risques.synthese) ? risques.synthese : [];
+  if (syn.length >= 4) { note -= 4; details.push(`${syn.length} risques recensés`); }
+  else if (syn.length >= 2) { note -= 2; details.push(`${syn.length} risques recensés`); }
   if (!details.length) details.push("Aucun risque majeur identifié");
   return [Math.max(0, note), details.join(" | ")];
 }

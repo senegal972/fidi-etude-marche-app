@@ -1644,87 +1644,59 @@ function renderRisques(risques){
   const container = document.getElementById('risquesContainer');
   const items = [];
 
-  // Sismicité
+  // Sismicité — structure normalisée { zone, libelle }
   const s = risques.sismicite;
-  if(s){
-    let zone = null;
-    if(Array.isArray(s) && s.length) zone = s[0].zone_sismicite || s[0].zone || s[0].libelle;
-    else if(typeof s==='object') zone = s.zone_sismicite || s.zone || s.libelle;
-    if(zone){
-      const z = String(zone).replace(/zone/i,'').trim();
-      const colors = {1:'#198754',2:'#20c997',3:'#ffc107',4:'#fd7e14',5:'#dc3545'};
-      const labels = {1:'Très faible',2:'Faible',3:'Modérée',4:'Moyenne',5:'Forte'};
-      const c = colors[z]||'#6c757d';
-      items.push(`<div class="risque-item">
-        <div class="risque-dot" style="background:${c}"></div>
-        <div><strong>Sismicité :</strong> Zone ${z} – ${labels[z]||zone}</div></div>`);
-    } else {
-      items.push(`<div class="risque-item"><div class="risque-dot" style="background:#6c757d"></div><div>Sismicité disponible</div></div>`);
-    }
+  if(s && s.zone){
+    const z = String(s.zone).replace(/zone/i,'').trim();
+    const colors = {1:'#198754',2:'#20c997',3:'#ffc107',4:'#fd7e14',5:'#dc3545'};
+    const labels = {1:'Très faible',2:'Faible',3:'Modérée',4:'Moyenne',5:'Forte'};
+    const c = colors[z]||'#6c757d';
+    items.push(`<div class="risque-item"><div class="risque-dot" style="background:${c}"></div>
+      <div><strong>Sismicité :</strong> ${s.libelle || ('Zone '+z+' – '+(labels[z]||''))}</div></div>`);
   } else {
-    items.push(`<div class="risque-item"><div class="risque-dot" style="background:#dee2e6"></div><div class="text-muted">Sismicité : données non disponibles</div></div>`);
+    items.push(`<div class="risque-item"><div class="risque-dot" style="background:#dee2e6"></div><div class="text-muted">Sismicité : non disponible</div></div>`);
   }
 
-  // Radon
+  // Radon — { classe }
   const r = risques.radon;
-  if(r){
-    let cat = null;
-    if(Array.isArray(r) && r.length) cat = r[0].categorie || r[0].classe_potentiel || r[0].libelle;
-    else if(typeof r==='object') cat = r.categorie || r.classe_potentiel || r.libelle;
-    if(cat){
-      const c = String(cat)===('3')?'#dc3545':String(cat)==='2'?'#ffc107':'#198754';
-      const l = {1:'Faible',2:'Modéré',3:'Élevé'}[String(cat)] || cat;
-      items.push(`<div class="risque-item">
-        <div class="risque-dot" style="background:${c}"></div>
-        <div><strong>Radon :</strong> Catégorie ${cat} – ${l}</div></div>`);
-    }
+  if(r && r.classe){
+    const cat = String(r.classe);
+    const c = cat==='3'?'#dc3545':cat==='2'?'#ffc107':'#198754';
+    const l = {1:'Faible',2:'Modéré',3:'Élevé'}[cat] || cat;
+    items.push(`<div class="risque-item"><div class="risque-dot" style="background:${c}"></div>
+      <div><strong>Radon :</strong> Catégorie ${cat} – ${l}</div></div>`);
   } else {
-    items.push(`<div class="risque-item"><div class="risque-dot" style="background:#dee2e6"></div><div class="text-muted">Radon : données non disponibles</div></div>`);
+    items.push(`<div class="risque-item"><div class="risque-dot" style="background:#dee2e6"></div><div class="text-muted">Radon : non disponible</div></div>`);
   }
 
-  // PPR
-  const ppr = risques.ppr;
-  if(ppr){
-    const nbPpr = Array.isArray(ppr) ? ppr.length : (ppr.total || 0);
-    if(nbPpr > 0){
-      items.push(`<div class="risque-item"><div class="risque-dot" style="background:#fd7e14"></div>
-        <div><strong>PPR :</strong> ${nbPpr} plan(s) de prévention recensé(s)</div></div>`);
-    } else {
-      items.push(`<div class="risque-item"><div class="risque-dot" style="background:#198754"></div>
-        <div><strong>PPR :</strong> Aucun plan recensé dans ce secteur</div></div>`);
-    }
-  } else {
-    items.push(`<div class="risque-item"><div class="risque-dot" style="background:#dee2e6"></div><div class="text-muted">PPR : données non disponibles</div></div>`);
-  }
-
-  // ICPE
+  // ICPE — { count }
   const icpe = risques.icpe;
   if(icpe){
-    const nb = Array.isArray(icpe)?icpe.length:(icpe.total||0);
+    const nb = (typeof icpe==='object') ? (icpe.count||0) : (Array.isArray(icpe)?icpe.length:0);
     if(nb>0){
       items.push(`<div class="risque-item"><div class="risque-dot" style="background:#ffc107"></div>
         <div><strong>ICPE :</strong> ${nb} installation(s) classée(s) à proximité</div></div>`);
     } else {
       items.push(`<div class="risque-item"><div class="risque-dot" style="background:#198754"></div>
-        <div><strong>ICPE :</strong> Aucune installation classée à proximité</div></div>`);
+        <div><strong>ICPE :</strong> Aucune installation classée</div></div>`);
     }
   }
 
-  if(!items.length){
-    container.innerHTML = '<p class="text-muted small">Données de risques non disponibles</p>';
+  // Synthèse des risques recensés (gaspar)
+  const syn = Array.isArray(risques.synthese) ? risques.synthese : [];
+  if(syn.length){
+    items.push(`<div class="risque-item align-items-start"><div class="risque-dot" style="background:#0d6efd;margin-top:.3rem"></div>
+      <div><strong>Risques recensés :</strong><br>${syn.map(x=>'<span class="badge bg-light text-dark border me-1 mb-1">'+escHtml(x)+'</span>').join('')}</div></div>`);
   } else {
-    container.innerHTML = items.join('');
-    // Note de synthèse
-    const noRisque = !s && !r && !ppr;
-    if(!noRisque){
-      container.innerHTML += `
-        <div class="mt-2 p-2 rounded" style="background:#f8f9fa;font-size:.72rem;color:#6c757d;">
-          <i class="bi bi-info-circle me-1"></i>
-          Consultez <a href="https://www.georisques.gouv.fr" target="_blank">georisques.gouv.fr</a>
-          pour l'intégralité des risques (inondation, retrait-gonflement des argiles, etc.)
-        </div>`;
-    }
+    items.push(`<div class="risque-item"><div class="risque-dot" style="background:#198754"></div>
+      <div><strong>Synthèse :</strong> Aucun risque majeur recensé</div></div>`);
   }
+
+  container.innerHTML = items.join('') +
+    `<div class="mt-2 p-2 rounded" style="background:#f8f9fa;font-size:.72rem;color:#6c757d;">
+      <i class="bi bi-info-circle me-1"></i>
+      Source : <a href="https://www.georisques.gouv.fr" target="_blank">georisques.gouv.fr</a> (BRGM). Détail complet par adresse sur le portail.
+    </div>`;
 }
 
 // ─── Tableau DVF ──────────────────────────────────────────────────────────────
