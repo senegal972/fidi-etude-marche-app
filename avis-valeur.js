@@ -741,6 +741,7 @@
       '<button class="btn btn-sm btn-outline-secondary" data-action="new"><i class="bi bi-plus-lg me-1"></i>Nouveau</button>' +
       '<button class="btn btn-sm btn-outline-primary" data-action="prefill" title="Re-remplir depuis l\'étude en cours"><i class="bi bi-magic me-1"></i>Pré-remplir</button>' +
       '<button class="btn btn-sm btn-outline-success" data-action="save"><i class="bi bi-save me-1"></i>Sauvegarder</button>' +
+      '<button class="btn btn-sm btn-outline-info" data-action="cloud" title="Mes dossiers sauvegardés dans Notion">☁️ Cloud</button>' +
       '<button class="btn btn-sm btn-outline-dark" data-action="toggle-preview"><i class="bi bi-eye me-1"></i>Aperçu</button>' +
       '<button class="btn btn-sm btn-primary" data-action="word"><i class="bi bi-file-earmark-word me-1"></i>Word</button>' +
       '<button class="btn btn-sm btn-danger" data-action="pdf"><i class="bi bi-file-earmark-pdf me-1"></i>PDF</button>' +
@@ -796,6 +797,7 @@
     else if (a === 'new') doNew();
     else if (a === 'prefill') doPrefill();
     else if (a === 'save') doSave();
+    else if (a === 'cloud') doCloud();
     else if (a === 'load') doLoad();
     else if (a === 'delete') doDelete();
     else if (a === 'save-sign') { if (saveSignataire(state.data.signataire)) toast('Signataire mémorisé'); }
@@ -955,6 +957,93 @@
     if (!ref) { toast('Référence requise', true); return; }
     try { localStorage.setItem(AVIS_PREFIX + ref, JSON.stringify(state.data)); refreshSavedSelect(); toast('Avis sauvegardé'); }
     catch (e) { toast('Erreur de sauvegarde', true); }
+    cloudSaveAvis(ref); // synchro Notion en arrière-plan (best-effort)
+  }
+
+  // ── Synchronisation Notion (cloud) ──────────────────────────
+  function cloudSaveAvis(ref) {
+    try {
+      var d = state.data, c = compute(d);
+      var valeur = (c.voccBas && c.voccHaut) ? Math.round((c.voccBas + c.voccHaut) / 2) : null;
+      var payload = {
+        kind: 'avis', ref: ref,
+        date: (d.metadata && d.metadata.date) || '',
+        adresse: (d.bien && d.bien.adresse) || (d.loc && d.loc.adresse) || '',
+        commune: (d.bien && d.bien.commune) || '',
+        type_bien: (d.bien && d.bien.type) || '',
+        surface: num(d.bien && d.bien.surfaceCarrez) || null,
+        valeur: valeur,
+        valeur_min: c.voccBas || null,
+        valeur_max: c.voccHaut || null,
+        client: (d.metadata && d.metadata.client) || '',
+        email_client: (d.metadata && d.metadata.emailClient) || '',
+        statut: 'En cours',
+        data: d
+      };
+      fetch('/api/notion-save', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).then(function (r) { return r.json().catch(function () { return {}; }); })
+        .then(function (j) {
+          if (j && j.ok) toast('☁️ Sauvegardé dans Notion');
+          else if (j && j.configured === false) { /* Notion non configuré : silencieux */ }
+          else toast('Notion : ' + ((j && j.error) || 'échec'), true);
+        })
+        .catch(function () { /* hors-ligne : localStorage suffit */ });
+    } catch (e) { /* non bloquant */ }
+  }
+
+  function cloudList(cb) {
+    fetch('/api/notion-list?kind=avis&limit=50')
+      .then(function (r) { return r.json(); })
+      .then(function (j) { cb(j && j.items ? j.items : [], j); })
+      .catch(function () { cb([], { error: 'réseau' }); });
+  }
+
+  function cloudOpen(ref) {
+    toast('Chargement…');
+    fetch('/api/notion-get?kind=avis&ref=' + encodeURIComponent(ref))
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j && j.data) {
+          state.data = j.data;
+          try { localStorage.setItem(AVIS_PREFIX + ref, JSON.stringify(j.data)); } catch (e) {}
+          refreshSavedSelect(); showSection('metadata'); toast('☁️ Avis chargé depuis Notion');
+          var m = document.getElementById('avisCloudModal'); if (m && bootstrap) { var bm = bootstrap.Modal.getInstance(m); if (bm) bm.hide(); }
+        } else { toast('Introuvable dans Notion', true); }
+      })
+      .catch(function () { toast('Erreur chargement cloud', true); });
+  }
+
+  function doCloud() {
+    if (typeof bootstrap === 'undefined') { alert('Bootstrap non chargé.'); return; }
+    var root = document.getElementById('avisCloudRoot');
+    if (!root) { root = document.createElement('div'); root.id = 'avisCloudRoot'; document.body.appendChild(root); }
+    root.innerHTML = '<div class="modal fade" id="avisCloudModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-dialog-scrollable"><div class="modal-content">' +
+      '<div class="modal-header" style="background:#1a3a6e;color:#fff;"><h5 class="modal-title">☁️ Mes dossiers (Notion)</h5>' +
+      '<button type="button" class="btn-close" style="filter:invert(1)" data-bs-dismiss="modal"></button></div>' +
+      '<div class="modal-body" id="avisCloudBody"><div class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm me-2"></span>Chargement depuis Notion…</div></div>' +
+      '</div></div></div>';
+    var el = document.getElementById('avisCloudModal');
+    el.addEventListener('hidden.bs.modal', function () { el.remove(); });
+    new bootstrap.Modal(el).show();
+    cloudList(function (items, meta) {
+      var body = document.getElementById('avisCloudBody');
+      if (!body) return;
+      if (meta && meta.configured === false) {
+        body.innerHTML = '<div class="alert alert-warning small mb-0">Notion non configuré sur ce site.</div>'; return;
+      }
+      if (!items.length) { body.innerHTML = '<div class="av-tip" style="padding:1rem;text-align:center;">Aucun dossier dans Notion pour le moment.</div>'; return; }
+      body.innerHTML = items.map(function (m) {
+        var sub = [(m.type_bien || ''), (m.commune || ''), (m.date || '')].filter(Boolean).join(' · ');
+        var val = m.valeur ? (Number(m.valeur).toLocaleString('fr-FR') + ' €') : '—';
+        var r = String(m.ref).replace(/'/g, "\\'");
+        return '<div class="av-lib-item">' +
+          '<div class="av-lib-info"><div class="av-lib-ref">' + esc(m.ref) + '</div>' +
+          '<div class="av-lib-sub">' + esc(sub) + '</div><div class="av-lib-val">' + val + '</div></div>' +
+          '<div class="av-lib-act"><button class="btn btn-sm btn-primary" onclick="AvisValeur.cloudOpen(\'' + r + '\')">Ouvrir</button></div></div>';
+      }).join('');
+    });
   }
   function doLoad() {
     var sel = document.getElementById('avSavedSelect'); var ref = sel && sel.value;
@@ -1199,5 +1288,5 @@
     state.modal.show();
   }
 
-  window.AvisValeur = { open: open, openLibrary: openLibrary, listAvis: avisList, _compute: compute, _prefill: buildPrefillFromEtude };
+  window.AvisValeur = { open: open, openLibrary: openLibrary, listAvis: avisList, cloud: doCloud, cloudOpen: cloudOpen, _compute: compute, _prefill: buildPrefillFromEtude };
 })();

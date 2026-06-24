@@ -221,7 +221,10 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
   </div>
   <div class="d-flex gap-2 align-items-center">
     <span class="badge-gov"><i class="bi bi-database me-1"></i>data.gouv.fr</span>
-    <button class="btn btn-sm btn-outline-light" id="btnAvisLib" onclick="AvisValeur.openLibrary()" title="Mes avis de valeur sauvegardés">
+    <button class="btn btn-sm btn-outline-light" id="btnEtudesLib" onclick="openEtudesRecentes()" title="Mes études de marché sauvegardées (Notion)">
+      <i class="bi bi-clock-history me-1"></i>Études récentes
+    </button>
+    <button class="btn btn-sm btn-outline-light" id="btnAvisLib" onclick="AvisValeur.cloud()" title="Mes avis de valeur (Notion)">
       <i class="bi bi-folder2 me-1"></i>Mes avis
     </button>
     <button class="btn btn-sm btn-outline-light d-none" id="btnAvis" onclick="AvisValeur.open()" title="Générer un avis de valeur à partir de cette étude">
@@ -424,6 +427,9 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
       </div>
       <div class="d-flex gap-2">
         <span class="badge bg-secondary" id="res-date" style="font-size:.7rem;"></span>
+        <button class="btn btn-sm btn-outline-info" id="btnSaveEtude" onclick="saveEtudeCloud()" title="Sauvegarder cette étude dans Notion">
+          ☁️ Sauvegarder
+        </button>
         <button class="btn btn-sm" style="background:var(--fidi-gold);color:#1a2233;font-weight:600;" onclick="AvisValeur.open()">
           <i class="bi bi-file-earmark-text me-1"></i>Avis de valeur
         </button>
@@ -1118,6 +1124,111 @@ async function lancerAnalyse(){
 }
 
 // ─── Rendu des résultats ──────────────────────────────────────────────────────
+// ─── Sauvegarde / réouverture des études (Notion) ────────────────────────────
+function etudeRef(d, inputs){
+  const cc = (d.localisation && d.localisation.citycode) || 'XXXXX';
+  const day = new Date().toISOString().slice(0,10).replace(/-/g,'');
+  return 'FIDI-EM-' + day + '-' + cc;
+}
+
+async function saveEtudeCloud(){
+  const d = window.__fidiData, inputs = window.__fidiInputs || {};
+  if(!d){ alert('Lancez une analyse avant de sauvegarder.'); return; }
+  const btn = document.getElementById('btnSaveEtude');
+  const orig = btn ? btn.innerHTML : '';
+  if(btn){ btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
+  const loc = d.localisation || {};
+  const per = (d.dvf_periodes && d.dvf_periodes[0]) || {};
+  const prixM2 = (d.estimation && d.estimation.prix_m2) || per.prix_m2_maison || per.prix_m2_appart || null;
+  const payload = {
+    kind: 'etude',
+    ref: etudeRef(d, inputs),
+    date: new Date().toISOString().slice(0,10),
+    adresse: loc.label || inputs.adresse || '',
+    commune: loc.city || '',
+    code_insee: loc.citycode || '',
+    perimetre: inputs.perimetre || '',
+    type_bien: (inputs.typeBien || '').charAt(0).toUpperCase() + (inputs.typeBien || '').slice(1),
+    surface: inputs.surface || null,
+    score: (d.score && d.score.total) || null,
+    prix_m2: prixM2,
+    nb_transactions: per.nb_total || null,
+    estimation: (d.estimation && d.estimation.valeur_med) || null,
+    statut: 'Terminé',
+    data: { data: d, inputs: inputs }
+  };
+  try{
+    const r = await fetch('/api/notion-save', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const j = await r.json().catch(()=>({}));
+    if(j && j.ok){ if(btn){ btn.innerHTML = '✅ Sauvegardé'; setTimeout(()=>{btn.innerHTML=orig;btn.disabled=false;},1800);} }
+    else if(j && j.configured === false){ alert('Notion non configuré sur ce site.'); if(btn){btn.innerHTML=orig;btn.disabled=false;} }
+    else { alert('Erreur Notion : ' + ((j&&j.error)||'inconnue')); if(btn){btn.innerHTML=orig;btn.disabled=false;} }
+  }catch(e){ alert('Sauvegarde impossible : ' + e.message); if(btn){btn.innerHTML=orig;btn.disabled=false;} }
+}
+
+async function openEtudesRecentes(){
+  if(typeof bootstrap === 'undefined'){ alert('Bootstrap non chargé.'); return; }
+  let root = document.getElementById('etudesLibRoot');
+  if(!root){ root = document.createElement('div'); root.id='etudesLibRoot'; document.body.appendChild(root); }
+  root.innerHTML = '<div class="modal fade" id="etudesLibModal" tabindex="-1"><div class="modal-dialog modal-dialog-scrollable"><div class="modal-content">'+
+    '<div class="modal-header" style="background:#1a3a6e;color:#fff;"><h5 class="modal-title">🕘 Études récentes (Notion)</h5>'+
+    '<button type="button" class="btn-close" style="filter:invert(1)" data-bs-dismiss="modal"></button></div>'+
+    '<div class="modal-body" id="etudesLibBody"><div class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm me-2"></span>Chargement…</div></div>'+
+    '</div></div></div>';
+  const el = document.getElementById('etudesLibModal');
+  el.addEventListener('hidden.bs.modal', ()=>el.remove());
+  new bootstrap.Modal(el).show();
+  try{
+    const r = await fetch('/api/notion-list?kind=etude&limit=50');
+    const j = await r.json();
+    const body = document.getElementById('etudesLibBody');
+    if(j && j.configured === false){ body.innerHTML='<div class="alert alert-warning small mb-0">Notion non configuré.</div>'; return; }
+    const items = (j && j.items) || [];
+    if(!items.length){ body.innerHTML='<div class="text-muted text-center py-3">Aucune étude sauvegardée.</div>'; return; }
+    body.innerHTML = items.map(m=>{
+      const sub = [m.commune||'', m.code_insee||'', m.date||''].filter(Boolean).join(' · ');
+      const est = m.estimation ? (Number(m.estimation).toLocaleString('fr-FR')+' €') : '—';
+      const score = (m.score!=null) ? (m.score+'/100') : '';
+      const ref = String(m.ref).replace(/'/g,"\\'");
+      return '<div class="d-flex justify-content-between align-items-center border rounded p-2 mb-2">'+
+        '<div><div class="fw-bold small">'+escHtml(m.ref)+'</div>'+
+        '<div class="text-muted" style="font-size:.75rem;">'+escHtml(sub)+'</div>'+
+        '<div class="small">'+escHtml(m.adresse||'')+'</div></div>'+
+        '<div class="text-end"><div class="small fw-semibold">'+est+'</div>'+
+        '<div class="text-muted" style="font-size:.7rem;">'+score+'</div>'+
+        '<button class="btn btn-sm btn-primary mt-1" onclick="reopenEtude(\''+ref+'\')">Rouvrir</button></div></div>';
+    }).join('');
+  }catch(e){
+    const body = document.getElementById('etudesLibBody');
+    if(body) body.innerHTML='<div class="text-danger text-center py-3">Erreur : '+e.message+'</div>';
+  }
+}
+
+async function reopenEtude(ref){
+  try{
+    const r = await fetch('/api/notion-get?kind=etude&ref='+encodeURIComponent(ref));
+    const j = await r.json();
+    if(!j || !j.data){ alert('Étude introuvable.'); return; }
+    const stored = j.data;
+    const d = stored.data || stored; // rétro-compat
+    const inputs = stored.inputs || {};
+    window.__fidiData = d;
+    window.__fidiInputs = inputs;
+    document.getElementById('init-panel').classList.add('d-none');
+    document.getElementById('loading-panel').classList.add('d-none');
+    renderResults(d);
+    document.getElementById('results-panel').classList.remove('d-none');
+    document.getElementById('btnPrint').classList.remove('d-none');
+    document.getElementById('btnPdf').classList.remove('d-none');
+    document.getElementById('btnAvis').classList.remove('d-none');
+    const m = document.getElementById('etudesLibModal'); if(m && bootstrap){ const bm = bootstrap.Modal.getInstance(m); if(bm) bm.hide(); }
+    window.scrollTo({top: document.getElementById('results-panel').offsetTop - 20, behavior:'smooth'});
+    if(d.localisation){ loadTransactionsAsync(d.localisation, inputs.perimetre || 'rayon_1km'); loadBatimentAsync(d.localisation); }
+  }catch(e){ alert('Réouverture impossible : ' + e.message); }
+}
+
+function escHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
 function renderResults(d){
   const loc  = d.localisation  || {};
   const info = d.commune_info  || {};
