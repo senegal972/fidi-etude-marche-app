@@ -448,6 +448,17 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
       </div>
     </div>
 
+    <!-- Synthèse narrative -->
+    <div id="syntheseRow" class="row g-3 mb-3 d-none">
+      <div class="col-12">
+        <div class="chart-card" style="border-left:4px solid var(--fidi-blue);">
+          <h6 class="mb-2"><i class="bi bi-file-text me-1"></i>Synthèse de marché</h6>
+          <div id="syntheseBody" class="small" style="line-height:1.75;color:#334;"></div>
+          <div class="mt-2 d-flex flex-wrap gap-2" id="syntheseBadges"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- ROW 1 : Score + KPIs + Carte -->
     <div class="row g-3 mb-3">
 
@@ -500,6 +511,22 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
               <div class="kpi-value" id="kpi-population">—</div>
               <div class="kpi-label">Habitants</div>
               <div class="kpi-sub" id="kpi-pop-sub"></div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="kpi-card">
+              <div class="kpi-icon" style="color:#c0392b;"><i class="bi bi-clock-history"></i></div>
+              <div class="kpi-value" id="kpi-delai">—</div>
+              <div class="kpi-label">Délai vente estimé</div>
+              <div class="kpi-sub" id="kpi-delai-sub"></div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="kpi-card">
+              <div class="kpi-icon" style="color:#20c997;"><i class="bi bi-cash-coin"></i></div>
+              <div class="kpi-value" id="kpi-loyer">—</div>
+              <div class="kpi-label">Loyer marché €/m²/mois</div>
+              <div class="kpi-sub" id="kpi-loyer-sub"></div>
             </div>
           </div>
         </div>
@@ -627,6 +654,21 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
             <div class="text-muted small py-2">
               <span class="spinner-border spinner-border-sm me-2"></span>Calcul du rendement…
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Top comparables -->
+    <div id="topComparRow" class="row g-3 mb-3 d-none">
+      <div class="col-12">
+        <div class="chart-card">
+          <h6 class="d-flex align-items-center gap-2">
+            <i class="bi bi-stars text-warning"></i>Meilleures ventes comparables
+            <span class="badge bg-secondary" id="topComparCount"></span>
+          </h6>
+          <div id="topComparBody" class="table-responsive">
+            <p class="text-muted small">En attente des transactions…</p>
           </div>
         </div>
       </div>
@@ -1270,6 +1312,13 @@ async function loadLoyersAsync(loc, d){
       return;
     }
     src.textContent = 'Carte des loyers ' + (j.annee || '') + ' · DHUP/MEF';
+    // KPI loyer marché (P4)
+    const elLoyerKpi = document.getElementById('kpi-loyer');
+    const elLoyerSub = document.getElementById('kpi-loyer-sub');
+    const typeBienKpi = (d.type_bien || (window.__fidiInputs && window.__fidiInputs.typeBien) || 'maison').toLowerCase();
+    const loyerKpi = typeBienKpi.indexOf('maison') >= 0 ? j.loyer_m2_maison : j.loyer_m2_appartement;
+    if(elLoyerKpi) elLoyerKpi.textContent = loyerKpi ? loyerKpi.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
+    if(elLoyerSub) elLoyerSub.textContent = j.libelle || '';
     // Détermine le loyer pertinent selon le type de bien analysé
     const typeBien = (d.type_bien || (window.__fidiInputs && window.__fidiInputs.typeBien) || 'maison').toLowerCase();
     const isMaison = typeBien.indexOf('maison') >= 0;
@@ -1332,6 +1381,160 @@ async function loadLoyersAsync(loc, d){
 }
 
 function escHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// ═══ P4 — Synthèse narrative ════════════════════════════════════════════════
+function renderSyntheseNarrative(d){
+  const row  = document.getElementById('syntheseRow');
+  const body = document.getElementById('syntheseBody');
+  const bads = document.getElementById('syntheseBadges');
+  if(!body) return;
+
+  const loc   = d.localisation  || {};
+  const sc    = d.score         || {};
+  const dvfA  = d.dvf_annees    || [];
+  const dvfP  = d.dvf_periodes  || [];
+  const est   = d.estimation    || {};
+  const info  = d.commune_info  || {};
+  const type  = (d.type_bien || 'bien').toLowerCase();
+  const ville = loc.city || loc.label || 'cette commune';
+  const isMaison = type === 'maison';
+
+  // Prix médian
+  const per = dvfP[0] || (dvfA.length ? dvfA[dvfA.length-1] : {});
+  const prixM2 = isMaison ? (per.prix_m2_maison||per.prix_m2_appart) : (per.prix_m2_appart||per.prix_m2_maison);
+  const prixFmt = prixM2 ? Math.round(prixM2).toLocaleString('fr-FR')+' €/m²' : null;
+
+  // Évolution
+  const val = d.valoris || {};
+  const vObj = isMaison ? (val.maison||val.tous||{}) : (val.appartement||val.tous||{});
+  const evol = vObj.evolution_1an_pct;
+  let evolTxt = '';
+  if(evol!=null){
+    const e = Number(evol).toFixed(1);
+    evolTxt = evol > 1 ? `en hausse de +${e} % sur 12 mois` : evol < -1 ? `en baisse de ${e} % sur 12 mois` : 'stable sur 12 mois';
+  }
+
+  // Volume transactions
+  let nbTrans = per.nb_total || per.nb_maison || null;
+  let tendance = '';
+  if(dvfA.length >= 3){
+    const last3 = dvfA.slice(-3).map(r=>r.nb_total||r.nb_maison||0);
+    const diff = last3[2] - last3[0];
+    tendance = diff > 5 ? 'croissant' : diff < -5 ? 'en recul' : 'stable';
+  }
+
+  // Score
+  const score = sc.total;
+  let scoreTxt = '';
+  if(score != null){
+    if(score >= 70) scoreTxt = 'Le marché présente un potentiel élevé';
+    else if(score >= 50) scoreTxt = 'Le marché présente un potentiel modéré';
+    else if(score >= 30) scoreTxt = 'Le marché présente un potentiel limité';
+    else scoreTxt = 'Le marché présente des contraintes importantes';
+  }
+
+  // Risques
+  const risques = d.risques || {};
+  const syn = (risques.synthese && Array.isArray(risques.synthese)) ? risques.synthese : [];
+  const nbRisques = syn.length;
+
+  // Délai de vente estimé
+  let delai = '—', delaiSub = '';
+  if(score != null){
+    if(score >= 70){ delai = '< 3 mois';  delaiSub = 'Marché actif'; }
+    else if(score >= 55){ delai = '3–6 mois'; delaiSub = 'Marché dynamique'; }
+    else if(score >= 40){ delai = '6–12 mois'; delaiSub = 'Marché modéré'; }
+    else { delai = '> 12 mois'; delaiSub = 'Marché lent'; }
+  }
+  const elDelai = document.getElementById('kpi-delai');
+  const elDelaiSub = document.getElementById('kpi-delai-sub');
+  if(elDelai) elDelai.textContent = delai;
+  if(elDelaiSub) elDelaiSub.textContent = delaiSub;
+
+  // Construction du texte narratif
+  const parts = [];
+  if(scoreTxt) parts.push(scoreTxt + (score!=null ? ` (score ${score}/100)` : '') + '.');
+  if(prixFmt){
+    let p = `Le prix médian au m² pour ${type === 'appartement' ? 'les appartements' : 'les maisons'} est de <strong>${prixFmt}</strong>`;
+    if(evolTxt) p += `, ${evolTxt}`;
+    if(tendance) p += `. Le volume de transactions est ${tendance}`;
+    if(nbTrans) p += ` (${Math.round(nbTrans).toLocaleString('fr-FR')} ventes dernière année connue)`;
+    parts.push(p + '.');
+  }
+  if(info.population) parts.push(`La commune de ${ville} compte <strong>${Math.round(info.population).toLocaleString('fr-FR')} habitants</strong>.`);
+  if(nbRisques > 0) parts.push(`<strong>${nbRisques} risque${nbRisques>1?'s':''} naturel${nbRisques>1?'s':''}</strong> recensé${nbRisques>1?'s':''} : ${syn.slice(0,4).join(', ')}${nbRisques>4?' …':''}.`);
+  else if(risques.sismicite) parts.push('Aucun risque naturel majeur recensé sur Géorisques.');
+
+  if(!parts.length){ row.classList.add('d-none'); return; }
+  body.innerHTML = parts.join(' ');
+
+  // Badges signaux
+  const badges = [];
+  if(evol != null && evol > 2) badges.push({label:'Prix en hausse', cls:'success'});
+  if(evol != null && evol < -2) badges.push({label:'Prix en baisse', cls:'warning'});
+  if(tendance === 'croissant') badges.push({label:'Volume en hausse', cls:'info'});
+  if(tendance === 'en recul') badges.push({label:'Volume en recul', cls:'secondary'});
+  if(score >= 70) badges.push({label:'Fort potentiel', cls:'primary'});
+  if(nbRisques >= 5) badges.push({label:`${nbRisques} risques recensés`, cls:'danger'});
+  bads.innerHTML = badges.map(b=>`<span class="badge bg-${b.cls}">${escHtml(b.label)}</span>`).join('');
+
+  row.classList.remove('d-none');
+}
+
+// ═══ P4 — Top comparables (appelé après chargement transactions) ═════════════
+function renderTopComparables(transactions, typeBien){
+  const row  = document.getElementById('topComparRow');
+  const body = document.getElementById('topComparBody');
+  const cnt  = document.getElementById('topComparCount');
+  if(!row || !body) return;
+
+  // Filtre : même type de bien ou tous, avec surface connue, dans les 3 dernières années
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - 3);
+  const isMaison = (typeBien||'').toLowerCase() === 'maison';
+  const typeTarget = isMaison ? 'Maison' : 'Appartement';
+
+  let pool = (transactions||[]).filter(t => {
+    if(!t.surface_reelle_bati || t.surface_reelle_bati < 10) return false;
+    if(typeBien && typeBien !== 'tous' && t.type_local !== typeTarget) return false;
+    if(t.date && new Date(t.date) < cutoff) return false;
+    return t.valeur_fonciere > 0;
+  });
+
+  // Trier par distance puis par date décroissante
+  pool.sort((a,b)=> (a.distance_m||9999) - (b.distance_m||9999) || new Date(b.date||0) - new Date(a.date||0));
+  const top = pool.slice(0, 8);
+
+  if(!top.length){ row.classList.add('d-none'); return; }
+  cnt.textContent = top.length + (pool.length > top.length ? ' / '+pool.length : '');
+
+  const fmtE = n => n!=null ? Math.round(n).toLocaleString('fr-FR')+' €' : '—';
+  const fmtM2 = n => n!=null ? Math.round(n).toLocaleString('fr-FR')+' €/m²' : '—';
+  const fmtDist = m => m==null ? '—' : m < 1000 ? Math.round(m)+' m' : (m/1000).toFixed(1)+' km';
+
+  body.innerHTML =
+    '<table class="table table-sm table-hover mb-0"><thead class="table-light"><tr>'+
+    '<th>Date</th><th>Type</th><th class="text-end">Surface</th>'+
+    '<th class="text-end">Prix</th><th class="text-end">€/m²</th>'+
+    '<th class="text-end">Distance</th><th>Adresse</th>'+
+    '</tr></thead><tbody>'+
+    top.map(t=>{
+      const prixM2 = t.surface_reelle_bati ? t.valeur_fonciere / t.surface_reelle_bati : null;
+      const adresse = [t.adresse_numero, t.adresse_nom_voie, t.code_postal].filter(Boolean).join(' ');
+      return `<tr>
+        <td>${t.date ? t.date.slice(0,7) : '—'}</td>
+        <td><span class="badge" style="background:${t.type_local==='Maison'?'#e4241c':'#0d6efd'}">${escHtml(t.type_local||'—')}</span></td>
+        <td class="text-end">${t.surface_reelle_bati ? Math.round(t.surface_reelle_bati)+' m²' : '—'}</td>
+        <td class="text-end fw-semibold">${fmtE(t.valeur_fonciere)}</td>
+        <td class="text-end">${fmtM2(prixM2)}</td>
+        <td class="text-end">${fmtDist(t.distance_m)}</td>
+        <td class="small text-muted">${escHtml(adresse)}</td>
+      </tr>`;
+    }).join('')+
+    '</tbody></table>';
+
+  row.classList.remove('d-none');
+}
 
 function renderResults(d){
   const loc  = d.localisation  || {};
@@ -1399,6 +1602,7 @@ function renderResults(d){
   renderDpeSection(dpe);
   renderTerritoire(info, loc);
   renderRisques(d.risques || {});
+  renderSyntheseNarrative(d);
 
   // Tableau DVF
   renderDvfTable(dvfA);
@@ -1789,6 +1993,9 @@ function renderTransactions(transactions, rayon_km, latRef, lonRef, mode, meta){
       applyTransFilters();
     };
   });
+
+  // P4 — top comparables
+  renderTopComparables(transactions, (window.__fidiInputs && window.__fidiInputs.typeBien) || (window.__fidiData && window.__fidiData.type_bien));
 }
 
 function _populateFilterDropdowns(){
