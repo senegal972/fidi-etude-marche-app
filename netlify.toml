@@ -22,6 +22,12 @@
 [functions."loyers"]
   timeout = 20
 
+[functions."facture"]
+  timeout = 10
+
+[functions."facture-html"]
+  timeout = 5
+
 # ── Redirections API → Netlify Functions ──────────────────────────────────────
 [[redirects]]
   from   = "/api/analyse"
@@ -76,6 +82,16 @@
 [[redirects]]
   from   = "/api/notion-get"
   to     = "/.netlify/functions/notion-get"
+  status = 200
+
+[[redirects]]
+  from   = "/api/facture"
+  to     = "/.netlify/functions/facture"
+  status = 200
+
+[[redirects]]
+  from   = "/api/facture-html"
+  to     = "/.netlify/functions/facture-html"
   status = 200
 
 # ── SPA fallback : toute URL non trouvée → index.html ─────────────────────────

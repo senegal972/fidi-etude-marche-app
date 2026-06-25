@@ -739,6 +739,7 @@
       '<button class="btn btn-sm btn-outline-success" data-action="save"><i class="bi bi-save me-1"></i>Sauvegarder</button>' +
       '<button class="btn btn-sm btn-outline-info" data-action="cloud" title="Mes dossiers sauvegardés dans Notion">☁️ Cloud</button>' +
       '<button class="btn btn-sm btn-outline-secondary" data-action="partager" title="Partager cet avis"><i class="bi bi-share me-1"></i>Partager</button>' +
+      '<button class="btn btn-sm btn-outline-warning" data-action="facturer" title="Créer la facture pour cet avis (250 €)"><i class="bi bi-receipt me-1"></i>Facturer</button>' +
       '<button class="btn btn-sm btn-outline-dark" data-action="toggle-preview"><i class="bi bi-eye me-1"></i>Aperçu</button>' +
       '<button class="btn btn-sm btn-primary" data-action="word"><i class="bi bi-file-earmark-word me-1"></i>Word</button>' +
       '<button class="btn btn-sm btn-danger" data-action="pdf"><i class="bi bi-file-earmark-pdf me-1"></i>PDF</button>' +
@@ -796,6 +797,7 @@
     else if (a === 'save') doSave();
     else if (a === 'cloud') doCloud();
     else if (a === 'partager') doPartager();
+    else if (a === 'facturer') doFacturer();
     else if (a === 'load') doLoad();
     else if (a === 'delete') doDelete();
     else if (a === 'save-sign') { if (saveSignataire(state.data.signataire)) toast('Signataire mémorisé'); }
@@ -1013,6 +1015,24 @@
         } else { toast('Introuvable dans Notion', true); }
       })
       .catch(function () { toast('Erreur chargement cloud', true); });
+  }
+
+  function doFacturer() {
+    if (typeof window.proposerFacture === 'function') {
+      // Pré-remplir client/email depuis l'avis courant
+      var d = state.data || {};
+      var meta = d.metadata || {}, bien = d.bien || {};
+      window.__factureAvisCtx = {
+        client: meta.client || '',
+        email:  meta.emailClient || '',
+        adresse: bien.adresse || '',
+        commune: bien.commune || '',
+        ref:    (meta.ref || '').trim()
+      };
+      window.proposerFacture('avis');
+    } else {
+      alert('Module facturation non disponible (rechargez la page).');
+    }
   }
 
   function doPartager() {
@@ -1306,5 +1326,5 @@
     state.modal.show();
   }
 
-  window.AvisValeur = { open: open, openLibrary: openLibrary, listAvis: avisList, cloud: doCloud, cloudOpen: cloudOpen, partager: doPartager, _compute: compute, _prefill: buildPrefillFromEtude };
+  window.AvisValeur = { open: open, openLibrary: openLibrary, listAvis: avisList, cloud: doCloud, cloudOpen: cloudOpen, partager: doPartager, facturer: doFacturer, _compute: compute, _prefill: buildPrefillFromEtude };
 })();

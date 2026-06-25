@@ -433,6 +433,9 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
         <button class="btn btn-sm btn-outline-primary" id="btnShareEtude" onclick="partagerEtude()" title="Partager cette étude (lien lecture seule)">
           <i class="bi bi-share me-1"></i>Partager
         </button>
+        <button class="btn btn-sm btn-outline-warning" id="btnFactureEtude" onclick="proposerFacture('etude')" title="Créer la facture pour cette étude (450 €)">
+          <i class="bi bi-receipt me-1"></i>Facturer
+        </button>
         <button class="btn btn-sm" style="background:var(--fidi-gold);color:#1a2233;font-weight:600;" onclick="AvisValeur.open()">
           <i class="bi bi-file-earmark-text me-1"></i>Avis de valeur
         </button>
@@ -2411,6 +2414,103 @@ async function partagerEtude(){
   const loc = d.localisation || {};
   const est = (d.estimation && d.estimation.valeur_med) ? Number(d.estimation.valeur_med).toLocaleString('fr-FR')+' €' : '';
   showShareModal('Étude de marché', loc.label || loc.city || ref, est, url);
+}
+
+// ═══ Facturation ════════════════════════════════════════════════════════════════
+function proposerFacture(kind){
+  const TARIFS = {avis:250, etude:450};
+  const montant = TARIFS[kind] || 0;
+  const label = kind==='avis' ? 'Avis de valeur' : 'Étude de marché';
+  let d = window.__fidiData, inputs = window.__fidiInputs || {};
+  let adresse='', commune='', ref='', client='', email='';
+  if(kind==='etude' && d){
+    const loc = d.localisation||{};
+    adresse = loc.label || inputs.adresse || '';
+    commune = loc.city || '';
+    ref     = etudeRef(d, inputs);
+  } else if(kind==='avis' && window.__factureAvisCtx){
+    const ctx = window.__factureAvisCtx;
+    client  = ctx.client  || '';
+    email   = ctx.email   || '';
+    adresse = ctx.adresse || '';
+    commune = ctx.commune || adresse;
+    ref     = ctx.ref     || '';
+    window.__factureAvisCtx = null;
+  }
+  if(typeof bootstrap === 'undefined'){ alert('Bootstrap non chargé.'); return; }
+  let root = document.getElementById('factureRoot');
+  if(!root){ root = document.createElement('div'); root.id='factureRoot'; document.body.appendChild(root); }
+  root.innerHTML =
+    '<div class="modal fade" id="factureModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">'+
+    '<div class="modal-header" style="background:#856404;color:#fff;">'+
+    '<h5 class="modal-title"><i class="bi bi-receipt me-2"></i>Créer une facture — '+escHtml(label)+'</h5>'+
+    '<button type="button" class="btn-close" style="filter:invert(1)" data-bs-dismiss="modal"></button></div>'+
+    '<div class="modal-body">'+
+    '<p class="small text-muted mb-3">Prestation : <strong>'+escHtml(label)+'</strong> — <strong>'+montant+' € TTC</strong></p>'+
+    '<div class="mb-2"><label class="form-label small mb-1">Nom du client</label>'+
+    '<input class="form-control form-control-sm" id="factClient" value="'+escHtml(client)+'" placeholder="Nom Prénom ou Société"></div>'+
+    '<div class="mb-2"><label class="form-label small mb-1">Email client</label>'+
+    '<input class="form-control form-control-sm" id="factEmail" value="'+escHtml(email)+'" placeholder="client@exemple.com" type="email"></div>'+
+    '<div class="mb-2"><label class="form-label small mb-1">Bien / Commune</label>'+
+    '<input class="form-control form-control-sm" id="factCommune" value="'+escHtml(commune||adresse)+'" placeholder="Commune ou adresse du bien"></div>'+
+    '</div>'+
+    '<div class="modal-footer"><button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Annuler</button>'+
+    '<button class="btn btn-warning btn-sm fw-bold" id="factBtnOk" onclick="confirmerFacture(\''+kind+'\',\''+escHtml(ref)+'\','+montant+')">'+
+    '<i class="bi bi-receipt me-1"></i>Générer la facture</button></div>'+
+    '</div></div></div>';
+  const el = document.getElementById('factureModal');
+  el.addEventListener('hidden.bs.modal', ()=>el.remove());
+  new bootstrap.Modal(el).show();
+}
+
+async function confirmerFacture(kind, prestRef, montant){
+  const btn = document.getElementById('factBtnOk');
+  if(btn){ btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm"></span>'; }
+  const client  = (document.getElementById('factClient')  || {}).value || '';
+  const email   = (document.getElementById('factEmail')   || {}).value || '';
+  const commune = (document.getElementById('factCommune') || {}).value || '';
+  const payload = { kind, ref: prestRef, client, email_client: email, commune, adresse: commune, montant };
+  try{
+    const r = await fetch('/api/facture', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const j = await r.json().catch(()=>({}));
+    const el = document.getElementById('factureModal');
+    if(el && bootstrap){ const m = bootstrap.Modal.getInstance(el); if(m) m.hide(); }
+    if(j && j.ok){
+      afficherResultatFacture(j, kind, prestRef);
+    } else {
+      alert('Erreur création facture : '+(j&&j.error||'inconnue'));
+    }
+  }catch(e){ alert('Erreur réseau : '+e.message); }
+}
+
+function afficherResultatFacture(j, kind, prestRef){
+  if(typeof bootstrap === 'undefined') return;
+  let root = document.getElementById('factureResRoot');
+  if(!root){ root = document.createElement('div'); root.id='factureResRoot'; document.body.appendChild(root); }
+  const params = new URLSearchParams({
+    ref: j.ref, kind, client: j.client||'', email: j.email||'',
+    commune: j.commune||'', adresse: j.adresse||'', montant: j.montant||0,
+    date: j.date||'', libelle: j.libelle||'', prestRef: prestRef||''
+  });
+  const pdfUrl = '/api/facture-html?'+params.toString();
+  root.innerHTML =
+    '<div class="modal fade" id="factureResModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">'+
+    '<div class="modal-header" style="background:#1a3a6e;color:#fff;">'+
+    '<h5 class="modal-title">✅ Facture créée</h5>'+
+    '<button type="button" class="btn-close" style="filter:invert(1)" data-bs-dismiss="modal"></button></div>'+
+    '<div class="modal-body text-center py-4">'+
+    '<div class="display-6 mb-2">🧾</div>'+
+    '<p class="fw-bold mb-1">Facture N° '+escHtml(j.ref)+'</p>'+
+    '<p class="text-muted small mb-3">'+escHtml(j.libelle||'')+'<br>Montant : <strong>'+escHtml(String(j.montant))+' € TTC</strong></p>'+
+    (j.existing ? '<div class="alert alert-info small py-2 mb-3">Une facture existait déjà pour cette prestation.</div>' : '')+
+    '<div class="d-grid gap-2">'+
+    '<a class="btn btn-primary" href="'+escHtml(pdfUrl)+'" target="_blank"><i class="bi bi-file-earmark-pdf me-1"></i>Ouvrir / Imprimer la facture</a>'+
+    '</div></div>'+
+    '<div class="modal-footer"><button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Fermer</button></div>'+
+    '</div></div></div>';
+  const el = document.getElementById('factureResModal');
+  el.addEventListener('hidden.bs.modal', ()=>el.remove());
+  new bootstrap.Modal(el).show();
 }
 
 function showShareModal(kind, titre, valeur, url){
