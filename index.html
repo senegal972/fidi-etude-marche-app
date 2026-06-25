@@ -430,6 +430,9 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
         <button class="btn btn-sm btn-outline-info" id="btnSaveEtude" onclick="saveEtudeCloud()" title="Sauvegarder cette étude dans Notion">
           ☁️ Sauvegarder
         </button>
+        <button class="btn btn-sm btn-outline-primary" id="btnShareEtude" onclick="partagerEtude()" title="Partager cette étude (lien lecture seule)">
+          <i class="bi bi-share me-1"></i>Partager
+        </button>
         <button class="btn btn-sm" style="background:var(--fidi-gold);color:#1a2233;font-weight:600;" onclick="AvisValeur.open()">
           <i class="bi bi-file-earmark-text me-1"></i>Avis de valeur
         </button>
@@ -2390,6 +2393,77 @@ function renderEstimation(est, typeBien){
   document.getElementById('est-med').textContent = fmtEur(est.valeur_med);
   document.getElementById('est-max').textContent = fmtEur(est.valeur_max);
 }
+
+// ═══ P2 — Partage de l'étude ═════════════════════════════════════════════════
+function currentEtudeRef(){
+  const d = window.__fidiData;
+  if(!d) return null;
+  return etudeRef(d, window.__fidiInputs || {});
+}
+
+async function partagerEtude(){
+  const d = window.__fidiData;
+  if(!d){ alert('Lancez une analyse avant de partager.'); return; }
+  // Sauvegarde d'abord pour garantir que le lien pointe vers des données existantes
+  await saveEtudeCloud();
+  const ref = currentEtudeRef();
+  const url = location.origin + '/?etude=' + encodeURIComponent(ref);
+  const loc = d.localisation || {};
+  const est = (d.estimation && d.estimation.valeur_med) ? Number(d.estimation.valeur_med).toLocaleString('fr-FR')+' €' : '';
+  showShareModal('Étude de marché', loc.label || loc.city || ref, est, url);
+}
+
+function showShareModal(kind, titre, valeur, url){
+  let root = document.getElementById('shareRoot');
+  if(!root){ root = document.createElement('div'); root.id='shareRoot'; document.body.appendChild(root); }
+  const subject = encodeURIComponent('FIDI — ' + kind + ' : ' + titre);
+  const bodyTxt = encodeURIComponent(
+    'Bonjour,\n\nVeuillez trouver ci-dessous le lien vers ' + (kind==='Étude de marché'?'l\'étude de marché':'l\'avis de valeur') +
+    ' réalisé(e) par FIDI Conseil pour ' + titre + (valeur?(' (estimation : '+valeur+')'):'') + ' :\n\n' + url +
+    '\n\nCe lien donne accès au rapport complet en lecture seule.\n\nCordialement,\nFIDI Conseil');
+  const mailto = 'mailto:?subject=' + subject + '&body=' + bodyTxt;
+  root.innerHTML = '<div class="modal fade" id="shareModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">'+
+    '<div class="modal-header" style="background:#1a3a6e;color:#fff;"><h5 class="modal-title">🔗 Partager — '+escHtml(kind)+'</h5>'+
+    '<button type="button" class="btn-close" style="filter:invert(1)" data-bs-dismiss="modal"></button></div>'+
+    '<div class="modal-body">'+
+      '<p class="small text-muted mb-2">Lien de consultation en lecture seule :</p>'+
+      '<div class="input-group mb-3"><input type="text" class="form-control" id="shareUrl" value="'+escHtml(url)+'" readonly>'+
+        '<button class="btn btn-outline-primary" onclick="copyShareUrl()">Copier</button></div>'+
+      '<div class="d-grid gap-2">'+
+        '<a class="btn btn-primary" href="'+mailto+'"><i class="bi bi-envelope me-1"></i>Envoyer par email</a>'+
+        '<a class="btn btn-success" target="_blank" rel="noopener" href="https://wa.me/?text='+encodeURIComponent(titre+' — '+url)+'"><i class="bi bi-whatsapp me-1"></i>Partager via WhatsApp</a>'+
+      '</div></div>'+
+    '</div></div></div>';
+  const el = document.getElementById('shareModal');
+  el.addEventListener('hidden.bs.modal', ()=>el.remove());
+  new bootstrap.Modal(el).show();
+}
+
+function copyShareUrl(){
+  const inp = document.getElementById('shareUrl');
+  if(!inp) return;
+  inp.select(); inp.setSelectionRange(0,99999);
+  navigator.clipboard.writeText(inp.value).then(()=>{
+    const btn = inp.nextElementSibling; if(btn){ const o=btn.textContent; btn.textContent='✓ Copié'; setTimeout(()=>btn.textContent=o,1500); }
+  }).catch(()=>{ try{document.execCommand('copy');}catch(e){} });
+}
+
+// ═══ Init : ouverture via lien de partage (?etude=REF ou ?avis=REF) ══════════
+(function initShareDeepLink(){
+  function run(){
+    const params = new URLSearchParams(location.search);
+    const etudeRefP = params.get('etude');
+    const avisRefP  = params.get('avis');
+    if(etudeRefP && typeof reopenEtude === 'function'){
+      reopenEtude(etudeRefP);
+    } else if(avisRefP && window.AvisValeur && AvisValeur.cloudOpen){
+      // Laisse le module avis se charger
+      setTimeout(()=>AvisValeur.cloudOpen(avisRefP), 600);
+    }
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run);
+  else run();
+})();
 </script>
 
 <!-- Module Avis de valeur (récupère window.__fidiData) -->

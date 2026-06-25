@@ -738,6 +738,7 @@
       '<button class="btn btn-sm btn-outline-primary" data-action="prefill" title="Re-remplir depuis l\'étude en cours"><i class="bi bi-magic me-1"></i>Pré-remplir</button>' +
       '<button class="btn btn-sm btn-outline-success" data-action="save"><i class="bi bi-save me-1"></i>Sauvegarder</button>' +
       '<button class="btn btn-sm btn-outline-info" data-action="cloud" title="Mes dossiers sauvegardés dans Notion">☁️ Cloud</button>' +
+      '<button class="btn btn-sm btn-outline-secondary" data-action="partager" title="Partager cet avis"><i class="bi bi-share me-1"></i>Partager</button>' +
       '<button class="btn btn-sm btn-outline-dark" data-action="toggle-preview"><i class="bi bi-eye me-1"></i>Aperçu</button>' +
       '<button class="btn btn-sm btn-primary" data-action="word"><i class="bi bi-file-earmark-word me-1"></i>Word</button>' +
       '<button class="btn btn-sm btn-danger" data-action="pdf"><i class="bi bi-file-earmark-pdf me-1"></i>PDF</button>' +
@@ -794,6 +795,7 @@
     else if (a === 'prefill') doPrefill();
     else if (a === 'save') doSave();
     else if (a === 'cloud') doCloud();
+    else if (a === 'partager') doPartager();
     else if (a === 'load') doLoad();
     else if (a === 'delete') doDelete();
     else if (a === 'save-sign') { if (saveSignataire(state.data.signataire)) toast('Signataire mémorisé'); }
@@ -1011,6 +1013,24 @@
         } else { toast('Introuvable dans Notion', true); }
       })
       .catch(function () { toast('Erreur chargement cloud', true); });
+  }
+
+  function doPartager() {
+    var ref = (state.data && state.data.metadata && state.data.metadata.ref || '').trim();
+    if (!ref) { toast('Sauvegardez d\'abord l\'avis pour le partager', true); return; }
+    var d = state.data; var c = compute(d);
+    var titre = (d.bien && d.bien.adresse) ? esc(d.bien.adresse) : ref;
+    var valeur = (c.voccBas && c.voccHaut)
+      ? (Math.round(c.voccBas).toLocaleString('fr-FR') + ' – ' + Math.round(c.voccHaut).toLocaleString('fr-FR') + ' €')
+      : '—';
+    var shareUrl = window.location.origin + window.location.pathname + '?avis=' + encodeURIComponent(ref);
+    cloudSaveAvis(ref); // synchro Notion en arrière-plan
+    if (typeof window.showShareModal === 'function') {
+      window.showShareModal('avis', titre, valeur, shareUrl);
+    } else {
+      // fallback : copie directe de l'URL si le modal index.html n'est pas disponible
+      try { navigator.clipboard.writeText(shareUrl); toast('Lien copié !'); } catch (e) { toast(shareUrl); }
+    }
   }
 
   function doCloud() {
@@ -1286,5 +1306,5 @@
     state.modal.show();
   }
 
-  window.AvisValeur = { open: open, openLibrary: openLibrary, listAvis: avisList, cloud: doCloud, cloudOpen: cloudOpen, _compute: compute, _prefill: buildPrefillFromEtude };
+  window.AvisValeur = { open: open, openLibrary: openLibrary, listAvis: avisList, cloud: doCloud, cloudOpen: cloudOpen, partager: doPartager, _compute: compute, _prefill: buildPrefillFromEtude };
 })();
