@@ -28,6 +28,15 @@
 [functions."facture-html"]
   timeout = 5
 
+[functions."fiscalite"]
+  timeout = 15
+
+[functions."vacance"]
+  timeout = 15
+
+[functions."delinquance"]
+  timeout = 15
+
 # ── Redirections API → Netlify Functions ──────────────────────────────────────
 [[redirects]]
   from   = "/api/analyse"
@@ -92,6 +101,21 @@
 [[redirects]]
   from   = "/api/facture-html"
   to     = "/.netlify/functions/facture-html"
+  status = 200
+
+[[redirects]]
+  from   = "/api/fiscalite"
+  to     = "/.netlify/functions/fiscalite"
+  status = 200
+
+[[redirects]]
+  from   = "/api/vacance"
+  to     = "/.netlify/functions/vacance"
+  status = 200
+
+[[redirects]]
+  from   = "/api/delinquance"
+  to     = "/.netlify/functions/delinquance"
   status = 200
 
 # ── SPA fallback : toute URL non trouvée → index.html ─────────────────────────

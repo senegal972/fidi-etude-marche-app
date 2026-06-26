@@ -659,6 +659,20 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
       </div>
     </div>
 
+    <!-- Contexte local : fiscalité, vacance, délinquance -->
+    <div id="contexteLocalRow" class="row g-3 mb-3 d-none">
+      <div class="col-12">
+        <div class="chart-card" style="border-left:4px solid var(--fidi-blue);">
+          <h6 class="d-flex align-items-center gap-2">
+            <i class="bi bi-building-check me-1 text-primary"></i>Contexte local
+          </h6>
+          <div id="contexteLocalBody" class="row g-3 mt-1">
+            <div class="text-muted small py-2"><span class="spinner-border spinner-border-sm me-2"></span>Chargement…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Top comparables -->
     <div id="topComparRow" class="row g-3 mb-3 d-none">
       <div class="col-12">
@@ -1158,6 +1172,9 @@ async function lancerAnalyse(){
     // Rendement locatif estimé (chargement asynchrone)
     loadLoyersAsync(data.localisation || {}, data);
 
+    // Contexte local : fiscalité, vacance, délinquance
+    loadContexteLocalAsync(data.localisation || {}, data.commune_info || {});
+
     // Vérifications légales d'entreprise (option)
     if(document.getElementById('optEntreprise').checked){
       const q = document.getElementById('inputEntrepriseQ').value.trim();
@@ -1291,7 +1308,7 @@ async function reopenEtude(ref){
     document.getElementById('btnAvis').classList.remove('d-none');
     const m = document.getElementById('etudesLibModal'); if(m && bootstrap){ const bm = bootstrap.Modal.getInstance(m); if(bm) bm.hide(); }
     window.scrollTo({top: document.getElementById('results-panel').offsetTop - 20, behavior:'smooth'});
-    if(d.localisation){ loadTransactionsAsync(d.localisation, inputs.perimetre || 'rayon_1km'); loadBatimentAsync(d.localisation); loadLoyersAsync(d.localisation, d); }
+    if(d.localisation){ loadTransactionsAsync(d.localisation, inputs.perimetre || 'rayon_1km'); loadBatimentAsync(d.localisation); loadLoyersAsync(d.localisation, d); loadContexteLocalAsync(d.localisation, d.commune_info || {}); }
   }catch(e){ alert('Réouverture impossible : ' + e.message); }
 }
 
@@ -1378,6 +1395,92 @@ async function loadLoyersAsync(loc, d){
   }catch(e){
     body.innerHTML = '<div class="text-muted small py-2">Rendement indisponible (' + e.message + ')</div>';
   }
+}
+
+// ─── Contexte local : fiscalité + vacance + délinquance ──────────────────────
+async function loadContexteLocalAsync(loc, info){
+  const row  = document.getElementById('contexteLocalRow');
+  const body = document.getElementById('contexteLocalBody');
+  if(!loc || !loc.citycode){ if(row) row.classList.add('d-none'); return; }
+  if(row) row.classList.remove('d-none');
+  if(body) body.innerHTML = '<div class="text-muted small py-2"><span class="spinner-border spinner-border-sm me-2"></span>Chargement contexte local…</div>';
+
+  const ci  = loc.citycode;
+  const pop = info.population || 0;
+  const eur2 = n => n!=null ? n.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
+  const fmt  = n => n!=null ? Math.round(n).toLocaleString('fr-FR') : '—';
+
+  const [rFisc, rVac, rDel] = await Promise.allSettled([
+    fetch('/api/fiscalite',   {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code_insee:ci})}).then(r=>r.json()),
+    fetch('/api/vacance',     {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code_insee:ci})}).then(r=>r.json()),
+    fetch('/api/delinquance', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code_insee:ci,population:pop})}).then(r=>r.json()),
+  ]);
+
+  const fisc = rFisc.status==='fulfilled' ? rFisc.value : {};
+  const vac  = rVac.status==='fulfilled'  ? rVac.value  : {};
+  const del  = rDel.status==='fulfilled'  ? rDel.value  : {};
+
+  // ── Carte Taxe foncière ──────────────────────────────────────────────────
+  const tfbCommune = fisc.taux_tfb_commune;
+  const tfbTotal   = fisc.taux_tfb_total;
+  const tfbClass   = tfbTotal==null ? 'secondary' : tfbTotal>25 ? 'danger' : tfbTotal>18 ? 'warning' : 'success';
+  const fiscHTML =
+    '<div class="col-12 col-md-4">' +
+      '<div class="p-3 rounded bg-light h-100">' +
+        '<div class="d-flex align-items-center gap-2 mb-2"><i class="bi bi-receipt text-primary"></i><strong>Taxe foncière</strong>' +
+        (fisc.annee ? '<span class="badge bg-secondary ms-auto">'+fisc.annee+'</span>' : '') + '</div>' +
+        (fisc.disponible===false ? '<div class="text-muted small">Non disponible pour cette commune.</div>' :
+          '<div class="row g-2">' +
+            '<div class="col-6"><div class="text-muted small">Taux TFB commune</div><div class="fw-bold fs-5 text-primary">'+(tfbCommune!=null?eur2(tfbCommune)+' %':'—')+'</div></div>' +
+            '<div class="col-6"><div class="text-muted small">Taux TFB total</div><div class="fw-bold fs-5 text-'+tfbClass+'">'+(tfbTotal!=null?eur2(tfbTotal)+' %':'—')+'</div></div>' +
+            '<div class="col-6"><div class="text-muted small">Taux TFNB</div><div class="fw-bold">'+(fisc.taux_tfnb!=null?eur2(fisc.taux_tfnb)+' %':'—')+'</div></div>' +
+            '<div class="col-6"><div class="text-muted small">Base nette TFB</div><div class="fw-bold">'+(fisc.base_nette_tfb!=null?fmt(fisc.base_nette_tfb)+' €':'—')+'</div></div>' +
+          '</div>') +
+      '</div>' +
+    '</div>';
+
+  // ── Carte Vacance ────────────────────────────────────────────────────────
+  const tauxVac = vac.taux_vacance;
+  const vacClass = tauxVac==null ? 'secondary' : tauxVac>12 ? 'danger' : tauxVac>7 ? 'warning' : 'success';
+  const vacHTML =
+    '<div class="col-12 col-md-4">' +
+      '<div class="p-3 rounded bg-light h-100">' +
+        '<div class="d-flex align-items-center gap-2 mb-2"><i class="bi bi-house-x text-warning"></i><strong>Logements vacants</strong>' +
+        (vac.annee ? '<span class="badge bg-secondary ms-auto">'+vac.annee+'</span>' : '') + '</div>' +
+        (vac.disponible===false ? '<div class="text-muted small">Non disponible pour cette commune.</div>' :
+          '<div class="row g-2">' +
+            '<div class="col-6"><div class="text-muted small">Taux de vacance</div><div class="fw-bold fs-5 text-'+vacClass+'">'+(tauxVac!=null?eur2(tauxVac)+' %':'—')+'</div></div>' +
+            '<div class="col-6"><div class="text-muted small">Logements vacants</div><div class="fw-bold">'+(vac.nb_logements_vacants!=null?fmt(vac.nb_logements_vacants):'—')+'</div></div>' +
+            '<div class="col-12"><div class="d-flex align-items-center gap-2 mt-1">' +
+              (vac.zone_tendue ? '<span class="badge bg-danger"><i class="bi bi-exclamation-triangle-fill me-1"></i>Zone tendue</span>' : '<span class="badge bg-success">Hors zone tendue</span>') +
+              (vac.tlv_applicable ? '<span class="badge bg-warning text-dark">TLV applicable</span>' : '') +
+            '</div></div>' +
+          '</div>') +
+      '</div>' +
+    '</div>';
+
+  // ── Carte Délinquance ────────────────────────────────────────────────────
+  const taux1000 = del.taux_pour_1000;
+  const delClass = taux1000==null ? 'secondary' : taux1000>30 ? 'danger' : taux1000>15 ? 'warning' : 'success';
+  const top3HTML = (del.top_3||[]).map(t =>
+    '<div class="d-flex justify-content-between small border-bottom py-1"><span class="text-muted">'+escHtml(t.categorie)+'</span><span class="fw-bold">'+fmt(t.faits)+'</span></div>'
+  ).join('');
+  const delHTML =
+    '<div class="col-12 col-md-4">' +
+      '<div class="p-3 rounded bg-light h-100">' +
+        '<div class="d-flex align-items-center gap-2 mb-2"><i class="bi bi-shield-exclamation text-danger"></i><strong>Délinquance</strong>' +
+        (del.annee ? '<span class="badge bg-secondary ms-auto">'+del.annee+'</span>' : '') + '</div>' +
+        (del.disponible===false ? '<div class="text-muted small">Non disponible pour cette commune.</div>' :
+          '<div class="row g-2">' +
+            '<div class="col-6"><div class="text-muted small">Faits enregistrés</div><div class="fw-bold fs-5">'+(del.faits_total!=null?fmt(del.faits_total):'—')+'</div></div>' +
+            '<div class="col-6"><div class="text-muted small">Taux /1 000 hab.</div><div class="fw-bold fs-5 text-'+delClass+'">'+(taux1000!=null?eur2(taux1000):'—')+'</div></div>' +
+            (top3HTML ? '<div class="col-12 mt-1">'+top3HTML+'</div>' : '') +
+          '</div>') +
+      '</div>' +
+    '</div>';
+
+  if(body) body.innerHTML = '<div class="col-12"><div class="row g-3">' + fiscHTML + vacHTML + delHTML + '</div>' +
+    '<div class="text-muted mt-2" style="font-size:.68rem;">Sources : data.economie.gouv.fr (fiscalité) · opendatasoft.com (vacance, délinquance MI). Données indicatives.</div></div>';
 }
 
 function escHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
