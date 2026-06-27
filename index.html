@@ -1045,34 +1045,13 @@ document.getElementById('btnGeoloc').addEventListener('click', async () => {
 
 // ─── Export PDF (impression navigateur → "Enregistrer en PDF") ────────────────
 // Approche fiable : utilise le moteur d'impression natif du navigateur via les
-// règles @media print. L'utilisateur choisit "Enregistrer en PDF" comme
-// destination dans la boîte de dialogue. Pas de problème CORS, rendu parfait.
 function exportPdf(){
   const target = document.getElementById('results-panel');
   if(!target || target.classList.contains('d-none')){
-    alert('Lancez une analyse avant d\'exporter en PDF.');
+    alert('Lancez une analyse avant d\'imprimer.');
     return;
   }
-  if(typeof html2pdf === 'undefined'){ // repli : dialogue d'impression natif
-    window.print(); return;
-  }
-  const titre = (document.getElementById('res-titre').textContent || 'etude-marche')
-    .toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,60);
-  const date = new Date().toISOString().slice(0,10);
-  const filename = `etude-marche-${titre || 'rapport'}-${date}.pdf`;
-  // Indicateur visuel
-  const btn = document.getElementById('btnPdf');
-  const orig = btn ? btn.innerHTML : '';
-  if(btn){ btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
-  document.body.classList.add('pdf-mode'); // masque la carte Leaflet (cross-origin)
-  html2pdf().set(window.fidiPdfOptions(filename)).from(target).save().then(()=>{
-    document.body.classList.remove('pdf-mode');
-    if(btn){ btn.disabled=false; btn.innerHTML=orig; }
-  }).catch(e=>{
-    document.body.classList.remove('pdf-mode');
-    if(btn){ btn.disabled=false; btn.innerHTML=orig; }
-    alert('Échec PDF : '+e.message+'\nUtilisez le bouton Imprimer comme alternative.');
-  });
+  window.print();
 }
 
 // ─── Init tooltips Bootstrap + toggle option Entreprise ───────────────────────
@@ -2863,26 +2842,54 @@ window.fidiPdfOptions = function(filename){
   };
 };
 
-async function fidiSharePdf(opts){
-  if(typeof html2pdf === 'undefined'){ alert('Module PDF non chargé (rechargez la page).'); return; }
+function fidiSharePdf(opts){
   const kind = opts.kind || 'Document';
   const filename = (opts.filename || 'document.pdf').replace(/[^a-zA-Z0-9._-]+/g,'_');
 
-  // Modale (état : génération en cours)
+  // Stocke opts pour génération lazy du blob (WhatsApp / e-mail / lien)
+  window.__fidiShareOpts = Object.assign({}, opts, { filename: filename });
+  window.__fidiPdfBlob = null;
+  window.__fidiPdfLink = null;
+  window.__fidiPdfFilename = filename;
+
+  const kindH = escHtml(kind), titreH = escHtml(opts.titre||'');
   let root = document.getElementById('shareRoot');
   if(!root){ root = document.createElement('div'); root.id='shareRoot'; document.body.appendChild(root); }
   root.innerHTML =
     '<div class="modal fade" id="shareModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">'+
-    '<div class="modal-header" style="background:#1a3a6e;color:#fff;"><h5 class="modal-title">📄 Partager — '+escHtml(kind)+'</h5>'+
+    '<div class="modal-header" style="background:#1a3a6e;color:#fff;"><h5 class="modal-title"><i class="bi bi-share me-2"></i>Partager — '+kindH+'</h5>'+
     '<button type="button" class="btn-close" style="filter:invert(1)" data-bs-dismiss="modal"></button></div>'+
     '<div class="modal-body" id="shareBody">'+
-      '<div class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2"></span>Génération du PDF…</div>'+
+      '<p class="small text-muted mb-3">Choisissez comment envoyer ce document :</p>'+
+      '<div class="d-grid gap-2">'+
+        '<button class="btn btn-primary" onclick="fidiPdfPrint()"><i class="bi bi-printer me-1"></i>Imprimer / Enregistrer en PDF</button>'+
+        '<button class="btn btn-success" id="shareWaBtn" onclick="fidiPdfWhatsapp(\''+kindH+'\',\''+titreH+'\')"><i class="bi bi-whatsapp me-1"></i>Partager via WhatsApp</button>'+
+        '<button class="btn btn-info text-white" id="shareEmailBtn" onclick="fidiPdfEmail(\''+kindH+'\',\''+titreH+'\')"><i class="bi bi-envelope me-1"></i>Envoyer par e-mail</button>'+
+        '<button class="btn btn-outline-secondary" id="shareCopyBtn" onclick="fidiPdfCopyLink()"><i class="bi bi-link-45deg me-1"></i>Copier un lien de téléchargement</button>'+
+      '</div>'+
+      '<div id="shareLinkWrap" class="mt-3 d-none">'+
+        '<div class="input-group"><input type="text" class="form-control form-control-sm" id="shareUrl" readonly>'+
+        '<button class="btn btn-outline-primary btn-sm" onclick="copyShareUrl()">Copier</button></div>'+
+        '<div class="small text-muted mt-1">Lien valable 7 jours. Le destinataire télécharge le PDF sans accès à l\'application.</div>'+
+      '</div>'+
     '</div></div></div></div>';
   const el = document.getElementById('shareModal');
   el.addEventListener('hidden.bs.modal', ()=>el.remove());
-  const modal = new bootstrap.Modal(el); modal.show();
+  new bootstrap.Modal(el).show();
+}
 
-  // Source DOM : élément existant ou conteneur temporaire depuis htmlString
+function fidiPdfPrint(){
+  const m = document.getElementById('shareModal');
+  if(m){ const inst = bootstrap.Modal.getInstance(m); if(inst) inst.hide(); }
+  setTimeout(()=>window.print(), 300);
+}
+
+// Génère le blob PDF en lazy (une seule fois par session de partage)
+async function fidiEnsurePdfBlob(){
+  if(window.__fidiPdfBlob) return window.__fidiPdfBlob;
+  if(typeof html2pdf === 'undefined') throw new Error('Module PDF non chargé (rechargez la page)');
+  const opts = window.__fidiShareOpts;
+  if(!opts) throw new Error('Aucune session de partage active');
   let sourceEl = opts.element, temp = null;
   if(opts.htmlString){
     temp = document.createElement('div');
@@ -2891,58 +2898,23 @@ async function fidiSharePdf(opts){
     document.body.appendChild(temp);
     sourceEl = temp;
   }
-  if(!sourceEl){ document.getElementById('shareBody').innerHTML = '<div class="alert alert-danger small mb-0">Contenu introuvable.</div>'; return; }
-
-  const pdfOpts = window.fidiPdfOptions(filename);
-
-  let blob = null;
-  // Masque la carte Leaflet vivante (tuiles cross-origin = canvas taché) le temps de la capture
+  if(!sourceEl) throw new Error('Contenu source introuvable');
   const usePdfMode = !temp;
   if(usePdfMode) document.body.classList.add('pdf-mode');
   try {
-    blob = await html2pdf().set(pdfOpts).from(sourceEl).outputPdf('blob');
-  } catch(e){
-    document.getElementById('shareBody').innerHTML = '<div class="alert alert-danger small mb-0">Échec de génération du PDF : '+escHtml(e.message)+'</div>';
+    const blob = await html2pdf().set(window.fidiPdfOptions(opts.filename||'document.pdf')).from(sourceEl).outputPdf('blob');
+    window.__fidiPdfBlob = blob;
+    return blob;
+  } finally {
     if(temp) temp.remove();
     if(usePdfMode) document.body.classList.remove('pdf-mode');
-    return;
   }
-  if(usePdfMode) document.body.classList.remove('pdf-mode');
-  if(temp) temp.remove();
-  window.__fidiPdfBlob = blob;
-  window.__fidiPdfLink = null;
-  window.__fidiPdfFilename = filename;
-
-  const sizeKo = Math.round(blob.size/1024);
-  const body = document.getElementById('shareBody');
-  if(!body) return;
-  body.innerHTML =
-    '<p class="small text-muted mb-3">PDF généré ('+sizeKo+' Ko). Choisissez comment l\'envoyer :</p>'+
-    '<div class="d-grid gap-2">'+
-      '<button class="btn btn-primary" onclick="fidiPdfDownload()"><i class="bi bi-download me-1"></i>Télécharger le PDF</button>'+
-      '<button class="btn btn-success" id="shareWaBtn" onclick="fidiPdfWhatsapp(\''+escHtml(kind)+'\',\''+escHtml(opts.titre||'')+'\')"><i class="bi bi-whatsapp me-1"></i>Partager via WhatsApp</button>'+
-      '<button class="btn btn-outline-secondary" id="shareCopyBtn" onclick="fidiPdfCopyLink()"><i class="bi bi-link-45deg me-1"></i>Copier un lien de téléchargement</button>'+
-    '</div>'+
-    '<div id="shareLinkWrap" class="mt-3 d-none">'+
-      '<div class="input-group"><input type="text" class="form-control form-control-sm" id="shareUrl" readonly>'+
-      '<button class="btn btn-outline-primary btn-sm" onclick="copyShareUrl()">Copier</button></div>'+
-      '<div class="small text-muted mt-1">Lien valable 7 jours. Le destinataire télécharge le PDF sans accès à l\'application.</div>'+
-    '</div>';
-}
-
-function fidiPdfDownload(){
-  const blob = window.__fidiPdfBlob; if(!blob) return;
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = window.__fidiPdfFilename || 'document.pdf';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  setTimeout(()=>URL.revokeObjectURL(url), 1000);
 }
 
 // Convertit le blob PDF en base64 et l'héberge via /api/pdf-share → renvoie l'URL
 async function fidiPdfUpload(){
   if(window.__fidiPdfLink) return window.__fidiPdfLink;
-  const blob = window.__fidiPdfBlob; if(!blob) throw new Error('Aucun PDF');
+  const blob = await fidiEnsurePdfBlob();
   const b64 = await new Promise((res,rej)=>{
     const r = new FileReader();
     r.onload = ()=>res(String(r.result).split(',')[1]);
@@ -2968,6 +2940,20 @@ async function fidiPdfWhatsapp(kind, titre){
     if(wrap && inp){ inp.value = url; wrap.classList.remove('d-none'); }
   }catch(e){ alert('Erreur : '+e.message); }
   finally{ if(btn){ btn.disabled=false; btn.innerHTML='<i class="bi bi-whatsapp me-1"></i>Partager via WhatsApp'; } }
+}
+
+async function fidiPdfEmail(kind, titre){
+  const btn = document.getElementById('shareEmailBtn');
+  if(btn){ btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Préparation…'; }
+  try{
+    const url = await fidiPdfUpload();
+    const subj = encodeURIComponent((kind||'Document FIDI')+(titre?' — '+titre:''));
+    const body = encodeURIComponent((titre?kind+' — '+titre+'\n\n':kind+'\n\n')+'Document réalisé par FIDI Conseil :\n'+url+'\n\n(Lien valable 7 jours)');
+    window.location.href = 'mailto:?subject='+subj+'&body='+body;
+    const wrap = document.getElementById('shareLinkWrap'), inp = document.getElementById('shareUrl');
+    if(wrap && inp){ inp.value = url; wrap.classList.remove('d-none'); }
+  }catch(e){ alert('Erreur : '+e.message); }
+  finally{ if(btn){ btn.disabled=false; btn.innerHTML='<i class="bi bi-envelope me-1"></i>Envoyer par e-mail'; } }
 }
 
 async function fidiPdfCopyLink(){

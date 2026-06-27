@@ -1107,38 +1107,20 @@
   }
   function exportPdf() {
     var ref = (state.data && state.data.metadata && state.data.metadata.ref) || 'rapport';
-    var filename = 'Avis_de_valeur_' + String(ref).replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 50) + '.pdf';
-    // Repli : dialogue d'impression natif si html2pdf indisponible
-    if (typeof html2pdf === 'undefined') {
-      var pr = document.getElementById('avisPrintRoot');
-      pr.innerHTML = '<div class="avis-doc">' + buildAvisDocHTML(state.data, compute(state.data)) + '</div>';
-      var origTitle = document.title;
-      document.title = filename.replace(/\.pdf$/, '');
-      document.body.classList.add('avis-print');
-      var done = function () {
-        document.body.classList.remove('avis-print');
-        document.title = origTitle;
-        window.removeEventListener('afterprint', done);
-      };
-      window.addEventListener('afterprint', done);
-      setTimeout(function () { window.print(); }, 60);
-      return;
-    }
-    // Génération PDF réelle depuis un conteneur temporaire hors écran
-    var temp = document.createElement('div');
-    temp.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:#fff;padding:24px;';
-    temp.innerHTML = '<div class="avis-doc">' + buildAvisDocHTML(state.data, compute(state.data)) + '</div>';
-    document.body.appendChild(temp);
-    var opts = (typeof window.fidiPdfOptions === 'function')
-      ? window.fidiPdfOptions(filename)
-      : { margin: [8, 8, 8, 8], filename: filename, image: { type: 'jpeg', quality: 0.95 },
-          html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }, pagebreak: { mode: ['css', 'legacy'] } };
-    html2pdf().set(opts).from(temp).save().then(function () {
-      temp.remove(); toast('PDF téléchargé');
-    }).catch(function (e) {
-      temp.remove(); toast('Échec PDF : ' + e.message, true);
-    });
+    var filename = 'Avis_de_valeur_' + String(ref).replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 50);
+    var pr = document.getElementById('avisPrintRoot');
+    pr.innerHTML = '<div class="avis-doc">' + buildAvisDocHTML(state.data, compute(state.data)) + '</div>';
+    var origTitle = document.title;
+    document.title = filename;
+    document.body.classList.add('avis-print');
+    var done = function () {
+      document.body.classList.remove('avis-print');
+      pr.innerHTML = '';
+      document.title = origTitle;
+      window.removeEventListener('afterprint', done);
+    };
+    window.addEventListener('afterprint', done);
+    setTimeout(function () { window.print(); }, 60);
   }
 
   // ── Toast léger ─────────────────────────────────────────────
