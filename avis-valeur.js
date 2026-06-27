@@ -174,7 +174,9 @@
     var dLat = 0.010, dLon = 0.015;
     var bbox = (lat - dLat) + ',' + (lon - dLon) + ',' + (lat + dLat) + ',' + (lon + dLon);
     var p = { SERVICE: 'WMS', VERSION: '1.3.0', REQUEST: 'GetMap', LAYERS: 'GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2', STYLES: '', CRS: 'EPSG:4326', BBOX: bbox, WIDTH: 640, HEIGHT: 420, FORMAT: 'image/png' };
-    return 'https://data.geopf.fr/wms-r/wms?' + Object.keys(p).map(function (k) { return k + '=' + encodeURIComponent(p[k]); }).join('&');
+    var ign = 'https://data.geopf.fr/wms-r/wms?' + Object.keys(p).map(function (k) { return k + '=' + encodeURIComponent(p[k]); }).join('&');
+    // Servi via proxy same-origin pour rester exportable en PDF (html2canvas)
+    return '/api/img-proxy?url=' + encodeURIComponent(ign);
   }
   function renderLocalisation(d) {
     var L = d.loc || {};

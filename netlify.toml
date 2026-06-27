@@ -43,6 +43,9 @@
 [functions."pdf-get"]
   timeout = 10
 
+[functions."img-proxy"]
+  timeout = 14
+
 # ── Redirections API → Netlify Functions ──────────────────────────────────────
 [[redirects]]
   from   = "/api/analyse"
@@ -133,6 +136,11 @@
 [[redirects]]
   from   = "/api/download/*"
   to     = "/.netlify/functions/pdf-get"
+  status = 200
+
+[[redirects]]
+  from   = "/api/img-proxy"
+  to     = "/.netlify/functions/img-proxy"
   status = 200
 
 # ── SPA fallback : toute URL non trouvée → index.html ─────────────────────────

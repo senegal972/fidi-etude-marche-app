@@ -1064,6 +1064,7 @@ function exportPdf(){
   const btn = document.getElementById('btnPdf');
   const orig = btn ? btn.innerHTML : '';
   if(btn){ btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
+  document.body.classList.add('pdf-mode'); // masque la carte Leaflet (cross-origin)
   html2pdf().set({
     margin: [8,8,8,8], filename,
     image: { type:'jpeg', quality:0.95 },
@@ -1071,8 +1072,10 @@ function exportPdf(){
     jsPDF: { unit:'mm', format:'a4', orientation:'portrait' },
     pagebreak: { mode:['css','legacy'] },
   }).from(target).save().then(()=>{
+    document.body.classList.remove('pdf-mode');
     if(btn){ btn.disabled=false; btn.innerHTML=orig; }
   }).catch(e=>{
+    document.body.classList.remove('pdf-mode');
     if(btn){ btn.disabled=false; btn.innerHTML=orig; }
     alert('Échec PDF : '+e.message+'\nUtilisez le bouton Imprimer comme alternative.');
   });
@@ -2884,13 +2887,18 @@ async function fidiSharePdf(opts){
   };
 
   let blob = null;
+  // Masque la carte Leaflet vivante (tuiles cross-origin = canvas taché) le temps de la capture
+  const usePdfMode = !temp;
+  if(usePdfMode) document.body.classList.add('pdf-mode');
   try {
     blob = await html2pdf().set(pdfOpts).from(sourceEl).outputPdf('blob');
   } catch(e){
     document.getElementById('shareBody').innerHTML = '<div class="alert alert-danger small mb-0">Échec de génération du PDF : '+escHtml(e.message)+'</div>';
     if(temp) temp.remove();
+    if(usePdfMode) document.body.classList.remove('pdf-mode');
     return;
   }
+  if(usePdfMode) document.body.classList.remove('pdf-mode');
   if(temp) temp.remove();
   window.__fidiPdfBlob = blob;
   window.__fidiPdfLink = null;
