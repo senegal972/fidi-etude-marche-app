@@ -37,6 +37,12 @@
 [functions."delinquance"]
   timeout = 15
 
+[functions."pdf-share"]
+  timeout = 15
+
+[functions."pdf-get"]
+  timeout = 10
+
 # ── Redirections API → Netlify Functions ──────────────────────────────────────
 [[redirects]]
   from   = "/api/analyse"
@@ -116,6 +122,17 @@
 [[redirects]]
   from   = "/api/delinquance"
   to     = "/.netlify/functions/delinquance"
+  status = 200
+
+[[redirects]]
+  from   = "/api/pdf-share"
+  to     = "/.netlify/functions/pdf-share"
+  status = 200
+
+# Lien public de téléchargement PDF (partage WhatsApp / lien direct)
+[[redirects]]
+  from   = "/api/download/*"
+  to     = "/.netlify/functions/pdf-get"
   status = 200
 
 # ── SPA fallback : toute URL non trouvée → index.html ─────────────────────────

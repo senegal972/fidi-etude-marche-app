@@ -918,6 +918,7 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
 <!-- Sentry monitoring (opt-in via window.SENTRY_DSN) ───────────────────────── -->
 <script>
   // Pour activer : créer un fichier /sentry.js exposant `window.SENTRY_DSN = "https://...@sentry.io/..."`
@@ -1052,21 +1053,29 @@ function exportPdf(){
     alert('Lancez une analyse avant d\'exporter en PDF.');
     return;
   }
-  // Suggère un nom de fichier via le titre du document (utilisé par certains navigateurs)
+  if(typeof html2pdf === 'undefined'){ // repli : dialogue d'impression natif
+    window.print(); return;
+  }
   const titre = (document.getElementById('res-titre').textContent || 'etude-marche')
     .toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,60);
   const date = new Date().toISOString().slice(0,10);
-  const origTitle = document.title;
-  document.title = `etude-marche-${titre || 'rapport'}-${date}`;
-  // Petite info utilisateur la première fois
-  if(!sessionStorage.getItem('pdfHintShown')){
-    alert('Dans la fenêtre d\'impression qui va s\'ouvrir, choisissez "Enregistrer au format PDF" comme destination, puis cliquez sur Enregistrer.');
-    sessionStorage.setItem('pdfHintShown','1');
-  }
-  setTimeout(() => {
-    window.print();
-    setTimeout(() => { document.title = origTitle; }, 500);
-  }, 50);
+  const filename = `etude-marche-${titre || 'rapport'}-${date}.pdf`;
+  // Indicateur visuel
+  const btn = document.getElementById('btnPdf');
+  const orig = btn ? btn.innerHTML : '';
+  if(btn){ btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
+  html2pdf().set({
+    margin: [8,8,8,8], filename,
+    image: { type:'jpeg', quality:0.95 },
+    html2canvas: { scale:2, useCORS:true, logging:false, backgroundColor:'#ffffff' },
+    jsPDF: { unit:'mm', format:'a4', orientation:'portrait' },
+    pagebreak: { mode:['css','legacy'] },
+  }).from(target).save().then(()=>{
+    if(btn){ btn.disabled=false; btn.innerHTML=orig; }
+  }).catch(e=>{
+    if(btn){ btn.disabled=false; btn.innerHTML=orig; }
+    alert('Échec PDF : '+e.message+'\nUtilisez le bouton Imprimer comme alternative.');
+  });
 }
 
 // ─── Init tooltips Bootstrap + toggle option Entreprise ───────────────────────
@@ -2717,13 +2726,13 @@ function currentEtudeRef(){
 async function partagerEtude(){
   const d = window.__fidiData;
   if(!d){ alert('Lancez une analyse avant de partager.'); return; }
-  // Sauvegarde d'abord pour garantir que le lien pointe vers des données existantes
-  await saveEtudeCloud();
+  // Sauvegarde en arrière-plan (traçabilité Notion), sans bloquer la génération PDF
+  try { saveEtudeCloud(); } catch(e){}
   const ref = currentEtudeRef();
-  const url = location.origin + '/?etude=' + encodeURIComponent(ref);
   const loc = d.localisation || {};
-  const est = (d.estimation && d.estimation.valeur_med) ? Number(d.estimation.valeur_med).toLocaleString('fr-FR')+' €' : '';
-  showShareModal('Étude de marché', loc.label || loc.city || ref, est, url);
+  const titre = loc.label || loc.city || ref;
+  const filename = 'Etude_marche_' + String(loc.city || ref).replace(/[^a-zA-Z0-9]+/g,'_').slice(0,50) + '.pdf';
+  fidiSharePdf({ element: document.getElementById('results-panel'), filename, titre, kind:'Étude de marché' });
 }
 
 // ═══ Facturation ════════════════════════════════════════════════════════════════
@@ -2823,30 +2832,144 @@ function afficherResultatFacture(j, kind, prestRef){
   new bootstrap.Modal(el).show();
 }
 
-function showShareModal(kind, titre, valeur, url){
+// ═══ Génération PDF réel + partage (téléchargement / WhatsApp / lien) ════════
+// Remplace l'ancien partage par lien d'application. Le PDF est autonome :
+// le destinataire le lit sans aucun accès à l'app.
+//
+// opts = { element, filename, titre, kind, htmlString? }
+//   element     : nœud DOM à convertir en PDF (ex : #results-panel)
+//   htmlString  : alternative — HTML brut à convertir (ex : avis de valeur)
+//   filename    : nom du fichier PDF
+//   titre/kind  : libellés affichés dans la modale et le message WhatsApp
+window.__fidiPdfBlob = null;       // dernier PDF généré (réutilisé)
+window.__fidiPdfLink = null;       // lien Blobs si déjà uploadé
+
+async function fidiSharePdf(opts){
+  if(typeof html2pdf === 'undefined'){ alert('Module PDF non chargé (rechargez la page).'); return; }
+  const kind = opts.kind || 'Document';
+  const filename = (opts.filename || 'document.pdf').replace(/[^a-zA-Z0-9._-]+/g,'_');
+
+  // Modale (état : génération en cours)
   let root = document.getElementById('shareRoot');
   if(!root){ root = document.createElement('div'); root.id='shareRoot'; document.body.appendChild(root); }
-  const subject = encodeURIComponent('FIDI — ' + kind + ' : ' + titre);
-  const bodyTxt = encodeURIComponent(
-    'Bonjour,\n\nVeuillez trouver ci-dessous le lien vers ' + (kind==='Étude de marché'?'l\'étude de marché':'l\'avis de valeur') +
-    ' réalisé(e) par FIDI Conseil pour ' + titre + (valeur?(' (estimation : '+valeur+')'):'') + ' :\n\n' + url +
-    '\n\nCe lien donne accès au rapport complet en lecture seule.\n\nCordialement,\nFIDI Conseil');
-  const mailto = 'mailto:?subject=' + subject + '&body=' + bodyTxt;
-  root.innerHTML = '<div class="modal fade" id="shareModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">'+
-    '<div class="modal-header" style="background:#1a3a6e;color:#fff;"><h5 class="modal-title">🔗 Partager — '+escHtml(kind)+'</h5>'+
+  root.innerHTML =
+    '<div class="modal fade" id="shareModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">'+
+    '<div class="modal-header" style="background:#1a3a6e;color:#fff;"><h5 class="modal-title">📄 Partager — '+escHtml(kind)+'</h5>'+
     '<button type="button" class="btn-close" style="filter:invert(1)" data-bs-dismiss="modal"></button></div>'+
-    '<div class="modal-body">'+
-      '<p class="small text-muted mb-2">Lien de consultation en lecture seule :</p>'+
-      '<div class="input-group mb-3"><input type="text" class="form-control" id="shareUrl" value="'+escHtml(url)+'" readonly>'+
-        '<button class="btn btn-outline-primary" onclick="copyShareUrl()">Copier</button></div>'+
-      '<div class="d-grid gap-2">'+
-        '<a class="btn btn-primary" href="'+mailto+'"><i class="bi bi-envelope me-1"></i>Envoyer par email</a>'+
-        '<a class="btn btn-success" target="_blank" rel="noopener" href="https://wa.me/?text='+encodeURIComponent(titre+' — '+url)+'"><i class="bi bi-whatsapp me-1"></i>Partager via WhatsApp</a>'+
-      '</div></div>'+
-    '</div></div></div>';
+    '<div class="modal-body" id="shareBody">'+
+      '<div class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2"></span>Génération du PDF…</div>'+
+    '</div></div></div></div>';
   const el = document.getElementById('shareModal');
   el.addEventListener('hidden.bs.modal', ()=>el.remove());
-  new bootstrap.Modal(el).show();
+  const modal = new bootstrap.Modal(el); modal.show();
+
+  // Source DOM : élément existant ou conteneur temporaire depuis htmlString
+  let sourceEl = opts.element, temp = null;
+  if(opts.htmlString){
+    temp = document.createElement('div');
+    temp.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:#fff;padding:24px;';
+    temp.innerHTML = opts.htmlString;
+    document.body.appendChild(temp);
+    sourceEl = temp;
+  }
+  if(!sourceEl){ document.getElementById('shareBody').innerHTML = '<div class="alert alert-danger small mb-0">Contenu introuvable.</div>'; return; }
+
+  const pdfOpts = {
+    margin: [8,8,8,8],
+    filename: filename,
+    image: { type:'jpeg', quality:0.95 },
+    html2canvas: { scale:2, useCORS:true, logging:false, backgroundColor:'#ffffff' },
+    jsPDF: { unit:'mm', format:'a4', orientation:'portrait' },
+    pagebreak: { mode:['css','legacy'] },
+  };
+
+  let blob = null;
+  try {
+    blob = await html2pdf().set(pdfOpts).from(sourceEl).outputPdf('blob');
+  } catch(e){
+    document.getElementById('shareBody').innerHTML = '<div class="alert alert-danger small mb-0">Échec de génération du PDF : '+escHtml(e.message)+'</div>';
+    if(temp) temp.remove();
+    return;
+  }
+  if(temp) temp.remove();
+  window.__fidiPdfBlob = blob;
+  window.__fidiPdfLink = null;
+  window.__fidiPdfFilename = filename;
+
+  const sizeKo = Math.round(blob.size/1024);
+  const body = document.getElementById('shareBody');
+  if(!body) return;
+  body.innerHTML =
+    '<p class="small text-muted mb-3">PDF généré ('+sizeKo+' Ko). Choisissez comment l\'envoyer :</p>'+
+    '<div class="d-grid gap-2">'+
+      '<button class="btn btn-primary" onclick="fidiPdfDownload()"><i class="bi bi-download me-1"></i>Télécharger le PDF</button>'+
+      '<button class="btn btn-success" id="shareWaBtn" onclick="fidiPdfWhatsapp(\''+escHtml(kind)+'\',\''+escHtml(opts.titre||'')+'\')"><i class="bi bi-whatsapp me-1"></i>Partager via WhatsApp</button>'+
+      '<button class="btn btn-outline-secondary" id="shareCopyBtn" onclick="fidiPdfCopyLink()"><i class="bi bi-link-45deg me-1"></i>Copier un lien de téléchargement</button>'+
+    '</div>'+
+    '<div id="shareLinkWrap" class="mt-3 d-none">'+
+      '<div class="input-group"><input type="text" class="form-control form-control-sm" id="shareUrl" readonly>'+
+      '<button class="btn btn-outline-primary btn-sm" onclick="copyShareUrl()">Copier</button></div>'+
+      '<div class="small text-muted mt-1">Lien valable 7 jours. Le destinataire télécharge le PDF sans accès à l\'application.</div>'+
+    '</div>';
+}
+
+function fidiPdfDownload(){
+  const blob = window.__fidiPdfBlob; if(!blob) return;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = window.__fidiPdfFilename || 'document.pdf';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
+
+// Convertit le blob PDF en base64 et l'héberge via /api/pdf-share → renvoie l'URL
+async function fidiPdfUpload(){
+  if(window.__fidiPdfLink) return window.__fidiPdfLink;
+  const blob = window.__fidiPdfBlob; if(!blob) throw new Error('Aucun PDF');
+  const b64 = await new Promise((res,rej)=>{
+    const r = new FileReader();
+    r.onload = ()=>res(String(r.result).split(',')[1]);
+    r.onerror = rej; r.readAsDataURL(blob);
+  });
+  const resp = await fetch('/api/pdf-share', {method:'POST',headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ pdf_b64:b64, filename: window.__fidiPdfFilename || 'document.pdf' })});
+  const j = await resp.json();
+  if(!j || !j.url) throw new Error(j && j.error ? j.error : 'Hébergement impossible');
+  window.__fidiPdfLink = j.url;
+  return j.url;
+}
+
+async function fidiPdfWhatsapp(kind, titre){
+  const btn = document.getElementById('shareWaBtn');
+  if(btn){ btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Préparation…'; }
+  try{
+    const url = await fidiPdfUpload();
+    const msg = (titre? (kind+' — '+titre+'\n') : (kind+'\n')) +
+      'Document PDF réalisé par FIDI Conseil :\n' + url;
+    window.open('https://wa.me/?text='+encodeURIComponent(msg), '_blank', 'noopener');
+    const wrap = document.getElementById('shareLinkWrap'), inp = document.getElementById('shareUrl');
+    if(wrap && inp){ inp.value = url; wrap.classList.remove('d-none'); }
+  }catch(e){ alert('Erreur : '+e.message); }
+  finally{ if(btn){ btn.disabled=false; btn.innerHTML='<i class="bi bi-whatsapp me-1"></i>Partager via WhatsApp'; } }
+}
+
+async function fidiPdfCopyLink(){
+  const btn = document.getElementById('shareCopyBtn');
+  if(btn){ btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Préparation…'; }
+  try{
+    const url = await fidiPdfUpload();
+    const wrap = document.getElementById('shareLinkWrap'), inp = document.getElementById('shareUrl');
+    if(wrap && inp){ inp.value = url; wrap.classList.remove('d-none'); inp.select(); }
+    try{ await navigator.clipboard.writeText(url); }catch(e){}
+  }catch(e){ alert('Erreur : '+e.message); }
+  finally{ if(btn){ btn.disabled=false; btn.innerHTML='<i class="bi bi-link-45deg me-1"></i>Copier un lien de téléchargement'; } }
+}
+
+// Compat : ancien nom conservé pour avis-valeur.js (signature simplifiée)
+function showShareModal(kind, titre, valeur, url){
+  // Déprécié — redirigé vers la génération PDF de l'étude courante.
+  const el = document.getElementById('results-panel');
+  fidiSharePdf({ element: el, filename: 'FIDI_'+(kind||'document')+'.pdf', titre: titre, kind: kind });
 }
 
 function copyShareUrl(){

@@ -1038,18 +1038,16 @@
   function doPartager() {
     var ref = (state.data && state.data.metadata && state.data.metadata.ref || '').trim();
     if (!ref) { toast('Sauvegardez d\'abord l\'avis pour le partager', true); return; }
-    var d = state.data; var c = compute(d);
-    var titre = (d.bien && d.bien.adresse) ? esc(d.bien.adresse) : ref;
-    var valeur = (c.voccBas && c.voccHaut)
-      ? (Math.round(c.voccBas).toLocaleString('fr-FR') + ' – ' + Math.round(c.voccHaut).toLocaleString('fr-FR') + ' €')
-      : '—';
-    var shareUrl = window.location.origin + window.location.pathname + '?avis=' + encodeURIComponent(ref);
-    cloudSaveAvis(ref); // synchro Notion en arrière-plan
-    if (typeof window.showShareModal === 'function') {
-      window.showShareModal('avis', titre, valeur, shareUrl);
+    var d = state.data;
+    var titre = (d.bien && d.bien.adresse) ? d.bien.adresse : ref;
+    var filename = 'Avis_de_valeur_' + String(ref).replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 50) + '.pdf';
+    try { cloudSaveAvis(ref); } catch (e) {} // synchro Notion en arrière-plan
+    // Génère un PDF autonome de l'avis (lisible sans accès à l'app)
+    if (typeof window.fidiSharePdf === 'function') {
+      var html = '<div class="avis-doc">' + buildAvisDocHTML(d, compute(d)) + '</div>';
+      window.fidiSharePdf({ htmlString: html, filename: filename, titre: titre, kind: 'Avis de valeur' });
     } else {
-      // fallback : copie directe de l'URL si le modal index.html n'est pas disponible
-      try { navigator.clipboard.writeText(shareUrl); toast('Lien copié !'); } catch (e) { toast(shareUrl); }
+      toast('Module de partage non disponible (rechargez la page).', true);
     }
   }
 
@@ -1106,18 +1104,40 @@
     toast('Document Word exporté');
   }
   function exportPdf() {
-    var pr = document.getElementById('avisPrintRoot');
-    pr.innerHTML = '<div class="avis-doc">' + buildAvisDocHTML(state.data, compute(state.data)) + '</div>';
-    var origTitle = document.title;
-    document.title = 'Avis_de_valeur_' + (state.data.metadata.ref || 'rapport');
-    document.body.classList.add('avis-print');
-    var done = function () {
-      document.body.classList.remove('avis-print');
-      document.title = origTitle;
-      window.removeEventListener('afterprint', done);
-    };
-    window.addEventListener('afterprint', done);
-    setTimeout(function () { window.print(); }, 60);
+    var ref = (state.data && state.data.metadata && state.data.metadata.ref) || 'rapport';
+    var filename = 'Avis_de_valeur_' + String(ref).replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 50) + '.pdf';
+    // Repli : dialogue d'impression natif si html2pdf indisponible
+    if (typeof html2pdf === 'undefined') {
+      var pr = document.getElementById('avisPrintRoot');
+      pr.innerHTML = '<div class="avis-doc">' + buildAvisDocHTML(state.data, compute(state.data)) + '</div>';
+      var origTitle = document.title;
+      document.title = filename.replace(/\.pdf$/, '');
+      document.body.classList.add('avis-print');
+      var done = function () {
+        document.body.classList.remove('avis-print');
+        document.title = origTitle;
+        window.removeEventListener('afterprint', done);
+      };
+      window.addEventListener('afterprint', done);
+      setTimeout(function () { window.print(); }, 60);
+      return;
+    }
+    // Génération PDF réelle depuis un conteneur temporaire hors écran
+    var temp = document.createElement('div');
+    temp.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:#fff;padding:24px;';
+    temp.innerHTML = '<div class="avis-doc">' + buildAvisDocHTML(state.data, compute(state.data)) + '</div>';
+    document.body.appendChild(temp);
+    html2pdf().set({
+      margin: [8, 8, 8, 8], filename: filename,
+      image: { type: 'jpeg', quality: 0.95 },
+      html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['css', 'legacy'] }
+    }).from(temp).save().then(function () {
+      temp.remove(); toast('PDF téléchargé');
+    }).catch(function (e) {
+      temp.remove(); toast('Échec PDF : ' + e.message, true);
+    });
   }
 
   // ── Toast léger ─────────────────────────────────────────────
