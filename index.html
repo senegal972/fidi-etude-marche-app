@@ -425,8 +425,9 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
         <h4 class="mb-0" id="res-titre" style="color:var(--fidi-blue);font-weight:800;"></h4>
         <small class="text-muted" id="res-contexte"></small>
       </div>
-      <div class="d-flex gap-2">
+      <div class="d-flex gap-2 align-items-center flex-wrap">
         <span class="badge bg-secondary" id="res-date" style="font-size:.7rem;"></span>
+        <input type="text" id="inputDestinataire" class="form-control form-control-sm" placeholder="Destinataire (optionnel)" style="max-width:190px;" title="Nom du destinataire de l'étude">
         <button class="btn btn-sm btn-outline-info" id="btnSaveEtude" onclick="saveEtudeCloud()" title="Sauvegarder cette étude dans Notion">
           ☁️ Sauvegarder
         </button>
@@ -1198,7 +1199,9 @@ async function lancerAnalyse(){
 function etudeRef(d, inputs){
   const cc = (d.localisation && d.localisation.citycode) || 'XXXXX';
   const day = new Date().toISOString().slice(0,10).replace(/-/g,'');
-  return 'FIDI-EM-' + day + '-' + cc;
+  const destRaw = (inputs.destinataire || (document.getElementById('inputDestinataire') && document.getElementById('inputDestinataire').value) || '').trim();
+  const dest = destRaw ? destRaw.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,25) : '';
+  return 'FIDI-EM-' + day + (dest ? '-'+dest : '') + '-' + cc;
 }
 
 async function saveEtudeCloud(){
@@ -1207,12 +1210,14 @@ async function saveEtudeCloud(){
   const btn = document.getElementById('btnSaveEtude');
   const orig = btn ? btn.innerHTML : '';
   if(btn){ btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
+  const destinataire = (document.getElementById('inputDestinataire') && document.getElementById('inputDestinataire').value || '').trim();
   const loc = d.localisation || {};
   const per = (d.dvf_periodes && d.dvf_periodes[0]) || {};
   const prixM2 = (d.estimation && d.estimation.prix_m2) || per.prix_m2_maison || per.prix_m2_appart || null;
+  const augmentedInputs = Object.assign({}, inputs, { destinataire: destinataire });
   const payload = {
     kind: 'etude',
-    ref: etudeRef(d, inputs),
+    ref: etudeRef(d, augmentedInputs),
     date: new Date().toISOString().slice(0,10),
     adresse: loc.label || inputs.adresse || '',
     commune: loc.city || '',
@@ -1224,8 +1229,9 @@ async function saveEtudeCloud(){
     prix_m2: prixM2,
     nb_transactions: per.nb_total || null,
     estimation: (d.estimation && d.estimation.valeur_med) || null,
+    client: destinataire,
     statut: 'Terminé',
-    data: { data: d, inputs: inputs }
+    data: { data: d, inputs: augmentedInputs }
   };
   try{
     const r = await fetch('/api/notion-save', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
@@ -1260,8 +1266,9 @@ async function openEtudesRecentes(){
       const est = m.estimation ? (Number(m.estimation).toLocaleString('fr-FR')+' €') : '—';
       const score = (m.score!=null) ? (m.score+'/100') : '';
       const ref = String(m.ref).replace(/'/g,"\\'");
+      const clientBadge = m.client ? '<span class="badge bg-info text-dark ms-1" style="font-size:.65rem;"><i class="bi bi-person me-1"></i>'+escHtml(m.client)+'</span>' : '';
       return '<div class="d-flex justify-content-between align-items-center border rounded p-2 mb-2">'+
-        '<div><div class="fw-bold small">'+escHtml(m.ref)+'</div>'+
+        '<div><div class="fw-bold small">'+escHtml(m.ref)+clientBadge+'</div>'+
         '<div class="text-muted" style="font-size:.75rem;">'+escHtml(sub)+'</div>'+
         '<div class="small">'+escHtml(m.adresse||'')+'</div></div>'+
         '<div class="text-end"><div class="small fw-semibold">'+est+'</div>'+
