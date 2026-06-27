@@ -20,11 +20,20 @@ function jsonResp(status, body) {
 }
 
 async function getShareStore() {
+  const mod = await import("@netlify/blobs");
+  // Essai 1 : contexte auto-injecté par le runtime Netlify (cas normal en prod)
   try {
-    const mod = await import("@netlify/blobs");
-    return mod.getStore({ name: "fidi-shared", consistency: "strong" });
-  } catch (e) {
-    return null;
+    const store = mod.getStore({ name: "fidi-shared", consistency: "strong" });
+    return store;
+  } catch (e1) {
+    // Essai 2 : credentials explicites via variables d'environnement
+    const siteID = process.env.NETLIFY_SITE_ID;
+    const token  = process.env.NETLIFY_AUTH_TOKEN || process.env.NETLIFY_TOKEN;
+    if (siteID && token) {
+      return mod.getStore({ name: "fidi-shared", siteID, token, consistency: "eventual" });
+    }
+    throw new Error("Blobs context indisponible : " + e1.message +
+      (siteID ? "" : " — NETLIFY_SITE_ID manquant"));
   }
 }
 
@@ -60,8 +69,9 @@ export const handler = async (event) => {
     return jsonResp(413, { error: "PDF trop volumineux (max 5 Mo)" });
   }
 
-  const store = await getShareStore();
-  if (!store) return jsonResp(503, { error: "Stockage indisponible (Blobs)" });
+  let store;
+  try { store = await getShareStore(); }
+  catch (e) { return jsonResp(503, { error: "Stockage Blobs indisponible : " + e.message, blobs_error: true }); }
 
   const filename = sanitizeFilename(b.filename);
   const id = makeId();

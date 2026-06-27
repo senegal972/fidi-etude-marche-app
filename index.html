@@ -2919,6 +2919,7 @@ async function fidiEnsurePdfBlob(){
 }
 
 // Convertit le blob PDF en base64 et l'héberge via /api/pdf-share → renvoie l'URL
+// Renvoie l'URL de partage : upload Blobs en priorité, deep-link Notion en fallback
 async function fidiPdfUpload(){
   if(window.__fidiPdfLink) return window.__fidiPdfLink;
   const blob = await fidiEnsurePdfBlob();
@@ -2929,10 +2930,23 @@ async function fidiPdfUpload(){
   });
   const resp = await fetch('/api/pdf-share', {method:'POST',headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ pdf_b64:b64, filename: window.__fidiPdfFilename || 'document.pdf' })});
-  const j = await resp.json();
-  if(!j || !j.url) throw new Error(j && j.error ? j.error : 'Hébergement impossible');
-  window.__fidiPdfLink = j.url;
-  return j.url;
+  const j = await resp.json().catch(()=>({}));
+  if(j && j.url){ window.__fidiPdfLink = j.url; return j.url; }
+  // Fallback si Blobs indisponible : deep-link vers l'étude dans l'app
+  if(j && j.blobs_error){
+    const deepLink = fidiDeepLink();
+    if(deepLink){ window.__fidiPdfLink = deepLink; return deepLink; }
+  }
+  throw new Error(j && j.error ? j.error : 'Hébergement impossible');
+}
+
+// Construit le lien de l'app pointant sur l'étude courante (si données disponibles)
+function fidiDeepLink(){
+  const d = window.__fidiData, inputs = window.__fidiInputs || {};
+  if(!d) return null;
+  const ref = typeof etudeRef === 'function' ? etudeRef(d, inputs) : null;
+  if(!ref) return null;
+  return window.location.origin + window.location.pathname + '?etude=' + encodeURIComponent(ref);
 }
 
 async function fidiPdfWhatsapp(kind, titre){
