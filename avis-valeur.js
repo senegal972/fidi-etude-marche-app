@@ -1129,13 +1129,12 @@
     temp.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:#fff;padding:24px;';
     temp.innerHTML = '<div class="avis-doc">' + buildAvisDocHTML(state.data, compute(state.data)) + '</div>';
     document.body.appendChild(temp);
-    html2pdf().set({
-      margin: [8, 8, 8, 8], filename: filename,
-      image: { type: 'jpeg', quality: 0.95 },
-      html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      pagebreak: { mode: ['css', 'legacy'] }
-    }).from(temp).save().then(function () {
+    var opts = (typeof window.fidiPdfOptions === 'function')
+      ? window.fidiPdfOptions(filename)
+      : { margin: [8, 8, 8, 8], filename: filename, image: { type: 'jpeg', quality: 0.95 },
+          html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }, pagebreak: { mode: ['css', 'legacy'] } };
+    html2pdf().set(opts).from(temp).save().then(function () {
       temp.remove(); toast('PDF téléchargé');
     }).catch(function (e) {
       temp.remove(); toast('Échec PDF : ' + e.message, true);

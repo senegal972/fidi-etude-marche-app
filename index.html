@@ -1065,13 +1065,7 @@ function exportPdf(){
   const orig = btn ? btn.innerHTML : '';
   if(btn){ btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
   document.body.classList.add('pdf-mode'); // masque la carte Leaflet (cross-origin)
-  html2pdf().set({
-    margin: [8,8,8,8], filename,
-    image: { type:'jpeg', quality:0.95 },
-    html2canvas: { scale:2, useCORS:true, logging:false, backgroundColor:'#ffffff' },
-    jsPDF: { unit:'mm', format:'a4', orientation:'portrait' },
-    pagebreak: { mode:['css','legacy'] },
-  }).from(target).save().then(()=>{
+  html2pdf().set(window.fidiPdfOptions(filename)).from(target).save().then(()=>{
     document.body.classList.remove('pdf-mode');
     if(btn){ btn.disabled=false; btn.innerHTML=orig; }
   }).catch(e=>{
@@ -2847,6 +2841,28 @@ function afficherResultatFacture(j, kind, prestRef){
 window.__fidiPdfBlob = null;       // dernier PDF généré (réutilisé)
 window.__fidiPdfLink = null;       // lien Blobs si déjà uploadé
 
+// Options html2pdf partagées. Le onclone neutralise les background-image en
+// data:image/svg+xml (carets Bootstrap form-select/check) que html2canvas ne
+// sait pas rasteriser ("Unsupported image type"), et masque la carte Leaflet.
+window.fidiPdfOptions = function(filename){
+  return {
+    margin: [8,8,8,8], filename: filename || 'document.pdf',
+    image: { type:'jpeg', quality:0.95 },
+    html2canvas: { scale:2, useCORS:true, logging:false, backgroundColor:'#ffffff',
+      onclone: function(doc){
+        var win = doc.defaultView || window;
+        doc.querySelectorAll('*').forEach(function(el){
+          var cbg=''; try{ cbg = win.getComputedStyle(el).backgroundImage; }catch(e){}
+          if(cbg && cbg.indexOf('data:image/svg')>=0) el.style.backgroundImage='none';
+        });
+        doc.querySelectorAll('.leaflet-container,#map').forEach(function(el){ el.style.display='none'; });
+      }
+    },
+    jsPDF: { unit:'mm', format:'a4', orientation:'portrait' },
+    pagebreak: { mode:['css','legacy'] },
+  };
+};
+
 async function fidiSharePdf(opts){
   if(typeof html2pdf === 'undefined'){ alert('Module PDF non chargé (rechargez la page).'); return; }
   const kind = opts.kind || 'Document';
@@ -2877,14 +2893,7 @@ async function fidiSharePdf(opts){
   }
   if(!sourceEl){ document.getElementById('shareBody').innerHTML = '<div class="alert alert-danger small mb-0">Contenu introuvable.</div>'; return; }
 
-  const pdfOpts = {
-    margin: [8,8,8,8],
-    filename: filename,
-    image: { type:'jpeg', quality:0.95 },
-    html2canvas: { scale:2, useCORS:true, logging:false, backgroundColor:'#ffffff' },
-    jsPDF: { unit:'mm', format:'a4', orientation:'portrait' },
-    pagebreak: { mode:['css','legacy'] },
-  };
+  const pdfOpts = window.fidiPdfOptions(filename);
 
   let blob = null;
   // Masque la carte Leaflet vivante (tuiles cross-origin = canvas taché) le temps de la capture
