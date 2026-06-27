@@ -1,0 +1,106 @@
+// Netlify Function — Envoi email avec PDF en pièce jointe via Resend API
+// POST /api/send-email  body: { to, subject, pdf_b64, filename, kind, titre }
+//
+// Prérequis :
+//   1. Créer un compte sur resend.com (gratuit — 100 emails/jour)
+//   2. Vérifier le domaine fidiconseil.com (ajouter les DNS records Resend)
+//   3. Ajouter RESEND_API_KEY dans les variables Netlify
+//   4. Optionnel : RESEND_FROM = "FIDI Conseil <contact@fidiconseil.com>"
+
+const CORS = {
+  "Content-Type": "application/json; charset=utf-8",
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+function jsonResp(status, body) {
+  return { statusCode: status, headers: CORS, body: JSON.stringify(body) };
+}
+
+function escHtml(s) {
+  return String(s || "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+export const handler = async (event) => {
+  if (event.httpMethod === "OPTIONS") return jsonResp(200, {});
+  if (event.httpMethod !== "POST") return jsonResp(405, { error: "POST requis" });
+
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    return jsonResp(503, {
+      error: "Envoi email non configuré. Ajoutez RESEND_API_KEY dans les variables Netlify.",
+      not_configured: true,
+    });
+  }
+
+  let b = {};
+  try { b = JSON.parse(event.body || "{}"); }
+  catch { return jsonResp(400, { error: "JSON invalide" }); }
+
+  const to = (b.to || "").trim().toLowerCase();
+  if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(to)) {
+    return jsonResp(400, { error: "Adresse e-mail invalide : " + to });
+  }
+
+  const subject  = (b.subject  || "Document FIDI Conseil").slice(0, 200);
+  const filename = (b.filename || "document.pdf").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 100);
+  const kind     = escHtml(b.kind  || "document");
+  const titre    = escHtml(b.titre || "");
+  const from     = process.env.RESEND_FROM || "FIDI Conseil <contact@fidiconseil.com>";
+
+  const htmlBody = `
+<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#1a2233;">
+  <div style="background:#1a3a6e;padding:20px 28px;border-radius:8px 8px 0 0;">
+    <h2 style="color:#fff;margin:0;font-size:1.3rem;">FIDI Conseil</h2>
+    <p style="color:#c5d5ea;margin:4px 0 0;font-size:.85rem;">Conseil en immobilier · Martinique</p>
+  </div>
+  <div style="padding:28px;border:1px solid #dee2e6;border-top:none;border-radius:0 0 8px 8px;background:#fff;">
+    <p style="margin-top:0;">Bonjour,</p>
+    <p>Veuillez trouver ci-joint ${kind}${titre ? " <strong>— " + titre + "</strong>" : ""}.</p>
+    <p>Ce document a été généré par l'application FIDI · Étude de Marché.</p>
+    <hr style="margin:20px 0;border:none;border-top:1px solid #dee2e6;">
+    <p style="color:#6c757d;font-size:11px;margin:0;">
+      FIDI Conseil · <a href="mailto:contact@fidiconseil.com" style="color:#1a3a6e;">contact@fidiconseil.com</a><br>
+      Ce message a été envoyé automatiquement depuis l'application FIDI.
+    </p>
+  </div>
+</div>`.trim();
+
+  const payload = {
+    from,
+    to: [to],
+    subject,
+    html: htmlBody,
+  };
+
+  if (b.pdf_b64) {
+    const approxBytes = Math.floor(b.pdf_b64.length * 0.75);
+    if (approxBytes > 8 * 1024 * 1024) {
+      return jsonResp(413, { error: "PDF trop volumineux pour un envoi par email (max 8 Mo)" });
+    }
+    payload.attachments = [{ filename, content: b.pdf_b64 }];
+  }
+
+  try {
+    const resp = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const result = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      const msg = result.message || result.name || "Erreur Resend (" + resp.status + ")";
+      return jsonResp(resp.status >= 500 ? 502 : resp.status, { error: msg, resend: result });
+    }
+
+    return jsonResp(200, { ok: true, id: result.id });
+  } catch (e) {
+    return jsonResp(500, { error: "Erreur réseau : " + e.message });
+  }
+};

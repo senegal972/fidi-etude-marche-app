@@ -40,6 +40,9 @@
 [functions."pdf-share"]
   timeout = 15
 
+[functions."send-email"]
+  timeout = 20
+
 [functions."pdf-get"]
   timeout = 10
 
@@ -130,6 +133,11 @@
 [[redirects]]
   from   = "/api/pdf-share"
   to     = "/.netlify/functions/pdf-share"
+  status = 200
+
+[[redirects]]
+  from   = "/api/send-email"
+  to     = "/.netlify/functions/send-email"
   status = 200
 
 # Lien public de téléchargement PDF (partage WhatsApp / lien direct)

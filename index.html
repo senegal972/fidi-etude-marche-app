@@ -2963,18 +2963,61 @@ async function fidiPdfWhatsapp(kind, titre){
   finally{ if(btn){ btn.disabled=false; btn.innerHTML='<i class="bi bi-whatsapp me-1"></i>Partager via WhatsApp'; } }
 }
 
-async function fidiPdfEmail(kind, titre){
-  const btn = document.getElementById('shareEmailBtn');
-  if(btn){ btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Préparation…'; }
+// Affiche le formulaire de saisie email dans la modale (ne quitte pas l'app)
+function fidiPdfEmail(kind, titre){
+  const body = document.getElementById('shareBody');
+  if(!body) return;
+  const kH = escHtml(kind||'Document'), tH = escHtml(titre||'');
+  body.innerHTML =
+    '<p class="small text-muted mb-2">Entrez l\'adresse e-mail du destinataire :</p>'+
+    '<div class="input-group mb-2">'+
+      '<span class="input-group-text"><i class="bi bi-envelope"></i></span>'+
+      '<input type="email" id="emailRecipient" class="form-control" placeholder="destinataire@example.com" autocomplete="email">'+
+    '</div>'+
+    '<button class="btn btn-info text-white w-100" id="emailSendBtn" onclick="fidiPdfEmailSend(\''+kH+'\',\''+tH+'\')">'+
+      '<i class="bi bi-send me-1"></i>Envoyer le PDF par e-mail'+
+    '</button>'+
+    '<div id="emailStatus" class="mt-2"></div>'+
+    '<button class="btn btn-sm btn-link text-muted mt-2 p-0" onclick="fidiSharePdf(window.__fidiShareOpts)">'+
+      '<i class="bi bi-arrow-left me-1"></i>Retour'+
+    '</button>';
+  // Entrée → déclenche envoi
+  const inp = body.querySelector('#emailRecipient');
+  if(inp){ inp.focus(); inp.addEventListener('keydown',e=>{ if(e.key==='Enter') fidiPdfEmailSend(kind,titre); }); }
+}
+
+// Génère le blob et envoie via /api/send-email (Resend, PDF en pièce jointe)
+async function fidiPdfEmailSend(kind, titre){
+  const inp = document.getElementById('emailRecipient');
+  const status = document.getElementById('emailStatus');
+  const btn = document.getElementById('emailSendBtn');
+  const email = inp ? inp.value.trim() : '';
+  if(!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)){
+    if(status) status.innerHTML='<div class="alert alert-warning small py-1 mb-0">Entrez une adresse e-mail valide.</div>';
+    return;
+  }
+  if(btn){ btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Génération et envoi…'; }
+  if(status) status.innerHTML='';
   try{
-    const url = await fidiPdfUpload();
-    const subj = encodeURIComponent((kind||'Document FIDI')+(titre?' — '+titre:''));
-    const body = encodeURIComponent((titre?kind+' — '+titre+'\n\n':kind+'\n\n')+'Document réalisé par FIDI Conseil :\n'+url+'\n\n(Lien valable 7 jours)');
-    window.location.href = 'mailto:?subject='+subj+'&body='+body;
-    const wrap = document.getElementById('shareLinkWrap'), inp = document.getElementById('shareUrl');
-    if(wrap && inp){ inp.value = url; wrap.classList.remove('d-none'); }
-  }catch(e){ alert('Erreur : '+e.message); }
-  finally{ if(btn){ btn.disabled=false; btn.innerHTML='<i class="bi bi-envelope me-1"></i>Envoyer par e-mail'; } }
+    const blob = await fidiEnsurePdfBlob();
+    const b64 = await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).split(',')[1]); r.onerror=rej; r.readAsDataURL(blob); });
+    const resp = await fetch('/api/send-email',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ to:email, subject:(kind||'Document FIDI')+(titre?' — '+titre:''),
+        pdf_b64:b64, filename:window.__fidiPdfFilename||'document.pdf', kind:kind||'Document', titre:titre||'' })});
+    const j = await resp.json().catch(()=>({}));
+    if(j && j.ok){
+      if(status) status.innerHTML='<div class="alert alert-success small py-1 mb-0"><i class="bi bi-check-circle me-1"></i>Email envoyé à <strong>'+escHtml(email)+'</strong></div>';
+      if(btn){ btn.disabled=false; btn.innerHTML='<i class="bi bi-send me-1"></i>Envoyer le PDF par e-mail'; }
+    } else if(j && j.not_configured){
+      if(status) status.innerHTML='<div class="alert alert-warning small py-1 mb-0"><strong>Email non configuré.</strong><br>Ajoutez <code>RESEND_API_KEY</code> dans les variables Netlify. <a href="https://resend.com" target="_blank" rel="noopener">Créer un compte gratuit sur resend.com</a></div>';
+      if(btn){ btn.disabled=false; btn.innerHTML='<i class="bi bi-send me-1"></i>Envoyer le PDF par e-mail'; }
+    } else {
+      throw new Error(j && j.error ? j.error : 'Envoi impossible');
+    }
+  }catch(e){
+    if(status) status.innerHTML='<div class="alert alert-danger small py-1 mb-0"><i class="bi bi-exclamation-triangle me-1"></i>'+escHtml(e.message)+'</div>';
+    if(btn){ btn.disabled=false; btn.innerHTML='<i class="bi bi-send me-1"></i>Envoyer le PDF par e-mail'; }
+  }
 }
 
 async function fidiPdfCopyLink(){
