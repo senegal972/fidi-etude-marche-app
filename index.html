@@ -189,8 +189,12 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
   table{font-size:.7rem;}
   .sources-bar{font-size:.65rem;}
   a[href]:after{content:"";}
-  #map,.leaflet-container{display:none!important;}
-  #pdfMapNote{display:flex!important;}
+  /* Impression native : on affiche la vraie carte Leaflet (tuiles OSM = <img>,
+     aucun probleme CORS en impression). Force le rendu des images de fond. */
+  #map,.leaflet-container{display:block!important;}
+  .leaflet-tile,.leaflet-marker-icon,.leaflet-control{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  .leaflet-control-zoom,.leaflet-control-attribution{display:none!important;}
+  #pdfMapNote{display:none!important;}
   @page{size:A4;margin:12mm;}
 }
 /* Mode PDF (capture html2pdf) */
@@ -206,10 +210,6 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
 .pdf-mode .card{box-shadow:none;border:1px solid #dee2e6;break-inside:avoid;}
 .pdf-mode #pdfMapNote{display:flex!important;}
 #pdfMapNote{display:none;}
-@media print{
-  #map,.leaflet-container{display:none!important;}
-  #pdfMapNote{display:flex!important;}
-}
 /* Impression ciblée d'un document de partage (avis) : on n'imprime que #sharePrintRoot */
 #sharePrintRoot{display:none;}
 @media print{
@@ -1790,6 +1790,9 @@ function renderMap(lat, lon, city){
     .bindPopup(`<b><i class="bi bi-geo-alt"></i> ${city||''}</b><br><small>Adresse analysée</small>`).openPopup();
   setTimeout(()=>mapInstance.invalidateSize(),200);
 }
+
+// Avant impression : recalcule la taille de la carte pour charger les tuiles au bon format
+window.addEventListener('beforeprint', ()=>{ try{ if(mapInstance) mapInstance.invalidateSize(); }catch(e){} });
 
 function addTransactionMarkers(transactions, rayon_km, latRef, lonRef){
   if(!mapInstance) return;
