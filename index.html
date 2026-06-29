@@ -2402,9 +2402,38 @@ function highlightTrans(row){
   const idx = parseInt(row.dataset.idx);
   const m = transMarkers[idx];
   if(m && mapInstance){
-    mapInstance.setView(m.getLatLng(), 17, {animate:true});
+    mapInstance.setView(m.getLatLng(), 18, {animate:true});
     m.openPopup();
   }
+  // Surligne la parcelle de la transaction cliquée
+  const t = transData[idx];
+  if(t && t.lat && t.lon) highlightTransParcelle(t);
+}
+
+// Contour de la parcelle d'une transaction (orange, distinct de la parcelle analysée)
+let transParcelleLayer = null, _transParcelleReq = 0;
+async function highlightTransParcelle(t){
+  if(!mapInstance) return;
+  if(transParcelleLayer){ mapInstance.removeLayer(transParcelleLayer); transParcelleLayer=null; }
+  const reqId = ++_transParcelleReq;
+  const pt = encodeURIComponent(JSON.stringify({ type:'Point', coordinates:[t.lon, t.lat] }));
+  try{
+    const r = await fetch('https://apicarto.ign.fr/api/cadastre/parcelle?geom='+pt);
+    if(!r.ok || reqId!==_transParcelleReq) return;
+    const j = await r.json();
+    if(reqId!==_transParcelleReq) return;
+    const f = j && j.features && j.features[0];
+    if(!f || !f.geometry) return;
+    const p = f.properties;
+    const ref = `${p.section||''} ${p.numero||''}`.trim();
+    transParcelleLayer = L.geoJSON(f, {
+      style:{ color:'#fd7e14', weight:3, fillColor:'#fd7e14', fillOpacity:0.20, dashArray:'4 3' }
+    }).addTo(mapInstance);
+    transParcelleLayer.bindPopup(`<strong>Parcelle ${escHtml(ref)}</strong>`
+      + (p.contenance?`<br>${Number(p.contenance).toLocaleString('fr-FR')} m²`:'')
+      + (t.valeur?`<br>Vente : ${Number(t.valeur).toLocaleString('fr-FR')} €`:'')
+      + (p.idu?`<br><small>${escHtml(p.idu)}</small>`:'')).openPopup();
+  }catch(e){ /* silencieux */ }
 }
 
 // ─── Synthèse par section cadastrale ────────────────────────────────────────
