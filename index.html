@@ -2401,9 +2401,11 @@ function highlightTrans(row){
   row.classList.add('selected');
   const idx = parseInt(row.dataset.idx);
   const m = transMarkers[idx];
+  // La carte est en haut de page, le tableau plus bas : on la ramène dans la vue
+  const mapCard = document.querySelector('.map-card') || document.getElementById('map');
+  if(mapCard) mapCard.scrollIntoView({ behavior:'smooth', block:'center' });
   if(m && mapInstance){
-    mapInstance.setView(m.getLatLng(), 18, {animate:true});
-    m.openPopup();
+    setTimeout(()=>{ mapInstance.invalidateSize(); mapInstance.setView(m.getLatLng(), 18, {animate:true}); m.openPopup(); }, 350);
   }
   // Surligne la parcelle de la transaction cliquée
   const t = transData[idx];
