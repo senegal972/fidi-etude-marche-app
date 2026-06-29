@@ -1,6 +1,8 @@
 // Netlify Function — Transactions DVF individuelles
 // POST /api/transactions
 
+import { cleanMutations } from "./_dvf.mjs";
+
 const TIMEOUT_MS = 10000;
 const DVF_YEARS_KEEP = [2021, 2022, 2023, 2024, 2025];
 const SECTION_BATCH  = 6;
@@ -156,17 +158,16 @@ async function getIrisAtPoint(lat, lon) {
 
 async function getTransactions(codeCommune, latRef, lonRef, mode, rayonKm,
                                codePostalRef, sectionRef, irisRef) {
-  const mutations = await fetchAllMutations(codeCommune);
+  const rawMutations = await fetchAllMutations(codeCommune);
+  // Regroupe les lignes DVF par mutation (1 vente propre par mutation)
+  const ventes = cleanMutations(rawMutations);
   const transactions = [];
   const irisCache = new Map();
 
-  for (const r of mutations) {
-    if (r.nature_mutation !== "Vente") continue;
-    const year = parseInt((r.date_mutation || "").slice(0, 4));
-    if (!year || !DVF_YEARS_KEEP.includes(year)) continue;
+  for (const v of ventes) {
+    if (!v.year || !DVF_YEARS_KEEP.includes(v.year)) continue;
 
-    const latS = parseFloatSafe(r.latitude);
-    const lonS = parseFloatSafe(r.longitude);
+    const latS = v.lat, lonS = v.lon;
     let distM = null;
     if (latS !== null && lonS !== null) {
       distM = Math.round(haversineKm(latRef, lonRef, latS, lonS) * 1000);
@@ -178,10 +179,10 @@ async function getTransactions(codeCommune, latRef, lonRef, mode, rayonKm,
       if (rayonKm > 0 && distM > rayonKm * 1000) continue;
     } else if (mode === "code_postal") {
       if (!codePostalRef) continue;
-      if ((r.code_postal || "").trim() !== codePostalRef.trim()) continue;
+      if ((v.code_postal || "").trim() !== codePostalRef.trim()) continue;
     } else if (mode === "section") {
       if (!sectionRef) continue;
-      if (extractSection(r.id_parcelle || "") !== sectionRef.toUpperCase()) continue;
+      if (v.section !== sectionRef.toUpperCase()) continue;
     } else if (mode === "iris") {
       if (!irisRef || latS === null || lonS === null) continue;
       const key = `${latS.toFixed(4)},${lonS.toFixed(4)}`;
@@ -193,34 +194,25 @@ async function getTransactions(codeCommune, latRef, lonRef, mode, rayonKm,
     }
     // mode == "commune" → pas de filtre
 
-    const val = parseFloatSafe(r.valeur_fonciere);
-    const surf = parseFloatSafe(r.surface_reelle_bati);
-    const prixM2 = (val && surf && surf >= 5) ? Math.round(val / surf) : null;
-
-    const num = (r.adresse_numero || "").trim();
-    const suffx = (r.adresse_suffixe || "").trim();
-    const voie = (r.adresse_nom_voie || "").trim();
-    const adresseStr = [num, suffx, voie].filter(Boolean).join(" ") || "—";
-
-    const surfTerrain = parseFloatSafe(r.surface_terrain) || 0;
-    const pieces = parseInt(r.nombre_pieces_principales);
-
     transactions.push({
-      date: (r.date_mutation || "").slice(0, 10),
-      adresse: adresseStr,
-      code_postal: r.code_postal || "",
-      id_parcelle: r.id_parcelle || "",
-      section: extractSection(r.id_parcelle || ""),
-      type_local: r.type_local || r.nature_culture || "",
-      surface_bati: surf ? Math.round(surf) : null,
-      nb_pieces: Number.isFinite(pieces) && pieces > 0 ? pieces : null,
-      surface_terrain: surfTerrain ? Math.round(surfTerrain) : null,
-      valeur: val ? Math.round(val) : null,
-      prix_m2: prixM2,
+      date: v.date,
+      adresse: v.adresse,
+      code_postal: v.code_postal,
+      id_parcelle: v.id_parcelle,
+      section: v.section,
+      type_local: v.type,
+      multi: v.multi,
+      surface_bati: v.surface_bati,
+      nb_pieces: v.nb_pieces,
+      surface_terrain: v.surface_terrain,
+      valeur: v.valeur,
+      prix_m2: v.prix_m2,
+      prix_m2_terrain: v.prix_m2_terrain,
       lat: latS,
       lon: lonS,
       distance_m: distM,
-      nature_culture: r.nature_culture || "",
+      nature_culture: v.nature_culture,
+      nb_lots: v.nb_lots,
     });
   }
 

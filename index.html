@@ -648,6 +648,20 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
           </div>
         </div>
       </div>
+      <!-- Estimations par type : Maison / Appartement / Terrain -->
+      <div class="col-12" id="estTypesWrap">
+        <div class="chart-card">
+          <h6 class="d-flex align-items-center gap-2 mb-3">
+            <i class="bi bi-rulers text-primary"></i>Estimation vénale par type de bien
+            <span class="text-muted fw-normal" style="font-size:.72rem;">pour la surface saisie</span>
+          </h6>
+          <div class="row g-2" id="estTypesBody"></div>
+          <small class="text-muted d-block mt-2" style="font-size:.68rem;">
+            Valeurs = surface saisie × prix médian DVF du type (mutations mono-bien uniquement).
+            Le terrain est estimé au m² de terrain. « n » = nombre de ventes de référence.
+          </small>
+        </div>
+      </div>
     </div>
 
     <!-- Rendement locatif estimé -->
@@ -1714,8 +1728,14 @@ function renderResults(d){
 
   // Estimation
   if(est){
-    renderEstimation(est, d.type_bien);
+    renderEstimation(est, d.type_bien, d.estimations);
     document.getElementById('estimationRow').classList.remove('d-none');
+  } else if(d.estimations && Object.keys(d.estimations).length){
+    // Pas d'estimation pour le type saisi mais des médianes par type existent
+    renderEstTypes(d.estimations, d.type_bien);
+    document.getElementById('estimationRow').classList.remove('d-none');
+    document.getElementById('est-valeur').textContent = '—';
+    document.getElementById('est-base').textContent = 'Surface non renseignée — voir estimations par type ci-dessous';
   } else {
     document.getElementById('estimationRow').classList.add('d-none');
   }
@@ -1812,7 +1832,8 @@ function addTransactionMarkers(transactions, rayon_km, latRef, lonRef){
   const TYPE_COLORS = {
     'Maison':'#e4241c','Appartement':'#0d6efd',
     'Local industriel. commercial ou assimilé':'#fd7e14',
-    'Dépendance':'#6c757d','Local':'#fd7e14'
+    'Dépendance':'#6c757d','Local':'#fd7e14',
+    'Terrain':'#198754','Bien multiple':'#6f42c1','Autre':'#adb5bd'
   };
   const defaultColor = '#20c997';
 
@@ -2036,7 +2057,8 @@ function renderDvfTable(dvfA){
 const TYPE_COLORS_CSS = {
   'Maison':'#e4241c','Appartement':'#0d6efd',
   'Local industriel. commercial ou assimilé':'#fd7e14',
-  'Dépendance':'#6c757d','Local':'#fd7e14'
+  'Dépendance':'#6c757d','Local':'#fd7e14',
+  'Terrain':'#198754','Bien multiple':'#6f42c1','Autre':'#adb5bd'
 };
 let _transLatRef = null, _transLonRef = null;
 let _activeFilters = { texte:'', type:'', section:'', annee:'', cp:'' };
@@ -2189,12 +2211,12 @@ function renderTransTable(latRef, lonRef){
       <td style="max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(t.adresse||'').replace(/"/g,'')}">${(t.lat&&t.lon)?`<a href="https://www.google.com/maps?q=${t.lat},${t.lon}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="text-decoration-none" title="Voir sur Google Maps"><i class="bi bi-geo-alt-fill text-danger me-1" style="font-size:.72rem;"></i></a>`:''}${t.adresse||'—'}</td>
       <td><span class="badge bg-primary bg-opacity-10 text-primary fw-semibold" style="font-size:.7rem;">${t.section||'—'}</span></td>
       <td><code style="font-size:.68rem;">${t.id_parcelle||'—'}</code></td>
-      <td><span class="type-dot" style="background:${color}"></span>${t.type_local||'—'}</td>
+      <td><span class="type-dot" style="background:${color}"></span>${t.type_local||'—'}${t.multi?` <span class="badge bg-light text-secondary border" style="font-size:.6rem;" title="Mutation portant sur plusieurs biens — prix/m² non significatif">${t.nb_lots||''} lots</span>`:''}</td>
       <td class="text-end">${t.surface_bati!=null ? fmt(t.surface_bati)+' m²' : '—'}</td>
       <td class="text-end">${t.nb_pieces!=null ? t.nb_pieces : '—'}</td>
       <td class="text-end">${t.surface_terrain!=null ? fmt(t.surface_terrain)+' m²' : '—'}</td>
       <td class="text-end fw-semibold">${t.valeur!=null ? fmt(t.valeur)+' €' : '—'}</td>
-      <td class="text-end">${t.prix_m2!=null ? fmt(t.prix_m2)+' €' : '—'}</td>
+      <td class="text-end">${t.prix_m2!=null ? fmt(t.prix_m2)+' €' : (t.multi?'<span class="text-muted small" title="Vente multiple : prix/m² non calculable">n/s</span>':'—')}</td>
       <td class="text-end"><span class="badge bg-light text-dark border">${dist}</span></td>
     </tr>`;
   }).join('');
@@ -2699,7 +2721,7 @@ async function loadTransactionsAsync(loc, perimetre){
 }
 
 // ─── Estimation ───────────────────────────────────────────────────────────────
-function renderEstimation(est, typeBien){
+function renderEstimation(est, typeBien, estimations){
   const typeLabel = typeBien==='appartement'?'Appartement':typeBien==='tous'?'Bien':' Maison';
   document.getElementById('est-valeur').textContent = fmtEur(est.valeur_med);
   document.getElementById('est-base').textContent   =
@@ -2707,6 +2729,40 @@ function renderEstimation(est, typeBien){
   document.getElementById('est-min').textContent = fmtEur(est.valeur_min);
   document.getElementById('est-med').textContent = fmtEur(est.valeur_med);
   document.getElementById('est-max').textContent = fmtEur(est.valeur_max);
+  renderEstTypes(estimations, typeBien);
+}
+
+// Estimations vénales par type : Maison / Appartement / Terrain
+function renderEstTypes(estimations, typeBien){
+  const wrap = document.getElementById('estTypesWrap');
+  const body = document.getElementById('estTypesBody');
+  if(!wrap || !body) return;
+  estimations = estimations || {};
+  const defs = [
+    { key:'maison',      label:'Maison',      icon:'bi-house-door',       color:'#e4241c', unit:'bâti' },
+    { key:'appartement', label:'Appartement', icon:'bi-building',         color:'#0d6efd', unit:'bâti' },
+    { key:'terrain',     label:'Terrain',     icon:'bi-bounding-box',     color:'#198754', unit:'terrain' },
+  ];
+  const cards = defs.map(d=>{
+    const e = estimations[d.key];
+    const active = (typeBien||'').toLowerCase().includes(d.key) ||
+                   (d.key==='maison' && (typeBien||'')==='maison');
+    if(!e || e.valeur_med==null){
+      return `<div class="col-md-4"><div class="border rounded p-2 h-100 bg-light">
+        <div class="fw-semibold small" style="color:${d.color}"><i class="bi ${d.icon} me-1"></i>${d.label}</div>
+        <div class="text-muted small mt-2">Données insuffisantes</div></div></div>`;
+    }
+    return `<div class="col-md-4"><div class="border rounded p-2 h-100${active?' border-2':''}" style="${active?'border-color:'+d.color+';':''}">
+      <div class="fw-semibold small" style="color:${d.color}"><i class="bi ${d.icon} me-1"></i>${d.label}${active?' <span class="badge bg-light text-dark border" style="font-size:.55rem;">bien analysé</span>':''}</div>
+      <div class="fw-bold mt-1" style="font-size:1.25rem;color:var(--fidi-blue);">${fmtEur(e.valeur_med)}</div>
+      <div class="text-muted" style="font-size:.72rem;">${fmtEur(e.valeur_min)} – ${fmtEur(e.valeur_max)}</div>
+      <div class="text-muted mt-1" style="font-size:.7rem;">${fmtM2(e.prix_m2)}/m² ${d.unit} · n=${e.nb||'?'}</div>
+    </div></div>`;
+  }).join('');
+  body.innerHTML = cards;
+  // Affiche le bloc seulement si au moins un type a une estimation
+  const any = defs.some(d=>estimations[d.key] && estimations[d.key].valeur_med!=null);
+  wrap.style.display = any ? '' : 'none';
 }
 
 // ═══ P2 — Partage de l'étude ═════════════════════════════════════════════════
