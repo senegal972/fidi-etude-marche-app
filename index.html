@@ -193,7 +193,7 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
      aucun probleme CORS en impression). Force le rendu des images de fond. */
   #map,.leaflet-container{display:block!important;}
   .leaflet-tile,.leaflet-marker-icon,.leaflet-control{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-  .leaflet-control-zoom,.leaflet-control-attribution{display:none!important;}
+  .leaflet-control-zoom,.leaflet-control-attribution,.leaflet-control-layers{display:none!important;}
   #pdfMapNote{display:none!important;}
   @page{size:A4;margin:12mm;}
 }
@@ -543,7 +543,7 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
       <!-- Carte -->
       <div class="col-md-4 col-lg-4">
         <div class="map-card">
-          <div class="map-header"><i class="bi bi-geo-alt me-1"></i>Localisation</div>
+          <div class="map-header"><i class="bi bi-geo-alt me-1"></i>Localisation · Cadastre & Urbanisme</div>
           <div id="map"></div>
           <div id="pdfMapNote" class="align-items-center justify-content-center text-muted text-center p-4"
                style="min-height:180px;background:#f8f9fa;border:1px dashed #ced4da;border-radius:6px;">
@@ -551,6 +551,20 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
               <i class="bi bi-map" style="font-size:2rem;opacity:.5;"></i>
               <div class="mt-2 small">Carte interactive disponible sur la version en ligne</div>
             </div>
+          </div>
+          <!-- Infos cadastre + zonage PLU au point analysé (Géoportail de l'Urbanisme) -->
+          <div id="gpuInfo" class="small mt-2 d-none">
+            <div class="d-flex align-items-start gap-2 mb-1">
+              <span class="badge bg-success" style="min-width:64px;">Zonage</span>
+              <div id="gpuZone" class="flex-grow-1 text-muted">Chargement…</div>
+            </div>
+            <div class="d-flex align-items-start gap-2">
+              <span class="badge bg-primary" style="min-width:64px;">Cadastre</span>
+              <div id="gpuParcelle" class="flex-grow-1 text-muted">Chargement…</div>
+            </div>
+            <a id="gpuLink" href="#" target="_blank" rel="noopener" class="small d-inline-block mt-1">
+              <i class="bi bi-box-arrow-up-right me-1"></i>Ouvrir dans le Géoportail de l'Urbanisme
+            </a>
           </div>
         </div>
       </div>
@@ -1791,16 +1805,53 @@ function renderScore(sc){
   });
 }
 
-// ─── Carte Leaflet ────────────────────────────────────────────────────────────
+// ─── Carte Leaflet + IGN/Géoportail Urbanisme ────────────────────────────────
+// Fond + calques cadastre/zonage via la Géoplateforme IGN (data.geopf.fr, sans
+// clé) et l'API Carto GPU (apicarto.ign.fr/api/gpu, CORS *). Remplace Google Maps.
+let cadastreLayer = null, zonageLayer = null, _zonageOn = false, _zonageReq = 0;
+
+// Modèle d'URL WMTS Géoplateforme (PM = pseudo-Mercator, tuiles {z}/{x}/{y})
+function geopfWmts(layer, format){
+  return 'https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile'
+    + '&LAYER=' + layer + '&STYLE=normal&TILEMATRIXSET=PM'
+    + '&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=' + (format || 'image/png');
+}
+
 function renderMap(lat, lon, city){
   if(!lat || !lon) return;
   if(!mapInstance){
-    mapInstance = L.map('map').setView([lat,lon],13);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-      attribution:'© OpenStreetMap',maxZoom:18,crossOrigin:'anonymous'
-    }).addTo(mapInstance);
+    mapInstance = L.map('map').setView([lat,lon],16);
+
+    // ── Fonds de carte ──
+    const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+      attribution:'© OpenStreetMap', maxZoom:19, crossOrigin:'anonymous'
+    });
+    const ignPlan = L.tileLayer(geopfWmts('GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2'),{
+      attribution:'© IGN Géoplateforme', maxZoom:19, crossOrigin:'anonymous'
+    });
+    const ortho = L.tileLayer(geopfWmts('ORTHOIMAGERY.ORTHOPHOTOS','image/jpeg'),{
+      attribution:'© IGN Géoplateforme', maxZoom:20, crossOrigin:'anonymous'
+    });
+    osm.addTo(mapInstance);
+
+    // ── Calques superposables ──
+    cadastreLayer = L.tileLayer(geopfWmts('CADASTRALPARCELS.PARCELLAIRE_EXPRESS'),{
+      maxZoom:20, opacity:0.9, crossOrigin:'anonymous'
+    });
+    zonageLayer = L.layerGroup(); // rempli à la demande depuis l'API GPU
+
+    L.control.layers(
+      { 'Plan OSM':osm, 'Plan IGN':ignPlan, 'Photo aérienne':ortho },
+      { 'Cadastre':cadastreLayer, 'Zonage PLU (urbanisme)':zonageLayer },
+      { collapsed:true }
+    ).addTo(mapInstance);
+
+    // Charge / recharge le zonage uniquement quand le calque est actif
+    mapInstance.on('overlayadd', (e)=>{ if(e.layer===zonageLayer){ _zonageOn=true; loadZonage(); } });
+    mapInstance.on('overlayremove', (e)=>{ if(e.layer===zonageLayer){ _zonageOn=false; } });
+    mapInstance.on('moveend', ()=>{ if(_zonageOn) loadZonage(); });
   } else {
-    mapInstance.setView([lat,lon],13);
+    mapInstance.setView([lat,lon],16);
     if(markerInstance) mapInstance.removeLayer(markerInstance);
     if(radiusCircle){ mapInstance.removeLayer(radiusCircle); radiusCircle=null; }
     transMarkers.forEach(m=>mapInstance.removeLayer(m));
@@ -1809,6 +1860,106 @@ function renderMap(lat, lon, city){
   markerInstance = L.marker([lat,lon]).addTo(mapInstance)
     .bindPopup(`<b><i class="bi bi-geo-alt"></i> ${city||''}</b><br><small>Adresse analysée</small>`).openPopup();
   setTimeout(()=>mapInstance.invalidateSize(),200);
+
+  // Récupère zone PLU + référence cadastrale au point analysé (API GPU)
+  loadGpuInfo(lat, lon);
+}
+
+// Couleurs réglementaires des zones PLU par type
+function zoneColor(typezone){
+  const t = (typezone||'').toUpperCase();
+  if(t==='U')  return '#e4574c'; // urbaine
+  if(t==='AU' || t==='AUC' || t==='AUS') return '#f0883e'; // à urbaniser
+  if(t==='A')  return '#e9c84a'; // agricole
+  if(t==='N')  return '#5fae5f'; // naturelle
+  return '#8a8aff';
+}
+
+// Zone PLU + parcelle cadastrale au point (API Carto GPU, sans clé)
+async function loadGpuInfo(lat, lon){
+  const box = document.getElementById('gpuInfo');
+  const elZone = document.getElementById('gpuZone');
+  const elParc = document.getElementById('gpuParcelle');
+  const elLink = document.getElementById('gpuLink');
+  if(!box) return;
+  box.classList.remove('d-none');
+  if(elZone) elZone.textContent = 'Chargement…';
+  if(elParc) elParc.textContent = 'Chargement…';
+  if(elLink) elLink.href = `https://www.geoportail-urbanisme.gouv.fr/map/#tile=1&lon=${lon}&lat=${lat}&zoom=18`;
+
+  const pt = encodeURIComponent(JSON.stringify({ type:'Point', coordinates:[lon, lat] }));
+
+  // Zonage PLU
+  fetch('https://apicarto.ign.fr/api/gpu/zone-urba?geom='+pt)
+    .then(r=>r.ok?r.json():null)
+    .then(j=>{
+      if(!elZone) return;
+      const f = j && j.features && j.features[0];
+      if(f){
+        const p = f.properties;
+        const col = zoneColor(p.typezone);
+        elZone.innerHTML = `<span class="fw-bold" style="color:${col}">${escHtml(p.libelle||p.typezone||'?')}</span>`
+          + (p.libelong?` — ${escHtml(p.libelong)}`:'')
+          + (p.typezone?` <span class="text-muted">(type ${escHtml(p.typezone)})</span>`:'');
+      } else {
+        elZone.innerHTML = '<span class="text-muted">Aucun document d\'urbanisme numérisé à ce point (commune non couverte par le GPU).</span>';
+      }
+    })
+    .catch(()=>{ if(elZone) elZone.innerHTML='<span class="text-muted">Zonage indisponible.</span>'; });
+
+  // Référence cadastrale
+  fetch('https://apicarto.ign.fr/api/cadastre/parcelle?geom='+pt)
+    .then(r=>r.ok?r.json():null)
+    .then(j=>{
+      if(!elParc) return;
+      const f = j && j.features && j.features[0];
+      if(f){
+        const p = f.properties;
+        const ref = `${p.section||''} ${p.numero||''}`.trim();
+        elParc.innerHTML = `<span class="fw-bold">${escHtml(ref||'—')}</span>`
+          + (p.contenance?` · ${Number(p.contenance).toLocaleString('fr-FR')} m²`:'')
+          + (p.nom_com?` · ${escHtml(p.nom_com)}`:'')
+          + (p.code_insee?` <span class="text-muted">(${escHtml(p.code_insee)})</span>`:'');
+      } else {
+        elParc.innerHTML = '<span class="text-muted">Parcelle introuvable à ce point.</span>';
+      }
+    })
+    .catch(()=>{ if(elParc) elParc.innerHTML='<span class="text-muted">Cadastre indisponible.</span>'; });
+}
+
+// Dessine le calque zonage PLU sur l'emprise visible (API GPU, polygones colorés)
+async function loadZonage(){
+  if(!mapInstance || !zonageLayer) return;
+  if(mapInstance.getZoom() < 13){
+    zonageLayer.clearLayers();
+    zonageLayer.addLayer(L.marker(mapInstance.getCenter(),{opacity:0})
+      .bindTooltip('Zoomez davantage pour afficher le zonage PLU',{permanent:false}));
+    return;
+  }
+  const b = mapInstance.getBounds();
+  const poly = { type:'Polygon', coordinates:[[
+    [b.getWest(),b.getSouth()],[b.getEast(),b.getSouth()],
+    [b.getEast(),b.getNorth()],[b.getWest(),b.getNorth()],[b.getWest(),b.getSouth()]
+  ]]};
+  const reqId = ++_zonageReq;
+  try{
+    const r = await fetch('https://apicarto.ign.fr/api/gpu/zone-urba?geom='+encodeURIComponent(JSON.stringify(poly)));
+    if(!r.ok || reqId!==_zonageReq) return;
+    const j = await r.json();
+    if(reqId!==_zonageReq) return; // une requête plus récente a pris le relais
+    zonageLayer.clearLayers();
+    const gj = L.geoJSON(j, {
+      style: (feat)=>{ const col=zoneColor(feat.properties.typezone);
+        return { color:col, weight:1, fillColor:col, fillOpacity:0.28 }; },
+      onEachFeature: (feat, lyr)=>{
+        const p = feat.properties;
+        lyr.bindPopup(`<strong>${escHtml(p.libelle||'?')}</strong>`
+          + (p.libelong?`<br>${escHtml(p.libelong)}`:'')
+          + `<br><small>Type ${escHtml(p.typezone||'')}</small>`);
+      }
+    });
+    zonageLayer.addLayer(gj);
+  }catch(e){ /* silencieux */ }
 }
 
 // Avant impression : recalcule la taille de la carte pour charger les tuiles au bon format
@@ -2208,7 +2359,7 @@ function renderTransTable(latRef, lonRef){
     const origIdx = transData.indexOf(t);
     return `<tr data-idx="${origIdx}" onclick="highlightTrans(this)">
       <td style="white-space:nowrap">${t.date||'—'}</td>
-      <td style="max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(t.adresse||'').replace(/"/g,'')}">${(t.lat&&t.lon)?`<a href="https://www.google.com/maps?q=${t.lat},${t.lon}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="text-decoration-none" title="Voir sur Google Maps"><i class="bi bi-geo-alt-fill text-danger me-1" style="font-size:.72rem;"></i></a>`:''}${t.adresse||'—'}</td>
+      <td style="max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(t.adresse||'').replace(/"/g,'')}">${(t.lat&&t.lon)?`<a href="https://www.geoportail-urbanisme.gouv.fr/map/#tile=1&lon=${t.lon}&lat=${t.lat}&zoom=18" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="text-decoration-none" title="Voir sur le Géoportail de l'Urbanisme (cadastre + zonage)"><i class="bi bi-geo-alt-fill text-success me-1" style="font-size:.72rem;"></i></a>`:''}${t.adresse||'—'}</td>
       <td><span class="badge bg-primary bg-opacity-10 text-primary fw-semibold" style="font-size:.7rem;">${t.section||'—'}</span></td>
       <td><code style="font-size:.68rem;">${t.id_parcelle||'—'}</code></td>
       <td><span class="type-dot" style="background:${color}"></span>${t.type_local||'—'}${t.multi?` <span class="badge bg-light text-secondary border" style="font-size:.6rem;" title="Mutation portant sur plusieurs biens — prix/m² non significatif">${t.nb_lots||''} lots</span>`:''}</td>
