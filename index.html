@@ -1808,7 +1808,7 @@ function renderScore(sc){
 // ─── Carte Leaflet + IGN/Géoportail Urbanisme ────────────────────────────────
 // Fond + calques cadastre/zonage via la Géoplateforme IGN (data.geopf.fr, sans
 // clé) et l'API Carto GPU (apicarto.ign.fr/api/gpu, CORS *). Remplace Google Maps.
-let cadastreLayer = null, zonageLayer = null, _zonageOn = false, _zonageReq = 0;
+let cadastreLayer = null, zonageLayer = null, parcelleLayer = null, _zonageOn = false, _zonageReq = 0;
 
 // Modèle d'URL WMTS Géoplateforme (PM = pseudo-Mercator, tuiles {z}/{x}/{y})
 function geopfWmts(layer, format){
@@ -1907,7 +1907,8 @@ async function loadGpuInfo(lat, lon){
     })
     .catch(()=>{ if(elZone) elZone.innerHTML='<span class="text-muted">Zonage indisponible.</span>'; });
 
-  // Référence cadastrale
+  // Référence cadastrale + surlignage de la parcelle sur la carte
+  if(parcelleLayer && mapInstance){ mapInstance.removeLayer(parcelleLayer); parcelleLayer=null; }
   fetch('https://apicarto.ign.fr/api/cadastre/parcelle?geom='+pt)
     .then(r=>r.ok?r.json():null)
     .then(j=>{
@@ -1920,6 +1921,17 @@ async function loadGpuInfo(lat, lon){
           + (p.contenance?` · ${Number(p.contenance).toLocaleString('fr-FR')} m²`:'')
           + (p.nom_com?` · ${escHtml(p.nom_com)}`:'')
           + (p.code_insee?` <span class="text-muted">(${escHtml(p.code_insee)})</span>`:'');
+        // Surligne le contour de la parcelle pointée
+        if(f.geometry && mapInstance){
+          parcelleLayer = L.geoJSON(f, {
+            style:{ color:'#d6336c', weight:3, fillColor:'#d6336c', fillOpacity:0.18 }
+          }).addTo(mapInstance);
+          parcelleLayer.bindPopup(`<strong>Parcelle ${escHtml(ref)}</strong>`
+            + (p.contenance?`<br>${Number(p.contenance).toLocaleString('fr-FR')} m²`:'')
+            + (p.idu?`<br><small>${escHtml(p.idu)}</small>`:''));
+          // Recentre sur la parcelle si elle tient dans la vue
+          try{ mapInstance.fitBounds(parcelleLayer.getBounds(), { maxZoom:18, padding:[40,40] }); }catch(e){}
+        }
       } else {
         elParc.innerHTML = '<span class="text-muted">Parcelle introuvable à ce point.</span>';
       }
