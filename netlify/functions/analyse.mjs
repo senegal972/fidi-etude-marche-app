@@ -621,13 +621,26 @@ function estFromRate(prixM2, surface) {
   };
 }
 
-// Trois estimations (maison / appartement / terrain) pour la surface donnée
-function estimateAllTypes(valoris, surface) {
+// Surfaces standard par type (immobilier) — utilisées pour les types NON saisis,
+// car la surface saisie ne vaut que pour le type recherché (ex : 400 m² de
+// terrain ne doit pas servir à estimer une maison).
+const SURFACE_STD = { maison: 100, appartement: 70, terrain: 500 };
+
+// Trois estimations (maison / appartement / terrain).
+// Le type effectivement recherché utilise la surface saisie ; les autres types
+// utilisent une surface standard cohérente avec leur nature.
+function estimateAllTypes(valoris, surface, typeBien) {
+  const sel = (typeBien || "").toLowerCase();
   const out = {};
   const m = valoris.maison, a = valoris.appartement, t = valoris.terrain;
-  if (m && m.prix_median_m2) out.maison      = { ...estFromRate(m.prix_median_m2, surface), nb: m.nb };
-  if (a && a.prix_median_m2) out.appartement = { ...estFromRate(a.prix_median_m2, surface), nb: a.nb };
-  if (t && t.prix_median_m2) out.terrain     = { ...estFromRate(t.prix_median_m2, surface), nb: t.nb };
+  const surfFor = (key) => {
+    const isSel = sel.includes(key);
+    if (isSel && surface > 0) return surface;
+    return SURFACE_STD[key];
+  };
+  if (m && m.prix_median_m2) out.maison      = { ...estFromRate(m.prix_median_m2, surfFor("maison")),      nb: m.nb, standard: !(sel.includes("maison") && surface > 0) };
+  if (a && a.prix_median_m2) out.appartement = { ...estFromRate(a.prix_median_m2, surfFor("appartement")), nb: a.nb, standard: !(sel.includes("appartement") && surface > 0) };
+  if (t && t.prix_median_m2) out.terrain     = { ...estFromRate(t.prix_median_m2, surfFor("terrain")),     nb: t.nb, standard: !(sel.includes("terrain") && surface > 0) };
   return out;
 }
 
@@ -681,8 +694,8 @@ export const handler = async (event) => {
 
   const score = calculateScore(allResults, typeBien);
   const estimation = estimateBien(allResults.valoris, dvfAnnees, dvfPer, typeBien, surface);
-  // Estimations pour les 3 types (maison / appartement / terrain) à la surface saisie
-  const estimations = estimateAllTypes(allResults.valoris, surface);
+  // Estimations 3 types : surface saisie pour le type recherché, surface standard pour les autres
+  const estimations = estimateAllTypes(allResults.valoris, surface, typeBien);
 
   return jsonResp(200, {
     localisation: geo,

@@ -671,8 +671,9 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
           </h6>
           <div class="row g-2" id="estTypesBody"></div>
           <small class="text-muted d-block mt-2" style="font-size:.68rem;">
-            Valeurs = surface saisie × prix médian DVF du type (mutations mono-bien uniquement).
-            Le terrain est estimé au m² de terrain. « n » = nombre de ventes de référence.
+            Valeur = surface × prix médian DVF du type (mutations mono-bien). Le type recherché
+            utilise la surface saisie ; les autres types une surface standard « (std) »
+            (maison 100 m², appartement 70 m², terrain 500 m²). « n » = ventes de référence.
           </small>
         </div>
       </div>
@@ -2916,7 +2917,8 @@ async function loadTransactionsAsync(loc, perimetre){
 
 // ─── Estimation ───────────────────────────────────────────────────────────────
 function renderEstimation(est, typeBien, estimations){
-  const typeLabel = typeBien==='appartement'?'Appartement':typeBien==='tous'?'Bien':' Maison';
+  const LABELS = { maison:'Maison', appartement:'Appartement', terrain:'Terrain', local:'Local', tous:'Immeuble' };
+  const typeLabel = LABELS[(typeBien||'').toLowerCase()] || 'Bien';
   document.getElementById('est-valeur').textContent = fmtEur(est.valeur_med);
   document.getElementById('est-base').textContent   =
     `${typeLabel} · ${est.surface} m² · Base : ${fmtM2(est.prix_m2)} (prix médian du marché)`;
@@ -2946,11 +2948,12 @@ function renderEstTypes(estimations, typeBien){
         <div class="fw-semibold small" style="color:${d.color}"><i class="bi ${d.icon} me-1"></i>${d.label}</div>
         <div class="text-muted small mt-2">Données insuffisantes</div></div></div>`;
     }
+    const surfTxt = e.surface ? `${fmt(e.surface)} m²${e.standard?' (std)':''}` : '';
     return `<div class="col-md-4"><div class="border rounded p-2 h-100${active?' border-2':''}" style="${active?'border-color:'+d.color+';':''}">
       <div class="fw-semibold small" style="color:${d.color}"><i class="bi ${d.icon} me-1"></i>${d.label}${active?' <span class="badge bg-light text-dark border" style="font-size:.55rem;">bien analysé</span>':''}</div>
       <div class="fw-bold mt-1" style="font-size:1.25rem;color:var(--fidi-blue);">${fmtEur(e.valeur_med)}</div>
       <div class="text-muted" style="font-size:.72rem;">${fmtEur(e.valeur_min)} – ${fmtEur(e.valeur_max)}</div>
-      <div class="text-muted mt-1" style="font-size:.7rem;">${fmtM2(e.prix_m2)}/m² ${d.unit} · n=${e.nb||'?'}</div>
+      <div class="text-muted mt-1" style="font-size:.7rem;">${surfTxt} × ${fmtM2(e.prix_m2)}/m² ${d.unit} · n=${e.nb||'?'}</div>
     </div></div>`;
   }).join('');
   body.innerHTML = cards;
