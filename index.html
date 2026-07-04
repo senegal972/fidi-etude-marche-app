@@ -3276,25 +3276,38 @@ async function fidiSendEmail(kind, titre){
     setBtn(false);
   };
 
-  // Garde-fou : les fonctions Netlify limitent le corps à ~6 Mo. En base64 (+33 %),
-  // on plafonne l'envoi serveur à ~4 Mo de fichiers ; au-delà → Gmail direct.
-  const totalBytes = files.reduce((s,f)=>s+f.size,0);
-  if(totalBytes > 4*1024*1024){
-    gmailFallback('Fichiers trop volumineux pour l\'envoi automatique ('+Math.round(totalBytes/1024/1024)+' Mo).');
+  // Pièce jointe automatique : UNIQUEMENT le PDF principal (étude/avis généré).
+  // Les autres fichiers restent à joindre manuellement (limite Netlify ~6 Mo de
+  // corps, base64 +33 % → plafond pratique 4 Mo pour la pièce automatique).
+  const MAX_AUTO = 4*1024*1024;
+  const mainName = window.__fidiPdfFilename || '';
+  const isPdf = (f)=> (f.type||'').indexOf('pdf')>=0 || /\.pdf$/i.test(f.name);
+  const main = files.find(f=>f.name===mainName)
+            || files.find(f=>isPdf(f) && f.size<=MAX_AUTO)
+            || files[0];
+  const others = files.filter(f=>f!==main);
+  if(!main || main.size > MAX_AUTO){
+    gmailFallback('Le PDF principal dépasse '+Math.round(MAX_AUTO/1024/1024)+' Mo (envoi automatique impossible).');
     return;
   }
 
   setBtn(true);
   if(status) status.innerHTML='';
   try{
-    const attachments = [];
-    for(const f of files){ attachments.push({ filename:f.name, content: await fidiFileToB64(f) }); }
+    const attachments = [{ filename: main.name, content: await fidiFileToB64(main) }];
     const resp = await fetch('/api/send-email',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({ to:email, subject:(kind||'Document FIDI')+(titre?' — '+titre:''),
         attachments, kind:kind||'Document', titre:titre||'' })});
     let j = {}; try{ j = await resp.json(); }catch(e){}
     if(j && j.ok){
-      if(status) status.innerHTML='<div class="alert alert-success small py-1 mb-0"><i class="bi bi-check-circle me-1"></i>'+files.length+' pièce'+(files.length>1?'s':'')+' jointe'+(files.length>1?'s':'')+' envoyée'+(files.length>1?'s':'')+' à <strong>'+escHtml(email)+'</strong>.</div>';
+      let html = '<div class="alert alert-success small py-1 mb-0"><i class="bi bi-check-circle me-1"></i>'
+        + 'E-mail envoyé à <strong>'+escHtml(email)+'</strong> avec <strong>'+escHtml(main.name)+'</strong> en pièce jointe.</div>';
+      if(others.length){
+        const names = others.map(f=>escHtml(f.name)).join(', ');
+        html += '<div class="alert alert-info small py-1 mb-0 mt-1"><i class="bi bi-paperclip me-1"></i>'
+          + 'À envoyer manuellement (Gmail ou autre) : <strong>'+names+'</strong>.</div>';
+      }
+      if(status) status.innerHTML = html;
       setBtn(false);
     } else {
       // Non configuré, non-JSON, ou erreur Resend → repli Gmail systématique
