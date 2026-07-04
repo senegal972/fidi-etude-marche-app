@@ -3263,7 +3263,28 @@ async function fidiSendEmail(kind, titre){
     if(status) status.innerHTML='<div class="alert alert-warning small py-1 mb-0">Entrez une adresse e-mail valide.</div>'; return;
   }
   const btn = document.getElementById('shareEmailBtn');
-  if(btn){ btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Envoi…'; }
+  const setBtn = (busy)=>{ if(btn){ btn.disabled=busy; btn.innerHTML = busy?'<span class="spinner-border spinner-border-sm me-1"></span>Envoi…':'<i class="bi bi-google me-1"></i>Envoyer par e-mail (Gmail)'; } };
+
+  // Repli : ouvre Gmail compose pré-rempli, l'utilisateur joint les fichiers (déjà sur disque)
+  const gmailFallback = (note)=>{
+    const subject = (kind||'Document FIDI')+(titre?' — '+titre:'');
+    const body2 = 'Bonjour,\n\nVeuillez trouver ci-joint '+(kind||'le document').toLowerCase()+(titre?' — '+titre:'')+'.\n\nCordialement,\nFIDI Conseil';
+    window.open('https://mail.google.com/mail/?view=cm&fs=1&to='+encodeURIComponent(email)+'&su='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body2), '_blank', 'noopener');
+    const names = files.map(f=>escHtml(f.name)).join(', ');
+    if(status) status.innerHTML='<div class="alert alert-info small py-1 mb-0"><i class="bi bi-info-circle me-1"></i>'
+      +(note?escHtml(note)+' ':'')+'Gmail s\'est ouvert (destinataire et objet pré-remplis). Cliquez sur <strong>Joindre un fichier 📎</strong> et sélectionnez : <strong>'+names+'</strong>.</div>';
+    setBtn(false);
+  };
+
+  // Garde-fou : les fonctions Netlify limitent le corps à ~6 Mo. En base64 (+33 %),
+  // on plafonne l'envoi serveur à ~4 Mo de fichiers ; au-delà → Gmail direct.
+  const totalBytes = files.reduce((s,f)=>s+f.size,0);
+  if(totalBytes > 4*1024*1024){
+    gmailFallback('Fichiers trop volumineux pour l\'envoi automatique ('+Math.round(totalBytes/1024/1024)+' Mo).');
+    return;
+  }
+
+  setBtn(true);
   if(status) status.innerHTML='';
   try{
     const attachments = [];
@@ -3271,23 +3292,17 @@ async function fidiSendEmail(kind, titre){
     const resp = await fetch('/api/send-email',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({ to:email, subject:(kind||'Document FIDI')+(titre?' — '+titre:''),
         attachments, kind:kind||'Document', titre:titre||'' })});
-    const j = await resp.json().catch(()=>({}));
+    let j = {}; try{ j = await resp.json(); }catch(e){}
     if(j && j.ok){
       if(status) status.innerHTML='<div class="alert alert-success small py-1 mb-0"><i class="bi bi-check-circle me-1"></i>'+files.length+' pièce'+(files.length>1?'s':'')+' jointe'+(files.length>1?'s':'')+' envoyée'+(files.length>1?'s':'')+' à <strong>'+escHtml(email)+'</strong>.</div>';
-    } else if(j && j.not_configured){
-      // Fallback : ouvre Gmail compose, l'utilisateur joint les fichiers (déjà sur disque)
-      const subject = (kind||'Document FIDI')+(titre?' — '+titre:'');
-      const body2 = 'Bonjour,\n\nVeuillez trouver ci-joint '+(kind||'le document').toLowerCase()+(titre?' — '+titre:'')+'.\n\nCordialement,\nFIDI Conseil';
-      window.open('https://mail.google.com/mail/?view=cm&fs=1&to='+encodeURIComponent(email)+'&su='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body2), '_blank', 'noopener');
-      const names = files.map(f=>escHtml(f.name)).join(', ');
-      if(status) status.innerHTML='<div class="alert alert-info small py-1 mb-0"><i class="bi bi-info-circle me-1"></i>Gmail ouvert (destinataire et objet pré-remplis). Cliquez sur <strong>Joindre un fichier 📎</strong> et sélectionnez : <strong>'+names+'</strong>.</div>';
+      setBtn(false);
     } else {
-      throw new Error(j && j.error ? j.error : 'Envoi impossible');
+      // Non configuré, non-JSON, ou erreur Resend → repli Gmail systématique
+      gmailFallback(j && j.error ? ('Envoi automatique indisponible : '+j.error+'.') : '');
     }
   }catch(e){
-    if(status) status.innerHTML='<div class="alert alert-danger small py-1 mb-0"><i class="bi bi-exclamation-triangle me-1"></i>'+escHtml(e.message)+'</div>';
+    gmailFallback('Connexion au service d\'envoi impossible.');
   }
-  finally{ if(btn){ btn.disabled=false; btn.innerHTML='<i class="bi bi-google me-1"></i>Envoyer par e-mail (Gmail)'; } }
 }
 
 // Compat : ancien nom conservé pour avis-valeur.js (signature simplifiée)
