@@ -75,12 +75,26 @@ export const handler = async (event) => {
     html: htmlBody,
   };
 
-  if (b.pdf_b64) {
-    const approxBytes = Math.floor(b.pdf_b64.length * 0.75);
-    if (approxBytes > 8 * 1024 * 1024) {
-      return jsonResp(413, { error: "PDF trop volumineux pour un envoi par email (max 8 Mo)" });
+  // Pièces jointes : tableau b.attachments [{ filename, content(base64) }]
+  // Rétrocompat : b.pdf_b64 + b.filename (une seule pièce).
+  const MAX_TOTAL = 20 * 1024 * 1024; // 20 Mo cumulés (limite Resend ~40 Mo)
+  let atts = [];
+  if (Array.isArray(b.attachments) && b.attachments.length) {
+    atts = b.attachments
+      .filter((a) => a && a.content)
+      .map((a) => ({
+        filename: String(a.filename || "piece-jointe").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120),
+        content: a.content,
+      }));
+  } else if (b.pdf_b64) {
+    atts = [{ filename, content: b.pdf_b64 }];
+  }
+  if (atts.length) {
+    const totalBytes = atts.reduce((s, a) => s + Math.floor(a.content.length * 0.75), 0);
+    if (totalBytes > MAX_TOTAL) {
+      return jsonResp(413, { error: "Pièces jointes trop volumineuses (max 20 Mo au total)" });
     }
-    payload.attachments = [{ filename, content: b.pdf_b64 }];
+    payload.attachments = atts;
   }
 
   try {

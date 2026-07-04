@@ -3118,7 +3118,7 @@ function fidiSharePdf(opts){
 
   window.__fidiShareOpts = Object.assign({}, opts, { filename: filename });
   window.__fidiPdfFilename = filename;
-  window.__fidiAttachedFile = null;
+  window.__fidiAttachedFiles = [];
 
   const kindH = escHtml(kind), titreH = escHtml(opts.titre||'');
   let root = document.getElementById('shareRoot');
@@ -3134,12 +3134,12 @@ function fidiSharePdf(opts){
         '<button class="btn btn-primary btn-sm w-100" onclick="fidiPrintExact()"><i class="bi bi-printer me-1"></i>Imprimer / Enregistrer en PDF</button>'+
         '<div class="text-muted mt-1" style="font-size:.72rem;">Dans la fenêtre d\'impression, choisissez <strong>« Enregistrer au format PDF »</strong> comme destination.</div>'+
       '</div>'+
-      // ÉTAPE 2 — joindre le PDF enregistré
+      // ÉTAPE 2 — joindre le(s) fichier(s)
       '<div class="border rounded p-2 mb-2">'+
-        '<div class="fw-semibold small mb-1"><span class="badge bg-primary me-1">2</span>Joindre le PDF enregistré</div>'+
-        '<input type="file" accept="application/pdf" id="shareFileInput" class="form-control form-control-sm" onchange="fidiAttach()">'+
-        '<div class="text-muted mt-1" style="font-size:.72rem;">Sélectionnez le PDF depuis votre disque, Dropbox ou Google Drive.</div>'+
-        '<div id="shareFileName" class="small text-success mt-1 d-none"></div>'+
+        '<div class="fw-semibold small mb-1"><span class="badge bg-primary me-1">2</span>Joindre le(s) fichier(s)</div>'+
+        '<input type="file" multiple id="shareFileInput" class="form-control form-control-sm" onchange="fidiAttach()">'+
+        '<div class="text-muted mt-1" style="font-size:.72rem;">PDF généré + toute pièce complémentaire (disque, Dropbox, Drive). Vous pouvez en ajouter plusieurs.</div>'+
+        '<div id="shareFileList" class="mt-1"></div>'+
       '</div>'+
       // ÉTAPE 3 — envoi (visible après pièce jointe)
       '<div class="border rounded p-2 d-none" id="shareSendZone">'+
@@ -3149,8 +3149,8 @@ function fidiSharePdf(opts){
           '<input type="email" id="emailRecipient" class="form-control" placeholder="destinataire@example.com (pour e-mail)" autocomplete="email">'+
         '</div>'+
         '<div class="d-grid gap-2">'+
-          '<button class="btn btn-success btn-sm" id="shareWaBtn" onclick="fidiSendWhatsapp(\''+kindH+'\',\''+titreH+'\')"><i class="bi bi-whatsapp me-1"></i>Envoyer le PDF via WhatsApp</button>'+
-          '<button class="btn btn-info text-white btn-sm" id="shareEmailBtn" onclick="fidiSendEmail(\''+kindH+'\',\''+titreH+'\')"><i class="bi bi-google me-1"></i>Envoyer le PDF par e-mail (Gmail)</button>'+
+          '<button class="btn btn-success btn-sm" id="shareWaBtn" onclick="fidiSendWhatsapp(\''+kindH+'\',\''+titreH+'\')"><i class="bi bi-whatsapp me-1"></i>Envoyer via WhatsApp</button>'+
+          '<button class="btn btn-info text-white btn-sm" id="shareEmailBtn" onclick="fidiSendEmail(\''+kindH+'\',\''+titreH+'\')"><i class="bi bi-google me-1"></i>Envoyer par e-mail (Gmail)</button>'+
         '</div>'+
         '<div id="shareSendStatus" class="mt-2"></div>'+
       '</div>'+
@@ -3182,54 +3182,83 @@ function fidiPrintExact(){
   setTimeout(()=>window.print(), 150);
 }
 
-// ÉTAPE 2 — l'utilisateur sélectionne le PDF qu'il vient d'enregistrer
+// ÉTAPE 2 — sélection des fichiers à joindre (plusieurs, cumulatifs)
 function fidiAttach(){
   const input = document.getElementById('shareFileInput');
-  const nameEl = document.getElementById('shareFileName');
+  if(!input || !input.files) return;
+  window.__fidiAttachedFiles = window.__fidiAttachedFiles || [];
+  const cur = window.__fidiAttachedFiles;
+  Array.from(input.files).forEach(f=>{
+    // Déduplique par nom + taille
+    if(!cur.some(x=>x.name===f.name && x.size===f.size)) cur.push(f);
+  });
+  input.value = ''; // permet de re-sélectionner / ajouter d'autres fichiers ensuite
+  fidiRenderFileList();
+}
+
+function fidiRemoveFile(i){
+  const cur = window.__fidiAttachedFiles || [];
+  cur.splice(i,1);
+  fidiRenderFileList();
+}
+
+function fidiRenderFileList(){
+  const listEl = document.getElementById('shareFileList');
   const zone = document.getElementById('shareSendZone');
-  const f = input && input.files && input.files[0];
-  if(!f){ window.__fidiAttachedFile=null; if(zone) zone.classList.add('d-none'); return; }
-  if(f.type && f.type.indexOf('pdf')<0){
-    if(nameEl){ nameEl.className='small text-danger mt-1'; nameEl.textContent='Ce fichier n\'est pas un PDF.'; nameEl.classList.remove('d-none'); }
-    window.__fidiAttachedFile=null; if(zone) zone.classList.add('d-none'); return;
-  }
-  window.__fidiAttachedFile = f;
-  window.__fidiPdfFilename = f.name;
-  if(nameEl){ nameEl.className='small text-success mt-1'; nameEl.innerHTML='<i class="bi bi-check-circle me-1"></i>Joint : <strong>'+escHtml(f.name)+'</strong> ('+Math.round(f.size/1024)+' Ko)'; nameEl.classList.remove('d-none'); }
+  const cur = window.__fidiAttachedFiles || [];
+  if(!listEl) return;
+  if(!cur.length){ listEl.innerHTML=''; if(zone) zone.classList.add('d-none'); return; }
+  const totalKo = Math.round(cur.reduce((s,f)=>s+f.size,0)/1024);
+  listEl.innerHTML = cur.map((f,i)=>
+    '<div class="d-flex align-items-center justify-content-between small text-success py-1" style="border-bottom:1px solid #eee;">'+
+      '<span class="text-truncate" style="max-width:280px;"><i class="bi bi-check-circle me-1"></i>'+escHtml(f.name)+' <span class="text-muted">('+Math.round(f.size/1024)+' Ko)</span></span>'+
+      '<button class="btn btn-sm btn-link text-danger p-0 ms-2" title="Retirer" onclick="fidiRemoveFile('+i+')"><i class="bi bi-x-lg"></i></button>'+
+    '</div>').join('')
+    + '<div class="text-muted mt-1" style="font-size:.7rem;">'+cur.length+' fichier'+(cur.length>1?'s':'')+' · '+totalKo+' Ko au total</div>';
   if(zone) zone.classList.remove('d-none');
 }
 
-// ÉTAPE 3a — WhatsApp : partage le fichier PDF réel via l'API native
+// Lit un File en base64 (sans le préfixe data:)
+function fidiFileToB64(file){
+  return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).split(',')[1]); r.onerror=rej; r.readAsDataURL(file); });
+}
+
+// ÉTAPE 3a — WhatsApp : partage les fichiers réels via l'API native
 async function fidiSendWhatsapp(kind, titre){
-  const file = window.__fidiAttachedFile;
+  const files = window.__fidiAttachedFiles || [];
   const status = document.getElementById('shareSendStatus');
-  if(!file){ if(status) status.innerHTML='<div class="alert alert-warning small py-1 mb-0">Joignez d\'abord le PDF (étape 2).</div>'; return; }
+  if(!files.length){ if(status) status.innerHTML='<div class="alert alert-warning small py-1 mb-0">Joignez d\'abord au moins un fichier (étape 2).</div>'; return; }
   const btn = document.getElementById('shareWaBtn');
   if(btn){ btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Ouverture…'; }
   try{
-    if(navigator.share && navigator.canShare && navigator.canShare({ files:[file] })){
-      await navigator.share({ files:[file], title:(titre||kind||'FIDI Conseil') });
-      if(status) status.innerHTML='<div class="alert alert-success small py-1 mb-0"><i class="bi bi-check-circle me-1"></i>Partage ouvert.</div>';
+    if(navigator.share && navigator.canShare && navigator.canShare({ files })){
+      await navigator.share({ files, title:(titre||kind||'FIDI Conseil') });
+      if(status) status.innerHTML='<div class="alert alert-success small py-1 mb-0"><i class="bi bi-check-circle me-1"></i>Partage ouvert ('+files.length+' fichier'+(files.length>1?'s':'')+').</div>';
+    } else if(navigator.share && navigator.canShare && files.length>1 && navigator.canShare({ files:[files[0]] })){
+      // Appareil qui ne supporte qu'un fichier à la fois : les partage séquentiellement
+      for(const f of files){ await navigator.share({ files:[f], title:(titre||kind||'FIDI Conseil') }); }
+      if(status) status.innerHTML='<div class="alert alert-success small py-1 mb-0"><i class="bi bi-check-circle me-1"></i>Fichiers partagés un par un.</div>';
     } else {
-      // Desktop : WhatsApp Web n'accepte pas de fichier par URL → ouvre WhatsApp, l'utilisateur glisse le PDF
+      // Desktop : WhatsApp Web n'accepte pas de fichier par URL → ouvre WhatsApp, glisser-déposer
       window.open('https://web.whatsapp.com/', '_blank', 'noopener');
-      if(status) status.innerHTML='<div class="alert alert-info small py-1 mb-0"><i class="bi bi-info-circle me-1"></i>WhatsApp Web ouvert. Glissez-déposez le PDF (<strong>'+escHtml(file.name)+'</strong>) dans la conversation, ou utilisez le trombone 📎.</div>';
+      const names = files.map(f=>escHtml(f.name)).join(', ');
+      if(status) status.innerHTML='<div class="alert alert-info small py-1 mb-0"><i class="bi bi-info-circle me-1"></i>WhatsApp Web ouvert. Glissez-déposez le(s) fichier(s) (<strong>'+names+'</strong>) dans la conversation, ou utilisez le trombone 📎.</div>';
     }
   }catch(e){
     if(e.name!=='AbortError' && status) status.innerHTML='<div class="alert alert-danger small py-1 mb-0">'+escHtml(e.message)+'</div>';
   }
-  finally{ if(btn){ btn.disabled=false; btn.innerHTML='<i class="bi bi-whatsapp me-1"></i>Envoyer le PDF via WhatsApp'; } }
+  finally{ if(btn){ btn.disabled=false; btn.innerHTML='<i class="bi bi-whatsapp me-1"></i>Envoyer via WhatsApp'; } }
 }
 
 // ÉTAPE 3b — E-mail : envoi du PDF en pièce jointe via Gmail.
 // Le PDF joint (étape 2) part en pièce jointe réelle via l'API serveur (Resend).
 // Si non configuré : ouvre Gmail compose pré-rempli, le fichier reste à glisser.
 async function fidiSendEmail(kind, titre){
-  const file = window.__fidiAttachedFile;
+  const files = window.__fidiAttachedFiles || [];
   const status = document.getElementById('shareSendStatus');
   const inp = document.getElementById('emailRecipient');
   const email = inp ? inp.value.trim() : '';
-  if(!file){ if(status) status.innerHTML='<div class="alert alert-warning small py-1 mb-0">Joignez d\'abord le PDF (étape 2).</div>'; return; }
+  if(!files.length){ if(status) status.innerHTML='<div class="alert alert-warning small py-1 mb-0">Joignez d\'abord au moins un fichier (étape 2).</div>'; return; }
   if(!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)){
     if(status) status.innerHTML='<div class="alert alert-warning small py-1 mb-0">Entrez une adresse e-mail valide.</div>'; return;
   }
@@ -3237,26 +3266,28 @@ async function fidiSendEmail(kind, titre){
   if(btn){ btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Envoi…'; }
   if(status) status.innerHTML='';
   try{
-    const b64 = await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).split(',')[1]); r.onerror=rej; r.readAsDataURL(file); });
+    const attachments = [];
+    for(const f of files){ attachments.push({ filename:f.name, content: await fidiFileToB64(f) }); }
     const resp = await fetch('/api/send-email',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({ to:email, subject:(kind||'Document FIDI')+(titre?' — '+titre:''),
-        pdf_b64:b64, filename:file.name, kind:kind||'Document', titre:titre||'' })});
+        attachments, kind:kind||'Document', titre:titre||'' })});
     const j = await resp.json().catch(()=>({}));
     if(j && j.ok){
-      if(status) status.innerHTML='<div class="alert alert-success small py-1 mb-0"><i class="bi bi-check-circle me-1"></i>PDF envoyé à <strong>'+escHtml(email)+'</strong> en pièce jointe.</div>';
+      if(status) status.innerHTML='<div class="alert alert-success small py-1 mb-0"><i class="bi bi-check-circle me-1"></i>'+files.length+' pièce'+(files.length>1?'s':'')+' jointe'+(files.length>1?'s':'')+' envoyée'+(files.length>1?'s':'')+' à <strong>'+escHtml(email)+'</strong>.</div>';
     } else if(j && j.not_configured){
-      // Fallback : ouvre Gmail compose, l'utilisateur joint le PDF (déjà sur disque)
+      // Fallback : ouvre Gmail compose, l'utilisateur joint les fichiers (déjà sur disque)
       const subject = (kind||'Document FIDI')+(titre?' — '+titre:'');
       const body2 = 'Bonjour,\n\nVeuillez trouver ci-joint '+(kind||'le document').toLowerCase()+(titre?' — '+titre:'')+'.\n\nCordialement,\nFIDI Conseil';
       window.open('https://mail.google.com/mail/?view=cm&fs=1&to='+encodeURIComponent(email)+'&su='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body2), '_blank', 'noopener');
-      if(status) status.innerHTML='<div class="alert alert-info small py-1 mb-0"><i class="bi bi-info-circle me-1"></i>Gmail ouvert (destinataire et objet pré-remplis). Cliquez sur <strong>Joindre un fichier 📎</strong> et sélectionnez <strong>'+escHtml(file.name)+'</strong>.</div>';
+      const names = files.map(f=>escHtml(f.name)).join(', ');
+      if(status) status.innerHTML='<div class="alert alert-info small py-1 mb-0"><i class="bi bi-info-circle me-1"></i>Gmail ouvert (destinataire et objet pré-remplis). Cliquez sur <strong>Joindre un fichier 📎</strong> et sélectionnez : <strong>'+names+'</strong>.</div>';
     } else {
       throw new Error(j && j.error ? j.error : 'Envoi impossible');
     }
   }catch(e){
     if(status) status.innerHTML='<div class="alert alert-danger small py-1 mb-0"><i class="bi bi-exclamation-triangle me-1"></i>'+escHtml(e.message)+'</div>';
   }
-  finally{ if(btn){ btn.disabled=false; btn.innerHTML='<i class="bi bi-google me-1"></i>Envoyer le PDF par e-mail (Gmail)'; } }
+  finally{ if(btn){ btn.disabled=false; btn.innerHTML='<i class="bi bi-google me-1"></i>Envoyer par e-mail (Gmail)'; } }
 }
 
 // Compat : ancien nom conservé pour avis-valeur.js (signature simplifiée)
