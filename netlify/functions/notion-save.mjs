@@ -1,9 +1,15 @@
 // Netlify Function — Sauvegarde Notion (upsert avis ou étude par Référence)
 // POST /api/notion-save  body: { kind: "avis"|"etude", ref, ...champs, data:{...} }
+//
+// Études : « une information = un champ ». Chaque donnée est écrite dans sa propre
+// colonne (voir _etude_fields.mjs) ; la série annuelle DVF va dans la base liée
+// « Prix DVF par année ». Aucun blob JSON n'est écrit pour les études.
 
 import {
-  DB, P, bigText, jsonResp, hasToken, createPage, updatePage, findByRef,
+  DB, P, bigText, jsonResp, hasToken,
+  createPage, updatePage, findByRef, queryDatabase, archivePage,
 } from "./_notion.mjs";
+import { etudeToProps, etudeToAnnees } from "./_etude_fields.mjs";
 
 function buildAvisProps(b) {
   return {
@@ -26,28 +32,21 @@ function buildAvisProps(b) {
   };
 }
 
-function buildEtudeProps(b) {
-  return {
-    "Référence":       P.title(b.ref),
-    "Date":            P.date(b.date || new Date().toISOString().slice(0, 10)),
-    "Adresse":         P.text(b.adresse),
-    "Commune":         P.text(b.commune),
-    "Code INSEE":      P.text(b.code_insee),
-    "Périmètre":       P.text(b.perimetre),
-    "Type de bien":    P.select(b.type_bien),
-    "Surface m2":      P.number(b.surface),
-    "Score potentiel": P.number(b.score),
-    "Prix m2 median":  P.number(b.prix_m2),
-    "Nb transactions": P.number(b.nb_transactions),
-    "Estimation":      P.number(b.estimation),
-    "Client":          P.text(b.client),
-    "Email client":    P.email(b.email_client),
-    "Statut":          P.status(b.statut || "Terminé"),
-    "Honoraires":      P.number(b.honoraires),
-    "Statut facture":  P.select(b.statut_facture || "Non facturé"),
-    "Lien partage":    P.url(b.lien_partage),
-    "Donnees JSON":    bigText(typeof b.data === "string" ? b.data : JSON.stringify(b.data || {})),
-  };
+// Remplace les lignes annuelles liées d'une étude : archive les anciennes, crée les neuves.
+async function syncEtudeAnnees(parentId, b, isUpdate) {
+  if (isUpdate) {
+    try {
+      const existing = await queryDatabase(DB.etudeAnnees, {
+        filter: { property: "Étude", relation: { contains: parentId } },
+        page_size: 100,
+      });
+      await Promise.all((existing.results || []).map((r) => archivePage(r.id)));
+    } catch (_) { /* best-effort : on n'échoue pas la sauvegarde pour ça */ }
+  }
+  const rows = etudeToAnnees(b);
+  await Promise.all(rows.map((props) =>
+    createPage(DB.etudeAnnees, { ...props, "Étude": P.relation([parentId]) })
+  ));
 }
 
 export const handler = async (event) => {
@@ -73,7 +72,7 @@ export const handler = async (event) => {
   }
 
   const databaseId = kind === "avis" ? DB.avis : DB.etude;
-  const props = kind === "avis" ? buildAvisProps(b) : buildEtudeProps(b);
+  const props = kind === "avis" ? buildAvisProps(b) : etudeToProps(b);
 
   try {
     const existingId = await findByRef(databaseId, "Référence", ref);
@@ -83,6 +82,11 @@ export const handler = async (event) => {
     } else {
       page = await createPage(databaseId, props);
     }
+
+    if (kind === "etude") {
+      await syncEtudeAnnees(page.id, b, !!existingId);
+    }
+
     return jsonResp(200, {
       ok: true,
       kind,
