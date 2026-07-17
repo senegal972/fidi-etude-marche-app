@@ -39,14 +39,17 @@ async function archiveOldAnnees(parentId) {
 export async function migrateEtudes({ dry = false, force = false, limit = Infinity } = {}) {
   const pages = await allEtudes();
   const report = { total: pages.length, migrated: 0, skipped: 0, errors: 0, dry, details: [] };
-  let n = 0;
+  // `limit` borne le nombre d'études réellement migrées par appel (pas les
+  // itérations) : permet un traitement par lots idempotent sans dépasser le
+  // timeout de la fonction. Les études déjà migrées sont sautées sans coût.
+  let processed = 0;
   for (const page of pages) {
-    if (n++ >= limit) break;
     const p = page.properties || {};
     const ref = titleOf(p);
+    if (genOf(p) && !force) { report.skipped++; report.details.push({ ref, status: "skipped" }); continue; }
+    if (processed >= limit) break;
+    processed++;
     try {
-      if (genOf(p) && !force) { report.skipped++; report.details.push({ ref, status: "skipped" }); continue; }
-
       const blob = readBigText(p["Donnees JSON"]);
       let parsed = null; try { parsed = blob ? JSON.parse(blob) : null; } catch { parsed = null; }
       if (!parsed) { report.errors++; report.details.push({ ref, status: "error", error: "blob illisible/absent" }); continue; }

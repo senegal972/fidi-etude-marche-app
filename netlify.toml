@@ -40,6 +40,9 @@
 [functions."pdf-share"]
   timeout = 15
 
+[functions."migrate-etudes"]
+  timeout = 26
+
 [functions."send-email"]
   timeout = 20
 
