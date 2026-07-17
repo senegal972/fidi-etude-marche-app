@@ -250,21 +250,42 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
 <div class="search-panel">
   <div class="container-xl">
     <h1><i class="bi bi-search me-2"></i>Évaluation du potentiel d'un bien immobilier</h1>
-    <p>Renseignez l'adresse du bien pour obtenir une analyse complète du marché local à partir des données publiques officielles.</p>
+    <p>Renseignez l'adresse du bien — ou sa référence cadastrale (commune, section, parcelle) — pour obtenir une analyse complète du marché local à partir des données publiques officielles.</p>
     <div class="search-form">
       <div class="row g-2 align-items-end">
         <div class="col-md-4 position-relative">
-          <label class="form-label text-white small fw-semibold mb-1">
-            Adresse du bien
+          <label class="form-label text-white small fw-semibold mb-1 d-flex align-items-center flex-wrap gap-2 w-100">
+            <span id="lblRecherche">Adresse du bien</span>
             <button type="button" class="btn btn-sm btn-link p-0 ms-1 text-warning text-decoration-none"
                     id="btnGeoloc" title="Utiliser ma position actuelle"
                     style="font-size:.75rem;vertical-align:baseline;">
               <i class="bi bi-geo-alt-fill"></i> Ma position
             </button>
+            <span class="btn-group btn-group-sm ms-auto" role="group" title="Mode de recherche">
+              <input type="radio" class="btn-check" name="searchMode" id="modeAdresse" value="adresse" checked>
+              <label class="btn btn-outline-warning py-0 px-2" for="modeAdresse" style="font-size:.72rem;">Adresse</label>
+              <input type="radio" class="btn-check" name="searchMode" id="modeCadastre" value="cadastre">
+              <label class="btn btn-outline-warning py-0 px-2" for="modeCadastre" style="font-size:.72rem;">Réf. cadastrale</label>
+            </span>
           </label>
           <input type="text" class="form-control" id="inputAdresse"
                  placeholder="Ex : 15 rue de la Paix, Lyon" autocomplete="off"/>
           <div class="autocomplete-dropdown d-none" id="autocompleteList"></div>
+          <!-- Recherche par référence cadastrale (commune + section + parcelle) -->
+          <div id="cadastreFields" class="d-none">
+            <div class="position-relative">
+              <input type="text" class="form-control" id="inputCommune"
+                     placeholder="Commune (ex : Le Robert)" autocomplete="off"/>
+              <div class="autocomplete-dropdown d-none" id="communeList"></div>
+            </div>
+            <div class="d-flex gap-2 mt-1">
+              <input type="text" class="form-control" id="inputSection"
+                     placeholder="Section (ex : AB)" style="max-width:46%;" autocomplete="off"/>
+              <input type="text" class="form-control" id="inputParcelle"
+                     placeholder="N° parcelle (ex : 123)" autocomplete="off"/>
+            </div>
+            <div class="small mt-1" id="communeMeta" style="color:#ffd54f;"></div>
+          </div>
         </div>
         <div class="col-md-2">
           <label class="form-label text-white small fw-semibold mb-1">Type de bien</label>
@@ -1030,6 +1051,115 @@ function selectAC(label){
   hideAC();
 }
 
+// ─── Recherche par référence cadastrale ───────────────────────────────────────
+let communeTimer = null, selectedCommune = null;
+
+function searchMode(){
+  const r = document.querySelector('input[name="searchMode"]:checked');
+  return r ? r.value : 'adresse';
+}
+
+document.querySelectorAll('input[name="searchMode"]').forEach(r => r.addEventListener('change', () => {
+  const cad = searchMode() === 'cadastre';
+  document.getElementById('inputAdresse').classList.toggle('d-none', cad);
+  document.getElementById('cadastreFields').classList.toggle('d-none', !cad);
+  document.getElementById('btnGeoloc').classList.toggle('d-none', cad);
+  document.getElementById('lblRecherche').textContent = cad ? 'Référence cadastrale' : 'Adresse du bien';
+  hideAC(); hideCommuneAC();
+}));
+
+document.getElementById('inputCommune').addEventListener('input', function(){
+  clearTimeout(communeTimer); selectedCommune = null;
+  document.getElementById('communeMeta').textContent = '';
+  const q = this.value.trim();
+  if(q.length < 2){ hideCommuneAC(); return; }
+  communeTimer = setTimeout(() => fetchCommuneAC(q), 250);
+});
+
+function hideCommuneAC(){ const l=document.getElementById('communeList'); if(l) l.classList.add('d-none'); }
+document.addEventListener('click', e => {
+  if(!e.target.closest('#inputCommune') && !e.target.closest('#communeList')) hideCommuneAC();
+});
+
+// Communes via geo.api.gouv.fr (affiche département + région pour lever les homonymies)
+async function fetchCommuneAC(q){
+  try{
+    const url = 'https://geo.api.gouv.fr/communes?nom=' + encodeURIComponent(q) +
+      '&fields=code,nom,codesPostaux,centre,departement,region&boost=population&limit=6';
+    const arr = await (await fetch(url)).json();
+    const list = document.getElementById('communeList');
+    if(!Array.isArray(arr) || !arr.length){ hideCommuneAC(); return; }
+    window.__communesAC = arr;
+    list.innerHTML = arr.map((c,i) =>
+      `<div class="autocomplete-item" onclick="selectCommune(${i})">
+        <i class="bi bi-buildings text-muted me-1"></i>${c.nom} (${(c.codesPostaux||[])[0]||c.code})
+        <span class="text-muted" style="font-size:.78rem;">— ${c.departement?c.departement.nom:''}${c.region?', '+c.region.nom:''}</span>
+      </div>`).join('');
+    list.classList.remove('d-none');
+  }catch(e){ hideCommuneAC(); }
+}
+
+function selectCommune(i){
+  const c = (window.__communesAC||[])[i]; if(!c) return;
+  selectedCommune = c;
+  document.getElementById('inputCommune').value = c.nom;
+  document.getElementById('communeMeta').textContent =
+    'INSEE ' + c.code +
+    (c.departement ? ' · ' + c.departement.nom + ' (' + c.departement.code + ')' : '') +
+    (c.region ? ' · ' + c.region.nom : '');
+  hideCommuneAC();
+}
+
+// Centroïde simple d'une géométrie GeoJSON (moyenne des sommets du 1er anneau)
+function geomCentroid(geom){
+  try{
+    let ring = null;
+    if(geom.type === 'Polygon') ring = geom.coordinates[0];
+    else if(geom.type === 'MultiPolygon') ring = geom.coordinates[0][0];
+    if(!ring || !ring.length) return null;
+    let sx=0, sy=0; ring.forEach(pt => { sx+=pt[0]; sy+=pt[1]; });
+    return { lon: sx/ring.length, lat: sy/ring.length };
+  }catch(e){ return null; }
+}
+
+// Résout la référence cadastrale → { lat, lon, label } via l'API Carto IGN (sans clé).
+// Sans section/parcelle : analyse au centre de la commune sélectionnée.
+async function resolveCadastre(){
+  if(!selectedCommune){ alert('Sélectionnez une commune dans la liste de suggestions.'); return null; }
+  const section  = document.getElementById('inputSection').value.trim().toUpperCase();
+  const parcelle = document.getElementById('inputParcelle').value.trim();
+  const cp = (selectedCommune.codesPostaux||[])[0] || '';
+  if(!section && !parcelle){
+    const c = selectedCommune.centre && selectedCommune.centre.coordinates;
+    if(!c){ alert('Centre de la commune introuvable.'); return null; }
+    return { lat: c[1], lon: c[0], label: selectedCommune.nom + (cp ? ' ('+cp+')' : '') };
+  }
+  if(!section || !parcelle){
+    alert('Renseignez la section ET le n° de parcelle — ou laissez les deux vides pour analyser la commune.');
+    return null;
+  }
+  const num = parcelle.padStart(4,'0');
+  const sec = section.padStart(2,'0');
+  const url = 'https://apicarto.ign.fr/api/cadastre/parcelle?code_insee=' + selectedCommune.code +
+              '&section=' + encodeURIComponent(sec) + '&numero=' + encodeURIComponent(num);
+  try{
+    const d = await (await fetch(url)).json();
+    const feat = d && d.features && d.features[0];
+    if(!feat){ alert('Parcelle introuvable : ' + selectedCommune.nom + ', section ' + section + ', n° ' + parcelle + '.'); return null; }
+    const ctr = geomCentroid(feat.geometry);
+    if(!ctr){ alert('Géométrie de la parcelle illisible.'); return null; }
+    return { lat: ctr.lat, lon: ctr.lon,
+             label: 'Parcelle ' + sec + ' ' + num + ' — ' + selectedCommune.nom + (cp ? ' ('+cp+')' : '') };
+  }catch(e){ alert('Service cadastre indisponible : ' + e.message); return null; }
+}
+
+// Entrée dans les champs cadastraux → analyser
+['inputCommune','inputSection','inputParcelle'].forEach(id => {
+  document.getElementById(id).addEventListener('keydown', e => {
+    if(e.key === 'Enter'){ hideCommuneAC(); lancerAnalyse(); }
+  });
+});
+
 // ─── Touche Entrée → analyser ─────────────────────────────────────────────────
 document.getElementById('inputAdresse').addEventListener('keydown', e => {
   if(e.key === 'Enter'){ hideAC(); lancerAnalyse(); }
@@ -1143,9 +1273,25 @@ function finishSteps(){
 
 // ─── Appel principal ──────────────────────────────────────────────────────────
 async function lancerAnalyse(){
-  const adresse  = document.getElementById('inputAdresse').value.trim();
   const typeBien = document.getElementById('selectType').value;
   const surface  = parseFloat(document.getElementById('inputSurface').value) || 0;
+
+  // Mode adresse postale ou référence cadastrale
+  let adresse = document.getElementById('inputAdresse').value.trim();
+  let locDirecte = {};
+  if(searchMode() === 'cadastre'){
+    const loc = await resolveCadastre();
+    if(!loc) return;
+    adresse = loc.label;
+    locDirecte = {
+      lat: loc.lat, lon: loc.lon,
+      citycode: selectedCommune.code,
+      city: selectedCommune.nom,
+      postcode: (selectedCommune.codesPostaux||[])[0] || '',
+      context: (selectedCommune.departement ? selectedCommune.departement.code + ', ' + selectedCommune.departement.nom : '') +
+               (selectedCommune.region ? ', ' + selectedCommune.region.nom : '')
+    };
+  }
 
   if(!adresse){ alert('Veuillez saisir une adresse.'); return; }
 
@@ -1159,7 +1305,7 @@ async function lancerAnalyse(){
     const resp = await fetch('/api/analyse', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({adresse, type_bien: typeBien, surface, perimetre: document.getElementById('selectPerimetre').value})
+      body: JSON.stringify({adresse, type_bien: typeBien, surface, perimetre: document.getElementById('selectPerimetre').value, ...locDirecte})
     });
 
     finishSteps();

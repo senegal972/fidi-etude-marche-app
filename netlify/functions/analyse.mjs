@@ -168,6 +168,24 @@ async function geocodeAdresse(adresse) {
   };
 }
 
+// Localisation fournie directement par le client (recherche cadastrale).
+function geoFromDirect(body, adresse) {
+  const citycode = String(body.citycode || "");
+  let dept = citycode.slice(0, 2);
+  if ((dept === "97" || dept === "98") && citycode.length >= 3) dept = citycode.slice(0, 3);
+  return {
+    label: adresse,
+    city: body.city || "",
+    postcode: body.postcode || "",
+    citycode,
+    departement: dept,
+    lon: parseFloat(body.lon),
+    lat: parseFloat(body.lat),
+    score_geo: 100,
+    context: body.context || "",
+  };
+}
+
 // ─── Commune info ─────────────────────────────────────────────────────────────
 async function getCommuneInfo(codeInsee) {
   return await safeGetJson(`${GEO_COMMUNES}/${codeInsee}`, {
@@ -664,7 +682,11 @@ export const handler = async (event) => {
 
   if (!adresse) return jsonResp(400, { error: "Adresse requise" });
 
-  const geo = await geocodeAdresse(adresse);
+  // Localisation déjà résolue côté client (recherche cadastrale : parcelle ou
+  // commune → lat/lon + code INSEE) : on saute le géocodage BAN.
+  const geo = (body.lat != null && body.lon != null && body.citycode)
+    ? geoFromDirect(body, adresse)
+    : await geocodeAdresse(adresse);
   if (!geo) return jsonResp(404, { error: `Adresse introuvable : « ${adresse} »` });
 
   const codeInsee = geo.citycode;
