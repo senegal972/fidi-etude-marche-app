@@ -31,12 +31,11 @@ function couleurFromTotal(total) {
   return "#dc3545";
 }
 
-// ─── Éclatement : étude -> propriétés Notion de la page parente ────────────────
-export function etudeToProps(b) {
-  const wrap = b.data || {};
-  const d = wrap.data || {};
-  const inputs = wrap.inputs || {};
-
+// ─── Éclatement : sous-objet analytique `d` -> champs éclatés (hors identité) ───
+// Ne touche PAS aux colonnes d'identité/client/statut : réutilisable en migration
+// pour remplir uniquement les nouveaux champs sans écraser l'existant.
+export function explodedProps(d) {
+  d = d || {};
   const loc  = d.localisation || {};
   const info = d.commune_info || {};
   const sc   = d.score || {};
@@ -49,25 +48,6 @@ export function etudeToProps(b) {
   const per  = (Array.isArray(d.dvf_periodes) && d.dvf_periodes[0]) || {};
 
   const props = {
-    // ── Identification / client (déjà envoyés en tête du payload) ──
-    "Référence":      P.title(b.ref),
-    "Date":           P.date(b.date || new Date().toISOString().slice(0, 10)),
-    "Adresse":        P.text(b.adresse),
-    "Commune":        P.text(b.commune),
-    "Code INSEE":     P.text(b.code_insee),
-    "Périmètre":      P.text(b.perimetre),
-    "Type de bien":   P.select(b.type_bien),
-    "Surface m2":     P.number(b.surface),
-    "Score potentiel":P.number(b.score),
-    "Prix m2 median": P.number(b.prix_m2),
-    "Nb transactions":P.number(b.nb_transactions),
-    "Estimation":     P.number(b.estimation),
-    "Client":         P.text(b.client),
-    "Email client":   P.email(b.email_client),
-    "Statut":         P.status(b.statut || "Terminé"),
-    "Statut facture": P.select(b.statut_facture || "Non facturé"),
-    "Lien partage":   P.url(b.lien_partage),
-
     // ── Localisation ──
     "Code postal":    P.text(loc.postcode),
     "Département":    P.text(loc.departement),
@@ -129,6 +109,37 @@ export function etudeToProps(b) {
   };
 
   for (const c of DPE_CLASSES) props[`DPE ${c}`] = P.number(dpe[c]);
+
+  return props;
+}
+
+// ─── Éclatement : payload de sauvegarde -> propriétés Notion (page parente) ─────
+// = colonnes d'identité/client (depuis `b`) + champs éclatés (depuis `b.data.data`).
+export function etudeToProps(b) {
+  const wrap = b.data || {};
+  const d = wrap.data || {};
+
+  const props = {
+    // ── Identification / client (envoyés en tête du payload) ──
+    "Référence":      P.title(b.ref),
+    "Date":           P.date(b.date || new Date().toISOString().slice(0, 10)),
+    "Adresse":        P.text(b.adresse),
+    "Commune":        P.text(b.commune),
+    "Code INSEE":     P.text(b.code_insee),
+    "Périmètre":      P.text(b.perimetre),
+    "Type de bien":   P.select(b.type_bien),
+    "Surface m2":     P.number(b.surface),
+    "Score potentiel":P.number(b.score),
+    "Prix m2 median": P.number(b.prix_m2),
+    "Nb transactions":P.number(b.nb_transactions),
+    "Estimation":     P.number(b.estimation),
+    "Client":         P.text(b.client),
+    "Email client":   P.email(b.email_client),
+    "Statut":         P.status(b.statut || "Terminé"),
+    "Statut facture": P.select(b.statut_facture || "Non facturé"),
+    "Lien partage":   P.url(b.lien_partage),
+    ...explodedProps(d),
+  };
 
   // Honoraires : uniquement si fourni (ne pas écraser une saisie manuelle par null)
   if (b.honoraires != null && b.honoraires !== "") props["Honoraires"] = P.number(b.honoraires);
