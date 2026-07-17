@@ -6,9 +6,10 @@ const NOTION_VERSION = "2022-06-28";
 const API = "https://api.notion.com/v1";
 
 export const DB = {
-  avis:    process.env.NOTION_DB_AVIS    || "b26ae2c5-98c4-4da1-80bf-3504ca608de3",
-  etude:   process.env.NOTION_DB_ETUDE   || "81d2020d-24fe-4041-8dde-55b5215a6104",
-  facture: process.env.NOTION_DB_FACTURE || "cc21e698-b480-49ff-964f-b9bb16ce384e",
+  avis:         process.env.NOTION_DB_AVIS          || "b26ae2c5-98c4-4da1-80bf-3504ca608de3",
+  etude:        process.env.NOTION_DB_ETUDE         || "81d2020d-24fe-4041-8dde-55b5215a6104",
+  facture:      process.env.NOTION_DB_FACTURE       || "cc21e698-b480-49ff-964f-b9bb16ce384e",
+  etudeAnnees:  process.env.NOTION_DB_ETUDE_ANNEES  || "d719f26110b84560b9bedbf2fa4fe8c5",
 };
 
 export const CORS_HEADERS = {
@@ -58,7 +59,27 @@ export const P = {
   email:  (v) => ({ email: v || null }),
   select: (v) => ({ select: v ? { name: String(v) } : null }),
   status: (v) => ({ status: v ? { name: String(v) } : null }),
+  multi_select: (arr) => ({ multi_select: (Array.isArray(arr) ? arr : []).filter((x) => x != null && x !== "").map((name) => ({ name: String(name).slice(0, 100) })) }),
+  relation: (ids) => ({ relation: (Array.isArray(ids) ? ids : []).filter(Boolean).map((id) => ({ id })) }),
 };
+
+// ─── Property readers (inverse des builders P.*) ──────────────────────────────
+export function readNumber(prop) {
+  if (!prop) return null;
+  return typeof prop.number === "number" ? prop.number : (prop.number ?? null);
+}
+export function readText(prop) {
+  if (!prop) return "";
+  const arr = prop.rich_text || prop.title;
+  if (!Array.isArray(arr)) return "";
+  return arr.map((t) => t.plain_text ?? t.text?.content ?? "").join("");
+}
+export function readSelect(prop) {
+  return (prop && prop.select && prop.select.name) || null;
+}
+export function readMultiSelect(prop) {
+  return prop && Array.isArray(prop.multi_select) ? prop.multi_select.map((o) => o.name) : [];
+}
 
 // Découpe une longue chaîne JSON en plusieurs rich_text blocks (limite 2000 char/segment)
 export function bigText(v) {
@@ -79,6 +100,10 @@ export async function createPage(databaseId, properties) {
 
 export async function updatePage(pageId, properties) {
   return notionFetch(`/pages/${pageId}`, "PATCH", { properties });
+}
+
+export async function archivePage(pageId) {
+  return notionFetch(`/pages/${pageId}`, "PATCH", { archived: true });
 }
 
 export async function queryDatabase(databaseId, body = {}) {
