@@ -3680,6 +3680,7 @@ window.Compte = (function(){
       '<ul class="nav nav-tabs mb-3" role="tablist">'+
         '<li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabIdent">Identité</button></li>'+
         '<li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabSolde">Mon solde</button></li>'+
+        '<li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabOffres" onclick="Compte.loadOffres()">Offres & crédits</button></li>'+
         (admin ? '<li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabAdmin">Administration</button></li>' : '')+
       '</ul>'+
       '<div class="tab-content">'+
@@ -3698,6 +3699,7 @@ window.Compte = (function(){
             : '<div class="display-6 fw-bold">'+esc(u.credits)+' <span class="fs-6 text-muted">crédits</span></div>'+
               '<p class="text-muted small">1 étude réussie = '+esc(state.cost)+' crédit(s). '+(state.paywall?'':'<br>Le péage est actuellement désactivé (accès libre).')+'</p>')+
         '</div>'+
+        '<div class="tab-pane fade" id="tabOffres"><div id="offresBox" class="small text-muted">Chargement…</div></div>'+
         (admin ? '<div class="tab-pane fade" id="tabAdmin">'+
           '<div class="border rounded p-2 mb-3"><div class="fw-semibold small mb-2">Créer un compte</div>'+
             '<input class="form-control form-control-sm mb-1" id="adEmail" placeholder="E-mail">'+
@@ -3783,8 +3785,64 @@ window.Compte = (function(){
     if(!ok){ alert(data.error||'Erreur'); return; } adminList();
   }
 
+  // ─── Offres & crédits ───────────────────────────────────────────────────────
+  const MODLABEL = { 'Cumulatif':'Offre Cumulative (crédits universels)', 'Études de marché':'Module Études de marché', 'Avis de valeur':'Module Avis de valeur' };
+  async function loadOffres(){
+    const box = document.getElementById('offresBox'); if(!box || box.dataset.loaded==='1') return;
+    try{
+      const r = await fetch('/api/offres', {credentials:'same-origin'});
+      const d = await r.json();
+      if(!r.ok){ box.innerHTML = '<span class="text-danger">'+esc(d.error||'Erreur')+'</span>'; return; }
+      renderOffres(box, d.offres||[]);
+      box.dataset.loaded='1';
+    }catch(e){ box.innerHTML = '<span class="text-danger">Erreur réseau.</span>'; }
+  }
+  function renderOffres(box, offres){
+    const admin = state.user && state.user.role==='Administrateur';
+    const groups = {};
+    offres.forEach(o => { (groups[o.module] = groups[o.module]||[]).push(o); });
+    let html = '<p class="text-muted">1 crédit = 1 étude de marché OU 1 avis de valeur. Crédits valables 12 mois, sans engagement.</p>';
+    ['Cumulatif','Études de marché','Avis de valeur'].forEach(mod => {
+      const list = groups[mod]; if(!list||!list.length) return;
+      html += '<h6 class="fw-bold mt-3">'+esc(MODLABEL[mod]||mod)+'</h6>';
+      html += '<div class="table-responsive"><table class="table table-sm align-middle mb-1"><tbody>';
+      list.forEach(o => {
+        const reco = o.recommande ? ' <span class="badge bg-warning text-dark">★ conseillé</span>' : '';
+        const eco = o.economie ? ' <span class="text-success small">'+o.economie+'%</span>' : '';
+        const inactive = admin && !o.active ? ' style="opacity:.45;"' : '';
+        html += '<tr'+inactive+'><td><b>'+esc(o.palier)+'</b>'+reco+'<br><span class="text-muted small">'+o.credits+' crédits'+eco+'</span></td>'+
+          '<td class="text-end"><span class="fw-bold">'+o.prix+' €</span><br><span class="text-muted small">'+(o.prix_credit||'')+' €/cr.</span></td>'+
+          '<td class="text-end" style="min-width:120px;">'+
+            (admin
+              ? '<div class="btn-group btn-group-sm"><button class="btn btn-outline-secondary py-0" onclick="Compte.offerPrice(\''+o.id+'\','+o.credits+','+o.prix+')">Prix</button>'+
+                '<button class="btn btn-outline-'+(o.active?'success':'secondary')+' py-0" onclick="Compte.offerToggle(\''+o.id+'\','+(o.active?'false':'true')+')">'+(o.active?'Active':'Inactive')+'</button></div>'
+              : '<button class="btn btn-sm btn-primary py-0" onclick="Compte.chooseOffer(\''+esc(o.palier)+'\','+o.credits+','+o.prix+')">Choisir</button>')+
+          '</td></tr>';
+      });
+      html += '</tbody></table></div>';
+    });
+    if(!admin) html += '<p class="text-muted small mt-2"><i class="bi bi-info-circle me-1"></i>Le paiement en ligne (PayPal / carte bancaire) sera bientôt disponible directement ici.</p>';
+    box.innerHTML = html;
+  }
+  function chooseOffer(palier, credits, prix){
+    alert('Pack « '+palier+' » — '+credits+' crédits pour '+prix+' € TTC.\n\nLe paiement en ligne (PayPal / carte bancaire) arrive très bientôt.\nEn attendant, contactez votre administrateur FIDI pour activer ce pack.');
+  }
+  async function offerToggle(id, active){
+    const r = await fetch('/api/offres', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'set_active',id,active})});
+    if(!r.ok){ alert('Erreur.'); return; }
+    const box=document.getElementById('offresBox'); if(box) box.dataset.loaded=''; loadOffres();
+  }
+  async function offerPrice(id, credits, prix){
+    const n = prompt('Nouveau prix TTC (€) pour ce palier de '+credits+' crédits :', prix); if(n==null) return;
+    const v = parseFloat(String(n).replace(',','.')); if(!isFinite(v)||v<0){ alert('Prix invalide.'); return; }
+    const r = await fetch('/api/offres', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'set_price',id,prix:v,credits})});
+    if(!r.ok){ alert('Erreur.'); return; }
+    const box=document.getElementById('offresBox'); if(box) box.dataset.loaded=''; loadOffres();
+  }
+
   document.addEventListener('DOMContentLoaded', refresh);
   return { open, doLogin, logout, refresh, setCredits, adminCreate, adminCredit, adminToggle,
+           loadOffres, chooseOffer, offerToggle, offerPrice,
            get state(){ return state; } };
 })();
 </script>
