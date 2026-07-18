@@ -228,6 +228,10 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
   </div>
   <div class="d-flex gap-2 align-items-center">
     <span class="badge-gov"><i class="bi bi-database me-1"></i>data.gouv.fr</span>
+    <span class="badge bg-warning text-dark d-none" id="creditsPill" title="Crédits d'analyse restants" style="font-size:.72rem;"><i class="bi bi-coin me-1"></i><span id="creditsVal">0</span> crédits</span>
+    <button class="btn btn-sm btn-outline-warning" id="btnCompte" onclick="Compte.open()" title="Connexion / Mon compte">
+      <i class="bi bi-person-circle me-1"></i><span id="btnCompteLabel">Connexion</span>
+    </button>
     <button class="btn btn-sm btn-outline-light" id="btnEtudesLib" onclick="openEtudesRecentes()" title="Mes études de marché sauvegardées (Notion)">
       <i class="bi bi-clock-history me-1"></i>Études récentes
     </button>
@@ -1312,14 +1316,25 @@ async function lancerAnalyse(){
     document.getElementById('loading-panel').classList.add('d-none');
 
     if(!resp.ok){
-      const err = await resp.json();
-      alert('Erreur : ' + (err.error || 'Analyse impossible'));
+      const err = await resp.json().catch(()=>({}));
       document.getElementById('init-panel').classList.remove('d-none');
+      if(resp.status === 401 && err.need_auth){
+        alert('Connexion requise pour lancer une analyse.');
+        if(window.Compte) Compte.open();
+        return;
+      }
+      if(resp.status === 402 && err.need_credits){
+        alert('Crédits épuisés (' + (err.credits!=null?err.credits:0) + '). Contactez votre administrateur pour recharger.');
+        if(window.Compte) Compte.open();
+        return;
+      }
+      alert('Erreur : ' + (err.error || 'Analyse impossible'));
       return;
     }
 
     const data = await resp.json();
     const perimetre = document.getElementById('selectPerimetre').value;
+    if(window.Compte && data.credits_restants != null) Compte.setCredits(data.credits_restants);
     renderResults(data);
     // Expose les résultats de l'étude au module Avis de valeur (pré-remplissage)
     window.__fidiData = data;
@@ -3499,5 +3514,177 @@ function copyShareUrl(){
 <!-- Module Avis de valeur (récupère window.__fidiData) -->
 <div id="avisModalRoot"></div>
 <script src="/avis-valeur.js" defer></script>
+
+<!-- Module Compte : connexion, solde, administration -->
+<div id="compteModalRoot"></div>
+<script>
+window.Compte = (function(){
+  let state = { authenticated:false, user:null, paywall:false, cost:1 };
+  const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  async function refresh(){
+    try{
+      const r = await fetch('/api/moncompte', { credentials:'same-origin' });
+      const d = await r.json();
+      state.authenticated = !!d.authenticated;
+      state.user = d.user || null;
+      state.paywall = !!d.paywall;
+      state.cost = d.cost_etude || 1;
+    }catch(e){ state.authenticated = false; state.user = null; }
+    render();
+  }
+
+  function render(){
+    const lbl = document.getElementById('btnCompteLabel');
+    const pill = document.getElementById('creditsPill');
+    if(state.authenticated && state.user){
+      if(lbl) lbl.textContent = state.user.nom || state.user.email;
+      if(pill){
+        if(state.paywall){ pill.classList.remove('d-none'); document.getElementById('creditsVal').textContent = state.user.credits; }
+        else pill.classList.add('d-none');
+      }
+    }else{
+      if(lbl) lbl.textContent = 'Connexion';
+      if(pill) pill.classList.add('d-none');
+    }
+  }
+
+  function setCredits(n){
+    if(state.user && n != null){ state.user.credits = n; render(); }
+  }
+
+  function modal(){
+    let root = document.getElementById('compteModalRoot');
+    if(!root.dataset.built){
+      root.innerHTML =
+        '<div class="modal fade" id="compteModal" tabindex="-1"><div class="modal-dialog modal-dialog-scrollable">'+
+        '<div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="compteTitre">Mon compte</h5>'+
+        '<button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>'+
+        '<div class="modal-body" id="compteBody"></div></div></div></div>';
+      root.dataset.built = '1';
+    }
+    return new bootstrap.Modal(document.getElementById('compteModal'));
+  }
+
+  function open(){
+    if(typeof bootstrap === 'undefined'){ alert('Interface non chargée.'); return; }
+    const m = modal();
+    document.getElementById('compteBody').innerHTML = state.authenticated ? viewAccount() : viewLogin();
+    document.getElementById('compteTitre').textContent = state.authenticated ? 'Mon compte' : 'Connexion';
+    m.show();
+    if(state.authenticated && state.user && state.user.role === 'Administrateur') adminList();
+  }
+
+  function viewLogin(){
+    return ''+
+      '<p class="text-muted small">Connectez-vous avec le compte fourni par votre administrateur.</p>'+
+      '<div class="mb-2"><label class="form-label small">E-mail</label><input type="email" class="form-control" id="cpEmail" autocomplete="username"></div>'+
+      '<div class="mb-2"><label class="form-label small">Mot de passe</label><input type="password" class="form-control" id="cpPwd" autocomplete="current-password"></div>'+
+      '<div class="text-danger small mb-2 d-none" id="cpErr"></div>'+
+      '<button class="btn btn-primary w-100" onclick="Compte.doLogin()">Se connecter</button>';
+  }
+
+  function viewAccount(){
+    const u = state.user;
+    const admin = u.role === 'Administrateur';
+    return ''+
+      '<ul class="nav nav-tabs mb-3" role="tablist">'+
+        '<li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabIdent">Identité</button></li>'+
+        '<li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabSolde">Mon solde</button></li>'+
+        (admin ? '<li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabAdmin">Administration</button></li>' : '')+
+      '</ul>'+
+      '<div class="tab-content">'+
+        '<div class="tab-pane fade show active" id="tabIdent">'+
+          '<table class="table table-sm"><tbody>'+
+          '<tr><th>Nom</th><td>'+esc(u.nom||'—')+'</td></tr>'+
+          '<tr><th>E-mail</th><td>'+esc(u.email)+'</td></tr>'+
+          '<tr><th>Rôle</th><td>'+esc(u.role)+'</td></tr>'+
+          '<tr><th>Statut</th><td>'+esc(u.statut||'Actif')+'</td></tr>'+
+          '</tbody></table>'+
+          '<button class="btn btn-outline-secondary btn-sm" onclick="Compte.logout()"><i class="bi bi-box-arrow-right me-1"></i>Se déconnecter</button>'+
+        '</div>'+
+        '<div class="tab-pane fade" id="tabSolde">'+
+          '<div class="display-6 fw-bold">'+esc(u.credits)+' <span class="fs-6 text-muted">crédits</span></div>'+
+          '<p class="text-muted small">1 étude réussie = '+esc(state.cost)+' crédit(s). '+(state.paywall?'':'<br>Le péage est actuellement désactivé (accès libre).')+'</p>'+
+        '</div>'+
+        (admin ? '<div class="tab-pane fade" id="tabAdmin">'+
+          '<div class="border rounded p-2 mb-3"><div class="fw-semibold small mb-2">Créer un compte</div>'+
+            '<input class="form-control form-control-sm mb-1" id="adEmail" placeholder="E-mail">'+
+            '<input class="form-control form-control-sm mb-1" id="adNom" placeholder="Nom">'+
+            '<div class="d-flex gap-1 mb-1"><input type="number" class="form-control form-control-sm" id="adCredits" placeholder="Crédits" style="max-width:110px;">'+
+            '<select class="form-select form-select-sm" id="adRole"><option value="Collaborateur">Collaborateur</option><option value="Administrateur">Administrateur</option></select></div>'+
+            '<button class="btn btn-primary btn-sm" onclick="Compte.adminCreate()">Créer</button>'+
+            '<div class="small mt-1" id="adMsg"></div></div>'+
+          '<div class="fw-semibold small mb-2">Comptes</div><div id="adList" class="small text-muted">Chargement…</div>'+
+        '</div>' : '')+
+      '</div>';
+  }
+
+  async function doLogin(){
+    const email = (document.getElementById('cpEmail').value||'').trim();
+    const pwd = document.getElementById('cpPwd').value||'';
+    const err = document.getElementById('cpErr');
+    err.classList.add('d-none');
+    try{
+      const r = await fetch('/api/auth/login', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password:pwd})});
+      const d = await r.json();
+      if(!r.ok){ err.textContent = d.error||'Échec de connexion.'; err.classList.remove('d-none'); return; }
+      await refresh();
+      document.getElementById('compteTitre').textContent = 'Mon compte';
+      document.getElementById('compteBody').innerHTML = viewAccount();
+      if(state.user && state.user.role==='Administrateur') adminList();
+    }catch(e){ err.textContent = 'Erreur réseau.'; err.classList.remove('d-none'); }
+  }
+
+  async function logout(){
+    try{ await fetch('/api/auth/logout', {method:'POST',credentials:'same-origin'}); }catch(e){}
+    await refresh();
+    const m = bootstrap.Modal.getInstance(document.getElementById('compteModal')); if(m) m.hide();
+  }
+
+  async function admin(action, payload){
+    const r = await fetch('/api/admin/users', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({action},payload||{}))});
+    return { ok:r.ok, data: await r.json().catch(()=>({})) };
+  }
+  async function adminList(){
+    const el = document.getElementById('adList'); if(!el) return;
+    const {ok,data} = await admin('list');
+    if(!ok){ el.textContent = data.error||'Erreur.'; return; }
+    el.innerHTML = (data.users||[]).map(u =>
+      '<div class="d-flex justify-content-between align-items-center border-bottom py-1">'+
+      '<div>'+esc(u.nom||u.email)+' <span class="text-muted">('+esc(u.email)+')</span><br><span class="badge bg-secondary">'+esc(u.role)+'</span> <span class="badge '+(u.statut==='Actif'?'bg-success':'bg-danger')+'">'+esc(u.statut)+'</span></div>'+
+      '<div class="text-end"><span class="badge bg-warning text-dark">'+esc(u.credits)+' cr.</span>'+
+      '<div class="btn-group btn-group-sm mt-1"><button class="btn btn-outline-secondary py-0" onclick="Compte.adminCredit(\''+esc(u.email)+'\')" title="Ajouter des crédits">+cr.</button>'+
+      '<button class="btn btn-outline-secondary py-0" onclick="Compte.adminToggle(\''+esc(u.email)+'\',\''+(u.statut==='Actif'?'Désactivé':'Actif')+'\')">'+(u.statut==='Actif'?'Désactiver':'Activer')+'</button></div></div></div>'
+    ).join('') || '<span class="text-muted">Aucun compte.</span>';
+  }
+  async function adminCreate(){
+    const email=(document.getElementById('adEmail').value||'').trim();
+    const nom=(document.getElementById('adNom').value||'').trim();
+    const credits=document.getElementById('adCredits').value;
+    const role=document.getElementById('adRole').value;
+    const msg=document.getElementById('adMsg');
+    if(!email){ msg.textContent='E-mail requis.'; return; }
+    const {ok,data}=await admin('create',{email,nom,credits,role});
+    if(!ok){ msg.innerHTML='<span class="text-danger">'+esc(data.error||'Erreur')+'</span>'; return; }
+    msg.innerHTML='<span class="text-success">Créé. Mot de passe provisoire : <b>'+esc(data.temp_password||'(défini)')+'</b> — à transmettre.</span>';
+    document.getElementById('adEmail').value=''; document.getElementById('adNom').value=''; document.getElementById('adCredits').value='';
+    adminList();
+  }
+  async function adminCredit(email){
+    const n=prompt('Ajouter combien de crédits à '+email+' ?','5'); if(n==null) return;
+    const {ok,data}=await admin('add_credits',{email,credits:parseInt(n)||0});
+    if(!ok){ alert(data.error||'Erreur'); return; } adminList();
+  }
+  async function adminToggle(email,statut){
+    const {ok,data}=await admin('set_status',{email,statut});
+    if(!ok){ alert(data.error||'Erreur'); return; } adminList();
+  }
+
+  document.addEventListener('DOMContentLoaded', refresh);
+  return { open, doLogin, logout, refresh, setCredits, adminCreate, adminCredit, adminToggle,
+           get state(){ return state; } };
+})();
+</script>
 </body>
 </html>
