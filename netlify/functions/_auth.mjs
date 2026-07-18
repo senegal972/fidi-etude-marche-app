@@ -16,6 +16,11 @@ const COOKIE = "fidi_session";
 export function paywallOn() {
   return String(process.env.PAYWALL_ENABLED || "").toLowerCase() === "true";
 }
+// Connexion obligatoire pour accéder à l'app/aux services. Implicite si le péage
+// est actif ; sinon pilotée par LOGIN_REQUIRED (connexion sans facturation).
+export function loginRequired() {
+  return paywallOn() || String(process.env.LOGIN_REQUIRED || "").toLowerCase() === "true";
+}
 export function startCredits() {
   const n = parseInt(process.env.START_CREDITS); return Number.isFinite(n) ? n : 3;
 }
