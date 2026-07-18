@@ -1,18 +1,19 @@
 // Netlify Function — Profil + solde de l'utilisateur connecté.
 // GET /api/moncompte  (et /api/auth/me)
-import { authResp, currentUser, paywallOn, costEtude } from "./_auth.mjs";
+import { authResp, currentUser, paywallOn, costEtude, loginRequired } from "./_auth.mjs";
 
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return authResp(200, {});
   try {
     const found = await currentUser(event);
     if (!found) {
-      return authResp(200, { authenticated: false, paywall: paywallOn(), cost_etude: costEtude() });
+      return authResp(200, { authenticated: false, paywall: paywallOn(), login_required: loginRequired(), cost_etude: costEtude() });
     }
     const u = found.user;
     return authResp(200, {
       authenticated: true,
       paywall: paywallOn(),
+      login_required: loginRequired(),
       cost_etude: costEtude(),
       user: { email: u.email, nom: u.nom, role: u.role, statut: u.statut, credits: u.credits },
     });

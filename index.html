@@ -3519,7 +3519,7 @@ function copyShareUrl(){
 <div id="compteModalRoot"></div>
 <script>
 window.Compte = (function(){
-  let state = { authenticated:false, user:null, paywall:false, cost:1 };
+  let state = { authenticated:false, user:null, paywall:false, cost:1, login_required:false };
   const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
   async function refresh(){
@@ -3529,9 +3529,91 @@ window.Compte = (function(){
       state.authenticated = !!d.authenticated;
       state.user = d.user || null;
       state.paywall = !!d.paywall;
+      state.login_required = !!d.login_required;
       state.cost = d.cost_etude || 1;
     }catch(e){ state.authenticated = false; state.user = null; }
     render();
+    renderGate();
+  }
+
+  // ─── Portail d'accueil (vitrine + connexion) ────────────────────────────────
+  function renderGate(){
+    let gate = document.getElementById('authGate');
+    const mustGate = state.login_required && !state.authenticated;
+    if(!mustGate){
+      if(gate) gate.remove();
+      document.body.style.overflow = '';
+      return;
+    }
+    if(!gate){
+      gate = document.createElement('div');
+      gate.id = 'authGate';
+      gate.style.cssText = 'position:fixed;inset:0;z-index:3000;overflow:auto;background:linear-gradient(135deg,#12294d 0%,#1a3a6e 55%,#24508f 100%);';
+      gate.innerHTML = gateHTML();
+      document.body.appendChild(gate);
+      document.body.style.overflow = 'hidden';
+      const doIt = () => gateLogin();
+      gate.querySelector('#gateBtn').addEventListener('click', doIt);
+      gate.querySelectorAll('#gateEmail,#gatePwd').forEach(el =>
+        el.addEventListener('keydown', e => { if(e.key==='Enter') doIt(); }));
+    }
+  }
+
+  function gateHTML(){
+    const caps = [
+      ['bi-graph-up-arrow','Potentiel du marché','Score /100 : activité, tendance des prix, attractivité, DPE, risques'],
+      ['bi-cash-coin','Estimation de valeur','Prix médian au m² et estimation vénale par type (DVF officiel)'],
+      ['bi-geo-alt','Adresse ou cadastre','Recherche par adresse postale ou par référence cadastrale (commune, section, parcelle)'],
+      ['bi-file-earmark-text','Avis de valeur','Génération d\'avis de valeur et export PDF, sauvegarde dans Notion'],
+      ['bi-shield-check','Données publiques','DVF, DPE (ADEME), Géorisques, INSEE, Carte des loyers — sources officielles'],
+    ];
+    return ''+
+    '<div class="container-xl py-4" style="min-height:100%;display:flex;align-items:center;">'+
+      '<div class="row g-4 align-items-center w-100">'+
+        '<div class="col-lg-7 text-white">'+
+          '<div class="d-flex align-items-center mb-3"><i class="bi bi-building fs-2 me-2"></i>'+
+            '<div><div class="fw-bold fs-3" style="letter-spacing:.3px;">FIDI · Étude de Marché</div>'+
+            '<div class="opacity-75 small text-uppercase" style="letter-spacing:1px;">Immobilier · Données publiques françaises</div></div></div>'+
+          '<h1 class="fw-bold mb-3" style="line-height:1.15;">Évaluez le potentiel<br>d\'un bien immobilier en quelques secondes.</h1>'+
+          '<p class="opacity-75 mb-4" style="max-width:560px;">Une analyse complète du marché local à partir des données publiques officielles — prix, estimation, risques et avis de valeur, réservée aux collaborateurs FIDI.</p>'+
+          '<div class="row g-3" style="max-width:640px;">'+
+            caps.map(c => '<div class="col-md-6"><div class="d-flex align-items-start">'+
+              '<i class="bi '+c[0]+' fs-5 me-2 text-warning"></i><div>'+
+              '<div class="fw-semibold small">'+c[1]+'</div>'+
+              '<div class="opacity-75" style="font-size:.8rem;">'+c[2]+'</div></div></div></div>').join('')+
+          '</div>'+
+        '</div>'+
+        '<div class="col-lg-5">'+
+          '<div class="card shadow-lg border-0 mx-auto" style="max-width:400px;">'+
+            '<div class="card-body p-4">'+
+              '<h5 class="card-title mb-1"><i class="bi bi-lock me-1"></i>Connexion</h5>'+
+              '<p class="text-muted small mb-3">Accédez à votre espace FIDI.</p>'+
+              '<div class="mb-2"><label class="form-label small">E-mail</label><input type="email" class="form-control" id="gateEmail" autocomplete="username"></div>'+
+              '<div class="mb-2"><label class="form-label small">Mot de passe</label><input type="password" class="form-control" id="gatePwd" autocomplete="current-password"></div>'+
+              '<div class="text-danger small mb-2 d-none" id="gateErr"></div>'+
+              '<button class="btn btn-primary w-100" id="gateBtn">Se connecter</button>'+
+              '<p class="text-muted mt-3 mb-0" style="font-size:.75rem;">Pas encore de compte ? Contactez votre administrateur FIDI pour qu\'il vous en crée un.</p>'+
+            '</div>'+
+          '</div>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  }
+
+  async function gateLogin(){
+    const email = (document.getElementById('gateEmail').value||'').trim();
+    const pwd = document.getElementById('gatePwd').value||'';
+    const err = document.getElementById('gateErr');
+    const btn = document.getElementById('gateBtn');
+    err.classList.add('d-none');
+    if(!email || !pwd){ err.textContent='E-mail et mot de passe requis.'; err.classList.remove('d-none'); return; }
+    btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    try{
+      const r = await fetch('/api/auth/login', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password:pwd})});
+      const d = await r.json();
+      if(!r.ok){ err.textContent = d.error||'Échec de connexion.'; err.classList.remove('d-none'); btn.disabled=false; btn.textContent='Se connecter'; return; }
+      await refresh(); // masque le portail si connecté
+    }catch(e){ err.textContent='Erreur réseau.'; err.classList.remove('d-none'); btn.disabled=false; btn.textContent='Se connecter'; }
   }
 
   function render(){
