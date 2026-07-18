@@ -7,8 +7,10 @@
 import crypto from "node:crypto";
 import {
   DB, jsonResp, queryDatabase, updatePage, createPage,
-  P, readText, readNumber, readSelect,
+  P, readText, readNumber, readSelect, readCheckbox,
 } from "./_notion.mjs";
+
+export const DEFAULT_QUOTA = 5; // essais de recherche avant édition, pour un utilisateur standard
 
 const JWT_TTL = 60 * 60 * 24 * 7; // 7 jours
 const COOKIE = "fidi_session";
@@ -75,14 +77,32 @@ export function verifyPassword(pw, stored) {
 export function userFromPage(page) {
   const p = page.properties || {};
   return {
-    id:      page.id,
-    email:   readText(p["Email"]).toLowerCase(),
-    nom:     readText(p["Nom"]),
-    role:    readSelect(p["Rôle"]) || "Collaborateur",
-    statut:  readSelect(p["Statut"]) || "Actif",
-    credits: readNumber(p["Crédits"]) ?? 0,
-    hash:    readText(p["Mot de passe"]),
+    id:         page.id,
+    email:      readText(p["Email"]).toLowerCase(),
+    nom:        readText(p["Nom"]),
+    role:       readSelect(p["Rôle"]) || "Collaborateur",
+    statut:     readSelect(p["Statut"]) || "Actif",
+    credits:    readNumber(p["Crédits"]) ?? 0,
+    hash:       readText(p["Mot de passe"]),
+    illimite:   readCheckbox(p["Illimité"]),
+    quota:      readNumber(p["Quota recherches"]) ?? DEFAULT_QUOTA,
+    recherches: readNumber(p["Recherches utilisées"]) ?? 0,
+    derniereRef: readText(p["Dernière réf éditée"]),
   };
+}
+
+// Accès illimité : administrateurs + comptes marqués « Illimité » (partenaires).
+export function isUnlimited(user) {
+  return !!user && (user.role === "Administrateur" || user.illimite);
+}
+
+// Compteur d'essais de recherche (cycle courant).
+export function setSearches(pageId, n) {
+  return updatePage(pageId, { "Recherches utilisées": P.number(Math.max(0, n)) });
+}
+// Nouveau cycle après édition : remet le compteur à zéro et mémorise la réf éditée.
+export function startNewCycle(pageId, ref) {
+  return updatePage(pageId, { "Recherches utilisées": P.number(0), "Dernière réf éditée": P.text(ref || "") });
 }
 
 export async function findUserByEmail(email) {
@@ -102,14 +122,17 @@ export async function touchLastLogin(pageId) {
   return updatePage(pageId, { "Dernière connexion": P.date(new Date().toISOString()) });
 }
 
-export async function createUser({ email, nom, password, role = "Collaborateur", credits = startCredits() }) {
+export async function createUser({ email, nom, password, role = "Collaborateur", credits = startCredits(), quota = DEFAULT_QUOTA, illimite = false }) {
   return createPage(DB.users, {
-    "Email":       P.title(String(email).trim().toLowerCase()),
-    "Nom":         P.text(nom || ""),
-    "Mot de passe":P.text(hashPassword(password)),
-    "Rôle":        P.select(role),
-    "Statut":      P.select("Actif"),
-    "Crédits":     P.number(credits),
+    "Email":            P.title(String(email).trim().toLowerCase()),
+    "Nom":              P.text(nom || ""),
+    "Mot de passe":     P.text(hashPassword(password)),
+    "Rôle":             P.select(role),
+    "Statut":           P.select("Actif"),
+    "Crédits":          P.number(credits),
+    "Quota recherches": P.number(quota),
+    "Recherches utilisées": P.number(0),
+    "Illimité":         P.checkbox(!!illimite),
   });
 }
 

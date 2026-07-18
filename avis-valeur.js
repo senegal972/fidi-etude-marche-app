@@ -1105,8 +1105,11 @@
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
     toast('Document Word exporté');
   }
-  function exportPdf() {
+  async function exportPdf() {
     var ref = (state.data && state.data.metadata && state.data.metadata.ref) || 'rapport';
+    // Édition d'un avis de valeur = acte facturé : débit d'un crédit (sauf admin/
+    // illimité, péage inactif, ou ré-édition du même document). Bloque si épuisé.
+    if (window.Compte && !(await window.Compte.consume('avis', ref))) return;
     var filename = 'Avis_de_valeur_' + String(ref).replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 50);
     var pr = document.getElementById('avisPrintRoot');
     pr.innerHTML = '<div class="avis-doc">' + buildAvisDocHTML(state.data, compute(state.data)) + '</div>';

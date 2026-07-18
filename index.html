@@ -247,7 +247,7 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
     <button class="btn btn-sm btn-outline-light btn-pdf d-none" id="btnPdf" onclick="exportPdf()">
       <i class="bi bi-file-earmark-pdf me-1"></i>Télécharger PDF
     </button>
-    <button class="btn btn-sm btn-outline-light btn-print d-none" id="btnPrint" onclick="window.print()">
+    <button class="btn btn-sm btn-outline-light btn-print d-none" id="btnPrint" onclick="exportPdf()">
       <i class="bi bi-printer me-1"></i>Imprimer
     </button>
   </div>
@@ -478,7 +478,7 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
         <button class="btn btn-sm btn-danger btn-pdf" onclick="exportPdf()">
           <i class="bi bi-file-earmark-pdf me-1"></i>Télécharger PDF
         </button>
-        <button class="btn btn-sm btn-outline-secondary btn-print" onclick="window.print()">
+        <button class="btn btn-sm btn-outline-secondary btn-print" onclick="exportPdf()">
           <i class="bi bi-printer me-1"></i>Imprimer
         </button>
       </div>
@@ -1217,12 +1217,15 @@ document.getElementById('btnGeoloc').addEventListener('click', async () => {
 
 // ─── Export PDF (impression navigateur → "Enregistrer en PDF") ────────────────
 // Approche fiable : utilise le moteur d'impression natif du navigateur via les
-function exportPdf(){
+async function exportPdf(){
   const target = document.getElementById('results-panel');
   if(!target || target.classList.contains('d-none')){
     alert('Lancez une analyse avant d\'imprimer.');
     return;
   }
+  // Édition d'un document = acte facturé : débit d'un crédit (sauf admin/illimité,
+  // péage inactif, ou ré-édition du même document). Bloque si crédits épuisés.
+  if(window.Compte && !(await Compte.consume('etude', currentEtudeRef()))) return;
   window.print();
 }
 
@@ -1326,8 +1329,12 @@ async function lancerAnalyse(){
         if(window.Compte) Compte.open();
         return;
       }
+      if(resp.status === 429 && err.need_edit){
+        alert(err.error || 'Vous avez utilisé vos essais de recherche. Éditez / imprimez votre document pour continuer.');
+        return;
+      }
       if(resp.status === 402 && err.need_credits){
-        alert('Crédits épuisés (' + (err.credits!=null?err.credits:0) + '). Contactez votre administrateur pour recharger.');
+        alert('Crédits épuisés. Rechargez des crédits pour continuer.');
         if(window.Compte) Compte.open();
         return;
       }
@@ -1337,7 +1344,7 @@ async function lancerAnalyse(){
 
     const data = await resp.json();
     const perimetre = document.getElementById('selectPerimetre').value;
-    if(window.Compte && data.credits_restants != null) Compte.setCredits(data.credits_restants);
+    if(window.Compte && data.recherches_utilisees != null) Compte.setRecherches(data.recherches_utilisees);
     renderResults(data);
     // Expose les résultats de l'étude au module Avis de valeur (pré-remplissage)
     window.__fidiData = data;
@@ -3627,8 +3634,9 @@ window.Compte = (function(){
     if(state.authenticated && state.user){
       if(lbl) lbl.textContent = state.user.nom || state.user.email;
       if(pill){
-        // Pastille crédits : uniquement pour les collaborateurs quand le péage est actif.
-        if(state.paywall && state.user.role !== 'Administrateur'){
+        // Pastille crédits : uniquement pour les comptes non illimités quand le péage est actif.
+        const unlimited = state.user.role === 'Administrateur' || state.user.illimite;
+        if(state.paywall && !unlimited){
           pill.classList.remove('d-none'); document.getElementById('creditsVal').textContent = state.user.credits;
         }else pill.classList.add('d-none');
       }
@@ -3640,6 +3648,27 @@ window.Compte = (function(){
 
   function setCredits(n){
     if(state.user && n != null){ state.user.credits = n; render(); }
+  }
+  function setRecherches(n){
+    if(state.user && n != null) state.user.recherches = n;
+  }
+
+  // Débit d'un crédit à l'édition d'un document. Retourne true si l'action peut
+  // se poursuivre (autorisée / gratuite), false si bloquée (crédits épuisés).
+  async function consume(kind, ref){
+    if(!state.authenticated){ open(); return false; }
+    try{
+      const r = await fetch('/api/consume', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,ref})});
+      const d = await r.json().catch(()=>({}));
+      if(r.status===402 && d.need_credits){
+        alert('Crédits épuisés. Rechargez des crédits pour éditer / imprimer ce document.');
+        open();
+        return false;
+      }
+      if(!r.ok){ alert('Édition impossible : '+(d.error||'erreur')); return false; }
+      if(d.facture && d.credits_restants!=null){ setCredits(d.credits_restants); setRecherches(0); }
+      return true;
+    }catch(e){ alert('Édition impossible : '+e.message); return false; }
   }
 
   function modal(){
@@ -3676,6 +3705,7 @@ window.Compte = (function(){
   function viewAccount(){
     const u = state.user;
     const admin = u.role === 'Administrateur';
+    const unlimited = admin || u.illimite;
     return ''+
       '<ul class="nav nav-tabs mb-3" role="tablist">'+
         '<li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabIdent">Identité</button></li>'+
@@ -3694,10 +3724,12 @@ window.Compte = (function(){
           '<button class="btn btn-outline-secondary btn-sm" onclick="Compte.logout()"><i class="bi bi-box-arrow-right me-1"></i>Se déconnecter</button>'+
         '</div>'+
         '<div class="tab-pane fade" id="tabSolde">'+
-          (admin
-            ? '<div class="display-6 fw-bold">∞ <span class="fs-6 text-muted">illimité</span></div><p class="text-muted small">En tant qu\'administrateur, vos analyses ne consomment aucun crédit.</p>'
+          (unlimited
+            ? '<div class="display-6 fw-bold">∞ <span class="fs-6 text-muted">illimité</span></div><p class="text-muted small">'+(admin?'Administrateur':'Accès illimité (partenaire)')+' : recherches et éditions sans consommer de crédit.</p>'
             : '<div class="display-6 fw-bold">'+esc(u.credits)+' <span class="fs-6 text-muted">crédits</span></div>'+
-              '<p class="text-muted small">1 étude réussie = '+esc(state.cost)+' crédit(s). '+(state.paywall?'':'<br>Le péage est actuellement désactivé (accès libre).')+'</p>')+
+              '<p class="text-muted small mb-1"><b>1 crédit</b> se débite à l\'<b>édition / impression</b> d\'un document (étude ou avis). Ré-imprimer le même document est gratuit.</p>'+
+              '<p class="text-muted small">Essais de recherche : <b>'+(u.recherches||0)+' / '+(u.quota!=null?u.quota:5)+'</b> utilisés dans le cycle courant. Passé ce seuil, éditez un document pour relancer des recherches.'+
+              (state.paywall?'':'<br><span class="text-success">Le péage est actuellement désactivé (accès libre).</span>')+'</p>')+
         '</div>'+
         '<div class="tab-pane fade" id="tabOffres"><div id="offresBox" class="small text-muted">Chargement…</div></div>'+
         (admin ? '<div class="tab-pane fade" id="tabAdmin">'+
@@ -3705,8 +3737,10 @@ window.Compte = (function(){
             '<input class="form-control form-control-sm mb-1" id="adEmail" placeholder="E-mail">'+
             '<input class="form-control form-control-sm mb-1" id="adNom" placeholder="Nom">'+
             '<input class="form-control form-control-sm mb-1" id="adPwd" placeholder="Mot de passe (optionnel — sinon généré)">'+
-            '<div class="d-flex gap-1 mb-1"><input type="number" class="form-control form-control-sm" id="adCredits" placeholder="Crédits" style="max-width:110px;">'+
+            '<div class="d-flex gap-1 mb-1"><input type="number" class="form-control form-control-sm" id="adCredits" placeholder="Crédits" style="max-width:100px;">'+
+            '<input type="number" class="form-control form-control-sm" id="adQuota" placeholder="Essais (5)" style="max-width:100px;">'+
             '<select class="form-select form-select-sm" id="adRole"><option value="Collaborateur">Collaborateur</option><option value="Administrateur">Administrateur</option></select></div>'+
+            '<div class="form-check form-check-sm mb-1"><input class="form-check-input" type="checkbox" id="adIllimite"><label class="form-check-label small" for="adIllimite">Accès illimité (partenaire — aucun crédit consommé)</label></div>'+
             '<button class="btn btn-primary btn-sm" onclick="Compte.adminCreate()">Créer</button>'+
             '<div class="small mt-1" id="adMsg"></div></div>'+
           '<div class="fw-semibold small mb-2">Comptes</div><div id="adList" class="small text-muted">Chargement…</div>'+
@@ -3748,16 +3782,21 @@ window.Compte = (function(){
     el.innerHTML = (data.users||[]).map(u => {
       const self = u.email === moi;
       const admin = u.role === 'Administrateur';
-      const credLabel = admin ? '∞' : (u.credits + ' cr.');
+      const unlimited = admin || u.illimite;
+      const credLabel = unlimited ? '∞' : (u.credits + ' cr.');
+      const quotaLabel = unlimited ? '' : ' · <span class="text-muted" style="font-size:.72rem;">'+(u.recherches||0)+'/'+(u.quota!=null?u.quota:5)+' essais</span>';
+      const illimiteBadge = u.illimite ? ' <span class="badge bg-dark">illimité</span>' : '';
       const actions = self
         ? '<span class="badge bg-info text-dark">vous</span>'
         : '<div class="btn-group btn-group-sm mt-1">'+
-            (admin ? '' : '<button class="btn btn-outline-secondary py-0" onclick="Compte.adminCredit(\''+esc(u.email)+'\')" title="Ajouter des crédits">+cr.</button>')+
+            (unlimited ? '' : '<button class="btn btn-outline-secondary py-0" onclick="Compte.adminCredit(\''+esc(u.email)+'\')" title="Ajouter des crédits">+cr.</button>'+
+              '<button class="btn btn-outline-secondary py-0" onclick="Compte.adminQuota(\''+esc(u.email)+'\','+(u.quota!=null?u.quota:5)+')" title="Régler le nombre d\'essais">essais</button>')+
+            '<button class="btn btn-outline-'+(u.illimite?'dark':'secondary')+' py-0" onclick="Compte.adminIllimite(\''+esc(u.email)+'\','+(u.illimite?'false':'true')+')" title="Accès illimité (partenaire)">'+(u.illimite?'illimité':'∞?')+'</button>'+
             '<button class="btn btn-outline-secondary py-0" onclick="Compte.adminToggle(\''+esc(u.email)+'\',\''+(u.statut==='Actif'?'Désactivé':'Actif')+'\')">'+(u.statut==='Actif'?'Désactiver':'Activer')+'</button>'+
           '</div>';
       return '<div class="d-flex justify-content-between align-items-center border-bottom py-1">'+
-        '<div>'+esc(u.nom||u.email)+' <span class="text-muted">('+esc(u.email)+')</span><br><span class="badge bg-secondary">'+esc(u.role)+'</span> <span class="badge '+(u.statut==='Actif'?'bg-success':'bg-danger')+'">'+esc(u.statut)+'</span></div>'+
-        '<div class="text-end"><span class="badge bg-warning text-dark">'+credLabel+'</span><br>'+actions+'</div></div>';
+        '<div>'+esc(u.nom||u.email)+' <span class="text-muted">('+esc(u.email)+')</span>'+illimiteBadge+'<br><span class="badge bg-secondary">'+esc(u.role)+'</span> <span class="badge '+(u.statut==='Actif'?'bg-success':'bg-danger')+'">'+esc(u.statut)+'</span></div>'+
+        '<div class="text-end"><span class="badge bg-warning text-dark">'+credLabel+'</span>'+quotaLabel+'<br>'+actions+'</div></div>';
     }).join('') || '<span class="text-muted">Aucun compte.</span>';
   }
   async function adminCreate(){
@@ -3765,14 +3804,16 @@ window.Compte = (function(){
     const nom=(document.getElementById('adNom').value||'').trim();
     const password=(document.getElementById('adPwd').value||'').trim();
     const credits=document.getElementById('adCredits').value;
+    const quota=document.getElementById('adQuota').value;
+    const illimite=document.getElementById('adIllimite').checked;
     const role=document.getElementById('adRole').value;
     const msg=document.getElementById('adMsg');
     if(!email){ msg.textContent='E-mail requis.'; return; }
     if(password && password.length < 6){ msg.innerHTML='<span class="text-danger">Mot de passe : 6 caractères minimum.</span>'; return; }
-    const {ok,data}=await admin('create',Object.assign({email,nom,credits,role}, password?{password}:{}));
+    const {ok,data}=await admin('create',Object.assign({email,nom,credits,quota,illimite,role}, password?{password}:{}));
     if(!ok){ msg.innerHTML='<span class="text-danger">'+esc(data.error||'Erreur')+'</span>'; return; }
     msg.innerHTML='<span class="text-success">Compte créé. Mot de passe '+(data.temp_password?('provisoire : <b>'+esc(data.temp_password)+'</b> — à transmettre.'):'défini (celui que vous avez saisi).')+'</span>';
-    document.getElementById('adEmail').value=''; document.getElementById('adNom').value=''; document.getElementById('adPwd').value=''; document.getElementById('adCredits').value='';
+    ['adEmail','adNom','adPwd','adCredits','adQuota'].forEach(id=>document.getElementById(id).value=''); document.getElementById('adIllimite').checked=false;
     adminList();
   }
   async function adminCredit(email){
@@ -3782,6 +3823,16 @@ window.Compte = (function(){
   }
   async function adminToggle(email,statut){
     const {ok,data}=await admin('set_status',{email,statut});
+    if(!ok){ alert(data.error||'Erreur'); return; } adminList();
+  }
+  async function adminIllimite(email, illimite){
+    const {ok,data}=await admin('set_illimite',{email,illimite});
+    if(!ok){ alert(data.error||'Erreur'); return; } adminList();
+  }
+  async function adminQuota(email, cur){
+    const n=prompt('Nombre d\'essais de recherche autorisés pour '+email+' :', cur); if(n==null) return;
+    const q=parseInt(n); if(!isFinite(q)||q<0){ alert('Valeur invalide.'); return; }
+    const {ok,data}=await admin('set_quota',{email,quota:q});
     if(!ok){ alert(data.error||'Erreur'); return; } adminList();
   }
 
@@ -3841,8 +3892,8 @@ window.Compte = (function(){
   }
 
   document.addEventListener('DOMContentLoaded', refresh);
-  return { open, doLogin, logout, refresh, setCredits, adminCreate, adminCredit, adminToggle,
-           loadOffres, chooseOffer, offerToggle, offerPrice,
+  return { open, doLogin, logout, refresh, setCredits, setRecherches, consume, adminCreate, adminCredit, adminToggle,
+           adminIllimite, adminQuota, loadOffres, chooseOffer, offerToggle, offerPrice,
            get state(){ return state; } };
 })();
 </script>
