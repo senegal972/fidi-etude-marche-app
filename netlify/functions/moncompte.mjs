@@ -15,7 +15,10 @@ export const handler = async (event) => {
       paywall: paywallOn(),
       login_required: loginRequired(),
       cost_etude: costEtude(),
-      user: { email: u.email, nom: u.nom, role: u.role, statut: u.statut, credits: u.credits },
+      user: {
+        email: u.email, nom: u.nom, role: u.role, statut: u.statut, credits: u.credits,
+        illimite: u.illimite, quota: u.quota, recherches: u.recherches,
+      },
     });
   } catch (e) {
     return authResp(e.status || 500, { error: e.message });

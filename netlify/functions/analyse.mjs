@@ -4,7 +4,7 @@
 
 import { cacheGet, cacheSet, cacheTag } from "./_cache.mjs";
 import { cleanMutations } from "./_dvf.mjs";
-import { currentUser, paywallOn, loginRequired, costEtude, setCredits } from "./_auth.mjs";
+import { currentUser, paywallOn, loginRequired, isUnlimited, setSearches } from "./_auth.mjs";
 
 const TIMEOUT_MS = 8000;
 const DVF_YEARS_KEEP = [2021, 2022, 2023, 2024, 2025];
@@ -690,19 +690,25 @@ export const handler = async (event) => {
     : await geocodeAdresse(adresse);
   if (!geo) return jsonResp(404, { error: `Adresse introuvable : « ${adresse} »` });
 
-  // Péage (actif seulement si PAYWALL_ENABLED=true) : connexion + crédit requis.
-  // Un 404 (adresse introuvable, ci-dessus) ne coûte rien. Débit sur succès.
-  let payer = null;
+  // Connexion requise si loginRequired(). La recherche NE débite PAS de crédit :
+  // c'est un essai gratuit, plafonné (quota). Le crédit se débite à l'édition
+  // (voir /api/consume). Passé le quota, l'utilisateur doit éditer pour continuer.
+  let searcher = null;
   if (loginRequired()) {
     const found = await currentUser(event).catch(() => null);
     if (!found) return jsonResp(401, { error: "Connexion requise pour lancer une analyse.", need_auth: true });
-    // Le décompte de crédits ne s'applique qu'avec le péage actif, et jamais aux admins.
-    if (paywallOn() && found.user.role !== "Administrateur") {
-      const cost = costEtude();
-      if (found.user.credits < cost) {
-        return jsonResp(402, { error: "Crédits épuisés.", credits: found.user.credits, need_credits: true });
+    if (paywallOn() && !isUnlimited(found.user)) {
+      const quota = found.user.quota;
+      if (found.user.recherches >= quota) {
+        if (found.user.credits < 1) {
+          return jsonResp(402, { error: "Crédits épuisés. Rechargez pour continuer.", credits: 0, need_credits: true });
+        }
+        return jsonResp(429, {
+          error: `Vous avez utilisé vos ${quota} essais. Éditez/imprimez votre document (1 crédit) pour relancer des recherches.`,
+          need_edit: true, recherches: found.user.recherches, quota, credits: found.user.credits,
+        });
       }
-      payer = { id: found.page.id, credits: found.user.credits, cost };
+      searcher = { id: found.page.id, next: found.user.recherches + 1, quota };
     }
   }
 
@@ -736,15 +742,15 @@ export const handler = async (event) => {
   // Estimations 3 types : surface saisie pour le type recherché, surface standard pour les autres
   const estimations = estimateAllTypes(allResults.valoris, surface, typeBien);
 
-  // Débit du crédit sur étude réussie (relit le solde à jour côté serveur).
-  let creditsRestants;
-  if (payer) {
-    creditsRestants = Math.max(0, payer.credits - payer.cost);
-    await setCredits(payer.id, creditsRestants).catch(() => {});
+  // Incrémente le compteur d'essais sur recherche réussie (un 404 ne compte pas).
+  let recherchesUtilisees;
+  if (searcher) {
+    recherchesUtilisees = searcher.next;
+    await setSearches(searcher.id, searcher.next).catch(() => {});
   }
 
   return jsonResp(200, {
-    credits_restants: creditsRestants,
+    recherches_utilisees: recherchesUtilisees,
     localisation: geo,
     commune_info: allResults.commune_info,
     dvf_annees: dvfAnnees,

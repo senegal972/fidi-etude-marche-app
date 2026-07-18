@@ -25,7 +25,8 @@ export const handler = async (event) => {
       const data = await queryDatabase(DB.users, { page_size: 100 });
       const users = (data.results || []).map((pg) => {
         const u = userFromPage(pg);
-        return { email: u.email, nom: u.nom, role: u.role, statut: u.statut, credits: u.credits };
+        return { email: u.email, nom: u.nom, role: u.role, statut: u.statut, credits: u.credits,
+                 illimite: u.illimite, quota: u.quota, recherches: u.recherches };
       });
       return authResp(200, { ok: true, users });
     }
@@ -42,7 +43,9 @@ export const handler = async (event) => {
       const password = b.password ? String(b.password) : genPassword();
       const role = b.role === "Administrateur" ? "Administrateur" : "Collaborateur";
       const credits = Number.isFinite(+b.credits) ? +b.credits : undefined;
-      await createUser({ email, nom: b.nom || "", password, role, ...(credits != null ? { credits } : {}) });
+      const quota = Number.isFinite(+b.quota) ? +b.quota : undefined;
+      await createUser({ email, nom: b.nom || "", password, role,
+        ...(credits != null ? { credits } : {}), ...(quota != null ? { quota } : {}), illimite: !!b.illimite });
       return authResp(200, { ok: true, created: email, temp_password: b.password ? undefined : password });
     }
 
@@ -76,6 +79,16 @@ export const handler = async (event) => {
       const r = b.role === "Administrateur" ? "Administrateur" : "Collaborateur";
       await updatePage(page.id, { "Rôle": P.select(r) });
       return authResp(200, { ok: true, email, role: r });
+    }
+    if (action === "set_illimite") {
+      await updatePage(page.id, { "Illimité": P.checkbox(!!b.illimite) });
+      return authResp(200, { ok: true, email, illimite: !!b.illimite });
+    }
+    if (action === "set_quota") {
+      const q = parseInt(b.quota);
+      if (!Number.isFinite(q) || q < 0) return authResp(400, { error: "quota (nombre) requis" });
+      await updatePage(page.id, { "Quota recherches": P.number(q) });
+      return authResp(200, { ok: true, email, quota: q });
     }
 
     return authResp(400, { error: "Action inconnue : " + action });
