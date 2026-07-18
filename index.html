@@ -229,6 +229,9 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
   <div class="d-flex gap-2 align-items-center">
     <span class="badge-gov"><i class="bi bi-database me-1"></i>data.gouv.fr</span>
     <span class="badge bg-warning text-dark d-none" id="creditsPill" title="Crédits d'analyse restants" style="font-size:.72rem;"><i class="bi bi-coin me-1"></i><span id="creditsVal">0</span> crédits</span>
+    <button class="btn btn-sm btn-outline-warning d-none" id="btnPresentation" onclick="Presentation.open()" title="Présentation ImmoData Pro — confidentiel, réservé aux professionnels">
+      <i class="bi bi-easel me-1"></i>Présentation
+    </button>
     <button class="btn btn-sm btn-outline-warning" id="btnCompte" onclick="Compte.open()" title="Connexion / Mon compte">
       <i class="bi bi-person-circle me-1"></i><span id="btnCompteLabel">Connexion</span>
     </button>
@@ -3560,12 +3563,12 @@ window.Compte = (function(){
   }
 
   function gateHTML(){
+    // Arguments repris de la conclusion de la plaquette (page 12) — sans tarification.
     const caps = [
-      ['bi-graph-up-arrow','Potentiel du marché','Score /100 : activité, tendance des prix, attractivité, DPE, risques'],
-      ['bi-cash-coin','Estimation de valeur','Prix médian au m² et estimation vénale par type (DVF officiel)'],
-      ['bi-geo-alt','Adresse ou cadastre','Recherche par adresse postale ou par référence cadastrale (commune, section, parcelle)'],
-      ['bi-file-earmark-text','Avis de valeur','Génération d\'avis de valeur et export PDF, sauvegarde dans Notion'],
-      ['bi-shield-check','Données publiques','DVF, DPE (ADEME), Géorisques, INSEE, Carte des loyers — sources officielles'],
+      ['bi-gem','Outil exclusif réseau','Une longueur d\'avance immédiate sur vos concurrents locaux grâce à des analyses uniques et professionnelles.'],
+      ['bi-globe-europe-africa','Couverture France + DOM','Métropole et Outre-mer (Martinique, Guadeloupe, Guyane, La Réunion) — une couverture rare et accessible.'],
+      ['bi-graph-up-arrow','ROI dès la 1ʳᵉ prestation','Une seule étude ou un seul avis de valeur revendu à votre client rembourse votre pack de crédits initial.'],
+      ['bi-unlock','Aucun engagement de durée','Rechargez uniquement quand vous en avez besoin — vos crédits restent valables 12 mois.'],
     ];
     return ''+
     '<div class="container-xl py-4" style="min-height:100%;display:flex;align-items:center;">'+
@@ -3573,10 +3576,10 @@ window.Compte = (function(){
         '<div class="col-lg-7 text-white">'+
           '<div class="d-flex align-items-center mb-3"><i class="bi bi-building fs-2 me-2"></i>'+
             '<div><div class="fw-bold fs-3" style="letter-spacing:.3px;">FIDI · Étude de Marché</div>'+
-            '<div class="opacity-75 small text-uppercase" style="letter-spacing:1px;">Immobilier · Données publiques françaises</div></div></div>'+
-          '<h1 class="fw-bold mb-3" style="line-height:1.15;">Évaluez le potentiel<br>d\'un bien immobilier en quelques secondes.</h1>'+
-          '<p class="opacity-75 mb-4" style="max-width:560px;">Une analyse complète du marché local à partir des données publiques officielles — prix, estimation, risques et avis de valeur, réservée aux collaborateurs FIDI.</p>'+
-          '<div class="row g-3" style="max-width:640px;">'+
+            '<div class="opacity-75 small text-uppercase" style="letter-spacing:1px;">L\'outil qui transforme vos analyses en revenus</div></div></div>'+
+          '<h1 class="fw-bold mb-3" style="line-height:1.15;">Commencez dès 2 crédits —<br>récupérez votre investissement<br>dès la première prestation.</h1>'+
+          '<p class="opacity-75 mb-4" style="max-width:560px;">Études de marché & avis de valeur professionnels, à partir des données publiques officielles. Réservé aux mandataires et professionnels de l\'immobilier.</p>'+
+          '<div class="row g-3" style="max-width:660px;">'+
             caps.map(c => '<div class="col-md-6"><div class="d-flex align-items-start">'+
               '<i class="bi '+c[0]+' fs-5 me-2 text-warning"></i><div>'+
               '<div class="fw-semibold small">'+c[1]+'</div>'+
@@ -3619,6 +3622,8 @@ window.Compte = (function(){
   function render(){
     const lbl = document.getElementById('btnCompteLabel');
     const pill = document.getElementById('creditsPill');
+    const btnPres = document.getElementById('btnPresentation');
+    if(btnPres) btnPres.classList.toggle('d-none', !state.authenticated); // confidentiel : connectés seulement
     if(state.authenticated && state.user){
       if(lbl) lbl.textContent = state.user.nom || state.user.email;
       if(pill){
@@ -3781,6 +3786,73 @@ window.Compte = (function(){
   document.addEventListener('DOMContentLoaded', refresh);
   return { open, doLogin, logout, refresh, setCredits, adminCreate, adminCredit, adminToggle,
            get state(){ return state; } };
+})();
+</script>
+
+<!-- Présentation confidentielle ImmoData Pro (réservée aux professionnels connectés) -->
+<div id="presModalRoot"></div>
+<script>
+window.Presentation = (function(){
+  const GRIDS = {
+    'Études de Marché': { entree:'dès 2 crédits à 45 € TTC', rows:[
+      ['Starter',2,'45 €','22,50 €','—'],['Essentiel ★',5,'99 €','19,80 €','-12 %'],
+      ['Pro',10,'179 €','17,90 €','-20 %'],['Business',20,'329 €','16,45 €','-27 %'],
+      ['Premium',50,'749 €','14,98 €','-33 %'],['Enterprise',100,'1 299 €','12,99 €','-42 %']]},
+    'Avis de Valeur': { entree:'dès 2 crédits à 69 € TTC', rows:[
+      ['Starter',2,'69 €','34,50 €','—'],['Essentiel ★',5,'149 €','29,80 €','-14 %'],
+      ['Pro',10,'269 €','26,90 €','-22 %'],['Business',20,'499 €','24,95 €','-28 %'],
+      ['Premium',50,'1 149 €','22,98 €','-33 %'],['Enterprise',100,'1 999 €','19,99 €','-42 %']]},
+    'Cumulatif (offre phare)': { entree:'crédits universels — études OU avis', rows:[
+      ['Starter',2,'59 €','29,50 €','—'],['Essentiel',5,'129 €','25,80 €','-13 %'],
+      ['Pro ★',10,'229 €','22,90 €','-22 %'],['Business',20,'429 €','21,45 €','-27 %'],
+      ['Premium',50,'979 €','19,58 €','-34 %'],['Enterprise',100,'1 699 €','16,99 €','-42 %'],
+      ['Platinum',200,'2 999 €','14,99 €','-49 %']]},
+  };
+  const DOM = [['Martinique (972)','3 154 €/m²','Marché en croissance constante'],
+    ['Guadeloupe (971)','3 612 €/m²','Forte demande résidentielle'],
+    ['La Réunion (974)','2 914 €/m²','Marché dynamique et tendu'],
+    ['Guyane (973)','2 283 €/m²','Territoire en plein développement']];
+
+  function gridTable(title, g){
+    return '<h6 class="fw-bold mt-3">'+title+' <span class="text-muted small fw-normal">— '+g.entree+'</span></h6>'+
+      '<div class="table-responsive"><table class="table table-sm table-striped align-middle mb-1">'+
+      '<thead><tr><th>Palier</th><th class="text-end">Crédits</th><th class="text-end">Prix TTC</th><th class="text-end">Prix / crédit</th><th class="text-end">Économie</th></tr></thead><tbody>'+
+      g.rows.map(r=>'<tr><td>'+r[0]+'</td><td class="text-end">'+r[1]+'</td><td class="text-end fw-semibold">'+r[2]+'</td><td class="text-end">'+r[3]+'</td><td class="text-end text-success">'+r[4]+'</td></tr>').join('')+
+      '</tbody></table></div>';
+  }
+
+  function body(){
+    return ''+
+    '<div class="alert alert-warning py-2 small mb-3"><i class="bi bi-shield-lock me-1"></i><b>Document confidentiel</b> — réservé aux professionnels. Ne pas diffuser.</div>'+
+    '<div class="p-3 rounded text-white mb-3" style="background:linear-gradient(135deg,#12294d,#24508f);">'+
+      '<div class="text-warning text-uppercase small fw-semibold" style="letter-spacing:1px;">Pitch modèle économique</div>'+
+      '<div class="fs-4 fw-bold">ImmoData Pro</div>'+
+      '<div class="opacity-75">L\'outil qui transforme vos analyses en revenus — études de marché & avis de valeur.</div></div>'+
+    '<div class="row g-2 mb-2">'+
+      '<div class="col-md-6"><div class="border rounded p-2 h-100"><div class="fw-bold"><i class="bi bi-bar-chart-line me-1 text-primary"></i>Module 1 — Études de marché</div><div class="small text-muted">Analyse complète du marché local (DVF, socio-éco, tendances de prix).</div></div></div>'+
+      '<div class="col-md-6"><div class="border rounded p-2 h-100"><div class="fw-bold"><i class="bi bi-file-earmark-text me-1 text-primary"></i>Module 2 — Avis de valeur</div><div class="small text-muted">Avis de valeur professionnels argumentés, export PDF à vos couleurs.</div></div></div>'+
+    '</div>'+
+    '<div class="border rounded p-2 mb-2 small"><b>Modèle de crédits :</b> 1 crédit = 1 étude de marché OU 1 avis de valeur. Zéro engagement, crédits universels valables 12 mois, dégressivité sur les volumes.</div>'+
+    '<div class="border rounded p-2 mb-2 small"><b>Rentabilité :</b> avis de valeur revendu 450–600 € (métropole) / 400–550 € (DOM) ; étude de marché 200–400 € (métropole). Marge brute ~87–95 %. Une seule prestation vendue rembourse le pack Starter.</div>'+
+    gridTable('Grille — Études de Marché', GRIDS['Études de Marché'])+
+    gridTable('Grille — Avis de Valeur', GRIDS['Avis de Valeur'])+
+    gridTable('Grille — '+ 'Cumulatif (offre phare)', GRIDS['Cumulatif (offre phare)'])+
+    '<h6 class="fw-bold mt-3">Couverture territoriale — France + DOM</h6>'+
+    '<div class="row g-2">'+DOM.map(d=>'<div class="col-md-6"><div class="border rounded p-2"><b>'+d[0]+'</b> · '+d[1]+'<div class="small text-muted">'+d[2]+'</div></div></div>').join('')+'</div>'+
+    '<div class="alert alert-primary mt-3 mb-0 small"><i class="bi bi-flag me-1"></i><b>Conclusion :</b> commencez avec 2 crédits, récupérez votre investissement dès la première prestation. Outil exclusif réseau · ROI garanti dès la 1ʳᵉ prestation · aucun engagement de durée.</div>';
+  }
+
+  function open(){
+    if(!(window.Compte && Compte.state.authenticated)){ alert('Présentation réservée aux professionnels connectés.'); return; }
+    if(typeof bootstrap === 'undefined'){ alert('Interface non chargée.'); return; }
+    let root = document.getElementById('presModalRoot');
+    root.innerHTML = '<div class="modal fade" id="presModal" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-scrollable">'+
+      '<div class="modal-content"><div class="modal-header"><h5 class="modal-title"><i class="bi bi-easel me-1"></i>Présentation ImmoData Pro</h5>'+
+      '<button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>'+
+      '<div class="modal-body">'+body()+'</div></div></div></div>';
+    new bootstrap.Modal(document.getElementById('presModal')).show();
+  }
+  return { open };
 })();
 </script>
 </body>
