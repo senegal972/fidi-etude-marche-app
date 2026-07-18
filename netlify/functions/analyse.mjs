@@ -4,6 +4,7 @@
 
 import { cacheGet, cacheSet, cacheTag } from "./_cache.mjs";
 import { cleanMutations } from "./_dvf.mjs";
+import { currentUser, paywallOn, costEtude, setCredits } from "./_auth.mjs";
 
 const TIMEOUT_MS = 8000;
 const DVF_YEARS_KEEP = [2021, 2022, 2023, 2024, 2025];
@@ -689,6 +690,19 @@ export const handler = async (event) => {
     : await geocodeAdresse(adresse);
   if (!geo) return jsonResp(404, { error: `Adresse introuvable : « ${adresse} »` });
 
+  // Péage (actif seulement si PAYWALL_ENABLED=true) : connexion + crédit requis.
+  // Un 404 (adresse introuvable, ci-dessus) ne coûte rien. Débit sur succès.
+  let payer = null;
+  if (paywallOn()) {
+    const found = await currentUser(event).catch(() => null);
+    if (!found) return jsonResp(401, { error: "Connexion requise pour lancer une analyse.", need_auth: true });
+    const cost = costEtude();
+    if (found.user.credits < cost) {
+      return jsonResp(402, { error: "Crédits épuisés.", credits: found.user.credits, need_credits: true });
+    }
+    payer = { id: found.page.id, credits: found.user.credits, cost };
+  }
+
   const codeInsee = geo.citycode;
   const departement = geo.departement;
   const { lat, lon } = geo;
@@ -719,7 +733,15 @@ export const handler = async (event) => {
   // Estimations 3 types : surface saisie pour le type recherché, surface standard pour les autres
   const estimations = estimateAllTypes(allResults.valoris, surface, typeBien);
 
+  // Débit du crédit sur étude réussie (relit le solde à jour côté serveur).
+  let creditsRestants;
+  if (payer) {
+    creditsRestants = Math.max(0, payer.credits - payer.cost);
+    await setCredits(payer.id, creditsRestants).catch(() => {});
+  }
+
   return jsonResp(200, {
+    credits_restants: creditsRestants,
     localisation: geo,
     commune_info: allResults.commune_info,
     dvf_annees: dvfAnnees,

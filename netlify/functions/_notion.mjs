@@ -10,6 +10,7 @@ export const DB = {
   etude:        process.env.NOTION_DB_ETUDE         || "81d2020d-24fe-4041-8dde-55b5215a6104",
   facture:      process.env.NOTION_DB_FACTURE       || "cc21e698-b480-49ff-964f-b9bb16ce384e",
   etudeAnnees:  process.env.NOTION_DB_ETUDE_ANNEES  || "d719f26110b84560b9bedbf2fa4fe8c5",
+  users:        process.env.NOTION_DB_USERS         || "d23a2e167eb44c7f8f7f216535ec40ec",
 };
 
 export const CORS_HEADERS = {
