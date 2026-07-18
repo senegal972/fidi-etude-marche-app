@@ -1140,16 +1140,14 @@ async function resolveCadastre(){
   }
   const num = parcelle.padStart(4,'0');
   const sec = section.padStart(2,'0');
-  const url = 'https://apicarto.ign.fr/api/cadastre/parcelle?code_insee=' + selectedCommune.code +
-              '&section=' + encodeURIComponent(sec) + '&numero=' + encodeURIComponent(num);
+  const url = '/api/cadastre?code_insee=' + selectedCommune.code +
+              '&section=' + encodeURIComponent(section) + '&numero=' + encodeURIComponent(parcelle);
   try{
-    const d = await (await fetch(url)).json();
-    const feat = d && d.features && d.features[0];
-    if(!feat){ alert('Parcelle introuvable : ' + selectedCommune.nom + ', section ' + section + ', n° ' + parcelle + '.'); return null; }
-    const ctr = geomCentroid(feat.geometry);
-    if(!ctr){ alert('Géométrie de la parcelle illisible.'); return null; }
-    return { lat: ctr.lat, lon: ctr.lon,
-             label: 'Parcelle ' + sec + ' ' + num + ' — ' + selectedCommune.nom + (cp ? ' ('+cp+')' : '') };
+    const r = await fetch(url);
+    const d = await r.json().catch(()=>({}));
+    if(!r.ok || !d.found){ alert('Parcelle introuvable : ' + selectedCommune.nom + ', section ' + section + ', n° ' + parcelle + '.'); return null; }
+    return { lat: d.lat, lon: d.lon,
+             label: 'Parcelle ' + (d.section||sec) + ' ' + (d.numero||num) + ' — ' + selectedCommune.nom + (cp ? ' ('+cp+')' : '') };
   }catch(e){ alert('Service cadastre indisponible : ' + e.message); return null; }
 }
 
