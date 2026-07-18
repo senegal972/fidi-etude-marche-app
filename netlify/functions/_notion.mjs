@@ -11,6 +11,7 @@ export const DB = {
   facture:      process.env.NOTION_DB_FACTURE       || "cc21e698-b480-49ff-964f-b9bb16ce384e",
   etudeAnnees:  process.env.NOTION_DB_ETUDE_ANNEES  || "d719f26110b84560b9bedbf2fa4fe8c5",
   users:        process.env.NOTION_DB_USERS         || "d23a2e167eb44c7f8f7f216535ec40ec",
+  offres:       process.env.NOTION_DB_OFFRES        || "391ec67b0b2e4d2eab82921124bf4ea6",
 };
 
 export const CORS_HEADERS = {
@@ -62,6 +63,7 @@ export const P = {
   status: (v) => ({ status: v ? { name: String(v) } : null }),
   multi_select: (arr) => ({ multi_select: (Array.isArray(arr) ? arr : []).filter((x) => x != null && x !== "").map((name) => ({ name: String(name).slice(0, 100) })) }),
   relation: (ids) => ({ relation: (Array.isArray(ids) ? ids : []).filter(Boolean).map((id) => ({ id })) }),
+  checkbox: (v) => ({ checkbox: !!v }),
 };
 
 // ─── Property readers (inverse des builders P.*) ──────────────────────────────
@@ -80,6 +82,9 @@ export function readSelect(prop) {
 }
 export function readMultiSelect(prop) {
   return prop && Array.isArray(prop.multi_select) ? prop.multi_select.map((o) => o.name) : [];
+}
+export function readCheckbox(prop) {
+  return !!(prop && prop.checkbox);
 }
 
 // Découpe une longue chaîne JSON en plusieurs rich_text blocks (limite 2000 char/segment)
