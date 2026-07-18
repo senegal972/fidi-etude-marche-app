@@ -66,11 +66,13 @@ export const handler = async (event) => {
       return authResp(200, { ok: true, email, credits: Math.max(0, cur + v) });
     }
     if (action === "set_status") {
+      if (email === me.user.email) return authResp(400, { error: "Vous ne pouvez pas modifier votre propre statut." });
       const s = b.statut === "Désactivé" ? "Désactivé" : "Actif";
       await updatePage(page.id, { "Statut": P.select(s) });
       return authResp(200, { ok: true, email, statut: s });
     }
     if (action === "set_role") {
+      if (email === me.user.email) return authResp(400, { error: "Vous ne pouvez pas modifier votre propre rôle." });
       const r = b.role === "Administrateur" ? "Administrateur" : "Collaborateur";
       await updatePage(page.id, { "Rôle": P.select(r) });
       return authResp(200, { ok: true, email, role: r });

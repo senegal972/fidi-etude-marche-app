@@ -696,11 +696,14 @@ export const handler = async (event) => {
   if (paywallOn()) {
     const found = await currentUser(event).catch(() => null);
     if (!found) return jsonResp(401, { error: "Connexion requise pour lancer une analyse.", need_auth: true });
-    const cost = costEtude();
-    if (found.user.credits < cost) {
-      return jsonResp(402, { error: "Crédits épuisés.", credits: found.user.credits, need_credits: true });
+    // Les administrateurs sont illimités : ni contrôle ni débit de crédits.
+    if (found.user.role !== "Administrateur") {
+      const cost = costEtude();
+      if (found.user.credits < cost) {
+        return jsonResp(402, { error: "Crédits épuisés.", credits: found.user.credits, need_credits: true });
+      }
+      payer = { id: found.page.id, credits: found.user.credits, cost };
     }
-    payer = { id: found.page.id, credits: found.user.credits, cost };
   }
 
   const codeInsee = geo.citycode;
