@@ -55,7 +55,14 @@ function page(inner, extraHead = "") {
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return { statusCode: 200, headers: HTML, body: "" };
   const q = event.queryStringParameters || {};
-  const token = String(q.token || "").trim();
+  let token = String(q.token || "").trim();
+  if (!token) {
+    // Lien court /l/<jeton> : le jeton est dans le chemin (la réécriture ne
+    // transmet pas toujours le paramètre de requête). On cherche dans le chemin
+    // ET dans l'URL brute (selon le mode d'invocation Netlify).
+    const m = `${event.rawUrl || ""} ${event.path || ""}`.match(/\/l\/([^/?#\s]+)/);
+    if (m) { try { token = decodeURIComponent(m[1]).trim(); } catch { token = m[1].trim(); } }
+  }
   const origin = reqOrigin(event);
 
   const shell = (msg) => ({ statusCode: 200, headers: HTML, body: page(
