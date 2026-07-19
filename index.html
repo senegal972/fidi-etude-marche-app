@@ -3529,7 +3529,8 @@ function copyShareUrl(){
 <div id="compteModalRoot"></div>
 <script>
 window.Compte = (function(){
-  let state = { authenticated:false, user:null, paywall:false, cost:1, login_required:false };
+  let state = { authenticated:false, user:null, paywall:false, cost:1, login_required:false, paypal:{configured:false} };
+  let _ppSdk = null; // promesse de chargement du SDK PayPal
   const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
   async function refresh(){
@@ -3541,6 +3542,7 @@ window.Compte = (function(){
       state.paywall = !!d.paywall;
       state.login_required = !!d.login_required;
       state.cost = d.cost_etude || 1;
+      state.paypal = d.paypal || { configured:false };
     }catch(e){ state.authenticated = false; state.user = null; }
     render();
     renderGate();
@@ -3867,16 +3869,62 @@ window.Compte = (function(){
             (admin
               ? '<div class="btn-group btn-group-sm"><button class="btn btn-outline-secondary py-0" onclick="Compte.offerPrice(\''+o.id+'\','+o.credits+','+o.prix+')">Prix</button>'+
                 '<button class="btn btn-outline-'+(o.active?'success':'secondary')+' py-0" onclick="Compte.offerToggle(\''+o.id+'\','+(o.active?'false':'true')+')">'+(o.active?'Active':'Inactive')+'</button></div>'
-              : '<button class="btn btn-sm btn-primary py-0" onclick="Compte.chooseOffer(\''+esc(o.palier)+'\','+o.credits+','+o.prix+')">Choisir</button>')+
+              : (state.paypal && state.paypal.configured
+                  ? '<button class="btn btn-sm btn-primary py-0" onclick="Compte.payOffer(\''+o.id+'\',\''+esc(o.palier)+'\','+o.credits+','+o.prix+')">Acheter</button>'
+                  : '<button class="btn btn-sm btn-primary py-0" onclick="Compte.chooseOffer(\''+esc(o.palier)+'\','+o.credits+','+o.prix+')">Choisir</button>'))+
           '</td></tr>';
       });
       html += '</tbody></table></div>';
     });
-    if(!admin) html += '<p class="text-muted small mt-2"><i class="bi bi-info-circle me-1"></i>Le paiement en ligne (PayPal / carte bancaire) sera bientôt disponible directement ici.</p>';
+    if(!admin){
+      html += '<div id="ppBuyBox" class="mt-2"></div>';
+      html += (state.paypal && state.paypal.configured)
+        ? '<p class="text-muted small mt-2"><i class="bi bi-shield-lock me-1"></i>Paiement sécurisé par PayPal — carte bancaire acceptée sans compte PayPal.'+(state.paypal.env==='sandbox'?' <b>(mode test)</b>':'')+'</p>'
+        : '<p class="text-muted small mt-2"><i class="bi bi-info-circle me-1"></i>Le paiement en ligne sera bientôt disponible ici.</p>';
+    }
     box.innerHTML = html;
   }
   function chooseOffer(palier, credits, prix){
     alert('Pack « '+palier+' » — '+credits+' crédits pour '+prix+' € TTC.\n\nLe paiement en ligne (PayPal / carte bancaire) arrive très bientôt.\nEn attendant, contactez votre administrateur FIDI pour activer ce pack.');
+  }
+
+  // Charge le SDK PayPal une seule fois (Client ID public + carte bancaire).
+  function loadPayPalSdk(){
+    if(_ppSdk) return _ppSdk;
+    const cid = state.paypal && state.paypal.client_id;
+    if(!cid){ return Promise.reject(new Error('PayPal non configuré')); }
+    _ppSdk = new Promise((resolve,reject)=>{
+      const s=document.createElement('script');
+      s.src='https://www.paypal.com/sdk/js?client-id='+encodeURIComponent(cid)+'&currency=EUR&intent=capture&enable-funding=card';
+      s.onload=()=>resolve(window.paypal); s.onerror=()=>reject(new Error('Chargement PayPal impossible'));
+      document.head.appendChild(s);
+    });
+    return _ppSdk;
+  }
+
+  async function payOffer(offerId, palier, credits, prix){
+    const box=document.getElementById('ppBuyBox'); if(!box) return;
+    box.innerHTML='<div class="border rounded p-2"><div class="fw-semibold mb-1">Achat : '+esc(palier)+' — '+credits+' crédits ('+prix+' € TTC)</div><div id="ppButtons" class="my-2"><span class="text-muted small"><span class="spinner-border spinner-border-sm me-1"></span>Chargement du paiement…</span></div></div>';
+    box.scrollIntoView({behavior:'smooth',block:'nearest'});
+    let paypal;
+    try{ paypal = await loadPayPalSdk(); }
+    catch(e){ document.getElementById('ppButtons').innerHTML='<span class="text-danger small">'+esc(e.message)+'</span>'; return; }
+    document.getElementById('ppButtons').innerHTML='';
+    paypal.Buttons({
+      style:{ layout:'vertical', label:'pay', height:38 },
+      createOrder: async () => {
+        const r=await fetch('/api/paypal/create-order',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({offerId})});
+        const d=await r.json(); if(!r.ok||!d.orderId) throw new Error(d.error||'Création de commande impossible'); return d.orderId;
+      },
+      onApprove: async (data) => {
+        const r=await fetch('/api/paypal/capture-order',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderId:data.orderID})});
+        const d=await r.json();
+        if(!r.ok||!d.ok){ box.innerHTML='<div class="alert alert-danger py-2 small">Paiement non finalisé : '+esc((d&&d.error)||'erreur')+'</div>'; return; }
+        setCredits(d.credits);
+        box.innerHTML='<div class="alert alert-success py-2 small"><i class="bi bi-check-circle me-1"></i>Paiement confirmé : <b>+'+d.ajoutes+' crédits</b>. Nouveau solde : <b>'+d.credits+'</b>.</div>';
+      },
+      onError: (err) => { box.innerHTML='<div class="alert alert-danger py-2 small">Erreur de paiement : '+esc(String(err))+'</div>'; },
+    }).render('#ppButtons');
   }
   async function offerToggle(id, active){
     const r = await fetch('/api/offres', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'set_active',id,active})});
@@ -3893,7 +3941,7 @@ window.Compte = (function(){
 
   document.addEventListener('DOMContentLoaded', refresh);
   return { open, doLogin, logout, refresh, setCredits, setRecherches, consume, adminCreate, adminCredit, adminToggle,
-           adminIllimite, adminQuota, loadOffres, chooseOffer, offerToggle, offerPrice,
+           adminIllimite, adminQuota, loadOffres, chooseOffer, payOffer, offerToggle, offerPrice,
            get state(){ return state; } };
 })();
 </script>
