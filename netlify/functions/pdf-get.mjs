@@ -6,10 +6,17 @@
 const TTL_MS = 7 * 24 * 3600 * 1000;
 
 async function getShareStore() {
+  const mod = await import("@netlify/blobs");
+  // Essai 1 : contexte auto-injecté par le runtime Netlify.
   try {
-    const mod = await import("@netlify/blobs");
     return mod.getStore({ name: "fidi-shared", consistency: "strong" });
-  } catch (e) {
+  } catch (e1) {
+    // Essai 2 : credentials explicites (mêmes variables que pdf-share).
+    const siteID = process.env.NETLIFY_SITE_ID;
+    const token  = process.env.NETLIFY_AUTH_TOKEN || process.env.NETLIFY_TOKEN;
+    if (siteID && token) {
+      return mod.getStore({ name: "fidi-shared", siteID, token, consistency: "eventual" });
+    }
     return null;
   }
 }

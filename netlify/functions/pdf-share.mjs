@@ -7,7 +7,7 @@
 // /api/download/<id> que le destinataire peut ouvrir SANS accès à l'app.
 
 const TTL_MS = 7 * 24 * 3600 * 1000; // 7 jours
-const MAX_BYTES = 5 * 1024 * 1024;   // garde-fou : 5 Mo de PDF max
+const MAX_BYTES = 9 * 1024 * 1024;   // garde-fou : 9 Mo de PDF max (études avec graphiques)
 
 const CORS = {
   "Content-Type": "application/json; charset=utf-8",

@@ -7,7 +7,7 @@
 // remise unique. Le document (et la facture) ne seront délivrés au client via la
 // page /l/<jeton> que si le paiement n'est pas requis, ou une fois encaissé.
 
-import { DB, P, hasToken, queryDatabase, createPage, randToken } from "./_notion.mjs";
+import { DB, P, hasToken, queryDatabase, createPage, updatePage, randToken } from "./_notion.mjs";
 import { authResp, currentUser } from "./_auth.mjs";
 import { reqOrigin } from "./_facture.mjs";
 
@@ -72,10 +72,20 @@ export const handler = async (event) => {
       if (dup.results?.length) {
         const ex = dup.results[0];
         const exRef = ex.properties?.["Numéro"]?.title?.[0]?.plain_text || "";
-        const exTok = ex.properties?.["Jeton livraison"]?.rich_text?.[0]?.plain_text || "";
+        let exTok = ex.properties?.["Jeton livraison"]?.rich_text?.[0]?.plain_text || "";
+        // Ré-édition : on rafraîchit les infos de remise (document fraîchement
+        // généré, mode de paiement, canaux) sur la facture existante, et on lui
+        // garantit un jeton de remise.
+        const upd = {
+          "Paiement requis": P.checkbox(paiementRequis),
+          "Canal envoi":     P.multi_select(canaux),
+        };
+        if (lienDoc) upd["Lien document"] = P.url(lienDoc);
+        if (!exTok) { exTok = randToken(); upd["Jeton livraison"] = P.text(exTok); }
+        try { await updatePage(ex.id, upd); } catch (_) { /* non bloquant */ }
         return authResp(200, {
           ok: true, existing: true, ref: exRef, token: exTok, kind, montant, date: today,
-          libelle, client, email, adresse,
+          libelle, client, email, adresse, paiement_requis: paiementRequis,
           delivery_url: exTok ? `${origin}/l/${exTok}` : "",
         });
       }
