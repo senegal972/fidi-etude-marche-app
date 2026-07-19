@@ -13,7 +13,16 @@ export const DB = {
   users:        process.env.NOTION_DB_USERS         || "d23a2e167eb44c7f8f7f216535ec40ec",
   offres:       process.env.NOTION_DB_OFFRES        || "391ec67b0b2e4d2eab82921124bf4ea6",
   paiements:    process.env.NOTION_DB_PAIEMENTS     || "0e270b98a8124bec9d7803f12dfea510",
+  tarifs:       process.env.NOTION_DB_TARIFS        || "337ca35d942e45fe819d3ed54473ee93",
 };
+
+// Jeton aléatoire non devinable (page de remise publique, liens de paiement).
+export function randToken(n = 22) {
+  const a = "abcdefghijklmnopqrstuvwxyz0123456789";
+  let s = "";
+  for (let i = 0; i < n; i++) s += a[Math.floor(Math.random() * a.length)];
+  return s;
+}
 
 export const CORS_HEADERS = {
   "Content-Type": "application/json; charset=utf-8",

@@ -23,7 +23,19 @@
   timeout = 20
 
 [functions."facture"]
-  timeout = 10
+  timeout = 12
+
+[functions."facture-pay-create"]
+  timeout = 15
+
+[functions."facture-pay-capture"]
+  timeout = 20
+
+[functions."livraison"]
+  timeout = 12
+
+[functions."tarifs"]
+  timeout = 12
 
 [functions."facture-html"]
   timeout = 5
@@ -107,6 +119,33 @@
 [[redirects]]
   from   = "/api/paypal/capture-order"
   to     = "/.netlify/functions/paypal-capture-order"
+  status = 200
+
+# ── Facturation & remise de documents ─────────────────────────────────────────
+[[redirects]]
+  from   = "/api/tarifs"
+  to     = "/.netlify/functions/tarifs"
+  status = 200
+
+[[redirects]]
+  from   = "/api/facture/pay-create"
+  to     = "/.netlify/functions/facture-pay-create"
+  status = 200
+
+[[redirects]]
+  from   = "/api/facture/pay-capture"
+  to     = "/.netlify/functions/facture-pay-capture"
+  status = 200
+
+[[redirects]]
+  from   = "/api/livraison"
+  to     = "/.netlify/functions/livraison"
+  status = 200
+
+# Page de remise publique : /l/<jeton> → fonction livraison
+[[redirects]]
+  from   = "/l/:token"
+  to     = "/.netlify/functions/livraison?token=:token"
   status = 200
 
 [[redirects]]

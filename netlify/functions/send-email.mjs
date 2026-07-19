@@ -50,6 +50,23 @@ export const handler = async (event) => {
   const titre    = escHtml(b.titre || "");
   const from     = process.env.RESEND_FROM || "FIDI Conseil <contact@fidiconseil.com>";
 
+  // Lien de remise (page /l/<jeton>) : e-mail « avec bouton » plutôt que pièce jointe.
+  let lien = String(b.lien || "").trim();
+  if (lien && !/^https?:\/\//i.test(lien)) lien = "";
+  const messagePerso = b.message ? escHtml(b.message) : "";
+
+  const corps = lien
+    ? `<p style="margin-top:0;">Bonjour,</p>
+       ${messagePerso ? `<p>${messagePerso}</p>` : `<p>Votre ${kind}${titre ? " <strong>— " + titre + "</strong>" : ""} est disponible.</p>`}
+       <p>Cliquez sur le bouton ci-dessous pour y accéder :</p>
+       <p style="text-align:center;margin:26px 0;">
+         <a href="${escHtml(lien)}" style="display:inline-block;background:#1a3a6e;color:#fff;text-decoration:none;padding:13px 30px;border-radius:8px;font-weight:700;font-size:15px;">Accéder à mes documents</a>
+       </p>
+       <p style="font-size:12px;color:#6c757d;">Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :<br><a href="${escHtml(lien)}" style="color:#1a3a6e;word-break:break-all;">${escHtml(lien)}</a></p>`
+    : `<p style="margin-top:0;">Bonjour,</p>
+       <p>Veuillez trouver ci-joint ${kind}${titre ? " <strong>— " + titre + "</strong>" : ""}.</p>
+       <p>Ce document a été généré par l'application FIDI · Étude de Marché.</p>`;
+
   const htmlBody = `
 <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#1a2233;">
   <div style="background:#1a3a6e;padding:20px 28px;border-radius:8px 8px 0 0;">
@@ -57,9 +74,7 @@ export const handler = async (event) => {
     <p style="color:#c5d5ea;margin:4px 0 0;font-size:.85rem;">Conseil en immobilier · Martinique</p>
   </div>
   <div style="padding:28px;border:1px solid #dee2e6;border-top:none;border-radius:0 0 8px 8px;background:#fff;">
-    <p style="margin-top:0;">Bonjour,</p>
-    <p>Veuillez trouver ci-joint ${kind}${titre ? " <strong>— " + titre + "</strong>" : ""}.</p>
-    <p>Ce document a été généré par l'application FIDI · Étude de Marché.</p>
+    ${corps}
     <hr style="margin:20px 0;border:none;border-top:1px solid #dee2e6;">
     <p style="color:#6c757d;font-size:11px;margin:0;">
       FIDI Conseil · <a href="mailto:contact@fidiconseil.com" style="color:#1a3a6e;">contact@fidiconseil.com</a><br>

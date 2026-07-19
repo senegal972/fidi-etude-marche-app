@@ -741,7 +741,7 @@
       '<button class="btn btn-sm btn-outline-success" data-action="save"><i class="bi bi-save me-1"></i>Sauvegarder</button>' +
       '<button class="btn btn-sm btn-outline-info" data-action="cloud" title="Mes dossiers sauvegardés dans Notion">☁️ Cloud</button>' +
       '<button class="btn btn-sm btn-outline-secondary" data-action="partager" title="Partager cet avis"><i class="bi bi-share me-1"></i>Partager</button>' +
-      '<button class="btn btn-sm btn-outline-warning" data-action="facturer" title="Créer la facture pour cet avis (250 €)"><i class="bi bi-receipt me-1"></i>Facturer</button>' +
+      '<button class="btn btn-sm btn-outline-warning" data-action="facturer" title="Facturer & envoyer cet avis"><i class="bi bi-receipt me-1"></i>Facturer</button>' +
       '<button class="btn btn-sm btn-outline-dark" data-action="toggle-preview"><i class="bi bi-eye me-1"></i>Aperçu</button>' +
       '<button class="btn btn-sm btn-danger" data-action="pdf"><i class="bi bi-file-earmark-pdf me-1"></i>PDF</button>' +
       '</div></div>' +
@@ -1027,7 +1027,9 @@
         email:  meta.emailClient || '',
         adresse: bien.adresse || '',
         commune: bien.commune || '',
-        ref:    (meta.ref || '').trim()
+        ref:    (meta.ref || '').trim(),
+        // HTML du document, pour générer automatiquement le PDF de l'avis livré.
+        htmlString: buildAvisDocHTML(d, compute(d))
       };
       window.proposerFacture('avis');
     } else {
