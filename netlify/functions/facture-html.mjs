@@ -38,6 +38,7 @@ export const handler = async (event) => {
     ? `Avis de valeur immobilier — ${adresse || commune || ""}`
     : `Étude de marché immobilier — ${commune || ""}`);
   const echeance = new Date(new Date(date).getTime() + 30 * 86400000).toISOString().slice(0, 10);
+  const acquittee = q.acquittee === "1";
 
   const html = `<!DOCTYPE html>
 <html lang="fr">
@@ -71,6 +72,7 @@ export const handler = async (event) => {
   .fac-note { font-size: 11px; color: #777; line-height: 1.6; border-top: 1px solid #eee; padding-top: 16px; margin-bottom: 20px; }
   .fac-footer { text-align: center; font-size: 11px; color: #aaa; margin-top: 20px; }
   .btn-print { display: block; margin: 20px auto; padding: 10px 28px; background: #1a3a6e; color: #fff; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; }
+  .fac-paid { display: inline-block; margin-left: 12px; padding: 4px 14px; border: 2px solid #1c7a35; color: #1c7a35; border-radius: 6px; font-size: 13px; font-weight: 800; letter-spacing: 1px; transform: rotate(-4deg); vertical-align: middle; }
 </style>
 </head>
 <body>
@@ -89,7 +91,7 @@ export const handler = async (event) => {
   </div>
 </div>
 
-<div class="fac-title">FACTURE N° ${esc(ref)}</div>
+<div class="fac-title">FACTURE N° ${esc(ref)}${acquittee ? '<span class="fac-paid">✓ PAYÉE</span>' : ''}</div>
 
 <div class="fac-meta">
   <div class="fac-box">

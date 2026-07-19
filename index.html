@@ -476,7 +476,7 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
         <button class="btn btn-sm btn-outline-primary" id="btnShareEtude" onclick="partagerEtude()" title="Partager cette étude (lien lecture seule)">
           <i class="bi bi-share me-1"></i>Partager
         </button>
-        <button class="btn btn-sm btn-outline-warning" id="btnFactureEtude" onclick="proposerFacture('etude')" title="Créer la facture pour cette étude (450 €)">
+        <button class="btn btn-sm btn-outline-warning" id="btnFactureEtude" onclick="proposerFacture('etude')" title="Facturer & envoyer cette étude">
           <i class="bi bi-receipt me-1"></i>Facturer
         </button>
         <button class="btn btn-sm" style="background:var(--fidi-gold);color:#1a2233;font-weight:600;" onclick="AvisValeur.open()">
@@ -3202,101 +3202,259 @@ async function partagerEtude(){
   fidiSharePdf({ element: document.getElementById('results-panel'), filename, titre, kind:'Étude de marché' });
 }
 
-// ═══ Facturation ════════════════════════════════════════════════════════════════
+// ═══ Facturer & Envoyer — grille tarifaire + remise (lien / e-mail / WhatsApp) ═══
+window.__factCtx = null;      // contexte de la prestation en cours de facturation
+window.__factRemise = null;   // résultat (facture créée + lien de remise)
+
 function proposerFacture(kind){
-  const TARIFS = {avis:250, etude:450};
-  const montant = TARIFS[kind] || 0;
   const label = kind==='avis' ? 'Avis de valeur' : 'Étude de marché';
   let d = window.__fidiData, inputs = window.__fidiInputs || {};
-  let adresse='', commune='', ref='', client='', email='';
+  let adresse='', ref='', client='', email='', htmlString='';
   if(kind==='etude' && d){
     const loc = d.localisation||{};
-    adresse = loc.label || inputs.adresse || '';
-    commune = loc.city || '';
+    adresse = loc.label || inputs.adresse || loc.city || '';
     ref     = etudeRef(d, inputs);
   } else if(kind==='avis' && window.__factureAvisCtx){
     const ctx = window.__factureAvisCtx;
-    client  = ctx.client  || '';
-    email   = ctx.email   || '';
-    adresse = ctx.adresse || '';
-    commune = ctx.commune || adresse;
-    ref     = ctx.ref     || '';
+    client = ctx.client||''; email = ctx.email||'';
+    adresse = ctx.adresse || ctx.commune || '';
+    ref = ctx.ref||''; htmlString = ctx.htmlString || '';
     window.__factureAvisCtx = null;
   }
+  window.__factCtx = { kind, label, ref, client, email, adresse, htmlString };
+  window.__factRemise = null;
   if(typeof bootstrap === 'undefined'){ alert('Bootstrap non chargé.'); return; }
+
   let root = document.getElementById('factureRoot');
   if(!root){ root = document.createElement('div'); root.id='factureRoot'; document.body.appendChild(root); }
   root.innerHTML =
-    '<div class="modal fade" id="factureModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">'+
-    '<div class="modal-header" style="background:#856404;color:#fff;">'+
-    '<h5 class="modal-title"><i class="bi bi-receipt me-2"></i>Créer une facture — '+escHtml(label)+'</h5>'+
+    '<div class="modal fade" id="factureModal" tabindex="-1"><div class="modal-dialog modal-dialog-scrollable"><div class="modal-content">'+
+    '<div class="modal-header" style="background:#12294d;color:#fff;">'+
+    '<h5 class="modal-title"><i class="bi bi-receipt me-2"></i>Facturer &amp; Envoyer — '+escHtml(label)+'</h5>'+
     '<button type="button" class="btn-close" style="filter:invert(1)" data-bs-dismiss="modal"></button></div>'+
-    '<div class="modal-body">'+
-    '<p class="small text-muted mb-3">Prestation : <strong>'+escHtml(label)+'</strong> — <strong>'+montant+' € TTC</strong></p>'+
-    '<div class="mb-2"><label class="form-label small mb-1">Nom du client</label>'+
-    '<input class="form-control form-control-sm" id="factClient" value="'+escHtml(client)+'" placeholder="Nom Prénom ou Société"></div>'+
-    '<div class="mb-2"><label class="form-label small mb-1">Email client</label>'+
-    '<input class="form-control form-control-sm" id="factEmail" value="'+escHtml(email)+'" placeholder="client@exemple.com" type="email"></div>'+
-    '<div class="mb-2"><label class="form-label small mb-1">Bien / Commune</label>'+
-    '<input class="form-control form-control-sm" id="factCommune" value="'+escHtml(commune||adresse)+'" placeholder="Commune ou adresse du bien"></div>'+
+    '<div class="modal-body" id="factBody">'+
+      '<div class="row g-2 mb-2">'+
+        '<div class="col-12"><label class="form-label small mb-1">Nom du client</label>'+
+        '<input class="form-control form-control-sm" id="factClient" value="'+escHtml(client)+'" placeholder="Nom Prénom ou Société"></div>'+
+        '<div class="col-md-6"><label class="form-label small mb-1">E-mail client</label>'+
+        '<input class="form-control form-control-sm" id="factEmail" value="'+escHtml(email)+'" placeholder="client@exemple.com" type="email"></div>'+
+        '<div class="col-md-6"><label class="form-label small mb-1">Téléphone (WhatsApp)</label>'+
+        '<input class="form-control form-control-sm" id="factTel" placeholder="+596 6 96 …" type="tel"></div>'+
+        '<div class="col-12"><label class="form-label small mb-1">Bien / adresse</label>'+
+        '<input class="form-control form-control-sm" id="factAdresse" value="'+escHtml(adresse)+'" placeholder="Commune ou adresse du bien"></div>'+
+      '</div>'+
+      '<label class="form-label small mb-1 fw-semibold">Prestation facturée</label>'+
+      '<div id="factTarifsBox" class="mb-2"><div class="text-muted small py-2"><span class="spinner-border spinner-border-sm me-1"></span>Chargement de la grille…</div></div>'+
+      '<div class="row g-2 align-items-end mb-2">'+
+        '<div class="col-7"><label class="form-label small mb-1">Libellé</label>'+
+        '<input class="form-control form-control-sm" id="factLibelle" placeholder="Désignation sur la facture"></div>'+
+        '<div class="col-5"><label class="form-label small mb-1">Montant TTC (€)</label>'+
+        '<input class="form-control form-control-sm text-end fw-bold" id="factMontant" type="number" min="0" step="1"></div>'+
+      '</div>'+
+      '<div class="border rounded p-2 mb-2" style="background:#f8fafc;">'+
+        '<div class="form-check form-switch mb-1">'+
+          '<input class="form-check-input" type="checkbox" role="switch" id="factPayReq" checked>'+
+          '<label class="form-check-label small fw-semibold" for="factPayReq">Paiement préalable requis</label>'+
+        '</div>'+
+        '<div class="text-muted" style="font-size:.74rem;" id="factPayHint">Le client règle en ligne (carte / PayPal) avant de recevoir la facture et le document.</div>'+
+      '</div>'+
+      '<label class="form-label small mb-1 fw-semibold">Canaux d\'envoi</label>'+
+      '<div class="d-flex gap-3 mb-1 small">'+
+        '<div class="form-check"><input class="form-check-input" type="checkbox" id="factCanEmail" checked><label class="form-check-label" for="factCanEmail"><i class="bi bi-envelope me-1"></i>E-mail</label></div>'+
+        '<div class="form-check"><input class="form-check-input" type="checkbox" id="factCanWa" checked><label class="form-check-label" for="factCanWa"><i class="bi bi-whatsapp me-1"></i>WhatsApp</label></div>'+
+      '</div>'+
+      '<div id="factStatus"></div>'+
     '</div>'+
     '<div class="modal-footer"><button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Annuler</button>'+
-    '<button class="btn btn-warning btn-sm fw-bold" id="factBtnOk" onclick="confirmerFacture(\''+kind+'\',\''+escHtml(ref)+'\','+montant+')">'+
-    '<i class="bi bi-receipt me-1"></i>Générer la facture</button></div>'+
+    '<button class="btn btn-sm fw-bold text-white" style="background:#12294d;" id="factBtnOk" onclick="factGenerer()">'+
+    '<i class="bi bi-send me-1"></i>Générer &amp; préparer l\'envoi</button></div>'+
     '</div></div></div>';
   const el = document.getElementById('factureModal');
   el.addEventListener('hidden.bs.modal', ()=>el.remove());
+  const pr = document.getElementById('factPayReq');
+  if(pr) pr.addEventListener('change', ()=>{ const h=document.getElementById('factPayHint');
+    if(h) h.textContent = pr.checked ? 'Le client règle en ligne (carte / PayPal) avant de recevoir la facture et le document.'
+      : 'Envoi immédiat : le client reçoit la facture et le document sans condition de paiement.'; });
   new bootstrap.Modal(el).show();
+  factRenderTarifs(kind, label);
 }
 
-async function confirmerFacture(kind, prestRef, montant){
-  const btn = document.getElementById('factBtnOk');
-  if(btn){ btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm"></span>'; }
-  const client  = (document.getElementById('factClient')  || {}).value || '';
-  const email   = (document.getElementById('factEmail')   || {}).value || '';
-  const commune = (document.getElementById('factCommune') || {}).value || '';
-  const payload = { kind, ref: prestRef, client, email_client: email, commune, adresse: commune, montant };
+// Grille tarifaire (base Notion « Tarifs prestations ») filtrée pour ce type.
+async function factRenderTarifs(kind, label){
+  const box = document.getElementById('factTarifsBox');
+  const wantCat = kind==='avis' ? 'Avis de valeur' : 'Étude de marché';
+  const defMontant = kind==='avis' ? 250 : 450;
+  let tarifs = [];
   try{
-    const r = await fetch('/api/facture', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const r = await fetch('/api/tarifs', {credentials:'same-origin'});
     const j = await r.json().catch(()=>({}));
-    const el = document.getElementById('factureModal');
-    if(el && bootstrap){ const m = bootstrap.Modal.getInstance(el); if(m) m.hide(); }
-    if(j && j.ok){
-      afficherResultatFacture(j, kind, prestRef);
-    } else {
-      alert('Erreur création facture : '+(j&&j.error||'inconnue'));
-    }
-  }catch(e){ alert('Erreur réseau : '+e.message); }
+    if(j && j.ok) tarifs = j.tarifs || [];
+  }catch(e){}
+  // Prestations pertinentes : la catégorie du type + Options + Forfaits.
+  const list = tarifs.filter(t => t.categorie===wantCat || t.categorie==='Option' || t.categorie==='Forfait');
+  if(!box) return;
+  if(!list.length){
+    box.innerHTML = '<div class="text-muted small">Aucune grille configurée — saisissez le montant ci-dessous.</div>';
+    factSetPresta(label, defMontant);
+    return;
+  }
+  box.innerHTML = '<div class="d-flex flex-wrap gap-1">' + list.map(t =>
+    '<button type="button" class="btn btn-sm btn-outline-primary py-1 px-2" style="font-size:.8rem;" '+
+    'onclick="factSetPresta('+JSON.stringify(t.prestation).replace(/"/g,'&quot;')+','+t.prix+')">'+
+    escHtml(t.prestation)+' · <b>'+t.prix+' €</b></button>'
+  ).join('') + '</div>';
+  // Pré-sélection : première prestation de la catégorie exacte, sinon défaut.
+  const pref = list.find(t => t.categorie===wantCat) || list[0];
+  factSetPresta(pref ? pref.prestation : label, pref ? pref.prix : defMontant);
 }
 
-function afficherResultatFacture(j, kind, prestRef){
-  if(typeof bootstrap === 'undefined') return;
-  let root = document.getElementById('factureResRoot');
-  if(!root){ root = document.createElement('div'); root.id='factureResRoot'; document.body.appendChild(root); }
-  const params = new URLSearchParams({
-    ref: j.ref, kind, client: j.client||'', email: j.email||'',
-    commune: j.commune||'', adresse: j.adresse||'', montant: j.montant||0,
-    date: j.date||'', libelle: j.libelle||'', prestRef: prestRef||''
-  });
-  const pdfUrl = '/api/facture-html?'+params.toString();
-  root.innerHTML =
-    '<div class="modal fade" id="factureResModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">'+
-    '<div class="modal-header" style="background:#1a3a6e;color:#fff;">'+
-    '<h5 class="modal-title">✅ Facture créée</h5>'+
-    '<button type="button" class="btn-close" style="filter:invert(1)" data-bs-dismiss="modal"></button></div>'+
-    '<div class="modal-body text-center py-4">'+
-    '<div class="display-6 mb-2">🧾</div>'+
-    '<p class="fw-bold mb-1">Facture N° '+escHtml(j.ref)+'</p>'+
-    '<p class="text-muted small mb-3">'+escHtml(j.libelle||'')+'<br>Montant : <strong>'+escHtml(String(j.montant))+' € TTC</strong></p>'+
-    (j.existing ? '<div class="alert alert-info small py-2 mb-3">Une facture existait déjà pour cette prestation.</div>' : '')+
-    '<div class="d-grid gap-2">'+
-    '<a class="btn btn-primary" href="'+escHtml(pdfUrl)+'" target="_blank"><i class="bi bi-file-earmark-pdf me-1"></i>Ouvrir / Imprimer la facture</a>'+
-    '</div></div>'+
-    '<div class="modal-footer"><button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Fermer</button></div>'+
-    '</div></div></div>';
-  const el = document.getElementById('factureResModal');
-  el.addEventListener('hidden.bs.modal', ()=>el.remove());
-  new bootstrap.Modal(el).show();
+function factSetPresta(libelle, montant){
+  const l = document.getElementById('factLibelle'); if(l) l.value = libelle;
+  const m = document.getElementById('factMontant'); if(m) m.value = montant;
+}
+
+// Génère la facture + le document, prépare la page de remise.
+async function factGenerer(){
+  const ctx = window.__factCtx || {};
+  const btn = document.getElementById('factBtnOk');
+  const status = document.getElementById('factStatus');
+  const val = id => (document.getElementById(id)||{}).value || '';
+  const client = val('factClient'), email = val('factEmail'), tel = val('factTel');
+  const adresse = val('factAdresse'), libelle = val('factLibelle');
+  const montant = parseFloat(val('factMontant'));
+  const payReq = !!(document.getElementById('factPayReq')||{}).checked;
+  const canal = ['Lien'];
+  if((document.getElementById('factCanEmail')||{}).checked) canal.push('Email');
+  if((document.getElementById('factCanWa')||{}).checked) canal.push('WhatsApp');
+  if(!(montant>0)){ if(status) status.innerHTML='<div class="alert alert-warning py-2 small mb-0">Indiquez un montant.</div>'; return; }
+
+  if(btn){ btn.disabled=true; }
+  const setStatus = (html)=>{ if(status) status.innerHTML = html; };
+  setStatus('<div class="alert alert-info py-2 small mb-0"><span class="spinner-border spinner-border-sm me-1"></span>Génération du document…</div>');
+
+  // 1) Génère le PDF du document (étude/avis) et l'héberge (lien sécurisé).
+  let lienDoc = '';
+  try{ lienDoc = await factGenDocLink(ctx); }catch(e){ lienDoc=''; }
+  if(!lienDoc){
+    setStatus('<div class="alert alert-warning py-2 small mb-0"><i class="bi bi-exclamation-triangle me-1"></i>Document non généré automatiquement (trop volumineux ou indisponible). La facture est créée ; vous pourrez joindre le document via « Partager ».</div>');
+  } else {
+    setStatus('<div class="alert alert-info py-2 small mb-0"><span class="spinner-border spinner-border-sm me-1"></span>Création de la facture…</div>');
+  }
+
+  // 2) Crée la facture + le jeton de remise.
+  try{
+    const payload = { kind: ctx.kind, ref: ctx.ref, client, email_client: email, telephone: tel,
+      adresse, commune: adresse, montant, libelle, paiement_requis: payReq, canal, lien_document: lienDoc };
+    const r = await fetch('/api/facture', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const j = await r.json().catch(()=>({}));
+    if(!r.ok || !j.ok){ setStatus('<div class="alert alert-danger py-2 small mb-0">Erreur : '+escHtml((j&&j.error)||'création facture impossible')+'</div>'); if(btn) btn.disabled=false; return; }
+    window.__factRemise = Object.assign({}, j, { client, email, tel, libelle, montant, payReq, lienDoc, adresse, kind: ctx.kind, label: ctx.label });
+    factAfficherRemise();
+  }catch(e){
+    setStatus('<div class="alert alert-danger py-2 small mb-0">Erreur réseau : '+escHtml(e.message)+'</div>');
+    if(btn) btn.disabled=false;
+  }
+}
+
+// Génère le PDF du document courant et renvoie un lien de téléchargement (Blobs).
+async function factGenDocLink(ctx){
+  if(typeof html2pdf === 'undefined') return '';
+  const safe = (ctx.ref||'document').replace(/[^a-zA-Z0-9]+/g,'_').slice(0,40);
+  const filename = 'FIDI_'+(ctx.kind==='avis'?'Avis':'Etude')+'_'+safe+'.pdf';
+  let element, cleanup = ()=>{};
+  if(ctx.kind==='avis' && ctx.htmlString){
+    const tmp = document.createElement('div');
+    tmp.style.cssText = 'position:fixed;left:-99999px;top:0;width:794px;background:#fff;padding:24px;';
+    tmp.innerHTML = '<div class="avis-doc">'+ctx.htmlString+'</div>';
+    document.body.appendChild(tmp); element = tmp; cleanup = ()=>tmp.remove();
+  } else {
+    element = document.getElementById('results-panel');
+  }
+  if(!element) return '';
+  try{
+    const blob = await html2pdf().set(window.fidiPdfOptions(filename)).from(element).outputPdf('blob');
+    const b64 = await fidiFileToB64(blob);
+    const r = await fetch('/api/pdf-share', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pdf_b64:b64, filename})});
+    const j = await r.json().catch(()=>({}));
+    return (j && j.url) ? j.url : '';
+  }catch(e){ return ''; }
+  finally{ cleanup(); }
+}
+
+function factAfficherRemise(){
+  const R = window.__factRemise || {};
+  const body = document.getElementById('factBody');
+  const foot = document.querySelector('#factureModal .modal-footer');
+  if(!body) return;
+  const url = R.delivery_url || '';
+  const modeTxt = R.payReq
+    ? 'Le client devra <b>régler en ligne</b> pour débloquer la facture et le document.'
+    : 'Envoi direct : la facture et le document sont <b>immédiatement accessibles</b>.';
+  body.innerHTML =
+    '<div class="text-center mb-3"><div class="display-6">🧾</div>'+
+      '<div class="fw-bold">Facture '+escHtml(R.ref||'')+(R.existing?' <span class="badge bg-info">déjà créée</span>':'')+'</div>'+
+      '<div class="text-muted small">'+escHtml(R.libelle||'')+' — <b>'+escHtml(String(R.montant))+' € TTC</b></div>'+
+    '</div>'+
+    (R.lienDoc ? '' : '<div class="alert alert-warning py-2 small">Le document n\'a pas pu être joint automatiquement. La page de remise contiendra la facture ; ajoutez le document via « Partager » si besoin.</div>')+
+    '<div class="alert alert-secondary py-2 small mb-2">'+modeTxt+'</div>'+
+    '<label class="form-label small mb-1 fw-semibold">Lien de remise (page mobile du client)</label>'+
+    '<div class="input-group input-group-sm mb-2">'+
+      '<input class="form-control" id="factLienRemise" readonly value="'+escHtml(url)+'">'+
+      '<button class="btn btn-outline-secondary" onclick="factCopier()"><i class="bi bi-clipboard"></i></button>'+
+      '<a class="btn btn-outline-primary" href="'+escHtml(url)+'" target="_blank"><i class="bi bi-box-arrow-up-right"></i></a>'+
+    '</div>'+
+    '<div class="d-grid gap-2 mt-3">'+
+      (R.email ? '<button class="btn btn-info text-white btn-sm" onclick="factEnvoyerEmail()"><i class="bi bi-envelope me-1"></i>Envoyer par e-mail à '+escHtml(R.email)+'</button>' :
+                 '<div class="text-muted small">Renseignez un e-mail pour l\'envoi par courriel.</div>')+
+      '<button class="btn btn-success btn-sm" onclick="factEnvoyerWhatsapp()"><i class="bi bi-whatsapp me-1"></i>Envoyer via WhatsApp</button>'+
+    '</div>'+
+    '<div id="factSendStatus" class="mt-2"></div>';
+  if(foot) foot.innerHTML = '<button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Fermer</button>';
+}
+
+function factCopier(){
+  const inp = document.getElementById('factLienRemise'); if(!inp) return;
+  inp.select();
+  const done = ()=>{ const s=document.getElementById('factSendStatus'); if(s) s.innerHTML='<div class="alert alert-success py-1 px-2 small mb-0">Lien copié.</div>'; };
+  if(navigator.clipboard){ navigator.clipboard.writeText(inp.value).then(done, ()=>{ document.execCommand('copy'); done(); }); }
+  else { document.execCommand('copy'); done(); }
+}
+
+async function factEnvoyerEmail(){
+  const R = window.__factRemise || {};
+  const status = document.getElementById('factSendStatus');
+  if(!R.email){ if(status) status.innerHTML='<div class="alert alert-warning py-1 px-2 small mb-0">Aucun e-mail renseigné.</div>'; return; }
+  if(status) status.innerHTML='<div class="alert alert-info py-1 px-2 small mb-0"><span class="spinner-border spinner-border-sm me-1"></span>Envoi de l\'e-mail…</div>';
+  const message = R.payReq
+    ? 'Votre '+(R.label||'document').toLowerCase()+' est prêt. Réglez et téléchargez vos documents via le lien sécurisé ci-dessous.'
+    : 'Votre '+(R.label||'document').toLowerCase()+' est disponible. Accédez à votre facture et à votre document via le lien ci-dessous.';
+  try{
+    const r = await fetch('/api/send-email', {method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ to:R.email, subject:'FIDI Conseil — '+(R.label||'Votre document')+(R.adresse?(' ('+R.adresse+')'):''),
+        lien:R.delivery_url, message, kind:(R.label||'document'), titre:R.adresse||'' })});
+    const j = await r.json().catch(()=>({}));
+    if(j && j.ok){ if(status) status.innerHTML='<div class="alert alert-success py-1 px-2 small mb-0"><i class="bi bi-check-circle me-1"></i>E-mail envoyé à '+escHtml(R.email)+'.</div>'; }
+    else if(j && j.not_configured){ factMailtoFallback(R, status); }
+    else { if(status) status.innerHTML='<div class="alert alert-danger py-1 px-2 small mb-0">Envoi impossible : '+escHtml((j&&j.error)||'erreur')+'. '+'<a href="#" onclick="factMailtoFallback(window.__factRemise, document.getElementById(\'factSendStatus\'));return false;">Ouvrir mon logiciel de messagerie</a></div>'; }
+  }catch(e){ factMailtoFallback(R, status); }
+}
+
+function factMailtoFallback(R, status){
+  const subject = 'FIDI Conseil — '+(R.label||'Votre document');
+  const body = 'Bonjour,\n\nVotre '+(R.label||'document').toLowerCase()+' est disponible via ce lien sécurisé :\n'+R.delivery_url+'\n\nCordialement,\nFIDI Conseil';
+  window.open('mailto:'+encodeURIComponent(R.email||'')+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body), '_blank');
+  if(status) status.innerHTML='<div class="alert alert-info py-1 px-2 small mb-0">Votre messagerie s\'est ouverte avec le message pré-rempli.</div>';
+}
+
+function factEnvoyerWhatsapp(){
+  const R = window.__factRemise || {};
+  const status = document.getElementById('factSendStatus');
+  const txt = 'Bonjour, voici votre '+(R.label||'document').toLowerCase()+' de FIDI Conseil.'+
+    (R.payReq ? ' Vous pourrez régler et télécharger vos documents ici : ' : ' Accédez à votre facture et votre document ici : ')+R.delivery_url;
+  const digits = String(R.tel||'').replace(/[^0-9]/g,'');
+  const base = (digits.length>=10) ? ('https://wa.me/'+digits) : 'https://wa.me/';
+  window.open(base+'?text='+encodeURIComponent(txt), '_blank', 'noopener');
+  if(status) status.innerHTML='<div class="alert alert-success py-1 px-2 small mb-0"><i class="bi bi-whatsapp me-1"></i>WhatsApp ouvert avec le message pré-rempli.</div>';
 }
 
 // ═══ Génération PDF réel + partage (téléchargement / WhatsApp / lien) ════════
