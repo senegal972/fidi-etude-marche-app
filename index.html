@@ -3358,7 +3358,8 @@ async function factGenerer(){
 
 // Génère le PDF du document courant et renvoie un lien de téléchargement (Blobs).
 async function factGenDocLink(ctx){
-  if(typeof html2pdf === 'undefined') return '';
+  window.__factDocError = '';
+  if(typeof html2pdf === 'undefined'){ window.__factDocError='Générateur PDF non chargé (rechargez la page).'; return ''; }
   const safe = (ctx.ref||'document').replace(/[^a-zA-Z0-9]+/g,'_').slice(0,40);
   const filename = 'FIDI_'+(ctx.kind==='avis'?'Avis':'Etude')+'_'+safe+'.pdf';
   let element, cleanup = ()=>{};
@@ -3370,14 +3371,16 @@ async function factGenDocLink(ctx){
   } else {
     element = document.getElementById('results-panel');
   }
-  if(!element) return '';
+  if(!element){ window.__factDocError='Document introuvable à l\'écran.'; return ''; }
   try{
     const blob = await html2pdf().set(window.fidiPdfOptions(filename)).from(element).outputPdf('blob');
     const b64 = await fidiFileToB64(blob);
     const r = await fetch('/api/pdf-share', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pdf_b64:b64, filename})});
     const j = await r.json().catch(()=>({}));
-    return (j && j.url) ? j.url : '';
-  }catch(e){ return ''; }
+    if(j && j.url) return j.url;
+    window.__factDocError = (j && j.error) ? j.error : ('Hébergement indisponible (HTTP '+r.status+').');
+    return '';
+  }catch(e){ window.__factDocError = 'Génération PDF impossible : '+(e && e.message || e); return ''; }
   finally{ cleanup(); }
 }
 
@@ -3395,7 +3398,7 @@ function factAfficherRemise(){
       '<div class="fw-bold">Facture '+escHtml(R.ref||'')+(R.existing?' <span class="badge bg-info">déjà créée</span>':'')+'</div>'+
       '<div class="text-muted small">'+escHtml(R.libelle||'')+' — <b>'+escHtml(String(R.montant))+' € TTC</b></div>'+
     '</div>'+
-    (R.lienDoc ? '' : '<div class="alert alert-warning py-2 small">Le document n\'a pas pu être joint automatiquement. La page de remise contiendra la facture ; ajoutez le document via « Partager » si besoin.</div>')+
+    (R.lienDoc ? '' : '<div class="alert alert-warning py-2 small">Le document n\'a pas pu être joint automatiquement'+(window.__factDocError?(' ('+escHtml(window.__factDocError)+')'):'')+'. La page de remise contiendra la facture ; ajoutez le document via « Partager » si besoin.</div>')+
     '<div class="alert alert-secondary py-2 small mb-2">'+modeTxt+'</div>'+
     '<label class="form-label small mb-1 fw-semibold">Lien de remise (page mobile du client)</label>'+
     '<div class="input-group input-group-sm mb-2">'+
