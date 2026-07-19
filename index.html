@@ -183,8 +183,15 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
 @media print{
   body{background:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
   .navbar-fidi,.search-panel,.btn-print,.btn-pdf,#loading-panel,#init-panel{display:none!important;}
-  .modal,.modal-backdrop,#inputDestinataire{display:none!important;}
-  .card{break-inside:avoid;page-break-inside:avoid;box-shadow:none!important;border:1px solid #dee2e6!important;}
+  .modal,.modal-backdrop,#inputDestinataire,#printScaleDialog{display:none!important;}
+  /* Échelle d'impression réglable : préserve la mise en page en la réduisant
+     proportionnellement (aucune recomposition), pilotée par --print-scale. */
+  #results-panel{zoom:var(--print-scale,1);}
+  /* Aucune coupure au milieu d'un bloc : cartes, lignes, tableaux et graphiques
+     restent d'un seul tenant d'une page à l'autre. */
+  .card,.row,.chart-wrap,table,tr,thead,.sources-bar,.stat-box,.kpi,.badge{break-inside:avoid;page-break-inside:avoid;}
+  .card{box-shadow:none!important;border:1px solid #dee2e6!important;}
+  h1,h2,h3,h4,h5,h6{break-after:avoid;page-break-after:avoid;}
   .chart-wrap{height:180px!important;}
   table{font-size:.7rem;}
   .sources-bar{font-size:.65rem;}
@@ -1217,16 +1224,61 @@ document.getElementById('btnGeoloc').addEventListener('click', async () => {
 
 // ─── Export PDF (impression navigateur → "Enregistrer en PDF") ────────────────
 // Approche fiable : utilise le moteur d'impression natif du navigateur via les
-async function exportPdf(){
+function exportPdf(){
   const target = document.getElementById('results-panel');
   if(!target || target.classList.contains('d-none')){
     alert('Lancez une analyse avant d\'imprimer.');
     return;
   }
-  // Édition d'un document = acte facturé : débit d'un crédit (sauf admin/illimité,
-  // péage inactif, ou ré-édition du même document). Bloque si crédits épuisés.
-  if(window.Compte && !(await Compte.consume('etude', currentEtudeRef()))) return;
-  window.print();
+  // Ouvre le sélecteur d'échelle ; le débit du crédit n'intervient qu'à la
+  // confirmation d'impression (annuler = aucun crédit consommé).
+  openPrintDialog();
+}
+
+// ─── Impression PDF avec échelle réglable ─────────────────────────────────────
+// L'utilisateur choisit une échelle (50–100 %) pour faire tenir l'étude sans
+// coupure de bloc ; puis débit d'un crédit (acte facturé) et impression native
+// (« Enregistrer en PDF » dans la boîte d'impression du navigateur).
+function setPrintScale(v){
+  const pct = Math.max(50, Math.min(100, parseInt(v)||100));
+  document.documentElement.style.setProperty('--print-scale', (pct/100).toFixed(2));
+  const lbl = document.getElementById('printScaleVal'); if(lbl) lbl.textContent = pct + ' %';
+  try{ localStorage.setItem('fidiPrintScale', pct); }catch(_){}
+}
+function closePrintDialog(){
+  const d = document.getElementById('printScaleDialog'); if(d) d.remove();
+}
+function openPrintDialog(){
+  closePrintDialog();
+  let saved = 100; try{ saved = parseInt(localStorage.getItem('fidiPrintScale'))||100; }catch(_){}
+  const d = document.createElement('div');
+  d.id = 'printScaleDialog';
+  d.style.cssText = 'position:fixed;inset:0;z-index:20000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;';
+  d.innerHTML =
+    '<div style="background:#fff;border-radius:12px;max-width:420px;width:92%;padding:22px 24px;box-shadow:0 12px 40px rgba(0,0,0,.3);font-family:inherit;">'
+    + '<h5 style="margin:0 0 6px;font-weight:700;color:#1a2233;"><i class="bi bi-file-earmark-pdf me-1"></i>Éditer le PDF</h5>'
+    + '<p style="font-size:.85rem;color:#556;margin:0 0 14px;">Réglez l\'échelle pour faire tenir le document sans couper les blocs. '
+      + 'Dans la fenêtre d\'impression, choisissez <b>« Enregistrer au format PDF »</b>.</p>'
+    + '<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">'
+      + '<span style="font-size:.8rem;color:#556;">Échelle</span>'
+      + '<input id="printScaleRange" type="range" min="50" max="100" step="5" value="'+saved+'" '
+        + 'oninput="setPrintScale(this.value)" style="flex:1;">'
+      + '<span id="printScaleVal" style="font-weight:600;min-width:48px;text-align:right;">'+saved+' %</span>'
+    + '</div>'
+    + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">'
+      + '<button class="btn btn-sm btn-outline-secondary" onclick="closePrintDialog()">Annuler</button>'
+      + '<button class="btn btn-sm btn-danger" onclick="confirmPrint()"><i class="bi bi-printer me-1"></i>Imprimer / PDF</button>'
+    + '</div></div>';
+  document.body.appendChild(d);
+  d.addEventListener('click', e => { if(e.target === d) closePrintDialog(); });
+  setPrintScale(saved);
+}
+async function confirmPrint(){
+  // Débit d'un crédit (acte facturé) — sauf admin/illimité, péage inactif ou
+  // ré-édition du même document. Bloque si crédits épuisés.
+  if(window.Compte && !(await Compte.consume('etude', currentEtudeRef()))){ closePrintDialog(); return; }
+  closePrintDialog();
+  setTimeout(()=>window.print(), 120);
 }
 
 // ─── Init tooltips Bootstrap + toggle option Entreprise ───────────────────────
