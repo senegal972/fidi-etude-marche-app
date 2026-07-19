@@ -3902,7 +3902,7 @@ window.Compte = (function(){
     document.getElementById('compteBody').innerHTML = state.authenticated ? viewAccount() : viewLogin();
     document.getElementById('compteTitre').textContent = state.authenticated ? 'Mon compte' : 'Connexion';
     m.show();
-    if(state.authenticated && state.user && state.user.role === 'Administrateur') adminList();
+    if(state.authenticated && state.user && state.user.role === 'Administrateur'){ adminList(); loadTarifsAdmin(); }
   }
 
   function viewLogin(){
@@ -3956,6 +3956,18 @@ window.Compte = (function(){
             '<button class="btn btn-primary btn-sm" onclick="Compte.adminCreate()">Créer</button>'+
             '<div class="small mt-1" id="adMsg"></div></div>'+
           '<div class="fw-semibold small mb-2">Comptes</div><div id="adList" class="small text-muted">Chargement…</div>'+
+          '<hr class="my-3">'+
+          '<div class="fw-semibold small mb-2"><i class="bi bi-tags me-1"></i>Grille tarifaire (facturation client)</div>'+
+          '<div class="border rounded p-2 mb-2">'+
+            '<div class="row g-1 mb-1">'+
+              '<div class="col-12"><input class="form-control form-control-sm" id="tfNom" placeholder="Nom de la prestation"></div>'+
+              '<div class="col-6"><select class="form-select form-select-sm" id="tfCat"><option>Avis de valeur</option><option>Étude de marché</option><option>Option</option><option>Forfait</option></select></div>'+
+              '<div class="col-3"><input type="number" min="0" class="form-control form-control-sm" id="tfPrix" placeholder="€ TTC"></div>'+
+              '<div class="col-3"><button class="btn btn-primary btn-sm w-100" onclick="Compte.tarifCreate()">Ajouter</button></div>'+
+            '</div>'+
+            '<div class="small" id="tfMsg"></div>'+
+          '</div>'+
+          '<div id="adTarifs" class="small text-muted">Chargement…</div>'+
         '</div>' : '')+
       '</div>';
   }
@@ -3972,7 +3984,7 @@ window.Compte = (function(){
       await refresh();
       document.getElementById('compteTitre').textContent = 'Mon compte';
       document.getElementById('compteBody').innerHTML = viewAccount();
-      if(state.user && state.user.role==='Administrateur') adminList();
+      if(state.user && state.user.role==='Administrateur'){ adminList(); loadTarifsAdmin(); }
     }catch(e){ err.textContent = 'Erreur réseau.'; err.classList.remove('d-none'); }
   }
 
@@ -4149,9 +4161,69 @@ window.Compte = (function(){
     const box=document.getElementById('offresBox'); if(box) box.dataset.loaded=''; loadOffres();
   }
 
+  // ─── Grille tarifaire (admin) ─────────────────────────────────────────────
+  async function loadTarifsAdmin(){
+    const box = document.getElementById('adTarifs'); if(!box) return;
+    try{
+      const r = await fetch('/api/tarifs', {credentials:'same-origin'});
+      const d = await r.json();
+      if(!r.ok){ box.innerHTML = '<span class="text-danger">'+esc(d.error||'Erreur')+'</span>'; return; }
+      renderTarifsAdmin(box, d.tarifs||[]);
+    }catch(e){ box.innerHTML = '<span class="text-danger">Erreur réseau.</span>'; }
+  }
+  function renderTarifsAdmin(box, tarifs){
+    if(!tarifs.length){ box.innerHTML = '<span class="text-muted">Aucune prestation — ajoutez-en ci-dessus.</span>'; return; }
+    const CATB = {'Avis de valeur':'primary','Étude de marché':'success','Option':'warning text-dark','Forfait':'info text-dark'};
+    box.innerHTML = tarifs.map(t =>
+      '<div class="d-flex justify-content-between align-items-center border-bottom py-1"'+(t.actif?'':' style="opacity:.5;"')+'>'+
+        '<div><b>'+esc(t.prestation)+'</b> <span class="badge bg-'+(CATB[t.categorie]||'secondary')+'">'+esc(t.categorie||'')+'</span>'+
+          (t.description?'<br><span class="text-muted" style="font-size:.72rem;">'+esc(t.description)+'</span>':'')+'</div>'+
+        '<div class="text-end" style="min-width:150px;">'+
+          '<span class="fw-bold">'+t.prix+' €</span>'+
+          '<div class="btn-group btn-group-sm mt-1">'+
+            '<button class="btn btn-outline-secondary py-0" onclick="Compte.tarifPrice(\''+t.id+'\','+t.prix+')">Prix</button>'+
+            '<button class="btn btn-outline-'+(t.actif?'success':'secondary')+' py-0" onclick="Compte.tarifToggle(\''+t.id+'\','+(t.actif?'false':'true')+')">'+(t.actif?'Actif':'Inactif')+'</button>'+
+            '<button class="btn btn-outline-danger py-0" title="Supprimer" onclick="Compte.tarifDelete(\''+t.id+'\',\''+esc(t.prestation).replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')">✕</button>'+
+          '</div>'+
+        '</div>'+
+      '</div>').join('');
+  }
+  async function tarifPost(payload){
+    const r = await fetch('/api/tarifs', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    return { ok:r.ok, data: await r.json().catch(()=>({})) };
+  }
+  async function tarifCreate(){
+    const nom = (document.getElementById('tfNom').value||'').trim();
+    const cat = document.getElementById('tfCat').value;
+    const prix = parseFloat(document.getElementById('tfPrix').value);
+    const msg = document.getElementById('tfMsg');
+    if(!nom || !(prix>=0)){ if(msg) msg.innerHTML='<span class="text-danger">Nom et prix requis.</span>'; return; }
+    const {ok,data} = await tarifPost({action:'create', prestation:nom, categorie:cat, prix});
+    if(!ok){ if(msg) msg.innerHTML='<span class="text-danger">'+esc(data.error||'Erreur')+'</span>'; return; }
+    document.getElementById('tfNom').value=''; document.getElementById('tfPrix').value='';
+    if(msg) msg.innerHTML='<span class="text-success">Prestation ajoutée.</span>';
+    loadTarifsAdmin();
+  }
+  async function tarifPrice(id, prix){
+    const n = prompt('Nouveau prix TTC (€) :', prix); if(n==null) return;
+    const v = parseFloat(String(n).replace(',','.')); if(!isFinite(v)||v<0){ alert('Prix invalide.'); return; }
+    const {ok,data} = await tarifPost({action:'set_price', id, prix:v}); if(!ok){ alert(data.error||'Erreur.'); return; }
+    loadTarifsAdmin();
+  }
+  async function tarifToggle(id, actif){
+    const {ok,data} = await tarifPost({action:'set_active', id, actif}); if(!ok){ alert(data.error||'Erreur.'); return; }
+    loadTarifsAdmin();
+  }
+  async function tarifDelete(id, nom){
+    if(!confirm('Supprimer « '+nom+' » de la grille ?')) return;
+    const {ok,data} = await tarifPost({action:'delete', id}); if(!ok){ alert(data.error||'Erreur.'); return; }
+    loadTarifsAdmin();
+  }
+
   document.addEventListener('DOMContentLoaded', refresh);
   return { open, doLogin, logout, refresh, setCredits, setRecherches, consume, adminCreate, adminCredit, adminToggle,
            adminIllimite, adminQuota, loadOffres, chooseOffer, payOffer, offerToggle, offerPrice,
+           loadTarifsAdmin, tarifCreate, tarifPrice, tarifToggle, tarifDelete,
            get state(){ return state; } };
 })();
 </script>
