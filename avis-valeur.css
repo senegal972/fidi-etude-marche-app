@@ -149,8 +149,15 @@
 @media print{
   body.avis-print > *{display:none !important;}
   body.avis-print #avisPrintRoot{display:block !important;}
-  body.avis-print #avisPrintRoot .avis-doc{font-size:11px;}
+  /* Échelle réglable (--print-scale) : réduit proportionnellement le document
+     pour le faire tenir sans recomposer la mise en page. */
+  body.avis-print #avisPrintRoot .avis-doc{font-size:11px;zoom:var(--print-scale,1);}
   @page{size:A4;margin:1.6cm;}
-  body.avis-print .avis-doc h1{break-after:avoid;}
-  body.avis-print .avis-doc table{break-inside:avoid;}
+  /* Aucune coupure au milieu d'un bloc. */
+  body.avis-print .avis-doc h1,
+  body.avis-print .avis-doc h2{break-after:avoid;page-break-after:avoid;}
+  body.avis-print .avis-doc table,
+  body.avis-print .avis-doc tr,
+  body.avis-print .avis-doc .title-block,
+  body.avis-print .avis-doc .sig-block{break-inside:avoid;page-break-inside:avoid;}
 }

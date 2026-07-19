@@ -12,6 +12,7 @@ export const DB = {
   etudeAnnees:  process.env.NOTION_DB_ETUDE_ANNEES  || "d719f26110b84560b9bedbf2fa4fe8c5",
   users:        process.env.NOTION_DB_USERS         || "d23a2e167eb44c7f8f7f216535ec40ec",
   offres:       process.env.NOTION_DB_OFFRES        || "391ec67b0b2e4d2eab82921124bf4ea6",
+  paiements:    process.env.NOTION_DB_PAIEMENTS     || "0e270b98a8124bec9d7803f12dfea510",
 };
 
 export const CORS_HEADERS = {
@@ -106,6 +107,10 @@ export async function createPage(databaseId, properties) {
 
 export async function updatePage(pageId, properties) {
   return notionFetch(`/pages/${pageId}`, "PATCH", { properties });
+}
+
+export async function getPage(pageId) {
+  return notionFetch(`/pages/${pageId}`, "GET");
 }
 
 export async function archivePage(pageId) {

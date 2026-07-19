@@ -743,7 +743,6 @@
       '<button class="btn btn-sm btn-outline-secondary" data-action="partager" title="Partager cet avis"><i class="bi bi-share me-1"></i>Partager</button>' +
       '<button class="btn btn-sm btn-outline-warning" data-action="facturer" title="Créer la facture pour cet avis (250 €)"><i class="bi bi-receipt me-1"></i>Facturer</button>' +
       '<button class="btn btn-sm btn-outline-dark" data-action="toggle-preview"><i class="bi bi-eye me-1"></i>Aperçu</button>' +
-      '<button class="btn btn-sm btn-primary" data-action="word"><i class="bi bi-file-earmark-word me-1"></i>Word</button>' +
       '<button class="btn btn-sm btn-danger" data-action="pdf"><i class="bi bi-file-earmark-pdf me-1"></i>PDF</button>' +
       '</div></div>' +
       '</div></div></div>';
@@ -812,7 +811,6 @@
     else if (a === 'import-dvf') importDvf();
     else if (a === 'toggle-paste') { var w = document.getElementById('avPasteWrap'); if (w) w.style.display = w.style.display === 'none' ? 'block' : 'none'; }
     else if (a === 'parse-paste') parsePaste();
-    else if (a === 'word') exportWord();
     else if (a === 'pdf') exportPdf();
   }
 
@@ -1105,7 +1103,43 @@
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
     toast('Document Word exporté');
   }
-  async function exportPdf() {
+  // Sélecteur d'échelle avant impression ; le débit du crédit n'a lieu qu'à la
+  // confirmation (annuler = aucun crédit consommé). Échelle partagée via la
+  // variable CSS --print-scale (mémorisée dans localStorage).
+  function exportPdf() {
+    var saved = 100; try { saved = parseInt(localStorage.getItem('fidiPrintScale')) || 100; } catch (e) {}
+    setAvisScale(saved);
+    var old = document.getElementById('avPrintDialog'); if (old) old.remove();
+    var d = document.createElement('div');
+    d.id = 'avPrintDialog';
+    d.style.cssText = 'position:fixed;inset:0;z-index:20050;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;';
+    d.innerHTML =
+      '<div style="background:#fff;border-radius:12px;max-width:420px;width:92%;padding:22px 24px;box-shadow:0 12px 40px rgba(0,0,0,.3);">'
+      + '<h5 style="margin:0 0 6px;font-weight:700;color:#1a2233;"><i class="bi bi-file-earmark-pdf me-1"></i>Éditer le PDF</h5>'
+      + '<p style="font-size:.85rem;color:#556;margin:0 0 14px;">Réglez l\'échelle pour faire tenir l\'avis sans couper les blocs. '
+        + 'Dans la fenêtre d\'impression, choisissez <b>« Enregistrer au format PDF »</b>.</p>'
+      + '<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">'
+        + '<span style="font-size:.8rem;color:#556;">Échelle</span>'
+        + '<input id="avScaleRange" type="range" min="50" max="100" step="5" value="' + saved + '" style="flex:1;">'
+        + '<span id="avScaleVal" style="font-weight:600;min-width:48px;text-align:right;">' + saved + ' %</span>'
+      + '</div>'
+      + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">'
+        + '<button class="btn btn-sm btn-outline-secondary" id="avPrintCancel">Annuler</button>'
+        + '<button class="btn btn-sm btn-danger" id="avPrintGo"><i class="bi bi-printer me-1"></i>Imprimer / PDF</button>'
+      + '</div></div>';
+    document.body.appendChild(d);
+    d.querySelector('#avScaleRange').addEventListener('input', function () { setAvisScale(this.value); });
+    d.querySelector('#avPrintCancel').addEventListener('click', function () { d.remove(); });
+    d.addEventListener('click', function (e) { if (e.target === d) d.remove(); });
+    d.querySelector('#avPrintGo').addEventListener('click', function () { d.remove(); doExportPdf(); });
+  }
+  function setAvisScale(v) {
+    var pct = Math.max(50, Math.min(100, parseInt(v) || 100));
+    document.documentElement.style.setProperty('--print-scale', (pct / 100).toFixed(2));
+    var lbl = document.getElementById('avScaleVal'); if (lbl) lbl.textContent = pct + ' %';
+    try { localStorage.setItem('fidiPrintScale', pct); } catch (e) {}
+  }
+  async function doExportPdf() {
     var ref = (state.data && state.data.metadata && state.data.metadata.ref) || 'rapport';
     // Édition d'un avis de valeur = acte facturé : débit d'un crédit (sauf admin/
     // illimité, péage inactif, ou ré-édition du même document). Bloque si épuisé.
