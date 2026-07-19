@@ -3434,16 +3434,46 @@ async function factEnvoyerEmail(){
         lien:R.delivery_url, message, kind:(R.label||'document'), titre:R.adresse||'' })});
     const j = await r.json().catch(()=>({}));
     if(j && j.ok){ if(status) status.innerHTML='<div class="alert alert-success py-1 px-2 small mb-0"><i class="bi bi-check-circle me-1"></i>E-mail envoyé à '+escHtml(R.email)+'.</div>'; }
-    else if(j && j.not_configured){ factMailtoFallback(R, status); }
-    else { if(status) status.innerHTML='<div class="alert alert-danger py-1 px-2 small mb-0">Envoi impossible : '+escHtml((j&&j.error)||'erreur')+'. '+'<a href="#" onclick="factMailtoFallback(window.__factRemise, document.getElementById(\'factSendStatus\'));return false;">Ouvrir mon logiciel de messagerie</a></div>'; }
-  }catch(e){ factMailtoFallback(R, status); }
+    else if(j && j.not_configured){ factEmailManuel(R, status, ''); }
+    else { factEmailManuel(R, status, 'Envoi automatique indisponible : '+((j&&j.error)||'erreur')+'.'); }
+  }catch(e){ factEmailManuel(R, status, 'Service d\'envoi injoignable.'); }
 }
 
-function factMailtoFallback(R, status){
-  const subject = 'FIDI Conseil — '+(R.label||'Votre document');
+// Repli d'envoi e-mail SANS dépendre du logiciel « par défaut » du PC (qui peut
+// pointer vers un webmail non souhaité, ex. Orange). On propose le webmail voulu,
+// message déjà pré-rempli, ou la copie du message.
+function factEmailManuel(R, status, note){
+  const subject = 'FIDI Conseil — '+(R.label||'Votre document')+(R.adresse?(' ('+R.adresse+')'):'');
   const body = 'Bonjour,\n\nVotre '+(R.label||'document').toLowerCase()+' est disponible via ce lien sécurisé :\n'+R.delivery_url+'\n\nCordialement,\nFIDI Conseil';
-  window.open('mailto:'+encodeURIComponent(R.email||'')+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body), '_blank');
-  if(status) status.innerHTML='<div class="alert alert-info py-1 px-2 small mb-0">Votre messagerie s\'est ouverte avec le message pré-rempli.</div>';
+  window.__factMail = { to:R.email||'', subject, body };
+  if(!status) return;
+  status.innerHTML =
+    (note?'<div class="alert alert-warning py-1 px-2 small mb-1">'+escHtml(note)+'</div>':'')+
+    '<div class="small mb-1 fw-semibold">Ouvrir dans votre messagerie (message déjà pré-rempli) :</div>'+
+    '<div class="d-flex flex-wrap gap-1">'+
+      '<button class="btn btn-sm btn-outline-danger" onclick="factOpenWebmail(\'gmail\')"><i class="bi bi-envelope me-1"></i>Gmail</button>'+
+      '<button class="btn btn-sm btn-outline-primary" onclick="factOpenWebmail(\'outlook\')">Outlook</button>'+
+      '<button class="btn btn-sm btn-outline-secondary" onclick="factOpenWebmail(\'yahoo\')">Yahoo</button>'+
+      '<button class="btn btn-sm btn-outline-success" onclick="factCopierMessage()"><i class="bi bi-clipboard me-1"></i>Copier le message</button>'+
+    '</div>'+
+    '<div class="text-muted mt-1" style="font-size:.72rem;">Astuce : pour un envoi automatique en un clic (n\'importe quel destinataire), activez la clé Resend — voir avec FIDI.</div>'+
+    '<div id="factMailMsg" class="small mt-1"></div>';
+}
+function factOpenWebmail(which){
+  const m = window.__factMail || {};
+  const to = encodeURIComponent(m.to||''), su = encodeURIComponent(m.subject||''), bo = encodeURIComponent(m.body||'');
+  let url;
+  if(which==='gmail')       url = 'https://mail.google.com/mail/?view=cm&fs=1&to='+to+'&su='+su+'&body='+bo;
+  else if(which==='outlook')url = 'https://outlook.live.com/mail/0/deeplink/compose?to='+to+'&subject='+su+'&body='+bo;
+  else if(which==='yahoo')  url = 'https://compose.mail.yahoo.com/?to='+to+'&subject='+su+'&body='+bo;
+  else                      url = 'mailto:'+to+'?subject='+su+'&body='+bo;
+  window.open(url, '_blank', 'noopener');
+}
+function factCopierMessage(){
+  const m = window.__factMail || {};
+  const txt = (m.to?('À : '+m.to+'\n'):'')+(m.subject?('Objet : '+m.subject+'\n\n'):'')+(m.body||'');
+  const done = ()=>{ const e=document.getElementById('factMailMsg'); if(e) e.innerHTML='<span class="text-success"><i class="bi bi-check2 me-1"></i>Message copié — collez-le dans votre e-mail.</span>'; };
+  if(navigator.clipboard) navigator.clipboard.writeText(txt).then(done, done); else done();
 }
 
 function factEnvoyerWhatsapp(){
