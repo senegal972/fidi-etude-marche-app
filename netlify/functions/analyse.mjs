@@ -4,6 +4,7 @@
 
 import { cacheGet, cacheSet, cacheTag } from "./_cache.mjs";
 import { cleanMutations } from "./_dvf.mjs";
+import { getAccount, chargeStudy, usersConfigured, COST_ETUDE } from "./_users.mjs";
 
 const TIMEOUT_MS = 8000;
 const DVF_YEARS_KEEP = [2021, 2022, 2023, 2024, 2025];
@@ -24,7 +25,7 @@ const GEORISQUES_URL   = "https://georisques.gouv.fr/api/v1";
 const CORS_HEADERS = {
   "Content-Type": "application/json; charset=utf-8",
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
 function jsonResp(status, body) {
@@ -651,7 +652,7 @@ function nowFr() {
 }
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
-export const handler = async (event) => {
+export const handler = async (event, context) => {
   if (event.httpMethod === "OPTIONS") return jsonResp(200, {});
 
   let body;
@@ -663,6 +664,25 @@ export const handler = async (event) => {
   const surface = parseFloat(body.surface) || 0;
 
   if (!adresse) return jsonResp(400, { error: "Adresse requise" });
+
+  // ─── Péage à crédits (activé uniquement si PAYWALL_ENABLED=true) ───────────────
+  // Pré-contrôle : compte connecté + solde suffisant. Le débit n'a lieu qu'en cas
+  // d'étude réussie (voir chargeStudy juste avant la réponse 200), pour ne pas
+  // facturer une adresse introuvable.
+  const paywall = process.env.PAYWALL_ENABLED === "true";
+  let account = null;
+  if (paywall) {
+    const user = context && context.clientContext && context.clientContext.user;
+    if (!user) return jsonResp(401, { error: "Connexion requise pour lancer une étude." });
+    if (!usersConfigured()) return jsonResp(500, { error: "Comptes non configurés (NOTION_DB_USERS manquant)." });
+    try {
+      account = await getAccount(user);
+    } catch (e) {
+      return jsonResp(500, { error: "Vérification du compte impossible." });
+    }
+    if (account.statut === "Désactivé") return jsonResp(403, { error: "Compte désactivé." });
+    if (account.credits < COST_ETUDE) return jsonResp(402, { error: "Crédits épuisés. Rechargez votre compte." });
+  }
 
   const geo = await geocodeAdresse(adresse);
   if (!geo) return jsonResp(404, { error: `Adresse introuvable : « ${adresse} »` });
@@ -697,6 +717,17 @@ export const handler = async (event) => {
   // Estimations 3 types : surface saisie pour le type recherché, surface standard pour les autres
   const estimations = estimateAllTypes(allResults.valoris, surface, typeBien);
 
+  // ─── Débit du crédit : uniquement maintenant, l'étude ayant abouti ────────────
+  let credits_restants;
+  if (paywall && account) {
+    try {
+      credits_restants = await chargeStudy(account);
+    } catch (e) {
+      if (e.status === 402) return jsonResp(402, { error: "Crédits épuisés. Rechargez votre compte." });
+      // Autre incident de débit : on ne bloque pas la remise du résultat déjà calculé.
+    }
+  }
+
   return jsonResp(200, {
     localisation: geo,
     commune_info: allResults.commune_info,
@@ -710,6 +741,7 @@ export const handler = async (event) => {
     estimations,
     type_bien: typeBien,
     surface,
+    credits_restants,
     generated_at: nowFr(),
   });
 };

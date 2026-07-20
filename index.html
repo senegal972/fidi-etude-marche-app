@@ -212,7 +212,12 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
 #pdfMapNote{display:none;}
 /* Impression ciblée d'un document de partage (avis) : on n'imprime que #sharePrintRoot */
 #sharePrintRoot{display:none;}
+/* Rapport A4 (moteur rapport-a4.js) : on n'imprime que #rapportRoot */
+#rapportRoot{display:none;}
 @media print{
+  body.rapport-printing > *:not(#rapportRoot){display:none!important;}
+  body.rapport-printing #rapportRoot{display:block!important;}
+  body.rapport-printing{background:#fff!important;}
   body.share-printing > *:not(#sharePrintRoot){display:none!important;}
   body.share-printing #sharePrintRoot{display:block!important;}
 }
@@ -240,8 +245,22 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
     <button class="btn btn-sm btn-outline-light btn-pdf d-none" id="btnPdf" onclick="exportPdf()">
       <i class="bi bi-file-earmark-pdf me-1"></i>Télécharger PDF
     </button>
-    <button class="btn btn-sm btn-outline-light btn-print d-none" id="btnPrint" onclick="window.print()">
+    <button class="btn btn-sm btn-outline-light btn-print d-none" id="btnPrint" onclick="exportPdf()">
       <i class="bi bi-printer me-1"></i>Imprimer
+    </button>
+
+    <!-- Authentification / compte (Lot 1) -->
+    <span class="badge-gov d-none" id="authCreditPill" title="Crédits disponibles">
+      <i class="bi bi-coin me-1"></i><span id="authCreditNum">–</span> cr.
+    </span>
+    <button class="btn btn-sm btn-outline-light d-none" id="btnAdmin" onclick="fidiAuth.openAdmin()" title="Administration">
+      <i class="bi bi-shield-lock me-1"></i>Admin
+    </button>
+    <button class="btn btn-sm btn-outline-light d-none" id="btnCompte" onclick="fidiAuth.openCompte()" title="Mon compte">
+      <i class="bi bi-person-circle me-1"></i>Mon compte
+    </button>
+    <button class="btn btn-sm btn-light fw-semibold" id="btnLogin" onclick="fidiAuth.login()" title="Se connecter">
+      <i class="bi bi-box-arrow-in-right me-1"></i>Connexion
     </button>
   </div>
 </nav>
@@ -252,19 +271,57 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
     <h1><i class="bi bi-search me-2"></i>Évaluation du potentiel d'un bien immobilier</h1>
     <p>Renseignez l'adresse du bien pour obtenir une analyse complète du marché local à partir des données publiques officielles.</p>
     <div class="search-form">
+      <!-- Bascule mode de recherche : adresse postale ↔ référence cadastrale -->
+      <div class="mb-2">
+        <div class="btn-group btn-group-sm" role="group" aria-label="Mode de recherche">
+          <button type="button" class="btn btn-light active" id="modeBtnAdresse">
+            <i class="bi bi-geo-alt me-1"></i>Adresse
+          </button>
+          <button type="button" class="btn btn-outline-light" id="modeBtnCadastre">
+            <i class="bi bi-grid-3x3-gap me-1"></i>Référence cadastrale
+          </button>
+        </div>
+      </div>
       <div class="row g-2 align-items-end">
         <div class="col-md-4 position-relative">
-          <label class="form-label text-white small fw-semibold mb-1">
-            Adresse du bien
-            <button type="button" class="btn btn-sm btn-link p-0 ms-1 text-warning text-decoration-none"
-                    id="btnGeoloc" title="Utiliser ma position actuelle"
-                    style="font-size:.75rem;vertical-align:baseline;">
-              <i class="bi bi-geo-alt-fill"></i> Ma position
-            </button>
-          </label>
-          <input type="text" class="form-control" id="inputAdresse"
-                 placeholder="Ex : 15 rue de la Paix, Lyon" autocomplete="off"/>
-          <div class="autocomplete-dropdown d-none" id="autocompleteList"></div>
+          <!-- MODE : Adresse postale -->
+          <div id="modeAdresseFields">
+            <label class="form-label text-white small fw-semibold mb-1">
+              Adresse du bien
+              <button type="button" class="btn btn-sm btn-link p-0 ms-1 text-warning text-decoration-none"
+                      id="btnGeoloc" title="Utiliser ma position actuelle"
+                      style="font-size:.75rem;vertical-align:baseline;">
+                <i class="bi bi-geo-alt-fill"></i> Ma position
+              </button>
+            </label>
+            <input type="text" class="form-control" id="inputAdresse"
+                   placeholder="Ex : 15 rue de la Paix, Lyon" autocomplete="off"/>
+            <div class="autocomplete-dropdown d-none" id="autocompleteList"></div>
+          </div>
+          <!-- MODE : Référence cadastrale -->
+          <div id="modeCadastreFields" class="d-none">
+            <label class="form-label text-white small fw-semibold mb-1">
+              <i class="bi bi-grid-3x3-gap me-1"></i>Référence cadastrale
+            </label>
+            <div class="row g-1">
+              <div class="col-6">
+                <input type="text" class="form-control form-control-sm" id="inputCadSection"
+                       placeholder="Section (ex : AB)" autocomplete="off" title="Section cadastrale"/>
+              </div>
+              <div class="col-6">
+                <input type="text" class="form-control form-control-sm" id="inputCadNumero"
+                       placeholder="N° parcelle (ex : 123)" autocomplete="off" inputmode="numeric" title="Numéro de parcelle"/>
+              </div>
+              <div class="col-7">
+                <input type="text" class="form-control form-control-sm" id="inputCadVille"
+                       placeholder="Ville (ex : Lyon)" autocomplete="off" title="Commune"/>
+              </div>
+              <div class="col-5">
+                <input type="text" class="form-control form-control-sm" id="inputCadDept"
+                       placeholder="Dépt (ex : 69)" autocomplete="off" inputmode="numeric" maxlength="3" title="Département"/>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="col-md-2">
           <label class="form-label text-white small fw-semibold mb-1">Type de bien</label>
@@ -450,7 +507,7 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
         <button class="btn btn-sm btn-danger btn-pdf" onclick="exportPdf()">
           <i class="bi bi-file-earmark-pdf me-1"></i>Télécharger PDF
         </button>
-        <button class="btn btn-sm btn-outline-secondary btn-print" onclick="window.print()">
+        <button class="btn btn-sm btn-outline-secondary btn-print" onclick="exportPdf()">
           <i class="bi bi-printer me-1"></i>Imprimer
         </button>
       </div>
@@ -1036,6 +1093,83 @@ document.getElementById('inputAdresse').addEventListener('keydown', e => {
 });
 document.getElementById('btnAnalyse').addEventListener('click', lancerAnalyse);
 
+// ─── Bascule mode de recherche : adresse postale ↔ référence cadastrale ───────
+window.__searchMode = 'adresse';
+(function(){
+  const btnA = document.getElementById('modeBtnAdresse');
+  const btnC = document.getElementById('modeBtnCadastre');
+  const fA   = document.getElementById('modeAdresseFields');
+  const fC   = document.getElementById('modeCadastreFields');
+  function setMode(m){
+    window.__searchMode = m;
+    const isA = (m === 'adresse');
+    fA.classList.toggle('d-none', !isA);
+    fC.classList.toggle('d-none',  isA);
+    btnA.classList.toggle('active',        isA);
+    btnA.classList.toggle('btn-light',     isA);
+    btnA.classList.toggle('btn-outline-light', !isA);
+    btnC.classList.toggle('active',        !isA);
+    btnC.classList.toggle('btn-light',     !isA);
+    btnC.classList.toggle('btn-outline-light', isA);
+    hideAC();
+  }
+  btnA.addEventListener('click', () => setMode('adresse'));
+  btnC.addEventListener('click', () => setMode('cadastre'));
+  ['inputCadSection','inputCadNumero','inputCadVille','inputCadDept'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.addEventListener('keydown', e => { if(e.key === 'Enter') lancerAnalyse(); });
+  });
+})();
+
+// Résout section + numéro + ville + département → adresse (IGN cadastre + BAN)
+// puis renseigne #inputAdresse afin de réutiliser le flux d'analyse existant.
+async function resolveCadastreIntoAddress(){
+  const section = (document.getElementById('inputCadSection').value || '').trim().toUpperCase();
+  const numero  = (document.getElementById('inputCadNumero').value  || '').trim();
+  const ville   = (document.getElementById('inputCadVille').value   || '').trim();
+  const dept    = (document.getElementById('inputCadDept').value    || '').trim();
+  if(!section || !numero || !ville || !dept){
+    throw new Error('Renseignez la section, le numéro de parcelle, la ville et le département.');
+  }
+  // 1) Commune → code INSEE
+  const cUrl = `https://geo.api.gouv.fr/communes?nom=${encodeURIComponent(ville)}&codeDepartement=${encodeURIComponent(dept)}&fields=nom,code&boost=population&limit=1`;
+  const communes = await (await fetch(cUrl)).json();
+  if(!Array.isArray(communes) || !communes.length){
+    throw new Error(`Commune « ${ville} » introuvable dans le département ${dept}.`);
+  }
+  const insee = communes[0].code, nomCommune = communes[0].nom;
+  // 2) Parcelle → géométrie (IGN apicarto). Section sur 2 car., numéro sur 4.
+  const sec = section.length === 1 ? '0' + section : section;   // "A"   → "0A"
+  const num = numero.replace(/\D/g,'').padStart(4,'0');          // "123" → "0123"
+  const pUrl = `https://apicarto.ign.fr/api/cadastre/parcelle?code_insee=${insee}&section=${encodeURIComponent(sec)}&numero=${encodeURIComponent(num)}`;
+  const pj = await (await fetch(pUrl)).json();
+  if(!pj || !pj.features || !pj.features.length){
+    throw new Error(`Parcelle ${section} ${numero} introuvable à ${nomCommune} (INSEE ${insee}).`);
+  }
+  const [lon, lat] = geomCentroid(pj.features[0].geometry);
+  // 3) Reverse geocode → libellé d'adresse le plus proche de la parcelle
+  let label = `${nomCommune} — parcelle ${section} ${numero}`;
+  try{
+    const rj = await (await fetch(`https://api-adresse.data.gouv.fr/reverse/?lat=${lat}&lon=${lon}&limit=1`)).json();
+    if(rj && rj.features && rj.features.length){ label = rj.features[0].properties.label; }
+  }catch(_){}
+  const input = document.getElementById('inputAdresse');
+  input.value = label;
+  input.dataset.cadastre = `${insee} ${sec} ${num}`;
+  return { label, lat, lon, insee };
+}
+
+// Centroïde approché d'une géométrie GeoJSON (Polygon / MultiPolygon)
+function geomCentroid(geom){
+  let ring = [];
+  if(geom.type === 'Polygon')           ring = geom.coordinates[0] || [];
+  else if(geom.type === 'MultiPolygon') ring = (geom.coordinates[0] && geom.coordinates[0][0]) || [];
+  if(!ring.length) throw new Error('Géométrie de parcelle illisible.');
+  let sx = 0, sy = 0;
+  for(const [x,y] of ring){ sx += x; sy += y; }
+  return [sx/ring.length, sy/ring.length];
+}
+
 // ─── Géolocalisation du navigateur → reverse geocode BAN ──────────────────────
 document.getElementById('btnGeoloc').addEventListener('click', async () => {
   const btn = document.getElementById('btnGeoloc');
@@ -1088,6 +1222,8 @@ function exportPdf(){
     alert('Lancez une analyse avant d\'imprimer.');
     return;
   }
+  // Rapport A4 paginé (couverture, sections, tableaux insécables)
+  if(window.FidiRapport){ FidiRapport.print(); return; }
   window.print();
 }
 
@@ -1143,6 +1279,20 @@ function finishSteps(){
 
 // ─── Appel principal ──────────────────────────────────────────────────────────
 async function lancerAnalyse(){
+  // Mode cadastral : résoudre d'abord la parcelle en adresse géolocalisée.
+  if(window.__searchMode === 'cadastre'){
+    const btn = document.getElementById('btnAnalyse');
+    const orig = btn ? btn.innerHTML : '';
+    if(btn){ btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
+    try{
+      await resolveCadastreIntoAddress();
+    }catch(e){
+      alert(e.message || 'Résolution de la parcelle impossible.');
+      return;
+    }finally{
+      if(btn){ btn.disabled = false; btn.innerHTML = orig; }
+    }
+  }
   const adresse  = document.getElementById('inputAdresse').value.trim();
   const typeBien = document.getElementById('selectType').value;
   const surface  = parseFloat(document.getElementById('inputSurface').value) || 0;
@@ -1156,9 +1306,12 @@ async function lancerAnalyse(){
   startStepAnimation();
 
   try{
+    // Jeton Netlify Identity attaché si l'utilisateur est connecté (péage à crédits).
+    const headers = {'Content-Type':'application/json'};
+    try { const t = window.fidiAuth && await window.fidiAuth.token(); if(t) headers['Authorization'] = 'Bearer '+t; } catch(_){}
     const resp = await fetch('/api/analyse', {
       method: 'POST',
-      headers: {'Content-Type':'application/json'},
+      headers,
       body: JSON.stringify({adresse, type_bien: typeBien, surface, perimetre: document.getElementById('selectPerimetre').value})
     });
 
@@ -1168,13 +1321,17 @@ async function lancerAnalyse(){
     document.getElementById('loading-panel').classList.add('d-none');
 
     if(!resp.ok){
-      const err = await resp.json();
-      alert('Erreur : ' + (err.error || 'Analyse impossible'));
+      let err = {};
+      try { err = await resp.json(); } catch(_){}
       document.getElementById('init-panel').classList.remove('d-none');
+      if(resp.status === 401){ alert('Connectez-vous pour lancer une étude.'); if(window.fidiAuth) fidiAuth.login(); return; }
+      if(resp.status === 402){ alert(err.error || 'Crédits épuisés. Rechargez votre compte.'); if(window.fidiAuth) fidiAuth.openCompte(); return; }
+      alert('Erreur : ' + (err.error || 'Analyse impossible'));
       return;
     }
 
     const data = await resp.json();
+    if(typeof data.credits_restants === 'number' && window.fidiAuth) fidiAuth.setCredits(data.credits_restants);
     const perimetre = document.getElementById('selectPerimetre').value;
     renderResults(data);
     // Expose les résultats de l'étude au module Avis de valeur (pré-remplissage)
@@ -1357,6 +1514,7 @@ async function loadLoyersAsync(loc, d){
       return;
     }
     src.textContent = 'Carte des loyers ' + (j.annee || '') + ' · DHUP/MEF';
+    window.__fidiLoyers = j; // exposé pour le moteur de rapport A4
     // KPI loyer marché (P4)
     const elLoyerKpi = document.getElementById('kpi-loyer');
     const elLoyerSub = document.getElementById('kpi-loyer-sub');
@@ -1447,6 +1605,7 @@ async function loadContexteLocalAsync(loc, info){
   const fisc = rFisc.status==='fulfilled' ? rFisc.value : {};
   const vac  = rVac.status==='fulfilled'  ? rVac.value  : {};
   const del  = rDel.status==='fulfilled'  ? rDel.value  : {};
+  window.__fidiCtx = { fisc, vac, del }; // exposé pour le moteur de rapport A4
 
   // ── Carte Taxe foncière ──────────────────────────────────────────────────
   const tfbCommune = fisc.taux_tfb_commune;
@@ -1889,6 +2048,7 @@ async function loadGpuInfo(lat, lon){
   if(elLink) elLink.href = `https://www.geoportail-urbanisme.gouv.fr/map/#tile=1&lon=${lon}&lat=${lat}&zoom=18`;
 
   const pt = encodeURIComponent(JSON.stringify({ type:'Point', coordinates:[lon, lat] }));
+  window.__fidiGpu = {}; // exposé pour le moteur de rapport A4
 
   // Zonage PLU
   fetch('https://apicarto.ign.fr/api/gpu/zone-urba?geom='+pt)
@@ -1898,6 +2058,7 @@ async function loadGpuInfo(lat, lon){
       const f = j && j.features && j.features[0];
       if(f){
         const p = f.properties;
+        window.__fidiGpu.zone = p;
         const col = zoneColor(p.typezone);
         elZone.innerHTML = `<span class="fw-bold" style="color:${col}">${escHtml(p.libelle||p.typezone||'?')}</span>`
           + (p.libelong?` — ${escHtml(p.libelong)}`:'')
@@ -1917,6 +2078,7 @@ async function loadGpuInfo(lat, lon){
       const f = j && j.features && j.features[0];
       if(f){
         const p = f.properties;
+        window.__fidiGpu.parcelle = p;
         const ref = `${p.section||''} ${p.numero||''}`.trim();
         elParc.innerHTML = `<span class="fw-bold">${escHtml(ref||'—')}</span>`
           + (p.contenance?` · ${Number(p.contenance).toLocaleString('fr-FR')} m²`:'')
@@ -2229,6 +2391,7 @@ let _activeFilters = { texte:'', type:'', section:'', annee:'', cp:'' };
 
 function renderTransactions(transactions, rayon_km, latRef, lonRef, mode, meta){
   transData = transactions || [];
+  window.__fidiTrans = transData; // exposé pour le moteur de rapport A4
   const count = transData.length;
   mode = mode || 'rayon';
   meta = meta || {};
@@ -3168,8 +3331,14 @@ function fidiPrintExact(){
   const modal = document.getElementById('shareModal');
   // Masque la modale pendant l'impression puis la restaure
   if(modal) modal.style.visibility = 'hidden';
-  const restore = ()=>{ if(modal) modal.style.visibility=''; cleanup(); window.removeEventListener('afterprint', restore); };
 
+  // Étude (pas de htmlString) → rapport A4 paginé
+  if(!opts.htmlString && window.FidiRapport){
+    FidiRapport.print(()=>{ if(modal) modal.style.visibility=''; });
+    return;
+  }
+
+  const restore = ()=>{ if(modal) modal.style.visibility=''; cleanup(); window.removeEventListener('afterprint', restore); };
   let cleanup = ()=>{};
   if(opts.htmlString){
     let pr = document.getElementById('sharePrintRoot');
@@ -3355,5 +3524,126 @@ function copyShareUrl(){
 <!-- Module Avis de valeur (récupère window.__fidiData) -->
 <div id="avisModalRoot"></div>
 <script src="/avis-valeur.js" defer></script>
+<!-- Moteur de rapport A4 (impression documentaire paginée) -->
+<script src="/rapport-a4.js" defer></script>
+
+<!-- ═══════════ Mon compte (Lot 1 — connexion + crédits) ═══════════ -->
+<div class="modal fade" id="modalCompte" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border-radius:16px;border:none;">
+      <div class="modal-header" style="background:var(--fidi-blue);color:#fff;">
+        <h5 class="modal-title"><i class="bi bi-person-circle me-2"></i>Mon compte</h5>
+        <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-warning small" id="compteNotConfigured">
+          <i class="bi bi-info-circle me-1"></i>Votre compte est reconnu mais la gestion des crédits n'est pas encore activée sur le serveur. Elle le sera dès la mise en service du péage.
+        </div>
+        <div id="compteCreditsWrap" class="d-none">
+          <div class="text-uppercase text-muted fw-bold mb-1" style="font-size:.72rem;letter-spacing:.5px;">Solde disponible</div>
+          <div class="d-flex align-items-end gap-2 mb-2">
+            <div style="font-size:2.6rem;font-weight:900;color:var(--fidi-blue);line-height:1;" id="compteCredits">–</div>
+            <div class="text-muted mb-2">crédits · 1 étude = <span id="compteCout">1</span> crédit(s)</div>
+          </div>
+          <div style="height:10px;border-radius:6px;background:#eef0f4;overflow:hidden;" class="mb-3">
+            <div id="compteGauge" style="height:100%;width:0;background:linear-gradient(90deg,var(--fidi-gold),var(--fidi-accent));transition:width .5s;"></div>
+          </div>
+          <div class="alert alert-light border small text-muted">
+            <i class="bi bi-cart-plus me-1"></i>Recharge de crédits et abonnement <strong>bientôt disponibles</strong> (paiement PayPal / carte bancaire). En attendant, contactez l'administrateur pour créditer votre compte.
+          </div>
+        </div>
+        <hr>
+        <div class="text-uppercase text-muted fw-bold mb-2" style="font-size:.72rem;letter-spacing:.5px;">Identité</div>
+        <div class="d-flex justify-content-between small py-1"><span class="text-muted">Nom</span><span class="fw-semibold" id="compte-nom">—</span></div>
+        <div class="d-flex justify-content-between small py-1 border-top"><span class="text-muted">E-mail</span><span class="fw-semibold" id="compte-email">—</span></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-danger btn-sm" onclick="fidiAuth.logout()"><i class="bi bi-box-arrow-right me-1"></i>Déconnexion</button>
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Fermer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Authentification Netlify Identity + péage à crédits (Lot 1) -->
+<script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
+<script>
+const fidiAuth = (function(){
+  let profile = null;                 // { configured, email, nom, role, credits, cout_etude }
+  const $ = (id) => document.getElementById(id);
+  const ni = () => window.netlifyIdentity;
+
+  async function currentToken(){
+    const u = ni() && ni().currentUser();
+    if(!u) return null;
+    try { return await u.jwt(); } catch(_) { return null; }
+  }
+
+  async function fetchProfile(){
+    const u = ni() && ni().currentUser();
+    if(!u){ profile = null; return; }
+    try {
+      const token = await u.jwt();
+      const r = await fetch('/api/moncompte', { headers: { Authorization: 'Bearer ' + token } });
+      profile = r.ok ? await r.json() : { configured:false, email:u.email, nom:(u.user_metadata||{}).full_name||'' };
+    } catch(_) {
+      profile = { configured:false, email:(u&&u.email)||'', nom:'' };
+    }
+  }
+
+  function updateUI(){
+    const logged = !!(ni() && ni().currentUser());
+    $('btnLogin').classList.toggle('d-none', logged);
+    $('btnCompte').classList.toggle('d-none', !logged);
+    const isAdmin = logged && profile && profile.role === 'Administrateur';
+    $('btnAdmin').classList.toggle('d-none', !isAdmin);
+    const showCredits = logged && profile && profile.configured && typeof profile.credits === 'number';
+    $('authCreditPill').classList.toggle('d-none', !showCredits);
+    if(showCredits) $('authCreditNum').textContent = profile.credits;
+  }
+
+  async function refresh(){ await fetchProfile(); updateUI(); }
+
+  function login(){ if(ni()) ni().open('login'); else alert('Service de connexion indisponible.'); }
+  function logout(){ if(ni()) ni().logout(); }
+
+  function setCredits(n){
+    if(profile) profile.credits = n;
+    const el = $('authCreditNum'); if(el) el.textContent = n;
+    const c = $('compteCredits'); if(c) c.textContent = n;
+  }
+
+  function openCompte(){
+    const cfg = !!(profile && profile.configured);
+    $('compte-email').textContent = (profile && profile.email) || '—';
+    $('compte-nom').textContent   = (profile && profile.nom) || '—';
+    $('compteNotConfigured').classList.toggle('d-none', cfg);
+    $('compteCreditsWrap').classList.toggle('d-none', !cfg);
+    if(cfg){
+      $('compteCredits').textContent = profile.credits;
+      $('compteCout').textContent = profile.cout_etude || 1;
+      const pct = Math.max(4, Math.min(100, (profile.credits / Math.max(profile.credits, 20)) * 100));
+      $('compteGauge').style.width = pct + '%';
+    }
+    new bootstrap.Modal($('modalCompte')).show();
+  }
+
+  function openAdmin(){ alert("Espace administrateur : disponible au Lot 2 (création de comptes, tarification, offres)."); }
+
+  function boot(){
+    if(!ni()) return;                 // widget non chargé (ex. hors Netlify)
+    ni().on('init',   () => { refresh(); });
+    ni().on('login',  () => { if(ni()) ni().close(); refresh(); });
+    ni().on('logout', () => { profile = null; updateUI(); });
+    ni().init();
+  }
+  if(document.readyState !== 'loading') boot();
+  else document.addEventListener('DOMContentLoaded', boot);
+
+  return { login, logout, openCompte, openAdmin, refresh, setCredits,
+           token: currentToken, getProfile: () => profile };
+})();
+window.fidiAuth = fidiAuth;
+</script>
 </body>
 </html>
