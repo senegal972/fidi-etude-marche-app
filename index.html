@@ -219,7 +219,12 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
 #pdfMapNote{display:none;}
 /* Impression ciblée d'un document de partage (avis) : on n'imprime que #sharePrintRoot */
 #sharePrintRoot{display:none;}
+/* Rapport A4 (moteur rapport-a4.js) : on n'imprime que #rapportRoot */
+#rapportRoot{display:none;}
 @media print{
+  body.rapport-printing > *:not(#rapportRoot){display:none!important;}
+  body.rapport-printing #rapportRoot{display:block!important;}
+  body.rapport-printing{background:#fff!important;}
   body.share-printing > *:not(#sharePrintRoot){display:none!important;}
   body.share-printing #sharePrintRoot{display:block!important;}
 }
@@ -1278,6 +1283,8 @@ async function confirmPrint(){
   // ré-édition du même document. Bloque si crédits épuisés.
   if(window.Compte && !(await Compte.consume('etude', currentEtudeRef()))){ closePrintDialog(); return; }
   closePrintDialog();
+  // Rapport A4 paginé (couverture, sections, tableaux insécables)
+  if(window.FidiRapport){ setTimeout(()=>FidiRapport.print(), 120); return; }
   setTimeout(()=>window.print(), 120);
 }
 
@@ -1578,6 +1585,7 @@ async function loadLoyersAsync(loc, d){
       return;
     }
     src.textContent = 'Carte des loyers ' + (j.annee || '') + ' · DHUP/MEF';
+    window.__fidiLoyers = j; // exposé pour le moteur de rapport A4
     // KPI loyer marché (P4)
     const elLoyerKpi = document.getElementById('kpi-loyer');
     const elLoyerSub = document.getElementById('kpi-loyer-sub');
@@ -1668,6 +1676,7 @@ async function loadContexteLocalAsync(loc, info){
   const fisc = rFisc.status==='fulfilled' ? rFisc.value : {};
   const vac  = rVac.status==='fulfilled'  ? rVac.value  : {};
   const del  = rDel.status==='fulfilled'  ? rDel.value  : {};
+  window.__fidiCtx = { fisc, vac, del }; // exposé pour le moteur de rapport A4
 
   // ── Carte Taxe foncière ──────────────────────────────────────────────────
   const tfbCommune = fisc.taux_tfb_commune;
@@ -2110,6 +2119,7 @@ async function loadGpuInfo(lat, lon){
   if(elLink) elLink.href = `https://www.geoportail-urbanisme.gouv.fr/map/#tile=1&lon=${lon}&lat=${lat}&zoom=18`;
 
   const pt = encodeURIComponent(JSON.stringify({ type:'Point', coordinates:[lon, lat] }));
+  window.__fidiGpu = {}; // exposé pour le moteur de rapport A4
 
   // Zonage PLU
   fetch('https://apicarto.ign.fr/api/gpu/zone-urba?geom='+pt)
@@ -2119,6 +2129,7 @@ async function loadGpuInfo(lat, lon){
       const f = j && j.features && j.features[0];
       if(f){
         const p = f.properties;
+        window.__fidiGpu.zone = p;
         const col = zoneColor(p.typezone);
         elZone.innerHTML = `<span class="fw-bold" style="color:${col}">${escHtml(p.libelle||p.typezone||'?')}</span>`
           + (p.libelong?` — ${escHtml(p.libelong)}`:'')
@@ -2138,6 +2149,7 @@ async function loadGpuInfo(lat, lon){
       const f = j && j.features && j.features[0];
       if(f){
         const p = f.properties;
+        if(window.__fidiGpu) window.__fidiGpu.parcelle = p;
         const ref = `${p.section||''} ${p.numero||''}`.trim();
         elParc.innerHTML = `<span class="fw-bold">${escHtml(ref||'—')}</span>`
           + (p.contenance?` · ${Number(p.contenance).toLocaleString('fr-FR')} m²`:'')
@@ -3580,8 +3592,14 @@ function fidiPrintExact(){
   const modal = document.getElementById('shareModal');
   // Masque la modale pendant l'impression puis la restaure
   if(modal) modal.style.visibility = 'hidden';
-  const restore = ()=>{ if(modal) modal.style.visibility=''; cleanup(); window.removeEventListener('afterprint', restore); };
 
+  // Étude (pas de htmlString) → rapport A4 paginé
+  if(!opts.htmlString && window.FidiRapport){
+    FidiRapport.print(()=>{ if(modal) modal.style.visibility=''; });
+    return;
+  }
+
+  const restore = ()=>{ if(modal) modal.style.visibility=''; cleanup(); window.removeEventListener('afterprint', restore); };
   let cleanup = ()=>{};
   if(opts.htmlString){
     let pr = document.getElementById('sharePrintRoot');
@@ -3764,6 +3782,8 @@ function copyShareUrl(){
 })();
 </script>
 
+<!-- Moteur de rapport A4 (impression documentaire paginée) -->
+<script src="/rapport-a4.js" defer></script>
 <!-- Module Avis de valeur (récupère window.__fidiData) -->
 <div id="avisModalRoot"></div>
 <script src="/avis-valeur.js" defer></script>

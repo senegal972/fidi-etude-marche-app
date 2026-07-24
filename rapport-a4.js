@@ -209,7 +209,7 @@
   }
 
   function transactionsPage(d, ref) {
-    const all = window.__fidiTrans || [];
+    const all = window.__fidiTrans || window.__fidiTransactions || [];
     const MAXROWS = 80;
     const rows = all.slice(0, MAXROWS).map(t => {
       const dist = t.distance_m != null ? (t.distance_m < 1000 ? Math.round(t.distance_m) + ' m' : (t.distance_m / 1000).toFixed(1) + ' km') : '—';
