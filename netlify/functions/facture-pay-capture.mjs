@@ -70,10 +70,37 @@ export const handler = async (event) => {
 
     f = { ...f, paye: true, statut: "Payée" };
     const origin = reqOrigin(event);
+    const facture_url  = factureHtmlUrl(f, origin);
+    const document_url = f.lienDocument;
+
+    // Phase C — envoi automatique post-paiement : e-mail au client avec le lien
+    // de remise (accès au document livré + facture acquittée). Best-effort :
+    // n'empêche jamais la réponse OK au client, ne bloque pas le déblocage.
+    if (f.email && process.env.RESEND_API_KEY) {
+      const kind = (f.type && f.type.toLowerCase().includes("étude")) ? "étude de marché" : "avis de valeur";
+      const titre = f.libelle || f.adresse || f.numero;
+      const deliveryUrl = document_url && /^https?:/i.test(document_url) ? document_url
+        : (f.jeton ? `${origin}/l/${f.jeton}` : "");
+      const payload = {
+        to: f.email,
+        subject: `Votre ${kind} — FIDI Conseil (${f.numero})`,
+        kind,
+        titre,
+        lien: deliveryUrl || facture_url,
+        message: `Votre paiement de ${paid.toFixed(2)} € a bien été reçu. Cliquez ci-dessous pour accéder à votre ${kind} et à votre facture acquittée.`,
+      };
+      // Fire-and-forget (pas d'await pour ne pas ralentir la réponse au client)
+      fetch(`${origin}/.netlify/functions/send-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }).catch(() => {});
+    }
+
     return jsonResp(200, {
       ok: true, montant: paid, moyen,
-      facture_url: factureHtmlUrl(f, origin),
-      document_url: f.lienDocument,
+      facture_url,
+      document_url,
     });
   } catch (e) {
     return jsonResp(e.status || 500, { error: e.message, paypal: e.paypal || null });

@@ -750,6 +750,51 @@
     if (!document.getElementById('avisPrintRoot')) {
       var pr = document.createElement('div'); pr.id = 'avisPrintRoot'; document.body.appendChild(pr);
     }
+    // Styles d'impression pour l'avis : gabarit A4 documentaire, insécable.
+    // Injecté une seule fois par ouverture du module.
+    if (!document.getElementById('avisPrintStyles')) {
+      var st = document.createElement('style'); st.id = 'avisPrintStyles';
+      st.textContent =
+        '#avisPrintRoot{display:none;}' +
+        '@media print{' +
+          '@page{size:A4;margin:16mm 14mm;}' +
+          'body.avis-print{background:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}' +
+          'body.avis-print > *:not(#avisPrintRoot){display:none!important;}' +
+          'body.avis-print #avisPrintRoot{display:block!important;}' +
+          '#avisPrintRoot .avis-doc{font-family:Calibri,Arial,sans-serif;font-size:10.5pt;color:#000;line-height:1.42;}' +
+          '#avisPrintRoot .avis-doc *{box-sizing:border-box;}' +
+          '#avisPrintRoot .avis-doc h1{color:#1a3a6e;font-size:13.5pt;border-bottom:2pt solid #b8860b;padding-bottom:4pt;margin:14pt 0 8pt;font-weight:700;break-after:avoid;page-break-after:avoid;}' +
+          '#avisPrintRoot .avis-doc h1:first-of-type{margin-top:4pt;}' +
+          '#avisPrintRoot .avis-doc h2{color:#1a3a6e;font-size:11.5pt;margin:10pt 0 4pt;font-weight:600;break-after:avoid;page-break-after:avoid;}' +
+          '#avisPrintRoot .avis-doc p{margin:0 0 6pt;}' +
+          '#avisPrintRoot .avis-doc table{border-collapse:collapse;width:100%;margin:6pt 0;}' +
+          '#avisPrintRoot .avis-doc thead{display:table-header-group;}' +
+          '#avisPrintRoot .avis-doc tr{break-inside:avoid;page-break-inside:avoid;}' +
+          '#avisPrintRoot .avis-doc th{background:#1a3a6e;color:#fff;padding:5pt 6pt;text-align:left;font-size:9.5pt;}' +
+          '#avisPrintRoot .avis-doc td{padding:4.5pt 6pt;border:.4pt solid #bfbfbf;font-size:9.5pt;vertical-align:top;}' +
+          '#avisPrintRoot .avis-doc .lbl{background:#eaf0f8;font-weight:bold;width:38%;}' +
+          '#avisPrintRoot .avis-doc .center{text-align:center;}#avisPrintRoot .avis-doc .bold{font-weight:bold;}' +
+          '#avisPrintRoot .avis-doc .title-block{background:#eaf0f8;border-top:3pt solid #1a3a6e;border-bottom:3pt solid #1a3a6e;padding:14pt;text-align:center;margin:10pt 0 14pt;break-inside:avoid;page-break-inside:avoid;}' +
+          '#avisPrintRoot .avis-doc .title-block .t1{color:#1a3a6e;font-size:22pt;font-weight:800;letter-spacing:1pt;}' +
+          '#avisPrintRoot .avis-doc .title-block .t2{color:#1a3a6e;font-size:13pt;margin-top:6pt;}' +
+          '#avisPrintRoot .avis-doc .title-block .t3{color:#5c6470;font-style:italic;font-size:9.5pt;margin-top:4pt;}' +
+          '#avisPrintRoot .avis-doc .header-bar{border-bottom:2pt solid #b8860b;padding-bottom:8pt;margin-bottom:12pt;}' +
+          '#avisPrintRoot .avis-doc .header-bar .left{color:#1a3a6e;font-weight:bold;font-size:13pt;}' +
+          '#avisPrintRoot .avis-doc .synth-occ{background:#1a3a6e;color:#fff;padding:12pt;break-inside:avoid;page-break-inside:avoid;}' +
+          '#avisPrintRoot .avis-doc .synth-occ .v{font-size:20pt;font-weight:bold;text-align:center;}' +
+          '#avisPrintRoot .avis-doc .synth-libre{background:#eaf0f8;padding:12pt;break-inside:avoid;page-break-inside:avoid;}' +
+          '#avisPrintRoot .avis-doc .synth-libre .v{font-size:17pt;font-weight:bold;color:#1a3a6e;text-align:center;}' +
+          '#avisPrintRoot .avis-doc .atouts{background:#e8f5e9;padding:10pt;break-inside:avoid;page-break-inside:avoid;}' +
+          '#avisPrintRoot .avis-doc .vigilance{background:#ffebee;padding:10pt;break-inside:avoid;page-break-inside:avoid;}' +
+          '#avisPrintRoot .avis-doc .atouts .h{color:#198754;font-weight:bold;font-size:9.5pt;margin-bottom:6pt;}' +
+          '#avisPrintRoot .avis-doc .vigilance .h{color:#b71c1c;font-weight:bold;font-size:9.5pt;margin-bottom:6pt;}' +
+          '#avisPrintRoot .avis-doc .signature{text-align:right;margin-top:20pt;break-inside:avoid;page-break-inside:avoid;}' +
+          '#avisPrintRoot .avis-doc .signature .name{color:#1a3a6e;font-weight:bold;font-size:11.5pt;}' +
+          '#avisPrintRoot .avis-doc .reserves p{font-size:8.5pt;color:#5c6470;}' +
+          '#avisPrintRoot .avis-doc .gold-row{background:#b8860b;color:#fff;font-weight:bold;}' +
+        '}';
+      document.head.appendChild(st);
+    }
 
     var modalEl = document.getElementById('avisModal');
     state.modal = new bootstrap.Modal(modalEl);

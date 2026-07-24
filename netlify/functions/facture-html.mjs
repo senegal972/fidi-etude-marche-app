@@ -48,7 +48,14 @@ export const handler = async (event) => {
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; color: #222; background: #fff; padding: 40px; }
-  @media print { body { padding: 0; } .no-print { display: none !important; } }
+  @page { size: A4; margin: 16mm 14mm; }
+  @media print {
+    body { padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .no-print { display: none !important; }
+    .fac-header, .fac-meta, .fac-box, .fac-note, .fac-footer, tr, table { break-inside: avoid; page-break-inside: avoid; }
+    thead { display: table-header-group; }
+    tfoot { display: table-row-group; }
+  }
   .fac-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 36px; }
   .fac-logo { font-size: 22px; font-weight: 800; color: #1a3a6e; letter-spacing: -.5px; }
   .fac-logo span { color: #c0392b; }
