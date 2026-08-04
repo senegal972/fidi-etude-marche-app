@@ -605,6 +605,14 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
             <a id="gpuLink" href="#" target="_blank" rel="noopener" class="small d-inline-block mt-1">
               <i class="bi bi-box-arrow-up-right me-1"></i>Ouvrir dans le Géoportail de l'Urbanisme
             </a>
+            <div class="d-flex flex-wrap gap-2 mt-2" id="gpsLinks" style="display:none!important;">
+              <a id="gpsGmaps" href="#" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary" title="Ouvrir le point GPS dans Google Maps">
+                <i class="bi bi-geo-alt-fill me-1"></i>Google Maps
+              </a>
+              <a id="gpsWaze" href="#" target="_blank" rel="noopener" class="btn btn-sm btn-outline-info" title="Ouvrir le point GPS dans Waze">
+                <i class="bi bi-signpost-split me-1"></i>Waze
+              </a>
+            </div>
           </div>
         </div>
       </div>
@@ -2117,6 +2125,14 @@ async function loadGpuInfo(lat, lon){
   if(elZone) elZone.textContent = 'Chargement…';
   if(elParc) elParc.textContent = 'Chargement…';
   if(elLink) elLink.href = `https://www.geoportail-urbanisme.gouv.fr/map/#tile=1&lon=${lon}&lat=${lat}&zoom=18`;
+
+  // Liens GPS cliquables : Google Maps + Waze (pointent sur les coordonnées du bien analysé)
+  const gmaps = document.getElementById('gpsGmaps');
+  const waze  = document.getElementById('gpsWaze');
+  const gpsBox = document.getElementById('gpsLinks');
+  if(gmaps) gmaps.href = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+  if(waze)  waze.href  = `https://www.waze.com/ul?ll=${lat}%2C${lon}&navigate=yes&zoom=17`;
+  if(gpsBox) gpsBox.style.display = '';
 
   const pt = encodeURIComponent(JSON.stringify({ type:'Point', coordinates:[lon, lat] }));
   window.__fidiGpu = {}; // exposé pour le moteur de rapport A4
