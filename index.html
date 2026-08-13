@@ -1416,6 +1416,7 @@ async function lancerAnalyse(){
     // Expose les résultats de l'étude au module Avis de valeur (pré-remplissage)
     window.__fidiData = data;
     window.__fidiInputs = { adresse, typeBien, surface, perimetre };
+    if(window.FidiGuard) FidiGuard.setDirty(); // garde-fou sortie : donnees a proteger
     document.getElementById('results-panel').classList.remove('d-none');
     document.getElementById('btnPrint').classList.remove('d-none');
     document.getElementById('btnPdf').classList.remove('d-none');
@@ -1508,7 +1509,7 @@ async function saveEtudeCloud(){
   try{
     const r = await fetch('/api/notion-save', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const j = await r.json().catch(()=>({}));
-    if(j && j.ok){ if(btn){ btn.innerHTML = '✅ Sauvegardé'; setTimeout(()=>{btn.innerHTML=orig;btn.disabled=false;},1800);} }
+    if(j && j.ok){ if(window.FidiGuard) FidiGuard.setClean(); if(btn){ btn.innerHTML = '✅ Sauvegardé'; setTimeout(()=>{btn.innerHTML=orig;btn.disabled=false;},1800);} }
     else if(j && j.configured === false){ alert('Notion non configuré sur ce site.'); if(btn){btn.innerHTML=orig;btn.disabled=false;} }
     else { alert('Erreur Notion : ' + ((j&&j.error)||'inconnue')); if(btn){btn.innerHTML=orig;btn.disabled=false;} }
   }catch(e){ alert('Sauvegarde impossible : ' + e.message); if(btn){btn.innerHTML=orig;btn.disabled=false;} }
@@ -3800,6 +3801,8 @@ function copyShareUrl(){
 
 <!-- Moteur de rapport A4 (impression documentaire paginée) -->
 <script src="/rapport-a4.js" defer></script>
+<!-- Garde-fou sortie (Windows/Android) : évite la perte de données -->
+<script src="/guard-exit.js" defer></script>
 <!-- Module Avis de valeur (récupère window.__fidiData) -->
 <div id="avisModalRoot"></div>
 <script src="/avis-valeur.js" defer></script>
