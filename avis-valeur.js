@@ -70,6 +70,32 @@
         capitalisation:  { on: true,  poids: 20 },
         cout:            { on: false, poids: 0, valeurTerrain: '', coutConstructionM2: '', vetustePct: '' }
       },
+      // ── Mode Expert (méthodes CEE Saint Joseph) ─────────────────────────
+      // Rempli progressivement par l'utilisateur en mode Expert. En mode Simple,
+      // les valeurs par défaut de FidiAvisMethodes.defaults suffisent.
+      expert: {
+        surfaces: [], // [{ label, surface, coef }] — vide → auto-généré depuis bien.surfaceCarrez
+        vetusteDetail: {}, // { poste: pct } — vide → défauts (30 %)
+        sc: {
+          terrain: { surfTotale: '', surfAgrement: '', prixAgrementM2: '', prixResteM2: '', decotePct: 15 },
+          construction: { prixNeufM2: 850, anneeEval: new Date().getFullYear() },
+          amenagements: ''
+        },
+        coeffEnv: {
+          chargeFoncierePct: 17,
+          axes: { emploi: 20, transport: 5, scolarite: 25, equipement: 15, agrement: 12, voisinage: 12 },
+          mode: 'moyenne',
+          coefManuel: ''
+        },
+        dcf: {
+          horizonAn: 10,
+          tauxRevalLoyer: 1.00, tauxRevalCharges: 1.00,
+          tauxRemDG: 0.50, tauxActualisation: 5.90, tauxCapitalisationFin: 5.50,
+          travauxImmediat: '',
+          charges: { taxeFonc: '', pno: '', gestionPct: 8, impayesPct: 5, vacancePct: 5, maintenanceParM2: 8 }
+        },
+        pond: { sc: 1, dcf: 1, comp: 1 } // poids relatifs des méthodes retenues
+      },
       atouts: [''],
       vigilances: [''],
       conclusion: { texte: '', potentielBas: '', potentielHaut: '' },
@@ -363,7 +389,36 @@
   }
 
   // ── État ────────────────────────────────────────────────────
-  var state = { data: null, section: 'metadata', preview: true, modal: null, built: false };
+  // mode : 'simple' (défaut, formulaire allégé) ou 'expert' (méthodes CEE complètes)
+  var state = { data: null, section: 'metadata', preview: true, modal: null, built: false,
+                mode: (function(){ try { return localStorage.getItem('fidi:avis:mode') || 'simple'; } catch(e){ return 'simple'; } })() };
+
+  // Sections visibles selon le mode (Expert ajoute 13. Méthodes CEE)
+  function visibleSections() {
+    if (state.mode === 'expert') {
+      return SECTIONS.concat([{ id: 'methodes', label: '13. Méthodes CEE' }]);
+    }
+    return SECTIONS;
+  }
+
+  // Re-rend la barre d'onglets (appelé après bascule de mode)
+  function renderTabs() {
+    var wrap = document.querySelector('#avisModal .av-tabs');
+    if (!wrap) return;
+    wrap.innerHTML = visibleSections().map(function (s) {
+      return '<button class="av-tab' + (s.id === state.section ? ' active' : '') + '" data-sec="' + s.id + '">' + esc(s.label) + '</button>';
+    }).join('');
+  }
+
+  // Rétrocompat : garantit la présence du bloc "expert" sur les études anciennes.
+  function ensureExpertBlock(d) {
+    if (!d) return d;
+    if (!d.expert) {
+      var defExp = defaultData().expert;
+      d.expert = defExp;
+    }
+    return d;
+  }
 
   var SECTIONS = [
     { id: 'metadata', label: '1. Référence' },
@@ -629,9 +684,231 @@
         fld('Adresse de la société', 'signataire.adresseSociete') +
         '<button class="btn btn-sm btn-outline-primary mt-2" data-action="save-sign"><i class="bi bi-save me-1"></i>Mémoriser ce signataire par défaut</button>';
     }
+    if (id === 'methodes') {
+      return renderMethodesSection();
+    }
     return '';
   }
   function head(t, s) { return '<div class="av-sec-head"><h5>' + esc(t) + '</h5><div class="av-sub">' + esc(s) + '</div></div>'; }
+
+  // ── Section Mode Expert : Méthodes CEE (Saint Joseph) ────────────────────
+  // Affiche les 3 méthodes (Sol+Construction / DCF / Comparative) avec calcul
+  // en direct via FidiAvisMethodes, et la pondération finale.
+  function renderMethodesSection() {
+    var M = window.FidiAvisMethodes;
+    if (!M) {
+      return head('Méthodes CEE', 'Chargement du moteur…') +
+        '<div class="alert alert-warning small">Le module de calcul n\'est pas encore chargé. Rechargez la page.</div>';
+    }
+    var d = ensureExpertBlock(state.data), e = d.expert, b = d.bien;
+    // Auto-remplissage des surfaces si l'utilisateur ne les a pas encore saisies
+    if (!e.surfaces || !e.surfaces.length) e.surfaces = M.defaults.surfacesLignes(num(b.surfaceCarrez));
+    // Auto-remplissage de la vétusté si vide
+    if (!e.vetusteDetail || !Object.keys(e.vetusteDetail).length) e.vetusteDetail = M.defaults.vetuste();
+    // Calculs en direct
+    var sppRes = M.spp(e.surfaces);
+    var vetRes = M.vetuste(e.vetusteDetail);
+    var scInput = {
+      terrain: {
+        surfTotale:   num(e.sc.terrain.surfTotale),
+        surfAgrement: num(e.sc.terrain.surfAgrement),
+        prixAgrementM2: num(e.sc.terrain.prixAgrementM2),
+        prixResteM2:  num(e.sc.terrain.prixResteM2),
+        decotePct:    num(e.sc.terrain.decotePct),
+      },
+      construction: {
+        spp: sppRes.total,
+        prixNeufM2: num(e.sc.construction.prixNeufM2) || 850,
+        anneeEval: num(e.sc.construction.anneeEval) || new Date().getFullYear(),
+        vetustePct: vetRes.total,
+      },
+      amenagements: num(e.sc.amenagements),
+    };
+    var ceRes = M.coeffEnv({
+      chargeFoncierePct: num(e.coeffEnv.chargeFoncierePct),
+      axes: e.coeffEnv.axes,
+      mode: e.coeffEnv.mode || 'moyenne',
+      coefManuel: num(e.coeffEnv.coefManuel),
+    });
+    scInput.coeffEnvPct = ceRes.coefFinal;
+    var scRes = M.sc(scInput);
+
+    var loyerM = num(b.loyer);
+    var dcfCharges = e.dcf.charges || {};
+    var chgAuto = M.defaults.dcfCharges(num(b.surfaceCarrez), loyerM * 12);
+    var dcfRes = null;
+    if (loyerM > 0) {
+      dcfRes = M.dcf({
+        loyerMensuel: loyerM,
+        tauxRevalLoyer: num(e.dcf.tauxRevalLoyer),
+        horizonAn: num(e.dcf.horizonAn) || 10,
+        charges: {
+          taxeFonc: num(dcfCharges.taxeFonc) || chgAuto.taxeFonc,
+          pno: num(dcfCharges.pno) || chgAuto.pno,
+          gestionPct: num(dcfCharges.gestionPct),
+          impayesPct: num(dcfCharges.impayesPct),
+          vacancePct: num(dcfCharges.vacancePct),
+          maintenanceParM2: num(dcfCharges.maintenanceParM2),
+        },
+        surface: num(b.surfaceCarrez),
+        travauxImmediat: num(e.dcf.travauxImmediat),
+        depotGarantie: loyerM,
+        tauxRemDG: num(e.dcf.tauxRemDG),
+        tauxActualisation: num(e.dcf.tauxActualisation),
+        tauxCapitalisationFin: num(e.dcf.tauxCapitalisationFin),
+        tauxRevalCharges: num(e.dcf.tauxRevalCharges),
+      });
+    }
+    // Comparative : reprend ACM existant (compute retourne valeur médiane)
+    var comp = compute(state.data);
+    var valComp = comp && comp.vlMoy ? comp.vlMoy : 0;
+    var pondRes = M.ponderation({
+      sc: scRes.valeurVenale, dcf: dcfRes ? dcfRes.valeurVenale : 0, comp: valComp,
+      poids: e.pond,
+    });
+
+    // Helpers UI
+    function row(k, v, cls) { return '<tr' + (cls ? ' class="'+cls+'"' : '') + '><th style="text-align:left;font-weight:600;color:#555;">' + esc(k) + '</th><td style="text-align:right;">' + v + '</td></tr>'; }
+    function eur(n) { return n > 0 ? fmt(Math.round(n)) + ' €' : '—'; }
+
+    var htmlSurfaces = e.surfaces.map(function (l, i) {
+      return '<tr>'
+        + '<td><input class="form-control form-control-sm" data-list="expert.surfaces" data-idx="'+i+'" data-key="label" value="'+esc(l.label)+'"></td>'
+        + '<td><input type="number" step="0.01" class="form-control form-control-sm" data-list="expert.surfaces" data-idx="'+i+'" data-key="surface" value="'+esc(l.surface)+'"></td>'
+        + '<td><input type="number" step="0.05" class="form-control form-control-sm" data-list="expert.surfaces" data-idx="'+i+'" data-key="coef" value="'+esc(l.coef)+'"></td>'
+        + '<td style="text-align:right;">' + (l.surface * l.coef).toFixed(2) + ' m²</td>'
+        + '<td><button class="btn btn-sm btn-outline-danger" data-listdel="expert.surfaces" data-idx="'+i+'" title="Supprimer">×</button></td>'
+        + '</tr>';
+    }).join('');
+
+    var htmlVetuste = M.POSTES_VETUSTE.map(function (p) {
+      var pct = num(e.vetusteDetail[p.key]);
+      return '<tr>'
+        + '<td>' + esc(p.label) + ' <span class="text-muted small">(poids ' + p.poids + ' %)</span></td>'
+        + '<td style="width:110px;"><input type="number" min="0" max="100" step="1" class="form-control form-control-sm" data-p="expert.vetusteDetail.' + p.key + '" value="' + esc(pct) + '"> %</td>'
+        + '<td style="text-align:right;">contrib. ' + (p.poids * pct / 100).toFixed(2) + ' %</td>'
+        + '</tr>';
+    }).join('');
+
+    var htmlAxes = Object.keys(M.COEFF_ENV_AXES).map(function (k) {
+      var ax = M.COEFF_ENV_AXES[k];
+      var curVal = num(e.coeffEnv.axes[k]);
+      var opts = ax.options.map(function (o) {
+        return '<option value="' + o.v + '"' + (o.v === curVal ? ' selected' : '') + '>' + o.v + ' % — ' + esc(o.l) + '</option>';
+      }).join('');
+      return '<tr><td>' + esc(ax.label) + '</td>'
+        + '<td><select class="form-select form-select-sm" data-p="expert.coeffEnv.axes.' + k + '">' + opts + '</select></td></tr>';
+    }).join('');
+
+    var dcfRows = '';
+    if (dcfRes) {
+      dcfRows = dcfRes.lignes.map(function (l) {
+        return '<tr><td>Année ' + l.annee + '</td><td class="text-end">' + fmt(l.revenus) + ' €</td><td class="text-end">' + fmt(l.charges) + ' €</td><td class="text-end">' + fmt(l.revenuNet) + ' €</td><td class="text-end">' + fmt(l.netActualise) + ' €</td></tr>';
+      }).join('');
+    }
+
+    return head('Méthodes d\'évaluation (modèle CEE Saint Joseph)', 'Sol+Construction + DCF + Comparative + Pondération finale') +
+
+      // — Surfaces pondérées —
+      '<div class="card mb-3"><div class="card-body"><h6 class="mb-2"><i class="bi bi-rulers me-1 text-primary"></i>Surfaces pondérées (SPP)</h6>' +
+      '<table class="table table-sm"><thead><tr><th>Libellé</th><th style="width:110px;">Surface m²</th><th style="width:90px;">Coef.</th><th class="text-end">SPP</th><th></th></tr></thead><tbody>' +
+      htmlSurfaces +
+      '</tbody><tfoot><tr class="table-primary"><th colspan="3">Total SPP</th><th class="text-end">' + sppRes.total.toFixed(2) + ' m²</th><th></th></tr></tfoot></table>' +
+      '<button class="btn btn-sm btn-outline-primary" data-listadd="expert.surfaces">+ Ajouter une ligne</button>' +
+      '<div class="text-muted small mt-1">Coefficients CEE standards : plancher 1.0 · terrasse 0.5 · débarras 0.8 · stationnement 0.4 · abri 0.5</div>' +
+      '</div></div>' +
+
+      // — Vétusté 16 postes —
+      '<div class="card mb-3"><div class="card-body"><h6 class="mb-2"><i class="bi bi-tools me-1 text-warning"></i>Vétusté par corps d\'état</h6>' +
+      '<table class="table table-sm"><tbody>' + htmlVetuste + '</tbody>' +
+      '<tfoot><tr class="table-warning"><th>Vétusté globale pondérée</th><th style="text-align:center;">' + vetRes.total.toFixed(2) + ' %</th><th></th></tr></tfoot></table>' +
+      '</div></div>' +
+
+      // — Sol + Construction —
+      '<div class="card mb-3"><div class="card-body"><h6 class="mb-2"><i class="bi bi-house me-1 text-success"></i>Méthode Sol + Construction</h6>' +
+      '<div class="row g-2 mb-2">' +
+        '<div class="col-md-3">' + fld('Surface totale terrain m²', 'expert.sc.terrain.surfTotale', { type: 'number' }) + '</div>' +
+        '<div class="col-md-3">' + fld("Surface d'agrément m²", 'expert.sc.terrain.surfAgrement', { type: 'number', tip: '≈ emprise construite + accès (245 m² dans le modèle Saint Joseph)' }) + '</div>' +
+        '<div class="col-md-3">' + fld('Prix agrément €/m²', 'expert.sc.terrain.prixAgrementM2', { type: 'number' }) + '</div>' +
+        '<div class="col-md-3">' + fld('Prix zone restante €/m²', 'expert.sc.terrain.prixResteM2', { type: 'number' }) + '</div>' +
+      '</div>' +
+      '<div class="row g-2 mb-2">' +
+        '<div class="col-md-3">' + fld('Décote encombrement %', 'expert.sc.terrain.decotePct', { type: 'number' }) + '</div>' +
+        '<div class="col-md-3">' + fld('Prix construction neuf €/m² (janv. 2001)', 'expert.sc.construction.prixNeufM2', { type: 'number', tip: '850 = maison ordinaire, 1100 = standing, 1500 = luxe' }) + '</div>' +
+        '<div class="col-md-3">' + fld("Année d'évaluation", 'expert.sc.construction.anneeEval', { type: 'number' }) + '</div>' +
+        '<div class="col-md-3">' + fld('Aménagements ext. €', 'expert.sc.amenagements', { type: 'number', tip: 'Portail, clôture, accès (forfait)' }) + '</div>' +
+      '</div>' +
+      '<table class="table table-sm mb-0">' +
+        row('Valeur terrain', eur(scRes.terrain.valeur)) +
+        row('Valeur construction (BT01 ×' + scRes.construction.coefBT01.toFixed(2) + ' × (1 − vétusté ' + vetRes.total.toFixed(1) + ' %))', eur(scRes.construction.valeur)) +
+        row('Aménagements ext.', eur(scRes.amenagements)) +
+        row('Coefficient environnemental appliqué', ceRes.coefFinal + ' %') +
+        row('<strong>Valeur vénale méthode SC</strong>', '<strong>' + eur(scRes.valeurVenale) + '</strong>', 'table-success') +
+      '</table>' +
+      '</div></div>' +
+
+      // — Coefficient environnemental —
+      '<div class="card mb-3"><div class="card-body"><h6 class="mb-2"><i class="bi bi-diagram-3 me-1 text-info"></i>Coefficient environnemental</h6>' +
+      '<div class="row g-2 mb-2">' +
+        '<div class="col-md-4">' + fld('Charge foncière %', 'expert.coeffEnv.chargeFoncierePct', { type: 'number', tip: 'Parcelle base / (parcelle + construction) — 17 % dans le modèle SJ' }) + '</div>' +
+        '<div class="col-md-4">' + fld('Mode de calcul', 'expert.coeffEnv.mode', { type: 'select', options: ['moyenne', 'critères', 'charge', 'manuel'], tip: 'moyenne = (charge + critères)/2 ; manuel = saisie directe' }) + '</div>' +
+        '<div class="col-md-4">' + fld('Coefficient manuel % (si mode=manuel)', 'expert.coeffEnv.coefManuel', { type: 'number' }) + '</div>' +
+      '</div>' +
+      '<table class="table table-sm">' + htmlAxes + '</table>' +
+      '<table class="table table-sm mb-0">' +
+        row('Coefficient charge foncière (courbe)', ceRes.coefBase + ' %') +
+        row('Somme des critères socio-économiques', ceRes.sommeAxes + ' %') +
+        row('<strong>Coefficient environnemental final</strong>', '<strong>' + ceRes.coefFinal + ' %</strong>', 'table-info') +
+      '</table>' +
+      '</div></div>' +
+
+      // — DCF —
+      '<div class="card mb-3"><div class="card-body"><h6 class="mb-2"><i class="bi bi-cash-coin me-1 text-danger"></i>Méthode DCF (Discounted Cash Flow)</h6>' +
+      (loyerM > 0 ? '' : '<div class="alert alert-warning small">Renseignez un loyer mensuel dans la section « Le bien » pour activer le DCF.</div>') +
+      '<div class="row g-2 mb-2">' +
+        '<div class="col-md-2">' + fld("Horizon (ans)", 'expert.dcf.horizonAn', { type: 'number' }) + '</div>' +
+        '<div class="col-md-2">' + fld("Réval. loyer %/an", 'expert.dcf.tauxRevalLoyer', { type: 'number' }) + '</div>' +
+        '<div class="col-md-2">' + fld("Réval. charges %/an", 'expert.dcf.tauxRevalCharges', { type: 'number' }) + '</div>' +
+        '<div class="col-md-2">' + fld("Rém. DG %", 'expert.dcf.tauxRemDG', { type: 'number' }) + '</div>' +
+        '<div class="col-md-2">' + fld("Taux actualisation %", 'expert.dcf.tauxActualisation', { type: 'number', tip: '5,90 % dans le modèle SJ' }) + '</div>' +
+        '<div class="col-md-2">' + fld("Cap. fin horizon %", 'expert.dcf.tauxCapitalisationFin', { type: 'number', tip: '5,50 % dans le modèle SJ' }) + '</div>' +
+      '</div>' +
+      '<div class="row g-2 mb-2">' +
+        '<div class="col-md-2">' + fld("Taxe foncière €/an", 'expert.dcf.charges.taxeFonc', { type: 'number' }) + '</div>' +
+        '<div class="col-md-2">' + fld("PNO €/an", 'expert.dcf.charges.pno', { type: 'number' }) + '</div>' +
+        '<div class="col-md-2">' + fld("Gestion %", 'expert.dcf.charges.gestionPct', { type: 'number' }) + '</div>' +
+        '<div class="col-md-2">' + fld("Impayés %", 'expert.dcf.charges.impayesPct', { type: 'number' }) + '</div>' +
+        '<div class="col-md-2">' + fld("Vacance %", 'expert.dcf.charges.vacancePct', { type: 'number' }) + '</div>' +
+        '<div class="col-md-2">' + fld("Maintenance €/m²/an", 'expert.dcf.charges.maintenanceParM2', { type: 'number' }) + '</div>' +
+      '</div>' +
+      fld("Travaux à prévoir (year 1) €", 'expert.dcf.travauxImmediat', { type: 'number' }) +
+      (dcfRes ?
+        '<div class="table-responsive mt-2"><table class="table table-sm table-striped">' +
+        '<thead><tr><th>Année</th><th class="text-end">Revenus</th><th class="text-end">Charges</th><th class="text-end">Net</th><th class="text-end">Net actualisé</th></tr></thead>' +
+        '<tbody>' + dcfRows + '</tbody></table></div>' +
+        '<table class="table table-sm mb-0">' +
+        row('Σ revenus nets actualisés', eur(dcfRes.sommeActualisee)) +
+        row('Valeur résiduelle actualisée', eur(dcfRes.valeurResiduelleActu)) +
+        row('<strong>Valeur vénale méthode DCF</strong>', '<strong>' + eur(dcfRes.valeurVenale) + '</strong>', 'table-danger') +
+        '</table>' : '') +
+      '</div></div>' +
+
+      // — Pondération —
+      '<div class="card mb-3"><div class="card-body"><h6 class="mb-2"><i class="bi bi-calculator me-1 text-primary"></i>Pondération des méthodes</h6>' +
+      '<div class="row g-2 mb-2">' +
+        '<div class="col-md-4">' + fld('Poids Sol+Construction', 'expert.pond.sc', { type: 'number' }) + '</div>' +
+        '<div class="col-md-4">' + fld('Poids DCF', 'expert.pond.dcf', { type: 'number' }) + '</div>' +
+        '<div class="col-md-4">' + fld('Poids Comparative', 'expert.pond.comp', { type: 'number' }) + '</div>' +
+      '</div>' +
+      '<div class="text-muted small mb-2">0 = méthode ignorée. Poids = pondération relative (ex : 1/1/1 = simple moyenne).</div>' +
+      '<table class="table table-sm mb-0">' +
+        row('Méthode Sol + Construction', eur(scRes.valeurVenale) + ' × ' + num(e.pond.sc)) +
+        row('Méthode DCF', (dcfRes ? eur(dcfRes.valeurVenale) : '—') + ' × ' + num(e.pond.dcf)) +
+        row('Méthode Comparative (ACM)', eur(valComp) + ' × ' + num(e.pond.comp)) +
+        row('<strong>VALEUR VÉNALE RETENUE (arrondie centaine)</strong>', '<strong style="font-size:1.2rem;color:#1a3a6e;">' + eur(pondRes.valeur) + '</strong>', 'table-primary') +
+      '</table>' +
+      '</div></div>';
+  }
 
   function renderAcmSynth() {
     var d = state.data, st = acmStats(d), retenu = acmRetenuM2(d);
@@ -715,12 +992,16 @@
   function buildModal() {
     var root = document.getElementById('avisModalRoot');
     if (!root) { root = document.createElement('div'); root.id = 'avisModalRoot'; document.body.appendChild(root); }
-    var tabs = SECTIONS.map(function (s) { return '<button class="av-tab" data-sec="' + s.id + '">' + esc(s.label) + '</button>'; }).join('');
+    var tabs = visibleSections().map(function (s) { return '<button class="av-tab" data-sec="' + s.id + '">' + esc(s.label) + '</button>'; }).join('');
     root.innerHTML =
       '<div class="modal fade" id="avisModal" tabindex="-1" aria-hidden="true">' +
       '<div class="modal-dialog modal-fullscreen modal-dialog-scrollable">' +
       '<div class="modal-content">' +
       '<div class="modal-header"><div><h5 class="modal-title">Avis de valeur<small>FIDI · document professionnel</small></h5></div>' +
+      '<div class="btn-group btn-group-sm ms-auto me-2" role="group" aria-label="Mode">' +
+        '<button type="button" class="btn ' + (state.mode==='simple'?'btn-primary':'btn-outline-primary') + '" data-avmode="simple" title="Formulaire allégé, valeurs auto"><i class="bi bi-lightning me-1"></i>Simple</button>' +
+        '<button type="button" class="btn ' + (state.mode==='expert'?'btn-primary':'btn-outline-primary') + '" data-avmode="expert" title="Toutes les saisies méthodes CEE"><i class="bi bi-sliders me-1"></i>Expert</button>' +
+      '</div>' +
       '<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button></div>' +
       '<div class="av-tabs">' + tabs + '</div>' +
       '<div class="modal-body"><div class="av-layout' + (state.preview ? ' av-with-preview' : '') + '" id="avLayout">' +
@@ -821,6 +1102,26 @@
   }
 
   function onClick(e) {
+    // Bascule Mode Simple / Expert : re-render de la barre d'onglets + section active
+    var modeBtn = e.target.closest('[data-avmode]');
+    if (modeBtn) {
+      var m = modeBtn.dataset.avmode;
+      if (m !== state.mode) {
+        state.mode = m;
+        try { localStorage.setItem('fidi:avis:mode', m); } catch (_) {}
+        // Refresh les boutons Simple/Expert (toggle actif)
+        var grp = modeBtn.parentNode;
+        Array.prototype.forEach.call(grp.querySelectorAll('[data-avmode]'), function (b) {
+          var on = b.dataset.avmode === m;
+          b.classList.toggle('btn-primary', on);
+          b.classList.toggle('btn-outline-primary', !on);
+        });
+        // Re-render tabs + section courante (les sections Expert apparaissent/disparaissent)
+        renderTabs();
+        showSection(state.section);
+      }
+      return;
+    }
     var t = e.target.closest('[data-sec],[data-action],[data-listadd],[data-listdel],[data-simpleadd],[data-simpledel]');
     if (!t) return;
     if (t.dataset.sec) { showSection(t.dataset.sec); return; }
@@ -828,6 +1129,7 @@
       var key = t.dataset.listadd, tpl;
       if (key === 'loyers') tpl = { type: '', surface: '', loyer: '', secteur: '' };
       else if (key === 'comparables') tpl = comparableTemplate();
+      else if (key === 'expert.surfaces') tpl = { label: 'Nouvelle ligne', surface: 0, coef: 1 };
       else tpl = { nom: '', bas: '', moyen: '', haut: '' };
       getPath(state.data, key).push(tpl); showSection(state.section); return;
     }
@@ -989,12 +1291,12 @@
     new bootstrap.Modal(el).show();
   }
   function doNew() {
-    state.data = buildPrefillFromEtude(null, null);
+    state.data = ensureExpertBlock(buildPrefillFromEtude(null, null));
     showSection('metadata'); toast('Nouveau brouillon');
   }
   function doPrefill() {
     if (!window.__fidiData) { toast('Lancez d\'abord une analyse', true); return; }
-    state.data = buildPrefillFromEtude(window.__fidiData, window.__fidiInputs);
+    state.data = ensureExpertBlock(buildPrefillFromEtude(window.__fidiData, window.__fidiInputs));
     showSection(state.section); toast('Pré-rempli depuis l\'étude');
   }
   function doSave() {
@@ -1131,7 +1433,7 @@
   function doLoad() {
     var sel = document.getElementById('avSavedSelect'); var ref = sel && sel.value;
     if (!ref) { toast('Sélectionnez un avis', true); return; }
-    try { var raw = localStorage.getItem(AVIS_PREFIX + ref); if (raw) { state.data = JSON.parse(raw); showSection('metadata'); toast('Avis chargé'); } }
+    try { var raw = localStorage.getItem(AVIS_PREFIX + ref); if (raw) { state.data = ensureExpertBlock(JSON.parse(raw)); showSection('metadata'); toast('Avis chargé'); } }
     catch (e) { toast('Erreur de chargement', true); }
   }
   function doDelete() {
@@ -1400,7 +1702,7 @@
     if (!state.built) buildModal();
     // Ouverture d'un avis mémorisé (depuis le picker ou la bibliothèque)
     if (ref && typeof ref === 'string') {
-      try { var raw = localStorage.getItem(AVIS_PREFIX + ref); if (raw) { state.data = JSON.parse(raw); state.section = 'metadata'; } }
+      try { var raw = localStorage.getItem(AVIS_PREFIX + ref); if (raw) { state.data = ensureExpertBlock(JSON.parse(raw)); state.section = 'metadata'; } }
       catch (e) { toast('Erreur de chargement', true); }
       var lib = document.getElementById('avisLibModal');
       if (lib && bootstrap.Modal.getInstance(lib)) bootstrap.Modal.getInstance(lib).hide();
