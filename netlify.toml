@@ -64,6 +64,9 @@
 [functions."img-proxy"]
   timeout = 14
 
+[functions."comparables-inbox"]
+  timeout = 10
+
 # ── Redirections API → Netlify Functions ──────────────────────────────────────
 [[redirects]]
   from   = "/api/analyse"
@@ -242,6 +245,11 @@
 [[redirects]]
   from   = "/api/img-proxy"
   to     = "/.netlify/functions/img-proxy"
+  status = 200
+
+[[redirects]]
+  from   = "/api/comparables-inbox"
+  to     = "/.netlify/functions/comparables-inbox"
   status = 200
 
 # ── SPA fallback : toute URL non trouvée → index.html ─────────────────────────

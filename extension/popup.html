@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>FIDI ACM</title>
+<style>
+  body{font:14px/1.4 -apple-system,"Segoe UI",Arial,sans-serif;color:#1a2233;margin:0;padding:16px;width:320px;background:#f4f6fa;}
+  h1{font-size:15px;color:#1a3a6e;margin:0 0 4px;}
+  h1 .badge{background:#ffc107;color:#1a2233;font-size:10px;padding:2px 6px;border-radius:4px;margin-left:6px;}
+  .sub{color:#666;font-size:12px;margin-bottom:14px;}
+  label{display:block;font-size:12px;font-weight:600;color:#333;margin-top:10px;margin-bottom:3px;}
+  input{width:100%;padding:7px 8px;border:1px solid #ccc;border-radius:4px;font:13px monospace;box-sizing:border-box;}
+  button{margin-top:12px;padding:8px 12px;background:#1a3a6e;color:#fff;border:0;border-radius:4px;font-weight:600;cursor:pointer;width:100%;}
+  button:hover{background:#14305a;}
+  .hint{font-size:11px;color:#666;margin-top:4px;}
+  .stats{background:#fff;border:1px solid #dee2e6;border-radius:6px;padding:10px;margin-top:12px;font-size:12px;}
+  .stats .n{font-size:20px;font-weight:800;color:#1a3a6e;}
+  .ok{color:#198754;} .err{color:#b71c1c;}
+  #msg{margin-top:10px;font-size:12px;min-height:16px;}
+</style>
+</head>
+<body>
+<h1>FIDI ACM <span class="badge">Comparables</span></h1>
+<div class="sub">Envoyez les annonces SeLoger, LeBonCoin, DomImmo à votre app FIDI.</div>
+
+<label for="fidiUrl">URL de votre app FIDI</label>
+<input type="url" id="fidiUrl" placeholder="https://fidi-etude-marche-app.netlify.app" autocomplete="off">
+<div class="hint">Sans / à la fin.</div>
+
+<label for="fidiToken">Token utilisateur</label>
+<input type="text" id="fidiToken" placeholder="ex : franck-fidi-2026" autocomplete="off">
+<div class="hint">Choisissez librement, unique et privé. Même valeur dans l'app FIDI.</div>
+
+<button id="save">💾 Enregistrer la configuration</button>
+<button id="reset" style="background:#6c757d;margin-top:6px;">Remettre à zéro le compteur</button>
+
+<div class="stats">
+  Envois cumulés : <span class="n" id="sent">0</span>
+</div>
+
+<div id="msg"></div>
+
+<script src="popup.js"></script>
+</body>
+</html>

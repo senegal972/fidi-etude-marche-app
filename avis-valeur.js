@@ -612,7 +612,9 @@
         '<button class="btn btn-sm btn-outline-success" data-action="import-dvf"><i class="bi bi-download me-1"></i>Importer ventes DVF proches (' + nbDvf + ')</button>' +
         '<button class="av-add" data-listadd="comparables" style="border:1px solid var(--av-blue);border-radius:6px;padding:.25rem .6rem;">+ Ajouter une annonce</button>' +
         '<button class="btn btn-sm btn-outline-secondary" data-action="toggle-paste"><i class="bi bi-clipboard me-1"></i>Coller une annonce</button>' +
+        '<button class="btn btn-sm btn-outline-primary" data-action="import-extension"><i class="bi bi-download me-1"></i>Importer depuis l\'extension</button>' +
         '</div>' +
+        '<div id="avExtImport" style="display:none;margin-bottom:.6rem;padding:.6rem;background:#f4f6fa;border:1px solid #dee2e6;border-radius:6px;"></div>' +
         '<div id="avPasteWrap" style="display:none;margin-bottom:.6rem;">' +
         '<textarea id="avPasteText" rows="3" placeholder="Collez ici le texte d\'une annonce (le prix, la surface et le type seront extraits automatiquement)…" style="width:100%;font-size:.8rem;"></textarea>' +
         '<button class="btn btn-sm btn-primary mt-1" data-action="parse-paste"><i class="bi bi-magic me-1"></i>Analyser le texte</button></div>' +
@@ -1209,6 +1211,11 @@
     else if (a === 'import-dvf') importDvf();
     else if (a === 'toggle-paste') { var w = document.getElementById('avPasteWrap'); if (w) w.style.display = w.style.display === 'none' ? 'block' : 'none'; }
     else if (a === 'parse-paste') parsePaste();
+    else if (a === 'import-extension') openExtensionImport();
+    else if (a === 'ext-refresh') loadExtensionInbox();
+    else if (a === 'ext-set-token') setExtensionToken();
+    else if (a === 'ext-import-selected') importSelectedFromExt();
+    else if (a === 'ext-clear-inbox') clearExtensionInbox();
     else if (a === 'pdf') exportPdf();
   }
 
@@ -1581,6 +1588,123 @@
     if (value === '' || value === null || value === undefined) return '';
     return '<tr><td class="lbl">' + esc(label) + '</td><td>' + value + '</td></tr>';
   }
+  // ─── Import de l'inbox extension (comparables scrapés par le navigateur) ──
+  var EXT_TOKEN_KEY = 'fidi:acm:extToken';
+  function getExtToken() { try { return localStorage.getItem(EXT_TOKEN_KEY) || ''; } catch (_) { return ''; } }
+  function setExtToken(v) { try { localStorage.setItem(EXT_TOKEN_KEY, v); } catch (_) {} }
+
+  function openExtensionImport() {
+    var wrap = document.getElementById('avExtImport');
+    if (!wrap) return;
+    if (wrap.style.display === 'block') { wrap.style.display = 'none'; return; }
+    wrap.style.display = 'block';
+    var tok = getExtToken();
+    wrap.innerHTML =
+      '<div class="d-flex align-items-center gap-2 mb-2">' +
+        '<strong style="font-size:.85rem;">Extension FIDI ACM</strong>' +
+        '<input type="text" id="avExtTok" class="form-control form-control-sm" style="max-width:220px;" placeholder="votre token (ex : franck-fidi-2026)" value="' + esc(tok) + '">' +
+        '<button class="btn btn-sm btn-outline-secondary" data-action="ext-set-token">Enregistrer token</button>' +
+        '<button class="btn btn-sm btn-primary" data-action="ext-refresh"><i class="bi bi-arrow-clockwise me-1"></i>Actualiser</button>' +
+      '</div>' +
+      '<div id="avExtList" class="small text-muted">' +
+        (tok ? 'Cliquez « Actualiser » pour charger votre boîte de réception.' : 'Configurez d\'abord un token (extension + ici, valeur identique).') +
+      '</div>';
+    if (tok) loadExtensionInbox();
+  }
+
+  function setExtensionToken() {
+    var inp = document.getElementById('avExtTok');
+    var v = inp ? inp.value.trim().replace(/[^a-zA-Z0-9_-]/g, '') : '';
+    if (!v) { toast('Token vide', true); return; }
+    setExtToken(v);
+    if (inp) inp.value = v;
+    toast('Token enregistré');
+    loadExtensionInbox();
+  }
+
+  async function loadExtensionInbox() {
+    var list = document.getElementById('avExtList');
+    if (!list) return;
+    var tok = getExtToken();
+    if (!tok) { list.innerHTML = '<span class="text-danger">Token requis.</span>'; return; }
+    list.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Chargement…';
+    try {
+      var r = await fetch('/api/comparables-inbox', { method: 'GET', headers: { 'X-FIDI-Token': tok } });
+      var j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Erreur');
+      window.__fidiExtInbox = j.items || [];
+      if (!window.__fidiExtInbox.length) {
+        list.innerHTML = '<div class="text-muted small">Boîte vide. Envoyez des annonces depuis l\'extension (bouton bleu flottant sur SeLoger / LeBonCoin / DomImmo).</div>';
+        return;
+      }
+      list.innerHTML = renderExtInboxList(window.__fidiExtInbox);
+    } catch (e) {
+      list.innerHTML = '<span class="text-danger">Erreur : ' + esc(e.message) + '</span>';
+    }
+  }
+
+  function renderExtInboxList(items) {
+    var rows = items.map(function (it, i) {
+      var d = new Date(it.ts || Date.now());
+      var when = d.toLocaleDateString('fr-FR') + ' ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      var src = it.source || '';
+      var pxm2 = (it.prix && it.surface) ? Math.round(it.prix / it.surface) : null;
+      return '<div class="d-flex align-items-center gap-2 py-1" style="border-bottom:1px solid #dee2e6;font-size:.8rem;">' +
+        '<input type="checkbox" data-ext-idx="' + i + '" checked>' +
+        '<span class="badge bg-secondary" style="font-size:.6rem;">' + esc(src) + '</span>' +
+        '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + esc(it.titre || '') + '">' +
+          esc((it.titre || '(sans titre)').slice(0, 60)) +
+        '</span>' +
+        (it.type ? '<span class="text-muted">' + esc(it.type) + '</span>' : '') +
+        (it.surface ? '<span class="fw-semibold">' + it.surface + ' m²</span>' : '') +
+        (it.pieces ? '<span>' + it.pieces + ' pcs</span>' : '') +
+        (it.prix ? '<span class="fw-bold text-primary">' + fmt(it.prix) + ' €</span>' : '') +
+        (pxm2 ? '<span class="text-muted small">' + fmt(pxm2) + ' €/m²</span>' : '') +
+        (it.url ? '<a href="' + esc(it.url) + '" target="_blank" rel="noopener" class="text-muted" title="Ouvrir l\'annonce"><i class="bi bi-box-arrow-up-right"></i></a>' : '') +
+        '<span class="text-muted" style="font-size:.7rem;">' + when + '</span>' +
+      '</div>';
+    }).join('');
+    return rows +
+      '<div class="d-flex gap-2 mt-2">' +
+        '<button class="btn btn-sm btn-success" data-action="ext-import-selected"><i class="bi bi-check-circle me-1"></i>Importer la sélection</button>' +
+        '<button class="btn btn-sm btn-outline-danger ms-auto" data-action="ext-clear-inbox"><i class="bi bi-trash me-1"></i>Vider la boîte</button>' +
+      '</div>';
+  }
+
+  function importSelectedFromExt() {
+    var items = window.__fidiExtInbox || [];
+    var boxes = document.querySelectorAll('#avExtList [data-ext-idx]');
+    var picked = [];
+    boxes.forEach(function (b) { if (b.checked) picked.push(items[+b.dataset.extIdx]); });
+    if (!picked.length) { toast('Aucun élément coché', true); return; }
+    var srcMap = { seloger: 'SeLoger', leboncoin: 'Leboncoin', domimmo: 'DomImmo', 'bien\'ici': 'Bien’ici' };
+    picked.forEach(function (it) {
+      var src = srcMap[(it.source || '').toLowerCase()] || 'Autre';
+      state.data.comparables.push(comparableTemplate({
+        nature: 'annonce', source: src, type: it.type || '',
+        secteur: it.commune || '',
+        surface: it.surface || '', prix: it.prix || '',
+        date: '', etat: '', etage: '', exposition: '', annexes: '',
+        lien: it.url || '', note: (it.ref ? 'Réf ' + it.ref + ' — ' : '') + (it.titre || ''),
+      }));
+    });
+    toast(picked.length + ' comparable' + (picked.length > 1 ? 's' : '') + ' importé' + (picked.length > 1 ? 's' : ''));
+    showSection('comparables');
+  }
+
+  async function clearExtensionInbox() {
+    var tok = getExtToken();
+    if (!tok) { toast('Token requis', true); return; }
+    if (!confirm('Vider votre boîte de réception ACM ?')) return;
+    try {
+      var r = await fetch('/api/comparables-inbox', { method: 'DELETE', headers: { 'X-FIDI-Token': tok } });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      window.__fidiExtInbox = [];
+      toast('Boîte vidée');
+      loadExtensionInbox();
+    } catch (e) { toast('Erreur : ' + e.message, true); }
+  }
+
   // ── Bloc HTML : détail des méthodes CEE dans le document imprimable ─────
   function buildExpertMethodesHTML(data, calc) {
     var M = window.FidiAvisMethodes;
