@@ -94,7 +94,19 @@
           travauxImmediat: '',
           charges: { taxeFonc: '', pno: '', gestionPct: 8, impayesPct: 5, vacancePct: 5, maintenanceParM2: 8 }
         },
-        pond: { sc: 1, dcf: 1, comp: 1 } // poids relatifs des méthodes retenues
+        pond: { sc: 1, dcf: 1, comp: 1 }, // poids relatifs des méthodes retenues
+        // Contexte documentaire pro (modèle Saint Joseph — rubriques narratives)
+        contexte: {
+          requerant: { nom: '', adresse: '', dateVisite: '' },
+          environnement: {
+            commerces: '', ecoles: '', sante: '', sport: '',
+            vie: '', historique: '', ressources: '', sites: '',
+          },
+          urbanisme: { pluZone: '', pluDate: '', reglementExtrait: '' },
+          composition: [], // [{ niveau: 'RDC', pieces: 'séjour, cuisine, 3 chambres...' }]
+          amenagementsExt: '',
+          horsMission: "Ne sont pas considérés dans la mission : l'examen des titres de propriété ; l'application des baux éventuels ; les conséquences des servitudes qui pourraient être attachées aux immeubles ; les hypothèques pouvant être prises sur le bien ; les parties non visibles (fondations, réseaux enterrés, canalisations encastrées) supposées en état normal.",
+        }
       },
       atouts: [''],
       vigilances: [''],
@@ -807,7 +819,45 @@
       }).join('');
     }
 
+    // Rétrocompat contexte
+    if (!e.contexte) {
+      e.contexte = { requerant: {}, environnement: {}, urbanisme: {}, composition: [], amenagementsExt: '', horsMission: '' };
+    }
+    var ctx = e.contexte;
+    var htmlCompo = (ctx.composition || []).map(function (c, i) {
+      return '<tr>'
+        + '<td><input class="form-control form-control-sm" data-list="expert.contexte.composition" data-idx="'+i+'" data-key="niveau" value="'+esc(c.niveau)+'"></td>'
+        + '<td><input class="form-control form-control-sm" data-list="expert.contexte.composition" data-idx="'+i+'" data-key="pieces" value="'+esc(c.pieces)+'"></td>'
+        + '<td><button class="btn btn-sm btn-outline-danger" data-listdel="expert.contexte.composition" data-idx="'+i+'" title="Supprimer">×</button></td>'
+        + '</tr>';
+    }).join('');
+
     return head('Méthodes d\'évaluation (modèle CEE Saint Joseph)', 'Sol+Construction + DCF + Comparative + Pondération finale') +
+
+      // — Contexte documentaire —
+      '<div class="card mb-3"><div class="card-body"><h6 class="mb-2"><i class="bi bi-file-earmark-text me-1 text-secondary"></i>Contexte documentaire (rubriques narratives)</h6>' +
+      '<div class="row g-2 mb-2">' +
+        '<div class="col-md-4">' + fld('Requérant (nom)', 'expert.contexte.requerant.nom') + '</div>' +
+        '<div class="col-md-5">' + fld('Adresse requérant', 'expert.contexte.requerant.adresse') + '</div>' +
+        '<div class="col-md-3">' + fld('Date de visite', 'expert.contexte.requerant.dateVisite', { type: 'date' }) + '</div>' +
+      '</div>' +
+      '<div class="row g-2 mb-2">' +
+        '<div class="col-md-6">' + fld('Commerces', 'expert.contexte.environnement.commerces', { ph: 'ex : nombreux commerces, marché hebdomadaire' }) + '</div>' +
+        '<div class="col-md-6">' + fld('Scolarité', 'expert.contexte.environnement.ecoles', { ph: 'ex : maternelles, primaires, collège à 2 km' }) + '</div>' +
+        '<div class="col-md-6">' + fld('Santé', 'expert.contexte.environnement.sante', { ph: 'ex : cabinets médicaux, pharmacie' }) + '</div>' +
+        '<div class="col-md-6">' + fld('Sport / vie locale', 'expert.contexte.environnement.sport', { ph: 'ex : stade, clubs, sentiers de randonnée' }) + '</div>' +
+      '</div>' +
+      '<div class="row g-2 mb-2">' +
+        '<div class="col-md-4">' + fld('Zone PLU', 'expert.contexte.urbanisme.pluZone', { ph: 'ex : N2, UB, UC' }) + '</div>' +
+        '<div class="col-md-4">' + fld('Date approbation PLU', 'expert.contexte.urbanisme.pluDate', { type: 'date' }) + '</div>' +
+      '</div>' +
+      fld('Extrait règlement PLU (article ou synthèse)', 'expert.contexte.urbanisme.reglementExtrait', { ta: true, ph: 'Copier-coller de l\'article de la zone concernée…' }) +
+      fld('Aménagements extérieurs (description)', 'expert.contexte.amenagementsExt', { ta: true, ph: 'ex : aire d\'accès et de manœuvre, clôture, portail…' }) +
+      '<h6 class="mt-3">Composition du bien (pièce par pièce)</h6>' +
+      '<table class="table table-sm"><thead><tr><th style="width:130px;">Niveau</th><th>Pièces</th><th></th></tr></thead><tbody>' + htmlCompo + '</tbody></table>' +
+      '<button class="btn btn-sm btn-outline-primary" data-listadd="expert.contexte.composition">+ Ajouter un niveau</button>' +
+      '<div class="mt-3">' + fld('Éléments hors mission (défaut CEE)', 'expert.contexte.horsMission', { ta: true }) + '</div>' +
+      '</div></div>' +
 
       // — Surfaces pondérées —
       '<div class="card mb-3"><div class="card-body"><h6 class="mb-2"><i class="bi bi-rulers me-1 text-primary"></i>Surfaces pondérées (SPP)</h6>' +
@@ -1130,6 +1180,7 @@
       if (key === 'loyers') tpl = { type: '', surface: '', loyer: '', secteur: '' };
       else if (key === 'comparables') tpl = comparableTemplate();
       else if (key === 'expert.surfaces') tpl = { label: 'Nouvelle ligne', surface: 0, coef: 1 };
+      else if (key === 'expert.contexte.composition') tpl = { niveau: 'RDC', pieces: '' };
       else tpl = { nom: '', bas: '', moyen: '', haut: '' };
       getPath(state.data, key).push(tpl); showSection(state.section); return;
     }
@@ -1530,6 +1581,136 @@
     if (value === '' || value === null || value === undefined) return '';
     return '<tr><td class="lbl">' + esc(label) + '</td><td>' + value + '</td></tr>';
   }
+  // ── Bloc HTML : détail des méthodes CEE dans le document imprimable ─────
+  function buildExpertMethodesHTML(data, calc) {
+    var M = window.FidiAvisMethodes;
+    if (!M) return '';
+    var e = data.expert, b = data.bien;
+
+    // Refaire les calculs (mêmes formules que renderMethodesSection)
+    var surfaces = (e.surfaces && e.surfaces.length) ? e.surfaces : M.defaults.surfacesLignes(num(b.surfaceCarrez));
+    var vetD = (e.vetusteDetail && Object.keys(e.vetusteDetail).length) ? e.vetusteDetail : M.defaults.vetuste();
+    var sppRes = M.spp(surfaces);
+    var vetRes = M.vetuste(vetD);
+    var ceRes = M.coeffEnv({
+      chargeFoncierePct: num(e.coeffEnv.chargeFoncierePct),
+      axes: e.coeffEnv.axes, mode: e.coeffEnv.mode || 'moyenne',
+      coefManuel: num(e.coeffEnv.coefManuel),
+    });
+    var scRes = M.sc({
+      terrain: {
+        surfTotale: num(e.sc.terrain.surfTotale),
+        surfAgrement: num(e.sc.terrain.surfAgrement),
+        prixAgrementM2: num(e.sc.terrain.prixAgrementM2),
+        prixResteM2: num(e.sc.terrain.prixResteM2),
+        decotePct: num(e.sc.terrain.decotePct),
+      },
+      construction: {
+        spp: sppRes.total,
+        prixNeufM2: num(e.sc.construction.prixNeufM2) || 850,
+        anneeEval: num(e.sc.construction.anneeEval) || new Date().getFullYear(),
+        vetustePct: vetRes.total,
+      },
+      amenagements: num(e.sc.amenagements),
+      coeffEnvPct: ceRes.coefFinal,
+    });
+    var loyerM = num(b.loyer), dcfRes = null;
+    if (loyerM > 0) {
+      var chgAuto = M.defaults.dcfCharges(num(b.surfaceCarrez), loyerM * 12);
+      var ch = e.dcf.charges || {};
+      dcfRes = M.dcf({
+        loyerMensuel: loyerM, tauxRevalLoyer: num(e.dcf.tauxRevalLoyer),
+        horizonAn: num(e.dcf.horizonAn) || 10,
+        charges: {
+          taxeFonc: num(ch.taxeFonc) || chgAuto.taxeFonc,
+          pno: num(ch.pno) || chgAuto.pno,
+          gestionPct: num(ch.gestionPct), impayesPct: num(ch.impayesPct),
+          vacancePct: num(ch.vacancePct), maintenanceParM2: num(ch.maintenanceParM2),
+        },
+        surface: num(b.surfaceCarrez), travauxImmediat: num(e.dcf.travauxImmediat),
+        depotGarantie: loyerM, tauxRemDG: num(e.dcf.tauxRemDG),
+        tauxActualisation: num(e.dcf.tauxActualisation),
+        tauxCapitalisationFin: num(e.dcf.tauxCapitalisationFin),
+        tauxRevalCharges: num(e.dcf.tauxRevalCharges),
+      });
+    }
+    var valComp = calc && calc.vlMoy ? calc.vlMoy : 0;
+    var pondRes = M.ponderation({
+      sc: scRes.valeurVenale, dcf: dcfRes ? dcfRes.valeurVenale : 0, comp: valComp,
+      poids: e.pond,
+    });
+
+    var h = '<h1>5 bis. Analyse détaillée — Méthodes CEE (mode Expert)</h1>';
+
+    // — Surfaces pondérées —
+    h += '<h2>Surfaces pondérées (SPP)</h2><table>' +
+      '<tr><th>Libellé</th><th class="center">Surface m²</th><th class="center">Coef.</th><th class="center">SPP</th></tr>' +
+      surfaces.map(function (l) {
+        return '<tr><td>' + esc(l.label) + '</td><td class="center">' + num(l.surface).toFixed(2) + '</td><td class="center">' + num(l.coef).toFixed(2) + '</td><td class="center">' + (num(l.surface) * num(l.coef)).toFixed(2) + '</td></tr>';
+      }).join('') +
+      '<tr class="gold-row"><td colspan="3">Total SPP</td><td class="center">' + sppRes.total.toFixed(2) + ' m²</td></tr></table>';
+
+    // — Vétusté —
+    h += '<h2>Vétusté par corps d\'état</h2><table>' +
+      '<tr><th>Poste</th><th class="center">Poids</th><th class="center">Vétusté %</th><th class="center">Contribution</th></tr>' +
+      vetRes.postes.filter(function (p) { return p.pct > 0; }).map(function (p) {
+        return '<tr><td>' + esc(p.label) + '</td><td class="center">' + p.poids.toFixed(2) + ' %</td><td class="center">' + p.pct + ' %</td><td class="center">' + p.contrib.toFixed(2) + ' %</td></tr>';
+      }).join('') +
+      '<tr class="gold-row"><td colspan="3">Vétusté globale pondérée</td><td class="center">' + vetRes.total.toFixed(2) + ' %</td></tr></table>';
+
+    // — Sol + Construction —
+    h += '<h2>Méthode Sol + Construction</h2>' +
+      '<p><b>Terrain</b> : ' + num(e.sc.terrain.surfTotale) + ' m² dont ' + num(e.sc.terrain.surfAgrement) + ' m² d\'agrément à ' + fmt(num(e.sc.terrain.prixAgrementM2)) + ' €/m² et ' + Math.max(0, num(e.sc.terrain.surfTotale) - num(e.sc.terrain.surfAgrement)) + ' m² de zone restante à ' + num(e.sc.terrain.prixResteM2) + ' €/m², avec décote encombrement ' + num(e.sc.terrain.decotePct) + ' %.</p>' +
+      '<p><b>Construction</b> : ' + sppRes.total.toFixed(2) + ' m² SPP × ' + num(e.sc.construction.prixNeufM2) + ' €/m² (base janvier 2001) × BT01 ' + scRes.construction.coefBT01.toFixed(4) + ' × (1 − vétusté ' + vetRes.total.toFixed(2) + ' %).</p>' +
+      '<table>' +
+        '<tr><td class="lbl">Valeur du terrain</td><td class="center">' + fmtE(scRes.terrain.valeur) + '</td></tr>' +
+        '<tr><td class="lbl">Valeur des constructions</td><td class="center">' + fmtE(scRes.construction.valeur) + '</td></tr>' +
+        '<tr><td class="lbl">Aménagements extérieurs</td><td class="center">' + fmtE(scRes.amenagements) + '</td></tr>' +
+        '<tr><td class="lbl">Coefficient environnemental</td><td class="center">' + ceRes.coefFinal + ' %</td></tr>' +
+        '<tr class="gold-row"><td>VALEUR VÉNALE MÉTHODE SC</td><td class="center">' + fmtE(scRes.valeurVenale) + '</td></tr>' +
+      '</table>';
+
+    // — Coefficient environnemental —
+    h += '<h2>Coefficient environnemental (grille socio-économique)</h2><table>' +
+      '<tr><th>Axe</th><th class="center">Valeur retenue</th></tr>' +
+      Object.keys(M.COEFF_ENV_AXES).map(function (k) {
+        var v = num(e.coeffEnv.axes[k]);
+        var ax = M.COEFF_ENV_AXES[k];
+        var opt = ax.options.find(function (o) { return o.v === v; });
+        return '<tr><td>' + esc(ax.label) + '</td><td>' + v + ' % ' + (opt ? '— ' + esc(opt.l) : '') + '</td></tr>';
+      }).join('') +
+      '<tr><td class="lbl">Charge foncière (' + ceRes.chargeFoncierePct + ' %) → coefficient</td><td class="center">' + ceRes.coefBase + ' %</td></tr>' +
+      '<tr><td class="lbl">Somme des critères</td><td class="center">' + ceRes.sommeAxes + ' %</td></tr>' +
+      '<tr class="gold-row"><td>Coefficient environnemental final (mode : ' + ceRes.mode + ')</td><td class="center">' + ceRes.coefFinal + ' %</td></tr>' +
+      '</table>';
+
+    // — DCF —
+    if (dcfRes) {
+      h += '<h2>Méthode DCF (Discounted Cash Flow)</h2>' +
+        '<p>Horizon ' + num(e.dcf.horizonAn) + ' ans · actualisation ' + num(e.dcf.tauxActualisation) + ' % · capitalisation résiduelle ' + num(e.dcf.tauxCapitalisationFin) + ' % · réévaluation loyer ' + num(e.dcf.tauxRevalLoyer) + ' %/an.</p>' +
+        '<table style="font-size:9pt;">' +
+          '<tr><th>Année</th><th class="center">Revenus</th><th class="center">Charges</th><th class="center">Net</th><th class="center">Actualisé</th></tr>' +
+          dcfRes.lignes.map(function (l) {
+            return '<tr><td class="center">' + l.annee + '</td><td class="center">' + fmt(l.revenus) + ' €</td><td class="center">' + fmt(l.charges) + ' €</td><td class="center">' + fmt(l.revenuNet) + ' €</td><td class="center">' + fmt(l.netActualise) + ' €</td></tr>';
+          }).join('') +
+          '<tr><td class="lbl" colspan="4">Somme des revenus nets actualisés</td><td class="center">' + fmtE(dcfRes.sommeActualisee) + '</td></tr>' +
+          '<tr><td class="lbl" colspan="4">Valeur résiduelle actualisée</td><td class="center">' + fmtE(dcfRes.valeurResiduelleActu) + '</td></tr>' +
+          '<tr class="gold-row"><td colspan="4">VALEUR VÉNALE MÉTHODE DCF</td><td class="center">' + fmtE(dcfRes.valeurVenale) + '</td></tr>' +
+        '</table>';
+    }
+
+    // — Pondération finale —
+    h += '<h2>Pondération des méthodes et valeur retenue</h2><table>' +
+      '<tr><th>Méthode</th><th class="center">Valeur</th><th class="center">Poids</th></tr>' +
+      '<tr><td>Sol + Construction</td><td class="center">' + fmtE(scRes.valeurVenale) + '</td><td class="center">' + num(e.pond.sc) + '</td></tr>' +
+      '<tr><td>DCF</td><td class="center">' + (dcfRes ? fmtE(dcfRes.valeurVenale) : '—') + '</td><td class="center">' + num(e.pond.dcf) + '</td></tr>' +
+      '<tr><td>Comparative (ACM)</td><td class="center">' + fmtE(valComp) + '</td><td class="center">' + num(e.pond.comp) + '</td></tr>' +
+      '<tr class="gold-row"><td colspan="2">VALEUR VÉNALE RETENUE (arrondie centaine)</td><td class="center" style="font-size:14pt;">' + fmtE(pondRes.valeur) + '</td></tr>' +
+      '</table>';
+
+    return h;
+  }
+
   function buildAvisDocHTML(data, calc) {
     var b = data.bien, m = data.marche, sig = data.signataire;
     var occ = b.statut === 'occupe';
@@ -1564,6 +1745,18 @@
       '<p>Conformément aux usages de la profession et à la Charte de l\'Expertise en Évaluation Immobilière, le présent avis <b>ne constitue pas une expertise judiciaire ou réglementée</b>. Il est délivré à titre indicatif et matérialise une opinion motivée sur la valeur vénale du bien au jour de son établissement, sur la base des éléments communiqués et des données de marché disponibles.</p>' +
       (b.prixVente ? '<p style="font-style:italic;color:#5c6470;">Le bien faisant l\'objet du présent avis ' + (occ ? 'a été cédé' : 'est proposé') + ' pour un prix de ' + fmtE(b.prixVente) + ' net vendeur.</p>' : '');
 
+    // ── Contexte pro (requérant, hors mission) — si mode Expert et contexte renseigné ──
+    var ctxDoc = (data.expert && data.expert.contexte) ? data.expert.contexte : null;
+    if (ctxDoc && (ctxDoc.requerant && (ctxDoc.requerant.nom || ctxDoc.requerant.dateVisite))) {
+      html += '<h2>Requérant et cadre de mission</h2><table>' +
+        (ctxDoc.requerant.nom ? row('À la requête de', esc(ctxDoc.requerant.nom) + (ctxDoc.requerant.adresse ? ' — ' + esc(ctxDoc.requerant.adresse) : '')) : '') +
+        (ctxDoc.requerant.dateVisite ? row('Visite du bien effectuée le', formatDateFR(ctxDoc.requerant.dateVisite)) : '') +
+        '</table>';
+    }
+    if (ctxDoc && ctxDoc.horsMission) {
+      html += '<h2>Éléments non considérés dans la mission</h2><p style="font-size:9pt;color:#5c6470;">' + esc(ctxDoc.horsMission) + '</p>';
+    }
+
     html += '<h1>2. Identification et description du bien</h1><table>' +
       row('Type de bien', esc(b.type)) +
       row('Adresse', adresseComplete) +
@@ -1594,6 +1787,42 @@
       if (mapImg) html += '<div style="text-align:center;margin:8px 0;"><img src="' + esc(mapImg) + '" alt="Carte de localisation (IGN)" style="max-width:100%;border:1px solid #bfbfbf;"/><div style="font-size:8px;color:#5c6470;">Fond cartographique © IGN — Géoplateforme</div></div>';
       if (riskLines.length) html += '<table>' + riskLines.map(function (r) { return row(r[0], esc(r[1])); }).join('') + '</table>';
       if (L.commentaire) html += '<p>' + esc(L.commentaire) + '</p>';
+    }
+
+    // ── 2.2 Environnement, urbanisme, composition, aménagements ext. ──
+    if (ctxDoc) {
+      var env = ctxDoc.environnement || {};
+      var envRows = [
+        env.commerces ? ['Commerces', env.commerces] : null,
+        env.ecoles ? ['Scolarité', env.ecoles] : null,
+        env.sante ? ['Santé', env.sante] : null,
+        env.sport ? ['Sport / vie locale', env.sport] : null,
+        env.vie ? ['Vie locale', env.vie] : null,
+        env.historique ? ['Historique', env.historique] : null,
+        env.ressources ? ['Ressources & productions', env.ressources] : null,
+        env.sites ? ['Sites', env.sites] : null,
+      ].filter(Boolean);
+      if (envRows.length) {
+        html += '<h2>2.2 Environnement de la commune</h2><table>' +
+          envRows.map(function (r) { return row(r[0], esc(r[1])); }).join('') + '</table>';
+      }
+      var urb = ctxDoc.urbanisme || {};
+      if (urb.pluZone || urb.reglementExtrait) {
+        html += '<h2>2.3 Urbanisme (extrait PLU)</h2>' +
+          (urb.pluZone ? '<p>Zone <b>' + esc(urb.pluZone) + '</b>' + (urb.pluDate ? ' — PLU approuvé le ' + formatDateFR(urb.pluDate) : '') + '.</p>' : '') +
+          (urb.reglementExtrait ? '<div style="background:#f4f6fa;padding:10pt;border-left:3pt solid #1a3a6e;font-size:9pt;white-space:pre-wrap;">' + esc(urb.reglementExtrait) + '</div>' : '');
+      }
+      if (ctxDoc.composition && ctxDoc.composition.length) {
+        var comp = ctxDoc.composition.filter(function (c) { return c && (c.niveau || c.pieces); });
+        if (comp.length) {
+          html += '<h2>2.4 Composition du bien</h2><table>' +
+            comp.map(function (c) { return row(c.niveau || '—', esc(c.pieces || '')); }).join('') +
+            '</table>';
+        }
+      }
+      if (ctxDoc.amenagementsExt) {
+        html += '<h2>2.5 Aménagements extérieurs</h2><p>' + esc(ctxDoc.amenagementsExt) + '</p>';
+      }
     }
 
     html += '<h1>3. Méthodologie d\'évaluation</h1>' +
@@ -1651,6 +1880,11 @@
     if (b.prixVente) {
       html += '<h2>Analyse de cohérence – prix de cession</h2>' +
         '<p>Le bien ' + (occ ? 'a été cédé' : 'est proposé') + ' au prix de <b style="color:#1a3a6e;">' + fmtE(b.prixVente) + ' net vendeur</b>' + (b.surfaceCarrez ? ', soit environ <b>' + fmt(calc.prixM2) + ' €/m²</b>' : '') + '. Ce prix s\'inscrit <b>dans la fourchette retenue par notre avis (' + fmtE(calc.voccBas) + ' – ' + fmtE(calc.voccHaut) + ')</b>' + (occ && calc.rendementBrut ? ' et offre à l\'acquéreur un <b>rendement brut de ' + calc.rendementBrut.toFixed(2) + ' %</b>' : '') + '.</p>';
+    }
+
+    // ── Bloc "Méthodes CEE détaillées" (mode Expert ou données expert présentes) ──
+    if (state.mode === 'expert' && data.expert && window.FidiAvisMethodes) {
+      html += buildExpertMethodesHTML(data, calc);
     }
 
     if (atouts.length || vigilances.length) {
