@@ -631,7 +631,12 @@
           '<button class="av-del" data-listdel="loyers" data-idx="' + i + '" title="Supprimer">✕</button></div>';
       }).join('');
       return head('Loyers comparables', b.statut === 'occupe' ? 'Démontre la cohérence du loyer du bien occupé' : 'Optionnel si le bien est libre') +
-        '<div style="display:flex;justify-content:flex-end;margin-bottom:.4rem;"><button class="av-add" data-listadd="loyers">+ Ajouter un comparable</button></div>' + lrows;
+        '<div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.6rem;">' +
+          '<button class="av-add" data-listadd="loyers">+ Ajouter un comparable</button>' +
+          '<button class="btn btn-sm btn-outline-primary" data-action="import-extension-loyers"><i class="bi bi-download me-1"></i>Importer depuis l\'extension</button>' +
+        '</div>' +
+        '<div id="avExtImportLoyers" style="display:none;margin-bottom:.6rem;padding:.6rem;background:#f4f6fa;border:1px solid #dee2e6;border-radius:6px;"></div>' +
+        lrows;
     }
     if (id === 'calcul') {
       var M = d.methodes, po = d.ponderation;
@@ -1216,6 +1221,10 @@
     else if (a === 'ext-set-token') setExtensionToken();
     else if (a === 'ext-import-selected') importSelectedFromExt();
     else if (a === 'ext-clear-inbox') clearExtensionInbox();
+    else if (a === 'import-extension-loyers') openExtensionImportLoyers();
+    else if (a === 'ext-refresh-loyers') loadExtensionInboxLoyers();
+    else if (a === 'ext-set-token-loyers') setExtensionTokenLoyers();
+    else if (a === 'ext-import-selected-loyers') importSelectedLoyersFromExt();
     else if (a === 'pdf') exportPdf();
   }
 
@@ -1703,6 +1712,105 @@
       toast('Boîte vidée');
       loadExtensionInbox();
     } catch (e) { toast('Erreur : ' + e.message, true); }
+  }
+
+  // ─── Import loyers depuis l'extension (nature=location) ──────────────────
+  function openExtensionImportLoyers() {
+    var wrap = document.getElementById('avExtImportLoyers');
+    if (!wrap) return;
+    if (wrap.style.display === 'block') { wrap.style.display = 'none'; return; }
+    wrap.style.display = 'block';
+    var tok = getExtToken();
+    wrap.innerHTML =
+      '<div class="d-flex align-items-center gap-2 mb-2">' +
+        '<strong style="font-size:.85rem;">Extension FIDI ACM — Loyers</strong>' +
+        '<input type="text" id="avExtTokLoyers" class="form-control form-control-sm" style="max-width:220px;" placeholder="votre token" value="' + esc(tok) + '">' +
+        '<button class="btn btn-sm btn-outline-secondary" data-action="ext-set-token-loyers">Enregistrer token</button>' +
+        '<button class="btn btn-sm btn-primary" data-action="ext-refresh-loyers"><i class="bi bi-arrow-clockwise me-1"></i>Actualiser</button>' +
+      '</div>' +
+      '<div id="avExtListLoyers" class="small text-muted">' +
+        (tok ? 'Cliquez « Actualiser » pour charger les locations recues.' : 'Configurez d\'abord un token identique a l\'extension.') +
+      '</div>';
+    if (tok) loadExtensionInboxLoyers();
+  }
+
+  function setExtensionTokenLoyers() {
+    var inp = document.getElementById('avExtTokLoyers');
+    var v = inp ? inp.value.trim().replace(/[^a-zA-Z0-9_-]/g, '') : '';
+    if (!v) { toast('Token vide', true); return; }
+    setExtToken(v);
+    if (inp) inp.value = v;
+    toast('Token enregistré');
+    loadExtensionInboxLoyers();
+  }
+
+  async function loadExtensionInboxLoyers() {
+    var list = document.getElementById('avExtListLoyers');
+    if (!list) return;
+    var tok = getExtToken();
+    if (!tok) { list.innerHTML = '<span class="text-danger">Token requis.</span>'; return; }
+    list.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Chargement…';
+    try {
+      var r = await fetch('/api/comparables-inbox', { method: 'GET', headers: { 'X-FIDI-Token': tok } });
+      var j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Erreur');
+      // Filtre : uniquement les items nature=location (ou avec loyer renseigné)
+      var all = j.items || [];
+      var loc = all.filter(function (it) { return it.nature === 'location' || (it.loyer && it.loyer > 0); });
+      window.__fidiExtInboxLoyers = loc;
+      if (!loc.length) {
+        list.innerHTML = '<div class="text-muted small">Aucune location dans la boite. Envoyez des annonces de location depuis l\'extension (SeLoger, LBC, DomImmo section « location »).</div>';
+        return;
+      }
+      list.innerHTML = renderExtInboxLoyersList(loc);
+    } catch (e) {
+      list.innerHTML = '<span class="text-danger">Erreur : ' + esc(e.message) + '</span>';
+    }
+  }
+
+  function renderExtInboxLoyersList(items) {
+    var rows = items.map(function (it, i) {
+      var d = new Date(it.ts || Date.now());
+      var when = d.toLocaleDateString('fr-FR') + ' ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      var src = it.source || '';
+      var loyerM2 = (it.loyer && it.surface) ? (it.loyer / it.surface).toFixed(2) : null;
+      return '<div class="d-flex align-items-center gap-2 py-1" style="border-bottom:1px solid #dee2e6;font-size:.8rem;">' +
+        '<input type="checkbox" data-ext-loy-idx="' + i + '" checked>' +
+        '<span class="badge bg-secondary" style="font-size:.6rem;">' + esc(src) + '</span>' +
+        '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + esc(it.titre || '') + '">' +
+          esc((it.titre || '(sans titre)').slice(0, 60)) +
+        '</span>' +
+        (it.type ? '<span class="text-muted">' + esc(it.type) + '</span>' : '') +
+        (it.surface ? '<span class="fw-semibold">' + it.surface + ' m²</span>' : '') +
+        (it.loyer ? '<span class="fw-bold text-success">' + fmt(it.loyer) + ' €/mois</span>' : '') +
+        (loyerM2 ? '<span class="text-muted small">' + loyerM2 + ' €/m²</span>' : '') +
+        (it.url ? '<a href="' + esc(it.url) + '" target="_blank" rel="noopener" class="text-muted"><i class="bi bi-box-arrow-up-right"></i></a>' : '') +
+        '<span class="text-muted" style="font-size:.7rem;">' + when + '</span>' +
+      '</div>';
+    }).join('');
+    return rows +
+      '<div class="d-flex gap-2 mt-2">' +
+        '<button class="btn btn-sm btn-success" data-action="ext-import-selected-loyers"><i class="bi bi-check-circle me-1"></i>Importer la sélection</button>' +
+        '<button class="btn btn-sm btn-outline-danger ms-auto" data-action="ext-clear-inbox"><i class="bi bi-trash me-1"></i>Vider toute la boite</button>' +
+      '</div>';
+  }
+
+  function importSelectedLoyersFromExt() {
+    var items = window.__fidiExtInboxLoyers || [];
+    var boxes = document.querySelectorAll('#avExtListLoyers [data-ext-loy-idx]');
+    var picked = [];
+    boxes.forEach(function (b) { if (b.checked) picked.push(items[+b.dataset.extLoyIdx]); });
+    if (!picked.length) { toast('Aucun élément coché', true); return; }
+    picked.forEach(function (it) {
+      state.data.loyers.push({
+        type: it.type || '',
+        surface: it.surface || '',
+        loyer: it.loyer || '',
+        secteur: it.commune || it.adresse || '',
+      });
+    });
+    toast(picked.length + ' loyer' + (picked.length > 1 ? 's' : '') + ' importé' + (picked.length > 1 ? 's' : ''));
+    showSection('loyers');
   }
 
   // ── Bloc HTML : détail des méthodes CEE dans le document imprimable ─────

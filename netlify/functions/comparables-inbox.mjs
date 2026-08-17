@@ -36,10 +36,13 @@ function normalize(b) {
   return {
     ts: Date.now(),
     source: String(b.source || "inconnu").slice(0, 30),
+    nature: (b.nature === "location" ? "location" : "vente"), // vente | location
     url: String(b.url || "").slice(0, 500),
     titre: String(b.titre || "").slice(0, 200),
     type: String(b.type || "").slice(0, 40),
     prix: n(b.prix),
+    loyer: n(b.loyer),
+    charges: n(b.charges),
     surface: n(b.surface),
     pieces: n(b.pieces),
     chambres: n(b.chambres),

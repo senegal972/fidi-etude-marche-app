@@ -21,7 +21,8 @@
   };
 
   window.__fidiExtract = function () {
-    var out = { source: 'domimmo', url: location.href };
+    var nature = (window.__fidiDetectNature && window.__fidiDetectNature()) || 'vente';
+    var out = { source: 'domimmo', url: location.href, nature: nature };
 
     // 1. JSON-LD
     var scripts = document.querySelectorAll('script[type="application/ld+json"]');
@@ -83,6 +84,14 @@
         : /appartement|studio|t\d/i.test(out.titre) ? 'Appartement'
         : /terrain/i.test(out.titre) ? 'Terrain'
         : /local|commerce|bureau|entrep/i.test(out.titre) ? 'Local' : '';
+    }
+
+    // Location : le prix = loyer → bascule dans out.loyer
+    if (out.nature === 'location' && out.prix) {
+      out.loyer = out.prix;
+      out.prix = null;
+      var mch = body.match(/charges\s*(?:comprises?|incluses?)?[^\d]{0,10}(\d+)\s*€/i);
+      if (mch) out.charges = n(mch[1]);
     }
 
     // 5. Réf : essaie URL ou champ dédié

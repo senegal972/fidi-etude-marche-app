@@ -6,6 +6,17 @@
   if (window.__fidiAcmInjected) return;
   window.__fidiAcmInjected = true;
 
+  // Détecte vente / location depuis URL + texte page (utilitaire partagé)
+  window.__fidiDetectNature = function () {
+    var u = location.href.toLowerCase();
+    if (/\blocations?\b|\blouer\b|\/location\/|\/locations\//.test(u)) return 'location';
+    if (/\bventes?\b|\bachat\b|\bacheter\b|\/vente\/|\/ventes?_immobilieres|\/achat\//.test(u)) return 'vente';
+    // Fallback : lit meta / titre pour "à louer" vs "à vendre"
+    var t = (document.title || '').toLowerCase();
+    if (/à louer|a louer|location|loyer/.test(t)) return 'location';
+    return 'vente';
+  };
+
   function toast(msg, err) {
     var old = document.getElementById('fidi-acm-toast');
     if (old) old.remove();
@@ -19,9 +30,11 @@
 
   function makeBtn() {
     if (document.getElementById('fidi-acm-btn')) return;
+    var nature = window.__fidiDetectNature();
+    var label = nature === 'location' ? 'Envoyer à FIDI (loyer)' : 'Envoyer à FIDI';
     var b = document.createElement('button');
     b.id = 'fidi-acm-btn';
-    b.innerHTML = '<span class="fidi-icon">📥</span><span>Envoyer à FIDI</span>';
+    b.innerHTML = '<span class="fidi-icon">📥</span><span>' + label + '</span>';
     b.addEventListener('click', send);
     document.body.appendChild(b);
   }
@@ -32,10 +45,11 @@
     var data;
     try { data = window.__fidiExtract(); }
     catch (e) { toast('Extraction impossible : ' + e.message, true); return; }
-    if (!data || (!data.prix && !data.titre)) {
+    if (!data || (!data.prix && !data.loyer && !data.titre)) {
       toast('Aucune annonce détectée sur cette page', true); return;
     }
     data.url = data.url || location.href;
+    if (!data.nature) data.nature = window.__fidiDetectNature();
     btn.disabled = true;
     var orig = btn.innerHTML;
     btn.innerHTML = '<span class="fidi-icon">⏳</span><span>Envoi…</span>';
@@ -44,20 +58,22 @@
       btn.innerHTML = orig;
       if (chrome.runtime.lastError) { toast('Extension déconnectée', true); return; }
       if (!resp || !resp.ok) { toast('Échec : ' + (resp && resp.error || 'inconnu'), true); return; }
-      toast('✓ Envoyé (' + resp.count + ' au total)');
+      var kind = data.nature === 'location' ? 'loyer' : 'vente';
+      toast('✓ Envoyé (' + kind + ', ' + resp.count + ' au total)');
     });
   }
 
-  // Injecte quand le DOM est prêt (attend 500 ms sur SPA)
   function boot() { setTimeout(makeBtn, 500); }
   if (document.readyState === 'complete') boot();
   else window.addEventListener('load', boot);
 
-  // Ré-injecte si la SPA re-render (SeLoger, LBC changent l'URL sans reload)
+  // Ré-injecte si la SPA re-render
   var lastUrl = location.href;
   setInterval(function () {
     if (location.href !== lastUrl) {
       lastUrl = location.href;
+      // recréé pour changer le libellé si vente↔location
+      var old = document.getElementById('fidi-acm-btn'); if (old) old.remove();
       setTimeout(makeBtn, 800);
     }
   }, 1000);

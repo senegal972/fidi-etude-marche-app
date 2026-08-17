@@ -25,7 +25,8 @@
   }
 
   window.__fidiExtract = function () {
-    var out = { source: 'seloger', url: location.href };
+    var nature = (window.__fidiDetectNature && window.__fidiDetectNature()) || 'vente';
+    var out = { source: 'seloger', url: location.href, nature: nature };
     var fresh = pageMatchesUrl();
 
     // 1. JSON-LD
@@ -102,6 +103,15 @@
     if (!out.pieces) { var mpi2 = bodyText.match(/(\d+)\s*pi[eè]ces?/i); if (mpi2) out.pieces = n(mpi2[1]); }
     if (!out.surface) { var ms2 = bodyText.match(/(\d+[.,]?\d*)\s*m[²2]/); if (ms2) out.surface = n(ms2[1]); }
     if (!out.chambres) { var mc2 = bodyText.match(/(\d+)\s*chambres?/i); if (mc2) out.chambres = n(mc2[1]); }
+
+    // Location : le prix = loyer mensuel → bascule dans out.loyer
+    if (out.nature === 'location' && out.prix) {
+      out.loyer = out.prix;
+      out.prix = null;
+      var bT = document.body ? document.body.innerText || '' : '';
+      var mch = bT.match(/charges\s*(?:comprises?|incluses?|\(cc\))?[^\d]{0,10}(\d+)\s*€/i);
+      if (mch) out.charges = n(mch[1]);
+    }
 
     // Référence annonce depuis URL
     out.ref = urlRefId();

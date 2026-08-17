@@ -71,7 +71,8 @@
   }
 
   window.__fidiExtract = function () {
-    var out = { source: 'leboncoin', url: location.href };
+    var nature = (window.__fidiDetectNature && window.__fidiDetectNature()) || 'vente';
+    var out = { source: 'leboncoin', url: location.href, nature: nature };
     out.ref = urlListId();
 
     // 1. Essaie NEXT_DATA avec ID URL comme filtre (évite le stale)
@@ -110,6 +111,16 @@
     if (!out.titre) out.titre = meta('og:title');
     if (!out.description) out.description = meta('og:description') || meta('description');
     if (!out.photo) out.photo = meta('og:image');
+
+    // Location : le prix extrait = loyer mensuel → bascule dans out.loyer
+    if (out.nature === 'location' && out.prix) {
+      out.loyer = out.prix;
+      out.prix = null;
+      // Charges depuis attributs LBC (charges_included / charges)
+      var body = document.body ? document.body.innerText || '' : '';
+      var mch = body.match(/charges\s*(?:comprises?|incluses?|\(cc\))?[^\d]{0,10}(\d+)\s*€/i);
+      if (mch) out.charges = n(mch[1]);
+    }
 
     // Normalise type
     if (out.type) {
