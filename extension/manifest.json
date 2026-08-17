@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FIDI ACM — Comparables immobiliers",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Envoie les annonces SeLoger, LeBonCoin et DomImmo vers votre app FIDI (avis de valeur).",
   "permissions": ["storage", "activeTab", "scripting"],
   "host_permissions": [
@@ -20,13 +20,13 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.seloger.com/annonces/*", "https://www.seloger.com/classified-search*"],
+      "matches": ["https://www.seloger.com/*"],
       "js": ["content-shared.js", "content-seloger.js"],
       "css": ["content.css"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://www.leboncoin.fr/ad/*", "https://www.leboncoin.fr/recherche*", "https://www.leboncoin.fr/annonces/*"],
+      "matches": ["https://www.leboncoin.fr/*"],
       "js": ["content-shared.js", "content-leboncoin.js"],
       "css": ["content.css"],
       "run_at": "document_idle"
