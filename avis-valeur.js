@@ -41,7 +41,9 @@
   function defaultData() {
     var y = new Date().getFullYear();
     return {
-      metadata: { ref: 'FIDI-AV-' + y + '-001', date: new Date().toISOString().slice(0, 10), lieuEtablissement: 'Fort-de-France' },
+      metadata: { ref: 'FIDI-AV-' + y + '-001', date: new Date().toISOString().slice(0, 10), lieuEtablissement: 'Fort-de-France',
+        nature: 'vente' // 'vente' (défaut) | 'location' — pilote UI et rendu doc
+      },
       bien: {
         type: 'Appartement', adresse: '', cp: '', commune: '', immeuble: '', etage: '',
         surfaceCarrez: '', surfaceShob: '', sejour: '', terrasse: '', parking: '',
@@ -107,6 +109,28 @@
           amenagementsExt: '',
           horsMission: "Ne sont pas considérés dans la mission : l'examen des titres de propriété ; l'application des baux éventuels ; les conséquences des servitudes qui pourraient être attachées aux immeubles ; les hypothèques pouvant être prises sur le bien ; les parties non visibles (fondations, réseaux enterrés, canalisations encastrées) supposées en état normal.",
         }
+      },
+      // ── Cadre locatif (utilisé uniquement si metadata.nature === 'location') ──
+      locatif: {
+        typeBail: 'vide',           // vide | meuble | mobilite | commercial | professionnel
+        dureeBail: 36,              // mois (36 vide, 12 meublé, ...)
+        loyerHC: '',                // loyer hors charges €/mois retenu
+        chargesRecup: '',           // provisions charges récupérables €/mois
+        depotGarantie: '',          // €/mois (1 vide, 2 meublé)
+        honoraires: '',             // honoraires location HT plafond loi ALUR
+        loyerM2Marche: '',          // loyer marché €/m²/mois (comparables)
+        tauxCapitalisation: 6.5,    // % pour capitalisation inverse
+        zoneTendue: false,          // encadrement loyers applicable ?
+        loyerRef: '',               // loyer de référence si zone tendue
+        loyerRefMajore: '',         // loyer réf majoré (+20 %)
+        dpe: '',                    // A à G
+        alertes: {                  // calculs auto
+          dpeInterdit: false,       // G interdit 2025, F 2028, E 2034
+          decence: true,            // logement décent (surface ≥ 9 m² + hauteur + équipement)
+        },
+        rendementBrutCible: '',     // rendement brut attendu %
+        rendementNetCible: '',      // rendement net (après charges + PNO + TF + vacance)
+        commentaire: '',
       },
       atouts: [''],
       vigilances: [''],
@@ -405,12 +429,24 @@
   var state = { data: null, section: 'metadata', preview: true, modal: null, built: false,
                 mode: (function(){ try { return localStorage.getItem('fidi:avis:mode') || 'simple'; } catch(e){ return 'simple'; } })() };
 
-  // Sections visibles selon le mode (Expert ajoute 13. Méthodes CEE)
+  // Nature courante (vente ou location) — pilote UI et rendu doc
+  function natureCourante() {
+    return (state.data && state.data.metadata && state.data.metadata.nature) || 'vente';
+  }
+
+  // Sections visibles selon le mode + la nature
   function visibleSections() {
-    if (state.mode === 'expert') {
-      return SECTIONS.concat([{ id: 'methodes', label: '13. Méthodes CEE' }]);
+    var base = SECTIONS.slice();
+    if (natureCourante() === 'location') {
+      // Insère section "8bis. Cadre locatif" avant "9. Atouts"
+      var idx = base.findIndex(function (s) { return s.id === 'swot'; });
+      var loc = { id: 'locatif', label: "8b. Cadre locatif" };
+      if (idx >= 0) base.splice(idx, 0, loc); else base.push(loc);
     }
-    return SECTIONS;
+    if (state.mode === 'expert') {
+      base.push({ id: 'methodes', label: '13. Méthodes CEE' });
+    }
+    return base;
   }
 
   // Re-rend la barre d'onglets (appelé après bascule de mode)
@@ -422,13 +458,15 @@
     }).join('');
   }
 
-  // Rétrocompat : garantit la présence du bloc "expert" sur les études anciennes.
+  // Rétrocompat : garantit la présence des blocs "expert" et "locatif"
+  // sur les études anciennes chargées depuis localStorage ou Notion.
   function ensureExpertBlock(d) {
     if (!d) return d;
-    if (!d.expert) {
-      var defExp = defaultData().expert;
-      d.expert = defExp;
-    }
+    var def = defaultData();
+    if (!d.expert) d.expert = def.expert;
+    if (!d.locatif) d.locatif = def.locatif;
+    if (!d.metadata) d.metadata = def.metadata;
+    if (!d.metadata.nature) d.metadata.nature = 'vente';
     return d;
   }
 
@@ -480,7 +518,9 @@
   function fld(label, path, opts) {
     opts = opts || {};
     var type = opts.type || 'text';
-    var v = esc(getPath(state.data, path) || '');
+    if (opts.ta) type = 'textarea';
+    var raw = getPath(state.data, path);
+    var v = esc(raw == null ? '' : raw);
     var attrs = 'data-p="' + path + '"' + (opts.step ? ' step="' + opts.step + '"' : '') + (opts.ph ? ' placeholder="' + esc(opts.ph) + '"' : '');
     var input;
     if (type === 'textarea') input = '<textarea rows="' + (opts.rows || 3) + '" ' + attrs + '>' + v + '</textarea>';
@@ -488,6 +528,8 @@
       input = '<select ' + attrs + '>' + opts.options.map(function (o) {
         return '<option' + (String(o) === String(getPath(state.data, path)) ? ' selected' : '') + '>' + esc(o) + '</option>';
       }).join('') + '</select>';
+    } else if (type === 'checkbox') {
+      input = '<label class="d-inline-flex align-items-center gap-1"><input type="checkbox"' + (raw ? ' checked' : '') + ' ' + attrs + '/> <span class="small text-muted">(oui/non)</span></label>';
     } else input = '<input type="' + type + '" value="' + v + '" ' + attrs + '/>';
     return '<div class="av-field"><label>' + esc(label) + (opts.flag ? '<span class="av-prefill-flag">étude</span>' : '') + '</label>' + input +
       (opts.tip ? '<div class="av-tip">' + esc(opts.tip) + '</div>' : '') + '</div>';
@@ -706,7 +748,92 @@
     if (id === 'methodes') {
       return renderMethodesSection();
     }
+    if (id === 'locatif') {
+      return renderLocatifSection();
+    }
     return '';
+  }
+
+  // ── Section Avis LOCATIF (option A dédiée, modèle CEE + loi 1989) ────────
+  function renderLocatifSection() {
+    var L = state.data.locatif;
+    if (!L) { state.data = ensureExpertBlock(state.data); L = state.data.locatif; }
+    var b = state.data.bien;
+    var surf = num(b.surfaceCarrez);
+    // Alertes calculées
+    var year = new Date().getFullYear();
+    var dpeUpper = String(L.dpe || '').toUpperCase();
+    var dpeInterdit = (dpeUpper === 'G' && year >= 2025) || (dpeUpper === 'F' && year >= 2028) || (dpeUpper === 'E' && year >= 2034);
+    var loyerHC = num(L.loyerHC);
+    var loyerM2 = num(L.loyerM2Marche);
+    var loyerMoisSuggere = (loyerM2 && surf) ? Math.round(loyerM2 * surf) : null;
+    var loyerAnnuel = loyerHC * 12;
+    var tauxCap = num(L.tauxCapitalisation) || 6.5;
+    // Capitalisation inverse : valeur cible = loyer annuel / rendement (%)
+    var valeurCapi = (loyerAnnuel && tauxCap > 0) ? Math.round(loyerAnnuel * 100 / tauxCap) : null;
+    var rendementBrut = (loyerHC && num(b.prixVente)) ? (loyerAnnuel * 100 / num(b.prixVente)) : null;
+    var loyerRefMaj = num(L.loyerRefMajore);
+    var conforme = (!L.zoneTendue || !loyerRefMaj) ? null : (loyerHC <= loyerRefMaj * surf);
+
+    return head("Cadre locatif (avis de valeur locative)", "Bail, IRL, DPE, décence, encadrement des loyers (loi 1989/ALUR) — Charte CEE") +
+
+      // ── Type de bail ──
+      '<div class="av-grid-4">' +
+        fld('Type de bail', 'locatif.typeBail', { type: 'select', options: [
+          'vide', 'meuble', 'mobilite', 'commercial', 'professionnel'
+        ], tip: 'vide = loi 1989 (3 ans) · meublé = 1 an · mobilité 1-10 mois · commercial 3-6-9 · professionnel 6 ans' }) +
+        fld('Durée (mois)', 'locatif.dureeBail', { type: 'number' }) +
+        fld('DPE', 'locatif.dpe', { type: 'select', options: ['', 'A', 'B', 'C', 'D', 'E', 'F', 'G'], tip: 'G interdit à la loc. depuis 2025 · F 2028 · E 2034' }) +
+        fld('Zone tendue', 'locatif.zoneTendue', { type: 'checkbox', tip: '28 agglomérations métro. — pas de zone tendue en Martinique' }) +
+      '</div>' +
+
+      // Alertes
+      (dpeInterdit ? '<div class="alert alert-danger small py-2 mb-2"><i class="bi bi-exclamation-triangle-fill me-1"></i><strong>DPE ' + dpeUpper + ' : location interdite</strong> selon calendrier loi Climat 2021 (G dès 2025, F 2028, E 2034).</div>' : '') +
+      (surf > 0 && surf < 9 ? '<div class="alert alert-warning small py-2 mb-2"><i class="bi bi-exclamation-triangle me-1"></i>Surface < 9 m² — <strong>logement non décent</strong> (décret 2002-120).</div>' : '') +
+
+      // ── Loyer & charges ──
+      '<h6 class="mt-3">Loyer et charges</h6>' +
+      '<div class="av-grid-4">' +
+        fld('Loyer HC €/mois', 'locatif.loyerHC', { type: 'number', tip: 'Hors charges — retenu comme VLM' }) +
+        fld('Charges récup. €/mois', 'locatif.chargesRecup', { type: 'number', tip: 'Provisions selon décret 87-713' }) +
+        fld('Dépôt garantie €', 'locatif.depotGarantie', { type: 'number', tip: '1 mois HC (vide) · 2 mois HC (meublé)' }) +
+        fld('Honoraires location €', 'locatif.honoraires', { type: 'number', tip: 'Plafonné loi ALUR selon zone : 8 à 12 €/m² à l\'entrée' }) +
+      '</div>' +
+      (loyerHC && surf ? '<div class="av-tip small mb-2">Loyer pratiqué : <strong>' + (loyerHC / surf).toFixed(2) + ' €/m²/mois</strong> · loyer annuel : <strong>' + fmt(loyerAnnuel) + ' €</strong></div>' : '') +
+
+      // ── Marché locatif ──
+      '<h6 class="mt-3">Marché locatif local</h6>' +
+      '<div class="av-grid-4">' +
+        fld('Loyer marché €/m²/mois', 'locatif.loyerM2Marche', { type: 'number', tip: 'Médiane des comparables · Carte des loyers DHUP en Martinique' }) +
+        fld('Loyer réf. €/m²/mois (zone tendue)', 'locatif.loyerRef', { type: 'number', tip: 'Loyer de référence publié par arrêté préfectoral' }) +
+        fld('Loyer réf. majoré €/m²/mois', 'locatif.loyerRefMajore', { type: 'number', tip: 'Réf +20 % — plafond légal en zone tendue' }) +
+        fld('Taux capi. cible %', 'locatif.tauxCapitalisation', { type: 'number', tip: 'Pour capitalisation inverse (VV cible = loyer annuel / taux)' }) +
+      '</div>' +
+      (loyerMoisSuggere ? '<div class="av-tip small mb-2">Loyer marché estimé : <strong>' + fmt(loyerMoisSuggere) + ' €/mois</strong> (' + surf + ' m² × ' + loyerM2.toFixed(2) + ' €/m²)</div>' : '') +
+      (conforme != null ? '<div class="alert ' + (conforme ? 'alert-success' : 'alert-warning') + ' small py-2 mb-2"><i class="bi bi-' + (conforme ? 'check' : 'x') + '-circle me-1"></i>' + (conforme ? 'Loyer conforme au plafond (zone tendue)' : 'Loyer <strong>dépasse</strong> le loyer de référence majoré — encadrement loyers non respecté') + '</div>' : '') +
+
+      // ── Rendement ──
+      '<h6 class="mt-3">Rendement locatif</h6>' +
+      '<div class="av-grid-4">' +
+        '<div class="av-field"><label>Rendement brut calculé</label><div class="av-cmp-calc hl">' + (rendementBrut ? rendementBrut.toFixed(2) + ' %' : '—') + '</div><small class="text-muted">= loyer annuel / prix vente</small></div>' +
+        '<div class="av-field"><label>Valeur capi. (rendement inverse)</label><div class="av-cmp-calc hl">' + (valeurCapi ? fmtE(valeurCapi) : '—') + '</div><small class="text-muted">= loyer annuel × 100 / ' + tauxCap + ' %</small></div>' +
+        fld('Rendement brut cible %', 'locatif.rendementBrutCible', { type: 'number' }) +
+        fld('Rendement net cible %', 'locatif.rendementNetCible', { type: 'number' }) +
+      '</div>' +
+
+      fld('Commentaire libre', 'locatif.commentaire', { ta: true, ph: 'Observations spécifiques à la location…' }) +
+
+      // Rappel juridique
+      '<div class="alert alert-info small mt-3 mb-0">' +
+        '<strong>Cadre légal rappel</strong><br>' +
+        '• <strong>Bail vide</strong> loi 89-462 · <strong>meublé</strong> loi ALUR · <strong>mobilité</strong> loi ELAN<br>' +
+        '• <strong>IRL</strong> (Indice de Référence des Loyers, INSEE trimestriel) plafonne la révision annuelle<br>' +
+        '• <strong>Décence</strong> décret 2002-120 : surface ≥ 9 m² ou volume ≥ 20 m³, équipement min., sécurité<br>' +
+        '• <strong>Charges récupérables</strong> décret 87-713 (liste limitative)<br>' +
+        '• <strong>Zones tendues</strong> métropole uniquement — <strong>pas applicable en Martinique (972)</strong><br>' +
+        '• <strong>DPE</strong> loi Climat 2021 : G interdit 2025, F 2028, E 2034<br>' +
+        '• <strong>PNO</strong> (Propriétaire Non-Occupant) obligation d\'assurance article 9-1 loi 89-462' +
+      '</div>';
   }
   function head(t, s) { return '<div class="av-sec-head"><h5>' + esc(t) + '</h5><div class="av-sub">' + esc(s) + '</div></div>'; }
 
@@ -1055,7 +1182,13 @@
       '<div class="modal-dialog modal-fullscreen modal-dialog-scrollable">' +
       '<div class="modal-content">' +
       '<div class="modal-header"><div><h5 class="modal-title">Avis de valeur<small>FIDI · document professionnel</small></h5></div>' +
-      '<div class="btn-group btn-group-sm ms-auto me-2" role="group" aria-label="Mode">' +
+      // Toggle Vente / Location
+      '<div class="btn-group btn-group-sm ms-auto me-2" role="group" aria-label="Nature">' +
+        '<button type="button" class="btn ' + (natureCourante()==='vente'?'btn-warning':'btn-outline-warning') + '" data-avnature="vente" title="Avis vente (valeur vénale)"><i class="bi bi-house-check me-1"></i>Vente</button>' +
+        '<button type="button" class="btn ' + (natureCourante()==='location'?'btn-warning':'btn-outline-warning') + '" data-avnature="location" title="Avis locatif (valeur locative de marché)"><i class="bi bi-key me-1"></i>Location</button>' +
+      '</div>' +
+      // Toggle Mode Simple/Expert
+      '<div class="btn-group btn-group-sm me-2" role="group" aria-label="Mode">' +
         '<button type="button" class="btn ' + (state.mode==='simple'?'btn-primary':'btn-outline-primary') + '" data-avmode="simple" title="Formulaire allégé, valeurs auto"><i class="bi bi-lightning me-1"></i>Simple</button>' +
         '<button type="button" class="btn ' + (state.mode==='expert'?'btn-primary':'btn-outline-primary') + '" data-avmode="expert" title="Toutes les saisies méthodes CEE"><i class="bi bi-sliders me-1"></i>Expert</button>' +
       '</div>' +
@@ -1159,6 +1292,24 @@
   }
 
   function onClick(e) {
+    // Bascule Vente / Location : change metadata.nature + re-render tabs+section
+    var natBtn = e.target.closest('[data-avnature]');
+    if (natBtn) {
+      var nat = natBtn.dataset.avnature;
+      if (nat !== natureCourante()) {
+        state.data.metadata.nature = nat;
+        // Refresh boutons Vente/Location (toggle actif)
+        var grpN = natBtn.parentNode;
+        Array.prototype.forEach.call(grpN.querySelectorAll('[data-avnature]'), function (b) {
+          var on = b.dataset.avnature === nat;
+          b.classList.toggle('btn-warning', on);
+          b.classList.toggle('btn-outline-warning', !on);
+        });
+        renderTabs();
+        showSection(state.section);
+      }
+      return;
+    }
     // Bascule Mode Simple / Expert : re-render de la barre d'onglets + section active
     var modeBtn = e.target.closest('[data-avmode]');
     if (modeBtn) {
@@ -1968,9 +2119,46 @@
       '<td style="border:none;width:40%;padding:0;text-align:right;"><div style="color:#1a3a6e;font-weight:bold;">' + esc(sig.nom) + '</div>' +
       '<div>' + esc(sig.fonction) + '</div><div>' + esc(sig.email) + '</div></td></tr></table></div>';
 
-    html += '<div class="title-block"><div class="t1">AVIS DE VALEUR</div>' +
+    var _nature = (data.metadata && data.metadata.nature) || 'vente';
+    var _titreDoc = _nature === 'location' ? 'AVIS DE VALEUR LOCATIVE' : 'AVIS DE VALEUR';
+    html += '<div class="title-block"><div class="t1">' + _titreDoc + '</div>' +
       '<div class="t2">' + esc(b.type || '[Type de bien]') + (b.cp ? ' – ' + esc(b.commune || '') + ' (' + esc(b.cp) + ')' : '') + (b.adresse ? ', ' + esc(b.adresse) : '') + '</div>' +
       '<div class="t3">Réf. : ' + esc(data.metadata.ref) + '  –  Établi le ' + (formatDateFR(data.metadata.date) || '[date]') + '</div></div>';
+
+    // Bloc « Cadre locatif » injecté dans le document si nature=location et données saisies
+    if (_nature === 'location' && data.locatif) {
+      var LL = data.locatif;
+      var bailLbl = { vide: 'Bail vide (loi 89-462, 3 ans)', meuble: 'Bail meublé (loi ALUR, 1 an)', mobilite: 'Bail mobilité (loi ELAN, 1-10 mois)', commercial: 'Bail commercial (3-6-9, art. L.145 C.com.)', professionnel: 'Bail professionnel (6 ans)' }[LL.typeBail || 'vide'];
+      var _surf = num(b.surfaceCarrez);
+      var _loyM2 = (num(LL.loyerHC) && _surf) ? (num(LL.loyerHC) / _surf).toFixed(2) : null;
+      var _annuel = num(LL.loyerHC) * 12;
+      var _cap = (num(LL.tauxCapitalisation) > 0 && _annuel) ? Math.round(_annuel * 100 / num(LL.tauxCapitalisation)) : null;
+      var _rend = (num(LL.loyerHC) && num(b.prixVente)) ? (_annuel * 100 / num(b.prixVente)) : null;
+      var _dpe = String(LL.dpe || '').toUpperCase();
+      var _y = new Date().getFullYear();
+      var _interdit = (_dpe === 'G' && _y >= 2025) || (_dpe === 'F' && _y >= 2028) || (_dpe === 'E' && _y >= 2034);
+
+      var mentionsLoc = [];
+      if (bailLbl) mentionsLoc.push(row('Cadre juridique', bailLbl));
+      if (LL.dureeBail) mentionsLoc.push(row('Durée', esc(LL.dureeBail) + ' mois'));
+      if (LL.loyerHC) mentionsLoc.push(row('Loyer HC retenu', fmtE(LL.loyerHC) + ' / mois' + (_loyM2 ? ' — soit ' + _loyM2 + ' €/m²/mois' : '')));
+      if (LL.chargesRecup) mentionsLoc.push(row('Charges récupérables', fmtE(LL.chargesRecup) + ' / mois (décret 87-713)'));
+      if (LL.depotGarantie) mentionsLoc.push(row('Dépôt de garantie', fmtE(LL.depotGarantie)));
+      if (LL.honoraires) mentionsLoc.push(row('Honoraires de location', fmtE(LL.honoraires) + ' (plafond loi ALUR)'));
+      if (LL.loyerM2Marche) mentionsLoc.push(row('Loyer marché de référence', num(LL.loyerM2Marche).toFixed(2) + ' €/m²/mois'));
+      if (LL.zoneTendue && LL.loyerRef) mentionsLoc.push(row('Loyer de référence (zone tendue)', num(LL.loyerRef).toFixed(2) + ' €/m²/mois — majoré : ' + num(LL.loyerRefMajore).toFixed(2) + ' €/m²/mois'));
+      if (LL.dpe) mentionsLoc.push(row('DPE', esc(_dpe) + (_interdit ? ' — <span style="color:#b71c1c;font-weight:700;">LOCATION INTERDITE (loi Climat 2021)</span>' : '')));
+      if (_rend != null) mentionsLoc.push(row('Rendement brut', _rend.toFixed(2) + ' % / an'));
+      if (_cap != null) mentionsLoc.push(row('Valeur vénale par capitalisation', fmtE(_cap) + ' (loyer annuel × 100 ÷ ' + LL.tauxCapitalisation + ' %)'));
+
+      if (mentionsLoc.length) {
+        html += '<h1>1 bis. Cadre locatif</h1><table>' + mentionsLoc.join('') + '</table>' +
+          (LL.commentaire ? '<p>' + esc(LL.commentaire) + '</p>' : '') +
+          '<div style="background:#f4f6fa;border-left:3pt solid #1a3a6e;padding:10pt;margin-top:10pt;font-size:9pt;">' +
+            '<strong>Rappels réglementaires :</strong> IRL (INSEE trim.) plafonne la révision annuelle · décence : décret 2002-120 · charges récupérables : décret 87-713 · calendrier DPE (loi Climat 2021) : G interdit 2025, F 2028, E 2034 · zones tendues métropole seulement.' +
+          '</div>';
+      }
+    }
 
     html += '<h1>1. Préambule et cadre de l\'avis</h1>' +
       '<p>Le présent document constitue un <b>avis de valeur</b> établi par <b>' + esc(sig.societe) + '</b>, ' + (data.metadata.lieuEtablissement ? 'à ' + esc(data.metadata.lieuEtablissement) : 'en Martinique') + ', par ' + esc(sig.nom) + ', ' + esc(sig.fonction) + '. Il porte sur ' + (b.type ? 'un ' + esc(b.type.toLowerCase()) : 'le bien') + ' situé ' + (adresseComplete || '[adresse]') + '.</p>' +
