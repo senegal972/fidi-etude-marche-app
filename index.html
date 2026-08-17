@@ -238,30 +238,56 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
     <div class="brand-text"><i class="bi bi-building me-2"></i>FIDI · Étude de Marché</div>
     <div class="brand-sub">Immobilier · Données publiques françaises</div>
   </div>
-  <div class="d-flex gap-2 align-items-center">
-    <span class="badge-gov"><i class="bi bi-database me-1"></i>data.gouv.fr</span>
-    <span class="badge bg-warning text-dark d-none" id="creditsPill" title="Crédits d'analyse restants" style="font-size:.72rem;"><i class="bi bi-coin me-1"></i><span id="creditsVal">0</span> crédits</span>
-    <button class="btn btn-sm btn-outline-warning d-none" id="btnPresentation" onclick="Presentation.open()" title="Présentation ImmoData Pro — confidentiel, réservé aux professionnels">
-      <i class="bi bi-easel me-1"></i>Présentation
-    </button>
-    <button class="btn btn-sm btn-outline-warning" id="btnCompte" onclick="Compte.open()" title="Connexion / Mon compte">
-      <i class="bi bi-person-circle me-1"></i><span id="btnCompteLabel">Connexion</span>
-    </button>
-    <button class="btn btn-sm btn-outline-light" id="btnEtudesLib" onclick="openEtudesRecentes()" title="Mes études de marché sauvegardées (Notion)">
-      <i class="bi bi-clock-history me-1"></i>Études récentes
-    </button>
-    <button class="btn btn-sm btn-outline-light" id="btnAvisLib" onclick="AvisValeur.cloud()" title="Mes avis de valeur (Notion)">
-      <i class="bi bi-folder2 me-1"></i>Mes avis
-    </button>
-    <button class="btn btn-sm btn-outline-light d-none" id="btnAvis" onclick="AvisValeur.open()" title="Générer un avis de valeur à partir de cette étude">
-      <i class="bi bi-file-earmark-text me-1"></i>Avis de valeur
-    </button>
-    <button class="btn btn-sm btn-outline-light btn-pdf d-none" id="btnPdf" onclick="exportPdf()">
-      <i class="bi bi-file-earmark-pdf me-1"></i>Télécharger PDF
-    </button>
-    <button class="btn btn-sm btn-outline-light btn-print d-none" id="btnPrint" onclick="exportPdf()">
-      <i class="bi bi-printer me-1"></i>Imprimer
-    </button>
+  <div class="d-flex gap-2 align-items-center flex-wrap">
+    <span class="badge-gov" title="Données publiques françaises"><i class="bi bi-database me-1"></i>data.gouv.fr</span>
+    <span class="badge bg-warning text-dark d-none" id="creditsPill" title="Crédits d'analyse restants" style="font-size:.72rem;">
+      <i class="bi bi-coin me-1"></i><span id="creditsVal">0</span> crédits
+    </span>
+
+    <!-- Dropdown Mes documents (études + avis) -->
+    <div class="dropdown">
+      <button class="btn btn-sm btn-outline-light dropdown-toggle" type="button" id="ddDocs" data-bs-toggle="dropdown" aria-expanded="false" title="Mes dossiers">
+        <i class="bi bi-folder2-open me-1"></i>Mes documents
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="ddDocs">
+        <li><a class="dropdown-item" href="#" onclick="openEtudesRecentes();return false;"><i class="bi bi-clock-history me-2 text-primary"></i>Études récentes</a></li>
+        <li><a class="dropdown-item" href="#" onclick="AvisValeur.cloud();return false;"><i class="bi bi-file-earmark-text me-2 text-warning"></i>Mes avis de valeur</a></li>
+      </ul>
+    </div>
+
+    <!-- Dropdown Actions étude courante (visible après analyse) -->
+    <div class="dropdown d-none" id="ddResultsWrap">
+      <button class="btn btn-sm btn-warning dropdown-toggle" type="button" id="ddResults" data-bs-toggle="dropdown" aria-expanded="false">
+        <i class="bi bi-lightning-charge-fill me-1"></i>Actions
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="ddResults">
+        <li><a class="dropdown-item" href="#" onclick="AvisValeur.open();return false;"><i class="bi bi-file-earmark-text me-2 text-primary"></i>Générer un avis de valeur</a></li>
+        <li><a class="dropdown-item btn-pdf" href="#" onclick="exportPdf();return false;"><i class="bi bi-file-earmark-pdf me-2 text-danger"></i>Télécharger le rapport PDF</a></li>
+        <li><a class="dropdown-item btn-print" href="#" onclick="exportPdf();return false;"><i class="bi bi-printer me-2"></i>Imprimer</a></li>
+      </ul>
+    </div>
+
+    <!-- Dropdown Compte + Ressources -->
+    <div class="dropdown">
+      <button class="btn btn-sm btn-outline-warning dropdown-toggle" type="button" id="ddCompte" data-bs-toggle="dropdown" aria-expanded="false">
+        <i class="bi bi-person-circle me-1"></i><span id="btnCompteLabel">Connexion</span>
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="ddCompte">
+        <li><a class="dropdown-item" href="#" id="miCompte" onclick="Compte.open();return false;"><i class="bi bi-gear me-2"></i>Mon compte</a></li>
+        <li><a class="dropdown-item d-none" id="miPresentation" href="#" onclick="Presentation.open();return false;"><i class="bi bi-easel me-2 text-warning"></i>Présentation ImmoData Pro</a></li>
+        <li><hr class="dropdown-divider"></li>
+        <li><a class="dropdown-item small text-muted" href="https://www.data.gouv.fr" target="_blank" rel="noopener"><i class="bi bi-info-circle me-2"></i>À propos des sources</a></li>
+      </ul>
+    </div>
+
+    <!-- Boutons cachés maintenus pour la rétrocompat des scripts qui les toggle -->
+    <button class="d-none" id="btnPresentation" onclick="Presentation.open()"></button>
+    <button class="d-none" id="btnCompte" onclick="Compte.open()"></button>
+    <button class="d-none" id="btnEtudesLib" onclick="openEtudesRecentes()"></button>
+    <button class="d-none" id="btnAvisLib" onclick="AvisValeur.cloud()"></button>
+    <button class="d-none" id="btnAvis" onclick="AvisValeur.open()"></button>
+    <button class="d-none btn-pdf" id="btnPdf" onclick="exportPdf()"></button>
+    <button class="d-none btn-print" id="btnPrint" onclick="exportPdf()"></button>
   </div>
 </nav>
 
@@ -475,8 +501,10 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
       <div class="d-flex gap-2 align-items-center flex-wrap">
         <span class="badge bg-secondary" id="res-date" style="font-size:.7rem;"></span>
         <input type="text" id="inputDestinataire" class="form-control form-control-sm" placeholder="Destinataire (optionnel)" style="max-width:190px;" title="Nom du destinataire de l'étude">
+
+        <!-- 3 actions primaires (visibles) -->
         <button class="btn btn-sm btn-outline-info" id="btnSaveEtude" onclick="saveEtudeCloud()" title="Sauvegarder cette étude dans Notion">
-          ☁️ Sauvegarder
+          <i class="bi bi-cloud-arrow-up me-1"></i>Sauvegarder
         </button>
         <button class="btn btn-sm btn-outline-primary" id="btnShareEtude" onclick="partagerEtude()" title="Partager cette étude (lien lecture seule)">
           <i class="bi bi-share me-1"></i>Partager
@@ -484,15 +512,22 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
         <button class="btn btn-sm btn-outline-warning" id="btnFactureEtude" onclick="proposerFacture('etude')" title="Facturer & envoyer cette étude">
           <i class="bi bi-receipt me-1"></i>Facturer
         </button>
-        <button class="btn btn-sm" style="background:var(--fidi-gold);color:#1a2233;font-weight:600;" onclick="AvisValeur.open()">
+
+        <!-- Bouton principal Avis (mis en avant, visuel gold) -->
+        <button class="btn btn-sm" id="btnAvisRes" style="background:var(--fidi-gold);color:#1a2233;font-weight:600;" onclick="AvisValeur.open()" title="Générer un avis de valeur (vente ou location)">
           <i class="bi bi-file-earmark-text me-1"></i>Avis de valeur
         </button>
-        <button class="btn btn-sm btn-danger btn-pdf" onclick="exportPdf()">
-          <i class="bi bi-file-earmark-pdf me-1"></i>Télécharger PDF
-        </button>
-        <button class="btn btn-sm btn-outline-secondary btn-print" onclick="exportPdf()">
-          <i class="bi bi-printer me-1"></i>Imprimer
-        </button>
+
+        <!-- Dropdown "Plus" pour PDF/Imprimer -->
+        <div class="dropdown">
+          <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="ddResBar" data-bs-toggle="dropdown" aria-expanded="false" title="Autres actions">
+            <i class="bi bi-three-dots"></i>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="ddResBar">
+            <li><a class="dropdown-item btn-pdf" href="#" onclick="exportPdf();return false;"><i class="bi bi-file-earmark-pdf me-2 text-danger"></i>Télécharger le rapport PDF</a></li>
+            <li><a class="dropdown-item btn-print" href="#" onclick="exportPdf();return false;"><i class="bi bi-printer me-2"></i>Imprimer</a></li>
+          </ul>
+        </div>
       </div>
     </div>
 
@@ -1421,6 +1456,7 @@ async function lancerAnalyse(){
     document.getElementById('btnPrint').classList.remove('d-none');
     document.getElementById('btnPdf').classList.remove('d-none');
     document.getElementById('btnAvis').classList.remove('d-none');
+    var _dd = document.getElementById('ddResultsWrap'); if(_dd) _dd.classList.remove('d-none');
     window.scrollTo({top: document.getElementById('results-panel').offsetTop - 20, behavior:'smooth'});
     // Transactions chargées séparément (appel asynchrone indépendant)
     loadTransactionsAsync(data.localisation || {}, perimetre);
@@ -1571,6 +1607,7 @@ async function reopenEtude(ref){
     document.getElementById('btnPrint').classList.remove('d-none');
     document.getElementById('btnPdf').classList.remove('d-none');
     document.getElementById('btnAvis').classList.remove('d-none');
+    var _dd = document.getElementById('ddResultsWrap'); if(_dd) _dd.classList.remove('d-none');
     const m = document.getElementById('etudesLibModal'); if(m && bootstrap){ const bm = bootstrap.Modal.getInstance(m); if(bm) bm.hide(); }
     window.scrollTo({top: document.getElementById('results-panel').offsetTop - 20, behavior:'smooth'});
     if(d.localisation){ loadTransactionsAsync(d.localisation, inputs.perimetre || 'rayon_1km'); loadBatimentAsync(d.localisation); loadLoyersAsync(d.localisation, d); loadContexteLocalAsync(d.localisation, d.commune_info || {}); }
