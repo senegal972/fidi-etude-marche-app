@@ -48,7 +48,8 @@
         type: 'Appartement', adresse: '', cp: '', commune: '', immeuble: '', etage: '',
         surfaceCarrez: '', surfaceShob: '', sejour: '', terrasse: '', parking: '',
         regime: 'Copropriété', nbLots: '', taxeFonciere: '', statut: 'occupe',
-        loyer: '', bailDateDebut: '', bailDuree: '36', prixVente: ''
+        loyer: '', bailDateDebut: '', bailDuree: '36', prixVente: '',
+        photos: [] // [{ dataUrl, name, w, h }] max 2 photos compressees
       },
       marche: {
         sources: [{ nom: '', bas: '', moyen: '', haut: '' }],
@@ -499,6 +500,7 @@
     if (!d.locatif) d.locatif = def.locatif;
     if (!d.metadata) d.metadata = def.metadata;
     if (!d.metadata.nature) d.metadata.nature = 'vente';
+    if (d.bien && !Array.isArray(d.bien.photos)) d.bien.photos = [];
     return d;
   }
 
@@ -587,6 +589,30 @@
     if (id === 'bien') {
       var occ = b.statut === 'occupe';
       var isLoc = natureCourante() === 'location';
+      // Bloc photos : rendu compact miniatures + bouton ajouter
+      var photos = Array.isArray(b.photos) ? b.photos : [];
+      var photosHtml =
+        '<div class="av-box" style="margin-top:.6rem;">' +
+          '<div class="av-box-title"><i class="bi bi-camera me-1"></i>Photos du bien (max 2 — apparaîtront en A5 dans le document)</div>' +
+          '<div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-start;">' +
+            photos.map(function (p, i) {
+              return '<div style="position:relative;">' +
+                '<img src="' + esc(p.dataUrl) + '" alt="Photo bien" style="width:120px;height:90px;object-fit:cover;border:1px solid #bfbfbf;border-radius:4px;"/>' +
+                '<button type="button" class="btn btn-sm btn-danger" style="position:absolute;top:-8px;right:-8px;border-radius:50%;width:22px;height:22px;padding:0;line-height:1;font-weight:700;" data-action="photo-del" data-idx="' + i + '" title="Supprimer cette photo">×</button>' +
+                '<div class="text-muted small mt-1" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(p.name || ('photo' + (i + 1))) + '</div>' +
+              '</div>';
+            }).join('') +
+            (photos.length < 2 ?
+              '<label style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:120px;height:90px;border:2px dashed #bfbfbf;border-radius:4px;cursor:pointer;color:#5c6470;">' +
+                '<i class="bi bi-plus-lg" style="font-size:24px;"></i>' +
+                '<span style="font-size:11px;">Ajouter photo</span>' +
+                '<input type="file" accept="image/*" data-action="photo-add" style="display:none;"/>' +
+              '</label>'
+              : '<div class="text-muted small" style="align-self:center;">2 photos maximum atteintes.</div>'
+            ) +
+          '</div>' +
+          '<div class="av-tip small mt-2">Les photos sont compressées automatiquement (~800 px, JPEG). Elles apparaîtront dans le document PDF au format A5 (une par ligne).</div>' +
+        '</div>';
       var descTop = isLoc ? "Description du bien mis en location" : "Description précise et situation locative";
       // En LOCATION : bloc "prix de cession" masqué, on ne saisit que le loyer HC dans la section Cadre locatif dédiée
       // En VENTE : bloc "loyer occupé" conservé (bien occupé = argument valorisation)
@@ -615,7 +641,7 @@
           (occ ? '<div class="av-grid-3">' + fld('Loyer mensuel (€)', 'bien.loyer', { type: 'number' }) + fld('Début du bail', 'bien.bailDateDebut', { type: 'date' }) + fld('Durée bail (mois)', 'bien.bailDuree', { type: 'number' }) + '</div>' : '') +
           '</div>' +
           fld('Prix de cession / proposé (€)', 'bien.prixVente', { type: 'number', flag: true, tip: "Net vendeur, hors frais d'agence" })
-        );
+        ) + photosHtml;
     }
     if (id === 'etat') {
       function nivSel(key) {
@@ -1340,6 +1366,11 @@
 
   function onInput(e) {
     var el = e.target;
+    // Upload photo (input file avec data-action="photo-add")
+    if (el.type === 'file' && el.dataset.action === 'photo-add') {
+      handlePhotoAdd(el.files && el.files[0]);
+      return;
+    }
     var isCb = el.type === 'checkbox';
     var val = isCb ? el.checked : el.value;
     if (el.dataset.p) setPath(state.data, el.dataset.p, val);
@@ -1428,6 +1459,7 @@
     else if (a === 'import-dvf') importDvf();
     else if (a === 'toggle-paste') { var w = document.getElementById('avPasteWrap'); if (w) w.style.display = w.style.display === 'none' ? 'block' : 'none'; }
     else if (a === 'parse-paste') parsePaste();
+    else if (a === 'photo-del') { handlePhotoDelete(+t.dataset.idx); return; }
     else if (a === 'import-extension') openExtensionImport();
     else if (a === 'ext-refresh') loadExtensionInbox();
     else if (a === 'ext-set-token') setExtensionToken();
@@ -1930,6 +1962,51 @@
     } catch (e) { toast('Erreur : ' + e.message, true); }
   }
 
+  // ─── Photos du bien (max 2, compression canvas ~800px JPEG 80%) ──────────
+  function handlePhotoAdd(file) {
+    if (!file) return;
+    if (!/^image\//.test(file.type)) { toast('Fichier non image', true); return; }
+    if (!state.data.bien.photos) state.data.bien.photos = [];
+    if (state.data.bien.photos.length >= 2) { toast('Maximum 2 photos', true); return; }
+    var reader = new FileReader();
+    reader.onload = function (ev) {
+      var img = new Image();
+      img.onload = function () {
+        // Compression : max 800 px de côté, JPEG 80 %
+        var MAX = 800;
+        var ratio = Math.min(1, MAX / Math.max(img.width, img.height));
+        var w = Math.round(img.width * ratio), h = Math.round(img.height * ratio);
+        var cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        var ctx = cv.getContext('2d');
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); // évite transparence PNG noir
+        ctx.drawImage(img, 0, 0, w, h);
+        var dataUrl;
+        try { dataUrl = cv.toDataURL('image/jpeg', 0.80); }
+        catch (e) { toast('Erreur compression : ' + e.message, true); return; }
+        state.data.bien.photos.push({
+          dataUrl: dataUrl,
+          name: (file.name || 'photo').slice(0, 60),
+          w: w, h: h,
+        });
+        toast('Photo ajoutée (' + Math.round(dataUrl.length * 0.75 / 1024) + ' Ko)');
+        showSection('bien');
+      };
+      img.onerror = function () { toast('Image illisible', true); };
+      img.src = ev.target.result;
+    };
+    reader.onerror = function () { toast('Lecture fichier impossible', true); };
+    reader.readAsDataURL(file);
+  }
+
+  function handlePhotoDelete(idx) {
+    if (!state.data.bien.photos) return;
+    if (!confirm('Supprimer cette photo ?')) return;
+    state.data.bien.photos.splice(idx, 1);
+    toast('Photo supprimée');
+    showSection('bien');
+  }
+
   // ─── Import loyers depuis l'extension (nature=location) ──────────────────
   function openExtensionImportLoyers() {
     var wrap = document.getElementById('avExtImportLoyers');
@@ -2268,6 +2345,21 @@
       ((calc.vetuste > 0 || data.etat.commentaire) ? row('État / vétusté', (calc.vetuste ? 'Vétusté estimée ' + calc.vetuste + ' %' : '') + (data.etat.commentaire ? (calc.vetuste ? ' — ' : '') + esc(data.etat.commentaire) : '')) : '') +
       '</table>';
 
+    // ── Bloc photos du bien (bien.photos) — format A5 (moitié A4), une par ligne ──
+    // Conditionnel : n'apparaît que si au moins une photo. break-inside:avoid pour
+    // ne pas couper une photo entre 2 pages.
+    if (Array.isArray(b.photos) && b.photos.length) {
+      html += '<h2>2.1 Photos du bien</h2>' +
+        b.photos.map(function (p) {
+          return '<div style="text-align:center;margin:8pt 0;break-inside:avoid;page-break-inside:avoid;">' +
+            '<img src="' + esc(p.dataUrl) + '" alt="Photo du bien" ' +
+              // A5 dans un A4 portrait = ~148 mm × 105 mm max
+              'style="max-width:100%;max-height:148mm;object-fit:contain;border:1px solid #bfbfbf;"/>' +
+            (p.name ? '<div style="font-size:8pt;color:#5c6470;margin-top:2pt;">' + esc(p.name) + '</div>' : '') +
+          '</div>';
+        }).join('');
+    }
+
     // 2.1 — Localisation & risques (carte IGN + PPRN)
     var L = data.loc || {};
     var mapImg = (L.lat && L.lon) ? ignStaticMapUrl(num(L.lat), num(L.lon)) : '';
@@ -2278,7 +2370,8 @@
       L.risquesDetail ? ['Synthèse risques', L.risquesDetail] : null
     ].filter(Boolean);
     if (mapImg || riskLines.length) {
-      html += '<h2>2.1 Localisation & risques naturels</h2>';
+      var _sec21 = (Array.isArray(b.photos) && b.photos.length) ? '2.2' : '2.1';
+      html += '<h2>' + _sec21 + ' Localisation & risques naturels</h2>';
       if (mapImg) {
         // Marker rouge au centre (le bien analysé est toujours au centre de la BBOX ignStaticMapUrl).
         // Position via wrapper positionné : image + pin absolu centré.
