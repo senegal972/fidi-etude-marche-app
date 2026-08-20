@@ -3338,9 +3338,14 @@ function proposerFacture(kind){
       '</div>'+
       '<div id="factStatus"></div>'+
     '</div>'+
-    '<div class="modal-footer"><button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Annuler</button>'+
-    '<button class="btn btn-sm fw-bold text-white" style="background:#12294d;" id="factBtnOk" onclick="factGenerer()">'+
-    '<i class="bi bi-send me-1"></i>Générer &amp; préparer l\'envoi</button></div>'+
+    '<div class="modal-footer" style="justify-content:space-between;flex-wrap:wrap;gap:.4rem;">'+
+      '<button class="btn btn-outline-primary btn-sm" onclick="factHistoriqueClient()" title="Voir toutes les factures de ce client"><i class="bi bi-clock-history me-1"></i>Historique client</button>'+
+      '<div class="d-flex gap-2">'+
+        '<button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Fermer</button>'+
+        '<button class="btn btn-sm fw-bold text-white" style="background:#12294d;" id="factBtnOk" onclick="factGenerer()">'+
+        '<i class="bi bi-send me-1"></i>Générer &amp; préparer l\'envoi</button>'+
+      '</div>'+
+    '</div>'+
     '</div></div></div>';
   const el = document.getElementById('factureModal');
   el.addEventListener('hidden.bs.modal', ()=>el.remove());
@@ -3420,6 +3425,15 @@ async function factGenerer(){
       adresse, commune: adresse, montant, libelle, paiement_requis: payReq, canal, lien_document: lienDoc };
     const r = await fetch('/api/facture', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const j = await r.json().catch(()=>({}));
+    // Facture verrouillée (Payée / Annulée) : afficher un message clair, pas d'erreur brute
+    if(r.status === 409 && j && j.locked){
+      setStatus('<div class="alert alert-warning py-2 small mb-0">'+
+        '<i class="bi bi-lock-fill me-1"></i><strong>Facture N° '+escHtml(j.ref)+' au statut « '+escHtml(j.statut)+' » — non modifiable.</strong><br>'+
+        (j.hint || '')+' '+
+        (j.delivery_url ? '<a href="'+escHtml(j.delivery_url)+'" target="_blank" class="alert-link">Voir la facture existante</a>' : '')+
+      '</div>');
+      if(btn) btn.disabled=false; return;
+    }
     if(!r.ok || !j.ok){ setStatus('<div class="alert alert-danger py-2 small mb-0">Erreur : '+escHtml((j&&j.error)||'création facture impossible')+'</div>'); if(btn) btn.disabled=false; return; }
     window.__factRemise = Object.assign({}, j, { client, email, tel, libelle, montant, payReq, lienDoc, adresse, kind: ctx.kind, label: ctx.label });
     factAfficherRemise();
@@ -3427,6 +3441,94 @@ async function factGenerer(){
     setStatus('<div class="alert alert-danger py-2 small mb-0">Erreur réseau : '+escHtml(e.message)+'</div>');
     if(btn) btn.disabled=false;
   }
+}
+
+// ─── Historique factures du client + annulation ─────────────────────────────
+async function factHistoriqueClient(){
+  var email = (document.getElementById('factEmail')||{}).value || '';
+  var client = (document.getElementById('factClient')||{}).value || '';
+  email = String(email).trim().toLowerCase();
+  client = String(client).trim();
+  if(!email && !client){ alert('Renseignez un e-mail ou un nom client d\'abord.'); return; }
+
+  var body = document.getElementById('factBody');
+  var histoBox = document.getElementById('factHistoBox');
+  if(!histoBox){
+    histoBox = document.createElement('div');
+    histoBox.id = 'factHistoBox';
+    histoBox.style.cssText = 'margin-top:.8rem;padding:.6rem;background:#f4f6fa;border:1px solid #dee2e6;border-radius:6px;';
+    body.appendChild(histoBox);
+  }
+  histoBox.innerHTML = '<div class="text-muted small py-2"><span class="spinner-border spinner-border-sm me-1"></span>Chargement de l\'historique…</div>';
+
+  var qs = email ? 'email='+encodeURIComponent(email) : 'client='+encodeURIComponent(client);
+  try{
+    var r = await fetch('/api/factures/client?'+qs, {credentials:'same-origin'});
+    var j = await r.json();
+    if(!r.ok || !j.ok){ histoBox.innerHTML = '<div class="text-danger small">Erreur : '+escHtml(j.error||'inconnue')+'</div>'; return; }
+    if(!j.items.length){ histoBox.innerHTML = '<div class="text-muted small">Aucune facture pour ce client.</div>'; return; }
+
+    var badgeCls = function(s){
+      if(s==='Payée') return 'bg-success';
+      if(s==='Annulée') return 'bg-secondary text-decoration-line-through';
+      if(s==='À payer') return 'bg-warning text-dark';
+      return 'bg-light text-dark';
+    };
+    var eur = function(n){ return n!=null ? Number(n).toLocaleString('fr-FR')+' €' : '—'; };
+
+    var rows = j.items.map(function(f){
+      var canCancel = (f.statut !== 'Payée' && f.statut !== 'Annulée');
+      return '<tr>'+
+        '<td><strong>'+escHtml(f.ref)+'</strong></td>'+
+        '<td>'+escHtml(f.date||'')+'</td>'+
+        '<td class="small">'+escHtml((f.libelle||f.type||'').slice(0,40))+'</td>'+
+        '<td class="text-end fw-semibold">'+eur(f.montant)+'</td>'+
+        '<td><span class="badge '+badgeCls(f.statut)+'">'+escHtml(f.statut||'—')+'</span></td>'+
+        '<td>'+
+          (f.delivery_url ? '<a href="'+escHtml(f.delivery_url)+'" target="_blank" rel="noopener" title="Page de remise" class="text-decoration-none me-2"><i class="bi bi-box-arrow-up-right"></i></a>' : '')+
+          (f.facture_url ? '<a href="'+escHtml(f.facture_url)+'" target="_blank" rel="noopener" title="Facture PDF" class="text-decoration-none me-2"><i class="bi bi-file-earmark-pdf"></i></a>' : '')+
+          (canCancel ? '<button class="btn btn-sm btn-outline-danger py-0 px-1" title="Annuler cette facture" onclick="factAnnuler(\''+escHtml(f.ref)+'\')"><i class="bi bi-x-circle"></i></button>' : '')+
+        '</td>'+
+      '</tr>';
+    }).join('');
+
+    histoBox.innerHTML =
+      '<div class="d-flex justify-content-between align-items-center mb-2">'+
+        '<strong>Historique — '+j.count+' facture'+(j.count>1?'s':'')+'</strong>'+
+        '<div class="small text-muted">'+
+          '<span class="badge bg-success me-1">'+j.stats.paid+' payées ('+eur(j.stats.total_paid_eur)+')</span>'+
+          '<span class="badge bg-warning text-dark me-1">'+j.stats.pending+' à payer ('+eur(j.stats.total_pending_eur)+')</span>'+
+          (j.stats.cancelled ? '<span class="badge bg-secondary">'+j.stats.cancelled+' annulées</span>' : '')+
+        '</div>'+
+      '</div>'+
+      '<div class="table-responsive" style="max-height:280px;overflow-y:auto;">'+
+        '<table class="table table-sm table-hover mb-0" style="font-size:.82rem;">'+
+          '<thead class="table-light"><tr><th>N°</th><th>Date</th><th>Prestation</th><th class="text-end">Montant</th><th>Statut</th><th></th></tr></thead>'+
+          '<tbody>'+rows+'</tbody>'+
+        '</table>'+
+      '</div>';
+  }catch(e){
+    histoBox.innerHTML = '<div class="text-danger small">Erreur réseau : '+escHtml(e.message)+'</div>';
+  }
+}
+
+async function factAnnuler(ref){
+  if(!ref) return;
+  var motif = prompt('Motif d\'annulation (facultatif) pour la facture ' + ref + ' :', '');
+  if(motif === null) return; // Annulé
+  try{
+    var r = await fetch('/api/facture/cancel', {method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ ref: ref, motif: motif })});
+    var j = await r.json();
+    if(!r.ok || !j.ok){
+      if(j.locked){ alert('Impossible : ' + j.error + '\n\n' + (j.hint||'')); }
+      else alert('Erreur : ' + (j.error || 'inconnue'));
+      return;
+    }
+    alert(j.alreadyCancelled ? 'Facture déjà annulée.' : 'Facture ' + ref + ' annulée. Elle reste consultable en archive.');
+    factHistoriqueClient(); // refresh historique
+  }catch(e){ alert('Erreur réseau : '+e.message); }
 }
 
 // Génère le PDF du document courant et renvoie un lien de téléchargement (Blobs).

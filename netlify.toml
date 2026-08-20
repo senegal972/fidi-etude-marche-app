@@ -67,6 +67,12 @@
 [functions."comparables-inbox"]
   timeout = 10
 
+[functions."facture-cancel"]
+  timeout = 10
+
+[functions."factures-client"]
+  timeout = 15
+
 # ── Redirections API → Netlify Functions ──────────────────────────────────────
 [[redirects]]
   from   = "/api/analyse"
@@ -250,6 +256,16 @@
 [[redirects]]
   from   = "/api/comparables-inbox"
   to     = "/.netlify/functions/comparables-inbox"
+  status = 200
+
+[[redirects]]
+  from   = "/api/facture/cancel"
+  to     = "/.netlify/functions/facture-cancel"
+  status = 200
+
+[[redirects]]
+  from   = "/api/factures/client"
+  to     = "/.netlify/functions/factures-client"
   status = 200
 
 # ── SPA fallback : toute URL non trouvée → index.html ─────────────────────────

@@ -72,11 +72,30 @@ export const handler = async (event) => {
       if (dup.results?.length) {
         const ex = dup.results[0];
         const exRef = ex.properties?.["Numéro"]?.title?.[0]?.plain_text || "";
+        const exStatut = ex.properties?.["Statut"]?.select?.name || "";
         let exTok = ex.properties?.["Jeton livraison"]?.rich_text?.[0]?.plain_text || "";
-        // Ré-édition : on ECRASE aussi montant + libellé + type + client + adresse
-        // avec les valeurs de la requête actuelle (sinon un ancien montant erroné
-        // — ex 700 EUR d'un pack précédent — reste dans Notion et s'affiche sur
-        // la page de remise malgré la nouvelle saisie).
+        const exMontant = ex.properties?.["Montant TTC"]?.number || 0;
+
+        // ─── IMMUABILITÉ ───────────────────────────────────────────────────
+        // Facture "Payée" ou "Annulée" : interdit de la modifier. On refuse
+        // avec un code clair, l'appelant décidera (créer un avenant ou
+        // simplement afficher l'existante).
+        if (exStatut === "Payée" || exStatut === "Annulée") {
+          return authResp(409, {
+            error: "Facture N° " + exRef + " au statut « " + exStatut + " » — modification interdite.",
+            locked: true,
+            statut: exStatut,
+            ref: exRef,
+            token: exTok || "",
+            montant: exMontant,
+            delivery_url: exTok ? `${origin}/l/${exTok}` : "",
+            hint: "Créez une nouvelle facture (avenant) ou annulez celle-ci si nécessaire.",
+          });
+        }
+
+        // Ré-édition (statut À payer / Brouillon) : on ECRASE aussi montant +
+        // libellé + type + client + adresse avec les valeurs de la requête
+        // actuelle (sinon un ancien montant erroné reste dans Notion).
         const upd = {
           "Paiement requis": P.checkbox(paiementRequis),
           "Canal envoi":     P.multi_select(canaux),
