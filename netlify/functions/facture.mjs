@@ -73,18 +73,27 @@ export const handler = async (event) => {
         const ex = dup.results[0];
         const exRef = ex.properties?.["Numéro"]?.title?.[0]?.plain_text || "";
         let exTok = ex.properties?.["Jeton livraison"]?.rich_text?.[0]?.plain_text || "";
-        // Ré-édition : on rafraîchit les infos de remise (document fraîchement
-        // généré, mode de paiement, canaux) sur la facture existante, et on lui
-        // garantit un jeton de remise.
+        // Ré-édition : on ECRASE aussi montant + libellé + type + client + adresse
+        // avec les valeurs de la requête actuelle (sinon un ancien montant erroné
+        // — ex 700 EUR d'un pack précédent — reste dans Notion et s'affiche sur
+        // la page de remise malgré la nouvelle saisie).
         const upd = {
           "Paiement requis": P.checkbox(paiementRequis),
           "Canal envoi":     P.multi_select(canaux),
+          "Libellé":         P.text(libelle),
+          "Montant HT":      P.number(montant),
+          "Montant TTC":     P.number(montant),
+          "Type":            P.select(type),
+          "Client":          P.text(client),
+          "Email client":    P.email(email),
+          "Adresse bien":    P.text(adresse),
+          "Téléphone client": { phone_number: tel || null },
         };
         if (lienDoc) upd["Lien document"] = P.url(lienDoc);
         if (!exTok) { exTok = randToken(); upd["Jeton livraison"] = P.text(exTok); }
         try { await updatePage(ex.id, upd); } catch (_) { /* non bloquant */ }
         return authResp(200, {
-          ok: true, existing: true, ref: exRef, token: exTok, kind, montant, date: today,
+          ok: true, existing: true, updated: true, ref: exRef, token: exTok, kind, montant, date: today,
           libelle, client, email, adresse, paiement_requis: paiementRequis,
           delivery_url: exTok ? `${origin}/l/${exTok}` : "",
         });
