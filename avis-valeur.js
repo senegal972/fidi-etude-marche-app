@@ -575,10 +575,14 @@
   function renderSection(id) {
     var d = state.data, b = d.bien;
     if (id === 'metadata') {
-      return head('Référence et date', "Identifiants administratifs de l'avis") +
+      return head('Référence et destinataire', "Identifiants administratifs de l'avis + client destinataire") +
         fld('Référence interne', 'metadata.ref', { tip: 'Format conseillé : FIDI-AV-AAAA-NNN' }) +
         '<div class="av-grid-2">' + fld("Date d'établissement", 'metadata.date', { type: 'date' }) +
-        fld("Lieu d'établissement", 'metadata.lieuEtablissement') + '</div>';
+        fld("Lieu d'établissement", 'metadata.lieuEtablissement') + '</div>' +
+        '<div class="av-grid-2">' +
+          fld('Destinataire (nom / société)', 'metadata.client', { ph: 'Ex : Mme Dupont / SCI Bellevue', tip: 'Client à qui est adressé l\'avis' }) +
+          fld('Email destinataire', 'metadata.emailClient', { type: 'email', ph: 'client@exemple.com' }) +
+        '</div>';
     }
     if (id === 'bien') {
       var occ = b.statut === 'occupe';
@@ -2182,9 +2186,19 @@
 
     var _nature = (data.metadata && data.metadata.nature) || 'vente';
     var _titreDoc = _nature === 'location' ? 'AVIS DE VALEUR LOCATIVE' : 'AVIS DE VALEUR';
+    // Dédoublonnage : si adresse contient déjà commune ou CP, on n'ajoute pas la mention commune/cp
+    var _adrClean = String(b.adresse || '').trim();
+    var _hasCommune = b.commune && _adrClean.toLowerCase().indexOf(String(b.commune).toLowerCase()) >= 0;
+    var _hasCP = b.cp && _adrClean.indexOf(String(b.cp)) >= 0;
+    var _locStr = '';
+    if (b.cp && !_hasCP && b.commune && !_hasCommune) _locStr = ' – ' + esc(b.commune) + ' (' + esc(b.cp) + ')';
+    else if (b.commune && !_hasCommune) _locStr = ' – ' + esc(b.commune);
+    var _client = (data.metadata && data.metadata.client) || '';
     html += '<div class="title-block"><div class="t1">' + _titreDoc + '</div>' +
-      '<div class="t2">' + esc(b.type || '[Type de bien]') + (b.cp ? ' – ' + esc(b.commune || '') + ' (' + esc(b.cp) + ')' : '') + (b.adresse ? ', ' + esc(b.adresse) : '') + '</div>' +
-      '<div class="t3">Réf. : ' + esc(data.metadata.ref) + '  –  Établi le ' + (formatDateFR(data.metadata.date) || '[date]') + '</div></div>';
+      '<div class="t2">' + esc(b.type || '[Type de bien]') + _locStr + (_adrClean ? ', ' + esc(_adrClean) : '') + '</div>' +
+      '<div class="t3">Réf. : ' + esc(data.metadata.ref) + '  –  Établi le ' + (formatDateFR(data.metadata.date) || '[date]') + '</div>' +
+      (_client ? '<div class="t3" style="margin-top:4pt;">Destinataire : <b>' + esc(_client) + '</b>' + (data.metadata.emailClient ? ' &lt;' + esc(data.metadata.emailClient) + '&gt;' : '') + '</div>' : '') +
+      '</div>';
 
     // Bloc « Cadre locatif » injecté dans le document si nature=location et données saisies
     if (_nature === 'location' && data.locatif) {
@@ -2265,7 +2279,22 @@
     ].filter(Boolean);
     if (mapImg || riskLines.length) {
       html += '<h2>2.1 Localisation & risques naturels</h2>';
-      if (mapImg) html += '<div style="text-align:center;margin:8px 0;"><img src="' + esc(mapImg) + '" alt="Carte de localisation (IGN)" style="max-width:100%;border:1px solid #bfbfbf;"/><div style="font-size:8px;color:#5c6470;">Fond cartographique © IGN — Géoplateforme</div></div>';
+      if (mapImg) {
+        // Marker rouge au centre (le bien analysé est toujours au centre de la BBOX ignStaticMapUrl).
+        // Position via wrapper positionné : image + pin absolu centré.
+        html += '<div style="text-align:center;margin:8px 0;">' +
+          '<div style="position:relative;display:inline-block;max-width:100%;">' +
+            '<img src="' + esc(mapImg) + '" alt="Carte de localisation (IGN)" style="max-width:100%;border:1px solid #bfbfbf;display:block;"/>' +
+            // Pin rouge SVG centré (le bien est au centre de la carte)
+            '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-100%);pointer-events:none;">' +
+              '<svg width="34" height="46" viewBox="0 0 24 32"><path d="M12 0C5.4 0 0 5.4 0 12c0 8 12 20 12 20s12-12 12-20c0-6.6-5.4-12-12-12z" fill="#e4241c" stroke="#fff" stroke-width="1.5"/><circle cx="12" cy="12" r="4.5" fill="#fff"/></svg>' +
+            '</div>' +
+            // Cadre orange indicatif zone du bien (±40 % du centre)
+            '<div style="position:absolute;top:35%;left:35%;width:30%;height:30%;border:2px solid #ffc107;pointer-events:none;box-shadow:0 0 0 2px rgba(255,255,255,.6);"></div>' +
+          '</div>' +
+          '<div style="font-size:8px;color:#5c6470;">📍 Bien analysé (marqueur rouge) · Fond cartographique © IGN — Géoplateforme</div>' +
+        '</div>';
+      }
       if (riskLines.length) html += '<table>' + riskLines.map(function (r) { return row(r[0], esc(r[1])); }).join('') + '</table>';
       if (L.commentaire) html += '<p>' + esc(L.commentaire) + '</p>';
     }
@@ -2344,17 +2373,34 @@
     // 4.3 — Analyse comparative de marché (comparables inclus)
     var comps = (data.comparables || []).filter(function (cp) { return cp.inclus !== false && num(cp.surface) > 0 && num(cp.prix) > 0; });
     if (comps.length) {
+      // Extrait la réf annonce depuis le lien (ex : dernière suite de chiffres de l'URL)
+      function extractRef(cp) {
+        if (cp.ref) return String(cp.ref);
+        var s = String(cp.lien || cp.note || '');
+        var m = s.match(/(\d{7,})/);
+        return m ? m[1] : '';
+      }
+      var isLoc43 = _nature === 'location';
+      var prixLbl = isLoc43 ? 'Loyer HC' : 'Prix';
+      var m2Lbl   = isLoc43 ? '€/m²/mois' : '€/m²';
+      var m2AdjLbl= isLoc43 ? '€/m²/mois ajusté' : '€/m² ajusté';
+      var acmLbl  = isLoc43 ? 'Loyer médian ACM (€/m²/mois ajusté)' : '€/m² ACM retenu (médiane des €/m² ajustés)';
       html += '<h2>4.3 Analyse comparative de marché</h2>' +
-        '<p style="font-size:9px;color:#5c6470;">Comparables <b>vendus</b> = prix réels constatés (DVF). <b>Annonces</b> = prix demandés sur les portails, généralement supérieurs au prix de vente final. Les valeurs sont ajustées pour refléter les écarts avec le bien évalué.</p>' +
-        '<table><tr><th>Source</th><th>Nature</th><th>Type</th><th class="center">Surface</th><th class="center">Prix</th><th class="center">€/m²</th><th class="center">Ajust.</th><th class="center">€/m² ajusté</th></tr>' +
+        '<p style="font-size:9px;color:#5c6470;">' + (isLoc43 ? 'Comparables : loyers pratiqués issus des annonces des portails, ajustés selon les écarts avec le bien.' : 'Comparables <b>vendus</b> = prix réels constatés (DVF). <b>Annonces</b> = prix demandés sur les portails, généralement supérieurs au prix de vente final. Les valeurs sont ajustées pour refléter les écarts avec le bien évalué.') + '</p>' +
+        '<table><tr><th>Source</th><th>Réf annonce</th><th>Nature</th><th>Type</th><th class="center">Surface</th><th class="center">' + prixLbl + '</th><th class="center">' + m2Lbl + '</th><th class="center">Ajust.</th><th class="center">' + m2AdjLbl + '</th></tr>' +
         comps.map(function (cp) {
           var su = num(cp.surface), pr = num(cp.prix), pm2 = pr / su, adj = pm2 * (1 + num(cp.ajustementPct) / 100);
-          return '<tr><td>' + esc(cp.source) + '</td><td>' + (cp.nature === 'vendu' ? 'Vendu' : 'Annonce') + '</td><td>' + esc(cp.type || '—') + '</td>' +
-            '<td class="center">' + fmt(su) + ' m²</td><td class="center">' + fmtE(pr) + '</td><td class="center">' + fmt(Math.round(pm2)) + ' €</td>' +
+          var ref = extractRef(cp);
+          var refCell = ref ? (cp.lien ? '<a href="' + esc(cp.lien) + '" style="color:#1a3a6e;">' + esc(ref) + '</a>' : esc(ref)) : '—';
+          return '<tr><td>' + esc(cp.source) + '</td>' +
+            '<td style="font-size:8pt;font-family:monospace;">' + refCell + '</td>' +
+            '<td>' + (cp.nature === 'vendu' ? (isLoc43 ? 'Loué' : 'Vendu') : 'Annonce') + '</td><td>' + esc(cp.type || '—') + '</td>' +
+            '<td class="center">' + fmt(su) + ' m²</td><td class="center">' + fmtE(pr) + '</td>' +
+            '<td class="center">' + fmt(Math.round(pm2)) + ' €</td>' +
             '<td class="center">' + (cp.ajustementPct ? (num(cp.ajustementPct) > 0 ? '+' : '') + cp.ajustementPct + ' %' : '—') + '</td>' +
             '<td class="center bold">' + fmt(Math.round(adj)) + ' €</td></tr>';
         }).join('') +
-        '<tr style="background:#eaf0f8;"><td class="bold" colspan="7">€/m² ACM retenu (médiane des €/m² ajustés)</td><td class="center bold">' + fmt(calc.acmM2) + ' €</td></tr></table>';
+        '<tr style="background:#eaf0f8;"><td class="bold" colspan="8">' + acmLbl + '</td><td class="center bold">' + fmt(calc.acmM2) + ' €</td></tr></table>';
     }
 
     if (_nature === 'location') {
@@ -2410,12 +2456,43 @@
         '</tr></table>';
     }
 
-    html += '<h1>7. Avis de valeur</h1>' +
-      '<p>Au vu de l\'ensemble des éléments analysés – caractéristiques intrinsèques du bien, ' + (occ ? "état d'occupation locative, " : '') + 'données du marché local' + (occ ? ' et capitalisation du revenu' : '') + ' –, ' + esc(sig.societe) + ' estime la valeur vénale du bien situé ' + (adresseComplete || '[adresse]') + ', <b>au ' + (formatDateFR(data.metadata.date) || '[date]') + '</b>, comme suit :</p>' +
-      '<table><tr><td class="synth-occ" style="width:50%;"><div style="text-transform:uppercase;font-size:9px;opacity:.85;">Valeur ' + (occ ? "en l'état d'occupation" : 'vénale') + '</div><div class="v">' + ((calc.voccBas && calc.voccHaut) ? fmt(calc.voccBas) + ' – ' + fmt(calc.voccHaut) + ' €' : '—') + '</div></td>' +
-      (occ ? '<td class="synth-libre" style="width:50%;"><div style="text-transform:uppercase;font-size:9px;color:#1a2233;">Valeur bien libre (référence marché)</div><div class="v">' + ((calc.vlBas && calc.vlMoy) ? fmt(calc.vlBas) + ' – ' + fmt(calc.vlMoy) + ' €' : '—') + '</div></td>' : '') +
-      '</tr></table>' +
-      '<p style="margin-top:12px;"><b style="color:#1a3a6e;">Conclusion :</b> ' + conclusionTexte + '</p>';
+    if (_nature === 'location') {
+      // ── Section 7 LOCATIVE : synthèse VLM + détail du calcul ──
+      var LL7 = data.locatif || {};
+      var _s7 = num(b.surfaceCarrez), _lH7 = num(LL7.loyerHC), _lM27 = _s7 ? (_lH7 / _s7) : null;
+      // Fourchette VLM : basse -5 % / haute +10 % (usage CEE, à ajuster)
+      var acmM2 = num(calc.acmM2 || 0);
+      var loyRef = num(LL7.loyerM2Marche) || acmM2 || _lM27 || 0;
+      var vlmM2 = loyRef;
+      var vlmBas = _s7 && vlmM2 ? Math.round(vlmM2 * _s7 * 0.95 / 10) * 10 : 0;
+      var vlmHaut = _s7 && vlmM2 ? Math.round(vlmM2 * _s7 * 1.10 / 10) * 10 : 0;
+      var vlmRet = _lH7 || (_s7 && vlmM2 ? Math.round(vlmM2 * _s7 / 10) * 10 : 0);
+      html += '<h1>7. Avis de valeur locative</h1>' +
+        '<p>Au vu des loyers pratiqués localement, du cadre juridique applicable et des caractéristiques du bien, ' + esc(sig.societe) + ' estime la valeur locative de marché (VLM) du bien situé ' + (adresseComplete || '[adresse]') + '<b> au ' + (formatDateFR(data.metadata.date) || '[date]') + '</b> comme suit :</p>' +
+        // Détail du calcul VLM
+        '<h2>Détail du calcul</h2><table>' +
+          '<tr><td class="lbl">Surface habitable retenue</td><td class="center">' + (_s7 ? _s7 + ' m²' : '—') + '</td></tr>' +
+          '<tr><td class="lbl">Loyer marché médian (comparables ACM + carte des loyers)</td><td class="center">' + (loyRef ? loyRef.toFixed(2) + ' €/m²/mois' : '—') + '</td></tr>' +
+          '<tr><td class="lbl">Loyer mensuel HC brut (surface × médiane)</td><td class="center">' + (_s7 && loyRef ? fmtE(Math.round(_s7 * loyRef)) : '—') + '</td></tr>' +
+          '<tr><td class="lbl">Fourchette basse (–5 %)</td><td class="center">' + (vlmBas ? fmtE(vlmBas) : '—') + ' / mois</td></tr>' +
+          '<tr><td class="lbl">Fourchette haute (+10 %)</td><td class="center">' + (vlmHaut ? fmtE(vlmHaut) : '—') + ' / mois</td></tr>' +
+          (LL7.chargesRecup ? '<tr><td class="lbl">Charges récupérables (décret 87-713)</td><td class="center">' + fmtE(LL7.chargesRecup) + ' / mois</td></tr>' : '') +
+        '</table>' +
+        // Encart bleu — VALEUR LOCATIVE (pas vénale)
+        '<table style="margin-top:12pt;"><tr><td class="synth-occ" style="width:100%;text-align:center;">' +
+          '<div style="text-transform:uppercase;font-size:9px;opacity:.85;">Valeur locative de marché (VLM) — loyer HC</div>' +
+          '<div class="v">' + (vlmRet ? fmtE(vlmRet) + ' / mois' : '—') + '</div>' +
+          (vlmBas && vlmHaut && vlmBas !== vlmHaut ? '<div style="font-size:10pt;opacity:.9;">Fourchette : ' + fmtE(vlmBas) + ' – ' + fmtE(vlmHaut) + ' / mois</div>' : '') +
+        '</td></tr></table>' +
+        '<p style="margin-top:12px;"><b style="color:#1a3a6e;">Conclusion :</b> ' + conclusionTexte + '</p>';
+    } else {
+      html += '<h1>7. Avis de valeur</h1>' +
+        '<p>Au vu de l\'ensemble des éléments analysés – caractéristiques intrinsèques du bien, ' + (occ ? "état d'occupation locative, " : '') + 'données du marché local' + (occ ? ' et capitalisation du revenu' : '') + ' –, ' + esc(sig.societe) + ' estime la valeur vénale du bien situé ' + (adresseComplete || '[adresse]') + ', <b>au ' + (formatDateFR(data.metadata.date) || '[date]') + '</b>, comme suit :</p>' +
+        '<table><tr><td class="synth-occ" style="width:50%;"><div style="text-transform:uppercase;font-size:9px;opacity:.85;">Valeur ' + (occ ? "en l'état d'occupation" : 'vénale') + '</div><div class="v">' + ((calc.voccBas && calc.voccHaut) ? fmt(calc.voccBas) + ' – ' + fmt(calc.voccHaut) + ' €' : '—') + '</div></td>' +
+        (occ ? '<td class="synth-libre" style="width:50%;"><div style="text-transform:uppercase;font-size:9px;color:#1a2233;">Valeur bien libre (référence marché)</div><div class="v">' + ((calc.vlBas && calc.vlMoy) ? fmt(calc.vlBas) + ' – ' + fmt(calc.vlMoy) + ' €' : '—') + '</div></td>' : '') +
+        '</tr></table>' +
+        '<p style="margin-top:12px;"><b style="color:#1a3a6e;">Conclusion :</b> ' + conclusionTexte + '</p>';
+    }
 
     html += '<h1>8. Réserves et limites de l\'avis</h1><div class="reserves">' +
       String(data.reserves || '').split('\n\n').map(function (p) { return '<p>' + esc(p) + '</p>'; }).join('') + '</div>';
