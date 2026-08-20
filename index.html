@@ -261,7 +261,8 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
         <i class="bi bi-lightning-charge-fill me-1"></i>Actions
       </button>
       <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="ddResults">
-        <li><a class="dropdown-item" href="#" onclick="AvisValeur.open();return false;"><i class="bi bi-file-earmark-text me-2 text-primary"></i>Générer un avis de valeur</a></li>
+        <li><a class="dropdown-item" href="#" onclick="AvisValeur.open('vente');return false;"><i class="bi bi-house-check me-2 text-warning"></i>Avis de valeur <strong>Vente</strong></a></li>
+        <li><a class="dropdown-item" href="#" onclick="AvisValeur.open('location');return false;"><i class="bi bi-key me-2 text-primary"></i>Avis de valeur <strong>Location</strong></a></li>
         <li><a class="dropdown-item btn-pdf" href="#" onclick="exportPdf();return false;"><i class="bi bi-file-earmark-pdf me-2 text-danger"></i>Télécharger le rapport PDF</a></li>
         <li><a class="dropdown-item btn-print" href="#" onclick="exportPdf();return false;"><i class="bi bi-printer me-2"></i>Imprimer</a></li>
       </ul>
@@ -513,10 +514,16 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
           <i class="bi bi-receipt me-1"></i>Facturer
         </button>
 
-        <!-- Bouton principal Avis (mis en avant, visuel gold) -->
-        <button class="btn btn-sm" id="btnAvisRes" style="background:var(--fidi-gold);color:#1a2233;font-weight:600;" onclick="AvisValeur.open()" title="Générer un avis de valeur (vente ou location)">
-          <i class="bi bi-file-earmark-text me-1"></i>Avis de valeur
-        </button>
+        <!-- Bouton principal Avis (dropdown Vente/Location) -->
+        <div class="dropdown">
+          <button class="btn btn-sm dropdown-toggle" id="btnAvisRes" type="button" data-bs-toggle="dropdown" style="background:var(--fidi-gold);color:#1a2233;font-weight:600;" title="Générer un avis de valeur">
+            <i class="bi bi-file-earmark-text me-1"></i>Avis de valeur
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li><a class="dropdown-item" href="#" onclick="AvisValeur.open('vente');return false;"><i class="bi bi-house-check me-2 text-warning"></i>Avis <strong>Vente</strong> (valeur vénale)</a></li>
+            <li><a class="dropdown-item" href="#" onclick="AvisValeur.open('location');return false;"><i class="bi bi-key me-2 text-primary"></i>Avis <strong>Location</strong> (valeur locative)</a></li>
+          </ul>
+        </div>
 
         <!-- Dropdown "Plus" pour PDF/Imprimer -->
         <div class="dropdown">

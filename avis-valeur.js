@@ -435,18 +435,50 @@
   }
 
   // Sections visibles selon le mode + la nature
+  // Filtre visibilité : chaque section n'apparaît que si pertinente pour la
+  // nature courante (vente vs location) et le mode (simple vs expert).
+  // Directive Qwen : matrice stricte, pas de mélange des rubriques.
   function visibleSections() {
-    var base = SECTIONS.slice();
-    if (natureCourante() === 'location') {
-      // Insère section "8bis. Cadre locatif" avant "9. Atouts"
-      var idx = base.findIndex(function (s) { return s.id === 'swot'; });
-      var loc = { id: 'locatif', label: "8b. Cadre locatif" };
-      if (idx >= 0) base.splice(idx, 0, loc); else base.push(loc);
-    }
-    if (state.mode === 'expert') {
-      base.push({ id: 'methodes', label: '13. Méthodes CEE' });
-    }
-    return base;
+    var nat = natureCourante();
+    var isVente = nat === 'vente', isLoc = nat === 'location';
+    var isExpert = state.mode === 'expert';
+    var out = [];
+    var i = 1;
+    function add(id, label) { out.push({ id: id, label: (i++) + '. ' + label }); }
+
+    // Communes
+    add('metadata',     'Référence');
+    add('bien',         isLoc ? 'Le bien (mis en location)' : 'Le bien');
+    add('etat',         'État & vétusté');
+    add('localisation', 'Localisation & risques');
+
+    // Marché — vente OU location (contenu différent, libellé différent)
+    add('marche',       isLoc ? 'Marché locatif local' : 'Marché immobilier local');
+
+    // Comparables — libellé différent
+    add('comparables',  isLoc ? 'Comparables loyers' : 'Comparables ventes (ACM)');
+
+    // Loyers section :
+    // - En VENTE : reste "Loyers" (bien occupé, rendement pour info)
+    // - En LOCATION : masquée (redondant avec Comparables loyers)
+    if (isVente) add('loyers', 'Loyers de référence');
+
+    // Valeur : rebranding
+    add('calcul',       isLoc ? 'Valeur locative retenue' : 'Valeur vénale retenue');
+
+    // Cadre locatif : LOCATION uniquement (rubrique dédiée)
+    if (isLoc) add('locatif', 'Cadre locatif & obligations');
+
+    // Communes finales
+    add('swot',       'Atouts & vigilance');
+    add('conclusion', 'Conclusion');
+    add('reserves',   'Réserves & limites');
+    add('signature',  'Signataire');
+
+    // Expert : méthodes CEE uniquement en VENTE (Sol+Construction, DCF, coeff env)
+    if (isExpert && isVente) add('methodes', 'Méthodes CEE (Sol+Construction, DCF, pondération)');
+
+    return out;
   }
 
   // Re-rend la barre d'onglets (appelé après bascule de mode)
@@ -550,21 +582,36 @@
     }
     if (id === 'bien') {
       var occ = b.statut === 'occupe';
-      return head('Identification du bien', 'Description précise et situation locative') +
+      var isLoc = natureCourante() === 'location';
+      var descTop = isLoc ? "Description du bien mis en location" : "Description précise et situation locative";
+      // En LOCATION : bloc "prix de cession" masqué, on ne saisit que le loyer HC dans la section Cadre locatif dédiée
+      // En VENTE : bloc "loyer occupé" conservé (bien occupé = argument valorisation)
+      return head('Identification du bien', descTop) +
         '<div class="av-grid-2">' +
         fld('Type de bien', 'bien.type', { type: 'select', options: ['Studio', 'T1', 'T2', 'T3', 'T4', 'T5+', 'Appartement', 'Maison', 'Villa', 'Terrain', 'Local commercial', 'Immeuble'], flag: true }) +
         fld('Régime juridique', 'bien.regime', { type: 'select', options: ['Copropriété', 'Monopropriété', 'Indivision', 'Lotissement'] }) + '</div>' +
         fld('Adresse', 'bien.adresse', { flag: true, ph: 'ex : Chemin Galette' }) +
         '<div class="av-grid-3">' + fld('Code postal', 'bien.cp', { flag: true }) + fld('Commune', 'bien.commune', { flag: true }) + fld('Étage', 'bien.etage', { ph: '4e et dernier' }) + '</div>' +
         fld('Description immeuble', 'bien.immeuble', { tip: 'Année de livraison, niveaux, ascenseur…', ph: 'Résidence 2009 – R+3 – 16 lots' }) +
-        '<div class="av-grid-4">' + fld('Surface Carrez (m²)', 'bien.surfaceCarrez', { type: 'number', flag: true }) + fld('Surface SHOB (m²)', 'bien.surfaceShob', { type: 'number' }) + fld('Séjour (m²)', 'bien.sejour', { type: 'number' }) + fld('Terrasse/Balcon (m²)', 'bien.terrasse', { type: 'number', step: '0.01' }) + '</div>' +
+        '<div class="av-grid-4">' + fld(isLoc ? 'Surface habitable (m²)' : 'Surface Carrez (m²)', 'bien.surfaceCarrez', { type: 'number', flag: true, tip: isLoc ? 'Loi Boutin en location, Carrez en copro à la vente' : 'Loi Carrez (obligatoire vente copro)' }) + fld('Surface SHOB (m²)', 'bien.surfaceShob', { type: 'number' }) + fld('Séjour (m²)', 'bien.sejour', { type: 'number' }) + fld('Terrasse/Balcon (m²)', 'bien.terrasse', { type: 'number', step: '0.01' }) + '</div>' +
         '<div class="av-grid-3">' + fld('Stationnement', 'bien.parking', { ph: '1 place couverte' }) + fld('Nb. lots (copro)', 'bien.nbLots', { type: 'number' }) + fld('Taxe foncière (€/an)', 'bien.taxeFonciere', { type: 'number' }) + '</div>' +
-        '<div class="av-box"><div style="display:flex;gap:1rem;margin-bottom:.6rem;">' +
-        '<label style="font-weight:600;font-size:.85rem;cursor:pointer;"><input type="radio" name="avStatut" value="libre" data-radio="bien.statut"' + (!occ ? ' checked' : '') + '/> Bien libre</label>' +
-        '<label style="font-weight:600;font-size:.85rem;cursor:pointer;"><input type="radio" name="avStatut" value="occupe" data-radio="bien.statut"' + (occ ? ' checked' : '') + '/> Bien occupé</label></div>' +
-        (occ ? '<div class="av-grid-3">' + fld('Loyer mensuel (€)', 'bien.loyer', { type: 'number' }) + fld('Début du bail', 'bien.bailDateDebut', { type: 'date' }) + fld('Durée bail (mois)', 'bien.bailDuree', { type: 'number' }) + '</div>' : '') +
-        '</div>' +
-        fld('Prix de cession / proposé (€)', 'bien.prixVente', { type: 'number', flag: true, tip: "Net vendeur, hors frais d'agence" });
+        // En location : uniquement mention "bien libre à louer / actuellement occupé" (info)
+        (isLoc ?
+          '<div class="av-box"><div style="display:flex;gap:1rem;margin-bottom:.6rem;">' +
+            '<label style="font-weight:600;font-size:.85rem;cursor:pointer;"><input type="radio" name="avStatut" value="libre" data-radio="bien.statut"' + (!occ ? ' checked' : '') + '/> Libre pour location</label>' +
+            '<label style="font-weight:600;font-size:.85rem;cursor:pointer;"><input type="radio" name="avStatut" value="occupe" data-radio="bien.statut"' + (occ ? ' checked' : '') + '/> Bail en cours (renouvellement / avenant)</label>' +
+          '</div>' +
+          (occ ? '<div class="av-grid-3">' + fld('Loyer actuel HC (€/mois)', 'bien.loyer', { type: 'number', tip: 'Loyer du bail en cours — sera comparé au loyer marché' }) + fld('Début du bail', 'bien.bailDateDebut', { type: 'date' }) + fld('Durée bail (mois)', 'bien.bailDuree', { type: 'number' }) + '</div>' : '') +
+          '<div class="av-tip small">Saisissez le loyer marché retenu (VLM) dans la section « Cadre locatif ».</div>' +
+          '</div>'
+          :
+          '<div class="av-box"><div style="display:flex;gap:1rem;margin-bottom:.6rem;">' +
+          '<label style="font-weight:600;font-size:.85rem;cursor:pointer;"><input type="radio" name="avStatut" value="libre" data-radio="bien.statut"' + (!occ ? ' checked' : '') + '/> Bien libre</label>' +
+          '<label style="font-weight:600;font-size:.85rem;cursor:pointer;"><input type="radio" name="avStatut" value="occupe" data-radio="bien.statut"' + (occ ? ' checked' : '') + '/> Bien occupé (locataire en place)</label></div>' +
+          (occ ? '<div class="av-grid-3">' + fld('Loyer mensuel (€)', 'bien.loyer', { type: 'number' }) + fld('Début du bail', 'bien.bailDateDebut', { type: 'date' }) + fld('Durée bail (mois)', 'bien.bailDuree', { type: 'number' }) + '</div>' : '') +
+          '</div>' +
+          fld('Prix de cession / proposé (€)', 'bien.prixVente', { type: 'number', flag: true, tip: "Net vendeur, hors frais d'agence" })
+        );
     }
     if (id === 'etat') {
       function nivSel(key) {
@@ -615,11 +662,15 @@
         fld('Commentaire de tendance', 'marche.commentaire', { type: 'textarea', rows: 2, flag: true });
     }
     if (id === 'comparables') {
-      var nbDvf = (window.__fidiTransactions || []).length;
+      var isLocCmp = natureCourante() === 'location';
+      var nbDvf = isLocCmp ? 0 : (window.__fidiTransactions || []).length;
+      var lblPrix = isLocCmp ? 'Loyer HC (€/mois)' : 'Prix (€)';
+      var lblM2   = isLocCmp ? '€/m²/mois' : '€/m²';
+      var lblM2Adj= isLocCmp ? '€/m²/mois ajusté' : '€/m² ajusté';
       var cards = (d.comparables || []).map(function (cp, i) {
         var vendu = cp.nature === 'vendu';
         var badge = vendu
-          ? '<span style="background:#198754;color:#fff;font-size:.6rem;font-weight:700;border-radius:3px;padding:1px 5px;">VENDU · DVF</span>'
+          ? '<span style="background:#198754;color:#fff;font-size:.6rem;font-weight:700;border-radius:3px;padding:1px 5px;">' + (isLocCmp ? 'LOUÉ · référence' : 'VENDU · DVF') + '</span>'
           : '<span style="background:#0d6efd;color:#fff;font-size:.6rem;font-weight:700;border-radius:3px;padding:1px 5px;">ANNONCE</span>';
         function li(key, ph, type) {
           return '<input type="' + (type || 'text') + '" placeholder="' + esc(ph) + '" value="' + esc(cp[key]) + '" data-list="comparables" data-idx="' + i + '" data-key="' + key + '"/>';
@@ -636,11 +687,11 @@
           '<button class="av-del" data-listdel="comparables" data-idx="' + i + '" title="Supprimer">✕</button></div>' +
           '<div class="av-grid-4">' +
           '<div class="av-field"><label>Surface (m²)</label>' + li('surface', '', 'number') + '</div>' +
-          '<div class="av-field"><label>Prix (€)</label>' + li('prix', '', 'number') + '</div>' +
-          '<div class="av-field"><label>€/m²</label><div class="av-cmp-calc" data-acm-m2="' + i + '">—</div></div>' +
+          '<div class="av-field"><label>' + lblPrix + '</label>' + li('prix', '', 'number') + '</div>' +
+          '<div class="av-field"><label>' + lblM2 + '</label><div class="av-cmp-calc" data-acm-m2="' + i + '">—</div></div>' +
           '<div class="av-field"><label>Ajustement %</label>' + li('ajustementPct', '0', 'number') + '</div>' +
           '</div><div class="av-grid-4">' +
-          '<div class="av-field"><label>€/m² ajusté</label><div class="av-cmp-calc hl" data-acm-adj="' + i + '">—</div></div>' +
+          '<div class="av-field"><label>' + lblM2Adj + '</label><div class="av-cmp-calc hl" data-acm-adj="' + i + '">—</div></div>' +
           '<div class="av-field"><label>État</label>' + sel('etat', ETATS) + '</div>' +
           '<div class="av-field"><label>Étage / expo</label>' + li('etage', 'ex : 2e / Sud') + '</div>' +
           '<div class="av-field"><label>Secteur</label>' + li('secteur', 'quartier') + '</div>' +
@@ -648,10 +699,12 @@
           '<div class="av-field"><label>Lien annonce (traçabilité)</label>' + li('lien', 'https://…') + '</div>' +
           '</div>';
       }).join('');
-      return head('Analyse comparative de marché (ACM)', 'Comparables vendus (DVF) et annonces des portails, avec ajustements') +
+      var titre = isLocCmp ? 'Comparables loyers (VLM)' : 'Analyse comparative de marché (ACM)';
+      var sub = isLocCmp ? 'Loyers pratiqués localement (annonces + baux réels), avec ajustements — sert à calibrer la Valeur Locative de Marché' : 'Comparables vendus (DVF) et annonces des portails, avec ajustements';
+      return head(titre, sub) +
         '<div class="av-tip" style="margin-bottom:.6rem;">Astuce : un <b>ajustement</b> positif si le comparable est <i>meilleur</i> que le bien (on rehausse sa valeur de référence), négatif s\'il est moins bien. Les comparables « inclus » alimentent le €/m² retenu.</div>' +
         '<div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.6rem;">' +
-        '<button class="btn btn-sm btn-outline-success" data-action="import-dvf"><i class="bi bi-download me-1"></i>Importer ventes DVF proches (' + nbDvf + ')</button>' +
+        (isLocCmp ? '' : '<button class="btn btn-sm btn-outline-success" data-action="import-dvf"><i class="bi bi-download me-1"></i>Importer ventes DVF proches (' + nbDvf + ')</button>') +
         '<button class="av-add" data-listadd="comparables" style="border:1px solid var(--av-blue);border-radius:6px;padding:.25rem .6rem;">+ Ajouter une annonce</button>' +
         '<button class="btn btn-sm btn-outline-secondary" data-action="toggle-paste"><i class="bi bi-clipboard me-1"></i>Coller une annonce</button>' +
         '<button class="btn btn-sm btn-outline-primary" data-action="import-extension"><i class="bi bi-download me-1"></i>Importer depuis l\'extension</button>' +
@@ -1165,6 +1218,10 @@
 
   // ── Navigation sections ─────────────────────────────────────
   function showSection(id) {
+    // Si la section demandée n'est plus visible (ex bascule vente→location cache
+    // 'loyers'), on retombe sur la 1re section visible.
+    var visible = visibleSections().map(function (s) { return s.id; });
+    if (visible.indexOf(id) < 0) id = visible[0] || 'metadata';
     state.section = id;
     var c = document.getElementById('avFormContent');
     if (c) c.innerHTML = renderSection(id);
@@ -2245,26 +2302,39 @@
       }
     }
 
-    html += '<h1>3. Méthodologie d\'évaluation</h1>' +
-      '<p>L\'évaluation a été conduite selon ' + (occ ? 'deux méthodes complémentaires' : 'la méthode par comparaison directe') + ' :</p>' +
-      '<p>• <b>Méthode par comparaison directe</b> : analyse des prix au m² constatés sur les transactions et annonces récentes de biens similaires (sources : ' + sourcesNoms + ').</p>' +
-      (occ ? '<p>• <b>Méthode par capitalisation du revenu locatif</b> : détermination de la valeur économique à partir du loyer perçu et du taux de rendement attendu. Une décote d\'occupation est appliquée à la valeur de marché libre pour refléter la contrainte locative.</p>' : '');
+    if (_nature === 'location') {
+      // ── Section méthodologie LOCATIVE ──────────────────────────
+      html += '<h1>3. Méthodologie d\'évaluation locative</h1>' +
+        '<p>L\'évaluation de la <b>valeur locative de marché (VLM)</b> a été conduite selon les méthodes suivantes :</p>' +
+        '<p>• <b>Méthode par comparaison directe</b> : analyse des loyers pratiqués sur des biens similaires dans le même secteur (sources : ' + sourcesNoms + ' + carte des loyers DHUP/MEF).</p>' +
+        '<p>• <b>Méthode par capitalisation inverse</b> : contrôle de cohérence de la valeur vénale du bien avec le rendement locatif attendu.</p>' +
+        '<p style="font-style:italic;color:#5c6470;">Cadre de référence : Charte de l\'Expertise en Évaluation Immobilière, loi 89-462 (baux d\'habitation), loi ELAN pour bail mobilité, loi ALUR pour meublé et honoraires plafonnés.</p>';
+    } else {
+      // ── Section méthodologie VENTE (comme avant) ────────────────
+      html += '<h1>3. Méthodologie d\'évaluation</h1>' +
+        '<p>L\'évaluation a été conduite selon ' + (occ ? 'deux méthodes complémentaires' : 'la méthode par comparaison directe') + ' :</p>' +
+        '<p>• <b>Méthode par comparaison directe</b> : analyse des prix au m² constatés sur les transactions et annonces récentes de biens similaires (sources : ' + sourcesNoms + ').</p>' +
+        (occ ? '<p>• <b>Méthode par capitalisation du revenu locatif</b> : détermination de la valeur économique à partir du loyer perçu et du taux de rendement attendu. Une décote d\'occupation est appliquée à la valeur de marché libre pour refléter la contrainte locative.</p>' : '');
+    }
 
-    html += '<h1>4. Analyse du marché local' + (b.commune ? ' – ' + esc(b.commune) : '') + '</h1>' +
-      '<h2>4.1 Prix au m² constatés</h2><table><tr><th>Source</th><th class="center">Prix bas</th><th class="center">Prix moyen</th><th class="center">Prix haut</th></tr>' +
+    var _titre4 = _nature === 'location' ? '4. Analyse du marché locatif' : '4. Analyse du marché local';
+    var _titre41 = _nature === 'location' ? '4.1 Loyers pratiqués' : '4.1 Prix au m² constatés';
+    var _u = _nature === 'location' ? ' €/m²/mois' : ' €/m²';
+    html += '<h1>' + _titre4 + (b.commune ? ' – ' + esc(b.commune) : '') + '</h1>' +
+      '<h2>' + _titre41 + '</h2><table><tr><th>Source</th><th class="center">' + (_nature==='location'?'Loyer bas':'Prix bas') + '</th><th class="center">' + (_nature==='location'?'Loyer moyen':'Prix moyen') + '</th><th class="center">' + (_nature==='location'?'Loyer haut':'Prix haut') + '</th></tr>' +
       m.sources.filter(function (s) { return s.nom; }).map(function (s) {
-        return '<tr><td>' + esc(s.nom) + '</td><td class="center">' + (s.bas ? fmt(s.bas) + ' €/m²' : '—') + '</td><td class="center bold">' + (s.moyen ? fmt(s.moyen) + ' €/m²' : '—') + '</td><td class="center">' + (s.haut ? fmt(s.haut) + ' €/m²' : '—') + '</td></tr>';
+        return '<tr><td>' + esc(s.nom) + '</td><td class="center">' + (s.bas ? fmt(s.bas) + _u : '—') + '</td><td class="center bold">' + (s.moyen ? fmt(s.moyen) + _u : '—') + '</td><td class="center">' + (s.haut ? fmt(s.haut) + _u : '—') + '</td></tr>';
       }).join('') +
-      '<tr style="background:#eaf0f8;"><td class="bold">Moyenne retenue</td><td class="center bold">' + (m.moyenneBas ? fmt(m.moyenneBas) + ' €/m²' : '—') + '</td><td class="center bold">' + (m.moyenneMoyen ? fmt(m.moyenneMoyen) + ' €/m²' : '—') + '</td><td class="center bold">' + (m.moyenneHaut ? fmt(m.moyenneHaut) + ' €/m²' : '—') + '</td></tr></table>' +
+      '<tr style="background:#eaf0f8;"><td class="bold">Moyenne retenue</td><td class="center bold">' + (m.moyenneBas ? fmt(m.moyenneBas) + _u : '—') + '</td><td class="center bold">' + (m.moyenneMoyen ? fmt(m.moyenneMoyen) + _u : '—') + '</td><td class="center bold">' + (m.moyenneHaut ? fmt(m.moyenneHaut) + _u : '—') + '</td></tr></table>' +
       ((m.commentaire || m.evol12m || m.evol3m) ? '<p><b>Tendance :</b> ' + [esc(m.commentaire), m.evol12m && 'évolution ' + esc(m.evol12m) + ' sur 12 mois', m.evol3m && esc(m.evol3m) + ' sur 3 mois'].filter(Boolean).join(' ; ') + '.</p>' : '');
 
     var loyersValid = data.loyers.filter(function (l) { return l.type || l.loyer; });
     if (occ && loyersValid.length) {
       html += '<h2>4.2 Marché locatif – comparables</h2><table><tr><th>Bien</th><th class="center">Surface</th><th class="center">Loyer</th><th class="center">€/m²</th><th>Secteur</th></tr>' +
         loyersValid.map(function (l) {
-          return '<tr><td>' + esc(l.type || '—') + '</td><td class="center">' + (l.surface ? esc(l.surface) + ' m²' : '—') + '</td><td class="center">' + (l.loyer ? fmtE(l.loyer) : '—') + '</td><td class="center">' + (l.surface && l.loyer ? (num(l.loyer) / num(l.surface)).toFixed(1) + ' €/m²' : '—') + '</td><td>' + esc(l.secteur || '—') + '</td></tr>';
+          return '<tr><td>' + esc(l.type || '—') + '</td><td class="center">' + (l.surface ? esc(l.surface) + ' m²' : '—') + '</td><td class="center">' + (l.loyer ? fmtE(l.loyer) : '—') + '</td><td class="center">' + (l.surface && l.loyer ? (num(l.loyer) / num(l.surface)).toFixed(1) + _u : '—') + '</td><td>' + esc(l.secteur || '—') + '</td></tr>';
         }).join('') +
-        '<tr style="background:#eaf0f8;"><td class="bold">Bien évalué (occupé)</td><td class="center bold">' + (b.surfaceCarrez ? esc(b.surfaceCarrez) + ' m²' : '—') + '</td><td class="center bold">' + fmtE(b.loyer) + '</td><td class="center bold">' + (b.surfaceCarrez && b.loyer ? (num(b.loyer) / num(b.surfaceCarrez)).toFixed(1) + ' €/m²' : '—') + '</td><td class="bold">' + esc(b.adresse || '—') + '</td></tr></table>';
+        '<tr style="background:#eaf0f8;"><td class="bold">Bien évalué (occupé)</td><td class="center bold">' + (b.surfaceCarrez ? esc(b.surfaceCarrez) + ' m²' : '—') + '</td><td class="center bold">' + fmtE(b.loyer) + '</td><td class="center bold">' + (b.surfaceCarrez && b.loyer ? (num(b.loyer) / num(b.surfaceCarrez)).toFixed(1) + _u : '—') + '</td><td class="bold">' + esc(b.adresse || '—') + '</td></tr></table>';
     }
 
     // 4.3 — Analyse comparative de marché (comparables inclus)
@@ -2283,28 +2353,50 @@
         '<tr style="background:#eaf0f8;"><td class="bold" colspan="7">€/m² ACM retenu (médiane des €/m² ajustés)</td><td class="center bold">' + fmt(calc.acmM2) + ' €</td></tr></table>';
     }
 
-    html += '<h1>5. Détermination de la valeur vénale</h1>' +
-      '<p>La valeur retenue résulte de la <b>combinaison pondérée</b> des méthodes applicables au bien :</p>' +
-      '<table><tr><th>Méthode</th><th class="center">Valeur</th><th class="center">Poids</th><th class="center">Contribution</th></tr>' +
-      calc.methodes.map(function (e) {
-        return '<tr' + (e.actif ? '' : ' style="color:#9aa0a6;"') + '><td>' + esc(e.label) + '</td>' +
-          '<td class="center">' + (e.val ? fmtE(e.val) : '—') + '</td>' +
-          '<td class="center">' + (e.actif ? e.poids + ' %' : '—') + '</td>' +
-          '<td class="center bold">' + (e.actif ? fmtE(e.contribution) : '—') + '</td></tr>';
-      }).join('') +
-      '<tr style="background:#eaf0f8;"><td class="bold">Valeur pondérée (hors décote)</td><td class="center bold" colspan="3">' + fmtE(calc.valPonderee) + '</td></tr>' +
-      (calc.decoteEtat > 0 ? '<tr><td>Décote d\'état / vétusté (-' + calc.decoteEtat + ' %)</td><td class="center" colspan="3">' + fmtE(calc.centralEtat) + '</td></tr>' : '') +
-      (occ ? '<tr><td>Décote pour occupation locative (-' + data.calcul.decoteOccupation + ' %)</td><td class="center" colspan="3">' + fmtE(Math.round(calc.centralEtat * (1 - num(data.calcul.decoteOccupation) / 100))) + '</td></tr>' : '') +
-      '<tr class="gold-row"><td>VALEUR VÉNALE ' + (occ ? "EN L'ÉTAT OCCUPÉ" : 'BIEN LIBRE') + ' – fourchette retenue</td><td class="center" colspan="3">' + fmtE(calc.voccBas) + ' – ' + fmtE(calc.voccHaut) + '</td></tr></table>';
+    if (_nature === 'location') {
+      // ── Section 5 LOCATIVE : Valeur locative retenue ──────────
+      var LL5 = data.locatif || {};
+      var _surf5 = num(b.surfaceCarrez);
+      var _loyRetenu = num(LL5.loyerHC);
+      var _loyM2 = (_loyRetenu && _surf5) ? (_loyRetenu / _surf5) : null;
+      var _annuel5 = _loyRetenu * 12;
+      var _tauxCap5 = num(LL5.tauxCapitalisation) || 6.5;
+      var _valCap = (_tauxCap5 > 0 && _annuel5) ? Math.round(_annuel5 * 100 / _tauxCap5) : null;
+      html += '<h1>5. Détermination de la valeur locative de marché (VLM)</h1>' +
+        '<table>' +
+          (_loyRetenu ? '<tr><td class="lbl">Loyer HC retenu</td><td class="center bold">' + fmtE(_loyRetenu) + ' / mois</td></tr>' : '') +
+          (_loyM2 ? '<tr><td class="lbl">Soit</td><td class="center">' + _loyM2.toFixed(2) + ' €/m²/mois</td></tr>' : '') +
+          (LL5.chargesRecup ? '<tr><td class="lbl">Charges récupérables</td><td class="center">' + fmtE(LL5.chargesRecup) + ' / mois</td></tr>' : '') +
+          (LL5.chargesRecup ? '<tr><td class="lbl">Total charges comprises (CC)</td><td class="center bold">' + fmtE(num(LL5.loyerHC) + num(LL5.chargesRecup)) + ' / mois</td></tr>' : '') +
+          (_annuel5 ? '<tr><td class="lbl">Loyer annuel HC</td><td class="center">' + fmtE(_annuel5) + ' / an</td></tr>' : '') +
+          (_valCap ? '<tr><td class="lbl">Valeur vénale par capitalisation (contrôle)</td><td class="center">' + fmtE(_valCap) + ' <span style="color:#5c6470;">(taux ' + _tauxCap5 + ' %)</span></td></tr>' : '') +
+          '<tr class="gold-row"><td>VALEUR LOCATIVE DE MARCHÉ (VLM) — loyer mensuel HC retenu</td><td class="center">' + (_loyRetenu ? fmtE(_loyRetenu) : '[à saisir dans Cadre locatif]') + '</td></tr>' +
+        '</table>';
+    } else {
+      // ── Section 5 VENTE : Valeur vénale (inchangée) ────────────
+      html += '<h1>5. Détermination de la valeur vénale</h1>' +
+        '<p>La valeur retenue résulte de la <b>combinaison pondérée</b> des méthodes applicables au bien :</p>' +
+        '<table><tr><th>Méthode</th><th class="center">Valeur</th><th class="center">Poids</th><th class="center">Contribution</th></tr>' +
+        calc.methodes.map(function (e) {
+          return '<tr' + (e.actif ? '' : ' style="color:#9aa0a6;"') + '><td>' + esc(e.label) + '</td>' +
+            '<td class="center">' + (e.val ? fmtE(e.val) : '—') + '</td>' +
+            '<td class="center">' + (e.actif ? e.poids + ' %' : '—') + '</td>' +
+            '<td class="center bold">' + (e.actif ? fmtE(e.contribution) : '—') + '</td></tr>';
+        }).join('') +
+        '<tr style="background:#eaf0f8;"><td class="bold">Valeur pondérée (hors décote)</td><td class="center bold" colspan="3">' + fmtE(calc.valPonderee) + '</td></tr>' +
+        (calc.decoteEtat > 0 ? '<tr><td>Décote d\'état / vétusté (-' + calc.decoteEtat + ' %)</td><td class="center" colspan="3">' + fmtE(calc.centralEtat) + '</td></tr>' : '') +
+        (occ ? '<tr><td>Décote pour occupation locative (-' + data.calcul.decoteOccupation + ' %)</td><td class="center" colspan="3">' + fmtE(Math.round(calc.centralEtat * (1 - num(data.calcul.decoteOccupation) / 100))) + '</td></tr>' : '') +
+        '<tr class="gold-row"><td>VALEUR VÉNALE ' + (occ ? "EN L'ÉTAT OCCUPÉ" : 'BIEN LIBRE') + ' – fourchette retenue</td><td class="center" colspan="3">' + fmtE(calc.voccBas) + ' – ' + fmtE(calc.voccHaut) + '</td></tr></table>';
 
-    if (b.prixVente) {
-      html += '<h2>Analyse de cohérence – prix de cession</h2>' +
-        '<p>Le bien ' + (occ ? 'a été cédé' : 'est proposé') + ' au prix de <b style="color:#1a3a6e;">' + fmtE(b.prixVente) + ' net vendeur</b>' + (b.surfaceCarrez ? ', soit environ <b>' + fmt(calc.prixM2) + ' €/m²</b>' : '') + '. Ce prix s\'inscrit <b>dans la fourchette retenue par notre avis (' + fmtE(calc.voccBas) + ' – ' + fmtE(calc.voccHaut) + ')</b>' + (occ && calc.rendementBrut ? ' et offre à l\'acquéreur un <b>rendement brut de ' + calc.rendementBrut.toFixed(2) + ' %</b>' : '') + '.</p>';
-    }
+      if (b.prixVente) {
+        html += '<h2>Analyse de cohérence – prix de cession</h2>' +
+          '<p>Le bien ' + (occ ? 'a été cédé' : 'est proposé') + ' au prix de <b style="color:#1a3a6e;">' + fmtE(b.prixVente) + ' net vendeur</b>' + (b.surfaceCarrez ? ', soit environ <b>' + fmt(calc.prixM2) + ' €/m²</b>' : '') + '. Ce prix s\'inscrit <b>dans la fourchette retenue par notre avis (' + fmtE(calc.voccBas) + ' – ' + fmtE(calc.voccHaut) + ')</b>' + (occ && calc.rendementBrut ? ' et offre à l\'acquéreur un <b>rendement brut de ' + calc.rendementBrut.toFixed(2) + ' %</b>' : '') + '.</p>';
+      }
 
-    // ── Bloc "Méthodes CEE détaillées" (mode Expert ou données expert présentes) ──
-    if (state.mode === 'expert' && data.expert && window.FidiAvisMethodes) {
-      html += buildExpertMethodesHTML(data, calc);
+      // ── Bloc "Méthodes CEE détaillées" (VENTE uniquement, mode Expert) ──
+      if (state.mode === 'expert' && data.expert && window.FidiAvisMethodes) {
+        html += buildExpertMethodesHTML(data, calc);
+      }
     }
 
     if (atouts.length || vigilances.length) {
@@ -2351,22 +2443,82 @@
   }
 
   // ── API publique ────────────────────────────────────────────
-  function open(ref) {
+  // open(refOuNature) — accepte :
+  //   - une ref d'avis existant (string commençant par 'FIDI-AV-')
+  //   - une nature ('vente' | 'location') pour créer un nouvel avis typé
+  //   - undefined : demande d'abord la nature (dialogue simple), puis ouvre
+  function open(refOuNature) {
     if (typeof bootstrap === 'undefined') { alert('Bootstrap non chargé.'); return; }
     if (!state.built) buildModal();
-    // Ouverture d'un avis mémorisé (depuis le picker ou la bibliothèque)
-    if (ref && typeof ref === 'string') {
-      try { var raw = localStorage.getItem(AVIS_PREFIX + ref); if (raw) { state.data = ensureExpertBlock(JSON.parse(raw)); state.section = 'metadata'; } }
+
+    var arg = refOuNature;
+    var natureDemande = null;
+    var refDemande = null;
+    if (arg === 'vente' || arg === 'location') natureDemande = arg;
+    else if (typeof arg === 'string' && arg) refDemande = arg;
+
+    // Ouverture d'un avis mémorisé
+    if (refDemande) {
+      try { var raw = localStorage.getItem(AVIS_PREFIX + refDemande); if (raw) { state.data = ensureExpertBlock(JSON.parse(raw)); state.section = 'metadata'; } }
       catch (e) { toast('Erreur de chargement', true); }
       var lib = document.getElementById('avisLibModal');
       if (lib && bootstrap.Modal.getInstance(lib)) bootstrap.Modal.getInstance(lib).hide();
     }
+
+    // Création : si aucune nature demandée ET pas d'avis en cours → propose le choix
+    if (!state.data && !natureDemande) {
+      natureDemande = askNatureAvis();
+      if (!natureDemande) return; // annulé
+    }
+
     if (!state.data) {
       state.data = window.__fidiData ? buildPrefillFromEtude(window.__fidiData, window.__fidiInputs) : buildPrefillFromEtude(null, null);
+      state.data = ensureExpertBlock(state.data);
+    }
+    // Applique la nature demandée sur avis nouveau ou existant (change de type)
+    if (natureDemande) {
+      state.data.metadata = state.data.metadata || {};
+      state.data.metadata.nature = natureDemande;
+      applyDefaultsForNature(natureDemande);
     }
     refreshSavedSelect();
+    // Refresh header (toggle vente/loc) : rebuild rapide de la modale si nature a changé
+    if (natureDemande) buildModal();
     showSection(state.section);
     state.modal.show();
+  }
+
+  // Dialogue léger : Vente ou Location ?
+  function askNatureAvis() {
+    if (typeof bootstrap === 'undefined') return 'vente';
+    var wrap = document.getElementById('avNatureAskRoot');
+    if (!wrap) { wrap = document.createElement('div'); wrap.id = 'avNatureAskRoot'; document.body.appendChild(wrap); }
+    return new Promise(function () { /* pas utilisé, appel synchrone via confirm */ }) && (function () {
+      var reply = window.prompt("Type d'avis à créer :\n\n1 = Vente (avis de valeur vénale)\n2 = Location (avis de valeur locative)\n\nEntrez 1 ou 2 :", "1");
+      if (!reply) return null;
+      return reply.trim() === '2' ? 'location' : 'vente';
+    })();
+  }
+
+  // Applique les paramètres par défaut adaptés à la nature (Phase 5 directive Qwen)
+  function applyDefaultsForNature(nat) {
+    var d = state.data;
+    if (nat === 'location') {
+      // Valeurs par défaut avis LOCATIF
+      d.calcul = d.calcul || {};
+      d.calcul.tauxCapi = d.calcul.tauxCapi || 6.5;
+      d.locatif = d.locatif || defaultData().locatif;
+      // Bail vide par défaut, IRL cadre standard
+      d.locatif.typeBail = d.locatif.typeBail || 'vide';
+      d.locatif.dureeBail = d.locatif.dureeBail || 36;
+      d.locatif.depotGarantie = d.locatif.depotGarantie || (num(d.locatif.loyerHC) || '');
+      d.locatif.tauxCapitalisation = d.locatif.tauxCapitalisation || 6.5;
+    } else {
+      // Valeurs par défaut avis VENTE (déjà en place, on garantit)
+      d.calcul = d.calcul || {};
+      d.calcul.tauxCapi = d.calcul.tauxCapi || 6.5;
+      d.calcul.decoteOccupation = d.calcul.decoteOccupation != null ? d.calcul.decoteOccupation : 10;
+    }
   }
 
   window.AvisValeur = { open: open, openLibrary: openLibrary, listAvis: avisList, cloud: doCloud, cloudOpen: cloudOpen, partager: doPartager, facturer: doFacturer, _compute: compute, _prefill: buildPrefillFromEtude };
