@@ -1897,12 +1897,16 @@
     var srcMap = { seloger: 'SeLoger', leboncoin: 'Leboncoin', domimmo: 'DomImmo', 'bien\'ici': 'Bien’ici' };
     picked.forEach(function (it) {
       var src = srcMap[(it.source || '').toLowerCase()] || 'Autre';
+      // En location : le champ 'prix' du comparable = loyer HC mensuel
+      // (le formulaire affiche 'Loyer HC (€/mois)' comme libellé)
+      var montant = it.prix;
+      if ((it.nature === 'location' || (!montant && it.loyer)) && it.loyer) montant = it.loyer;
       state.data.comparables.push(comparableTemplate({
         nature: 'annonce', source: src, type: it.type || '',
         secteur: it.commune || '',
-        surface: it.surface || '', prix: it.prix || '',
+        surface: it.surface || '', prix: montant || '',
         date: '', etat: '', etage: '', exposition: '', annexes: '',
-        lien: it.url || '', note: (it.ref ? 'Réf ' + it.ref + ' — ' : '') + (it.titre || ''),
+        lien: it.url || '', note: (it.ref ? 'Réf ' + it.ref + ' — ' : '') + (it.titre || '') + (it.nature === 'location' ? ' [loyer HC]' : ''),
       }));
     });
     toast(picked.length + ' comparable' + (picked.length > 1 ? 's' : '') + ' importé' + (picked.length > 1 ? 's' : ''));
