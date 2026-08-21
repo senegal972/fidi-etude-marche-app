@@ -666,6 +666,10 @@
         fld('Régime juridique', 'bien.regime', { type: 'select', options: ['Copropriété', 'Monopropriété', 'Indivision', 'Lotissement'] }) + '</div>' +
         fld('Adresse', 'bien.adresse', { flag: true, ph: 'ex : Chemin Galette' }) +
         '<div class="av-grid-3">' + fld('Code postal', 'bien.cp', { flag: true }) + fld('Commune', 'bien.commune', { flag: true }) + fld('Étage', 'bien.etage', { ph: '4e et dernier' }) + '</div>' +
+        '<div class="d-flex gap-2 mb-2">' +
+          '<button type="button" class="btn btn-sm btn-outline-primary" onclick="avisPrefillBati()" title="Pré-remplit description immeuble depuis les données publiques ADEME + RNB"><i class="bi bi-buildings me-1"></i>Pré-remplir bâti (ADEME/RNB)</button>' +
+          '<span class="text-muted small align-self-center">Récupère année approximative + DPE dominant + surface via ADEME et RNB (BDNB CSTB complète nécessite abonnement CSTB, non intégrée).</span>' +
+        '</div>' +
         fld('Description immeuble', 'bien.immeuble', { tip: 'Année de livraison, niveaux, ascenseur…', ph: 'Résidence 2009 – R+3 – 16 lots' }) +
         '<div class="av-grid-4">' + fld(isLoc ? 'Surface habitable (m²)' : 'Surface Carrez (m²)', 'bien.surfaceCarrez', { type: 'number', flag: true, tip: isLoc ? 'Loi Boutin en location, Carrez en copro à la vente' : 'Loi Carrez (obligatoire vente copro)' }) + fld('Surface SHOB (m²)', 'bien.surfaceShob', { type: 'number' }) + fld('Séjour (m²)', 'bien.sejour', { type: 'number' }) + fld('Terrasse/Balcon (m²)', 'bien.terrasse', { type: 'number', step: '0.01' }) + '</div>' +
         '<div class="av-grid-3">' + fld('Stationnement', 'bien.parking', { ph: '1 place couverte' }) + fld('Nb. lots (copro)', 'bien.nbLots', { type: 'number' }) + fld('Taxe foncière (€/an)', 'bien.taxeFonciere', { type: 'number' }) + '</div>' +
@@ -2123,6 +2127,69 @@
       showSection('marche');
     } catch (e) {
       toast('Erreur DHUP : ' + e.message, true);
+    }
+  };
+
+  // ─── Pré-remplissage bâti depuis ADEME (DPE V2) + RNB (contour + adresse) ─
+  // BDNB officielle CSTB nécessite un abonnement. On combine à la place les
+  // sources publiques ouvertes : ADEME DPE V2 (perf énergétique + année de
+  // construction + surface) + RNB (identifiant national bâtiment + adresses).
+  window.avisPrefillBati = async function () {
+    try {
+      var b = state.data.bien;
+      // 1. Trouve lat/lon : étude en cours ou géocode adresse
+      var lat = 0, lon = 0, citycode = '', postcode = '';
+      var fd = window.__fidiData || {};
+      if (fd.localisation && fd.localisation.lat) {
+        lat = num(fd.localisation.lat); lon = num(fd.localisation.lon);
+        citycode = fd.localisation.citycode || ''; postcode = fd.localisation.postcode || '';
+      }
+      if ((!lat || !lon) && (b.adresse || b.commune)) {
+        var q = encodeURIComponent(((b.adresse || '') + ' ' + (b.cp || '') + ' ' + (b.commune || '')).trim());
+        var g = await fetch('https://api-adresse.data.gouv.fr/search/?q=' + q + '&limit=1').then(function (r) { return r.json(); });
+        var f = ((g || {}).features || [])[0];
+        if (f) {
+          lon = f.geometry.coordinates[0]; lat = f.geometry.coordinates[1];
+          citycode = f.properties.citycode; postcode = f.properties.postcode;
+        }
+      }
+      if (!lat || !lon || !citycode) { toast('Impossible : adresse à préciser (avec code postal)', true); return; }
+      toast('Recherche ADEME + RNB…');
+
+      // 2. Appelle /api/batiment (déjà en place)
+      var r = await fetch('/api/batiment', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code_insee: citycode, lat: lat, lon: lon, postcode: postcode || '' })
+      });
+      var j = await r.json();
+      if (!j || !j.ok) { toast('Aucune donnée bâti', true); return; }
+
+      // 3. Prend le résultat le plus proche
+      var closest = ((j.dpe || j.results || []).slice().sort(function (a, c) { return (a.distance_m || 99999) - (c.distance_m || 99999); }))[0];
+
+      // 4. Injecte dans state.data.bien
+      var infos = [];
+      if (closest) {
+        if (closest.annee_construction) infos.push('Construit vers ' + closest.annee_construction);
+        else if (closest.periode_construction) infos.push(String(closest.periode_construction));
+        if (closest.type_batiment) infos.push(String(closest.type_batiment));
+        if (closest.surface_habitable) infos.push('Surface DPE ' + closest.surface_habitable + ' m²');
+        if (closest.etiquette_dpe) {
+          if (!state.data.locatif) state.data.locatif = { dpe: closest.etiquette_dpe };
+          else state.data.locatif.dpe = closest.etiquette_dpe;
+          infos.push('DPE ' + closest.etiquette_dpe);
+        }
+        if (closest.type_energie) infos.push('Énergie ' + closest.type_energie);
+      }
+      if (!infos.length) { toast('Aucun bâti trouvé à proximité', true); return; }
+      var desc = infos.join(' · ') + ' (source : ADEME DPE + RNB, ' + (closest.distance_m || '?') + ' m du point)';
+      // Préserve ce que l'user a saisi, complète en fin de ligne si vide
+      if (!b.immeuble) b.immeuble = desc;
+      else b.immeuble = b.immeuble + '\n' + desc;
+      toast('Bâti pré-rempli');
+      showSection('bien');
+    } catch (e) {
+      toast('Erreur pré-remplissage : ' + e.message, true);
     }
   };
 
