@@ -245,6 +245,101 @@
   function setCurrentSignatureId(id) {
     try { localStorage.setItem(SIGN_LAST_KEY, id || ''); } catch (e) {}
   }
+
+  // ── Base clients (destinataires) — locale + CRM optionnel ─────
+  var CLIENTS_KEY = 'fidi:clients';                // [{id,label,nom,adresse,cp,ville,email,telephone,type,notes,source}]
+  var CLIENT_LAST_KEY = 'fidi:clients:last';       // id dernier client chargé
+  var CRM_ENABLED_KEY = 'fidi:crm:enabled';        // '1' | ''
+  var CRM_CACHE_KEY = 'fidi:crm:cache:clients';    // cache résultats CRM
+  function listClients() {
+    try {
+      var raw = localStorage.getItem(CLIENTS_KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) { return []; }
+  }
+  function writeClients(arr) {
+    try { localStorage.setItem(CLIENTS_KEY, JSON.stringify(arr || [])); return true; } catch (e) { return false; }
+  }
+  function saveClientAs(client) {
+    var arr = listClients();
+    var id = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    var lbl = client.label || client.nom || 'Sans nom';
+    arr.push(Object.assign({ id: id, label: String(lbl).slice(0, 80), source: 'local' }, client));
+    writeClients(arr);
+    try { localStorage.setItem(CLIENT_LAST_KEY, id); } catch (e) {}
+    return id;
+  }
+  function updateClient(id, patch, newLabel) {
+    var arr = listClients();
+    for (var i = 0; i < arr.length; i++) {
+      if (arr[i].id === id) {
+        arr[i] = Object.assign({}, arr[i], patch);
+        if (newLabel) arr[i].label = String(newLabel).slice(0, 80);
+        writeClients(arr);
+        return true;
+      }
+    }
+    return false;
+  }
+  function deleteClient(id) {
+    var arr = listClients().filter(function (x) { return x.id !== id; });
+    return writeClients(arr);
+  }
+  function findClient(id) {
+    var arr = listClients();
+    for (var i = 0; i < arr.length; i++) if (arr[i].id === id) return arr[i];
+    return null;
+  }
+  function currentClientId() {
+    try { return localStorage.getItem(CLIENT_LAST_KEY) || ''; } catch (e) { return ''; }
+  }
+  function setCurrentClientId(id) {
+    try { localStorage.setItem(CLIENT_LAST_KEY, id || ''); } catch (e) {}
+  }
+  function crmEnabled() {
+    try { return localStorage.getItem(CRM_ENABLED_KEY) === '1'; } catch (e) { return false; }
+  }
+  function setCrmEnabled(on) {
+    try { localStorage.setItem(CRM_ENABLED_KEY, on ? '1' : ''); } catch (e) {}
+  }
+  // Import CRM Notion (best-effort ; échec silencieux si endpoint indisponible)
+  function fetchCrmClients(cb) {
+    if (!crmEnabled()) { cb(null); return; }
+    try {
+      fetch('/api/crm-clients', { headers: { 'Accept': 'application/json' } })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) {
+          if (!j || !Array.isArray(j.items)) { cb(null); return; }
+          try { localStorage.setItem(CRM_CACHE_KEY, JSON.stringify(j.items)); } catch (e) {}
+          cb(j.items);
+        })
+        .catch(function () { cb(null); });
+    } catch (e) { cb(null); }
+  }
+  function listClientsMerged() {
+    var local = listClients();
+    var crm = [];
+    if (crmEnabled()) {
+      try {
+        var raw = localStorage.getItem(CRM_CACHE_KEY);
+        crm = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(crm)) crm = [];
+      } catch (e) {}
+    }
+    // Dédup par email (priorité locale, plus récent)
+    var seen = {};
+    var out = [];
+    local.forEach(function (c) {
+      var k = (c.email || c.telephone || c.id || '').toLowerCase();
+      seen[k] = true; out.push(c);
+    });
+    crm.forEach(function (c) {
+      var k = (c.email || c.telephone || c.id || '').toLowerCase();
+      if (!seen[k]) out.push(Object.assign({}, c, { source: 'crm' }));
+    });
+    return out;
+  }
   function listSavedAvis() {
     var out = [];
     try {
@@ -673,10 +768,40 @@
   function renderSection(id) {
     var d = state.data, b = d.bien;
     if (id === 'metadata') {
-      return head('Référence et destinataire', "Identifiants administratifs de l'avis + coordonnées client") +
+      var _cli = listClientsMerged();
+      var _cur = currentClientId();
+      var _crmOn = crmEnabled();
+      var _cliOpts = '<option value="">— Nouveau destinataire (aucun profil) —</option>' +
+        _cli.map(function (c) {
+          var lbl = (c.label || c.nom || '(sans nom)').replace(/"/g, '&quot;');
+          var src = c.source === 'crm' ? ' [CRM]' : '';
+          var sel = c.id === _cur ? ' selected' : '';
+          return '<option value="' + c.id + '"' + sel + '>' + lbl + src + '</option>';
+        }).join('');
+      return head('Référence et destinataire', "Identifiants administratifs de l'avis + coordonnées client. Les destinataires peuvent être mémorisés pour réutilisation.") +
         fld('Référence interne', 'metadata.ref', { tip: 'Format conseillé : FIDI-AV-AAAA-NNN' }) +
         '<div class="av-grid-2">' + fld("Date d'établissement", 'metadata.date', { type: 'date' }) +
         fld("Lieu d'établissement", 'metadata.lieuEtablissement') + '</div>' +
+
+        '<div class="av-sec-head" style="margin-top:1rem;"><h5 style="font-size:1rem;">Base de destinataires (clients)</h5></div>' +
+        '<div class="d-flex flex-wrap gap-2 align-items-end mb-2">' +
+          '<div style="flex:1; min-width:240px;">' +
+            '<label class="form-label small mb-1">Sélectionner un client mémorisé</label>' +
+            '<select class="form-select form-select-sm" data-action="pick-client">' + _cliOpts + '</select>' +
+          '</div>' +
+          '<button class="btn btn-sm btn-outline-primary" data-action="save-client-as"><i class="bi bi-person-plus me-1"></i>Enregistrer comme nouveau client</button>' +
+          '<button class="btn btn-sm btn-outline-secondary" data-action="update-client"' + (_cur ? '' : ' disabled') + '><i class="bi bi-save me-1"></i>Mettre à jour</button>' +
+          '<button class="btn btn-sm btn-outline-danger" data-action="del-client"' + (_cur ? '' : ' disabled') + '><i class="bi bi-trash me-1"></i>Supprimer</button>' +
+        '</div>' +
+        '<div class="d-flex flex-wrap gap-2 align-items-center mb-2 small">' +
+          '<label style="cursor:pointer;">' +
+            '<input type="checkbox" data-action="toggle-crm"' + (_crmOn ? ' checked' : '') + ' style="vertical-align:-2px;margin-right:4px;"/>' +
+            'Activer connecteur CRM (Notion FIDI)' +
+          '</label>' +
+          (_crmOn ? '<button class="btn btn-sm btn-outline-info" data-action="crm-sync"><i class="bi bi-arrow-repeat me-1"></i>Synchroniser CRM maintenant</button>' : '') +
+          '<span class="text-muted">' + _cli.length + ' client(s) au total' + (_crmOn ? ' — CRM actif' : ' — mode local uniquement') + '</span>' +
+        '</div>' +
+
         '<div class="av-sec-head" style="margin-top:1rem;"><h5 style="font-size:1rem;">Coordonnées du destinataire</h5></div>' +
         '<div class="av-grid-2">' +
           fld('Nom / société', 'metadata.client', { ph: 'Ex : Mme Dupont / SCI Bellevue' }) +
@@ -1556,6 +1681,45 @@
       handlePhotoAdd(el.files && el.files[0]);
       return;
     }
+    // Sélecteur client (destinataire)
+    if (el.tagName === 'SELECT' && el.dataset.action === 'pick-client') {
+      var cid2 = el.value;
+      if (!cid2) {
+        setCurrentClientId('');
+        state.data.metadata.client = '';
+        state.data.metadata.adresseClient = '';
+        state.data.metadata.emailClient = '';
+        state.data.metadata.telephoneClient = '';
+        showSection('metadata');
+        return;
+      }
+      var cp = findClient(cid2);
+      if (!cp) { toast('Client introuvable', true); return; }
+      state.data.metadata.client = cp.nom || cp.label || '';
+      state.data.metadata.adresseClient = cp.adresse || '';
+      state.data.metadata.emailClient = cp.email || '';
+      state.data.metadata.telephoneClient = cp.telephone || '';
+      setCurrentClientId(cid2);
+      showSection('metadata');
+      toast('Client chargé : ' + (cp.label || cp.nom));
+      return;
+    }
+    // Toggle CRM
+    if (el.type === 'checkbox' && el.dataset.action === 'toggle-crm') {
+      setCrmEnabled(el.checked);
+      if (el.checked) {
+        toast('CRM activé — synchronisation en cours…');
+        fetchCrmClients(function (items) {
+          showSection('metadata');
+          if (items) toast(items.length + ' client(s) importés du CRM');
+          else toast('CRM activé (aucun client trouvé ou endpoint absent)', true);
+        });
+      } else {
+        showSection('metadata');
+        toast('CRM désactivé — mode local uniquement');
+      }
+      return;
+    }
     // Sélecteur profil signataire (multi-sociétés)
     if (el.tagName === 'SELECT' && el.dataset.action === 'pick-sign') {
       var pid = el.value;
@@ -1676,6 +1840,56 @@
         showSection('signature');
         toast('Profil mis à jour');
       } else toast('Profil introuvable', true);
+    }
+    else if (a === 'save-client-as') {
+      var cliData = {
+        nom: (state.data.metadata && state.data.metadata.client) || '',
+        adresse: (state.data.metadata && state.data.metadata.adresseClient) || '',
+        email: (state.data.metadata && state.data.metadata.emailClient) || '',
+        telephone: (state.data.metadata && state.data.metadata.telephoneClient) || '',
+      };
+      var cLbl = prompt('Nom du profil client (ex : « M. Dupont — Fort-de-France »):',
+        cliData.nom || 'Nouveau client');
+      if (!cLbl) return;
+      var cid = saveClientAs(Object.assign({ label: cLbl }, cliData));
+      setCurrentClientId(cid);
+      showSection('metadata');
+      toast('Client enregistré : ' + cLbl);
+    }
+    else if (a === 'update-client') {
+      var uid = currentClientId();
+      if (!uid) { toast('Aucun client courant', true); return; }
+      var uprof = findClient(uid);
+      var uLbl = prompt('Renommer le client (laisser tel quel pour ne pas changer) :', uprof ? uprof.label : '');
+      if (uLbl === null) return;
+      var upatch = {
+        nom: (state.data.metadata && state.data.metadata.client) || '',
+        adresse: (state.data.metadata && state.data.metadata.adresseClient) || '',
+        email: (state.data.metadata && state.data.metadata.emailClient) || '',
+        telephone: (state.data.metadata && state.data.metadata.telephoneClient) || '',
+      };
+      if (updateClient(uid, upatch, uLbl || undefined)) {
+        showSection('metadata');
+        toast('Client mis à jour');
+      } else toast('Client introuvable', true);
+    }
+    else if (a === 'del-client') {
+      var did2 = currentClientId();
+      if (!did2) { toast('Aucun client courant', true); return; }
+      var dp2 = findClient(did2);
+      if (!confirm('Supprimer le client « ' + (dp2 ? dp2.label : did2) + ' » ?')) return;
+      deleteClient(did2);
+      setCurrentClientId('');
+      showSection('metadata');
+      toast('Client supprimé');
+    }
+    else if (a === 'crm-sync') {
+      toast('Synchronisation CRM…');
+      fetchCrmClients(function (items) {
+        if (!items) { toast('CRM indisponible ou vide', true); return; }
+        showSection('metadata');
+        toast(items.length + ' client(s) importés du CRM');
+      });
     }
     else if (a === 'del-sign') {
       var did = currentSignatureId();

@@ -83,6 +83,9 @@
   timeout = 26
   included_files = ["node_modules/@sparticuz/chromium/**"]
 
+[functions."crm-clients"]
+  timeout = 15
+
 # ── Redirections API → Netlify Functions ──────────────────────────────────────
 [[redirects]]
   from   = "/api/analyse"
@@ -291,6 +294,11 @@
 [[redirects]]
   from   = "/api/pdf-render"
   to     = "/.netlify/functions/pdf-render"
+  status = 200
+
+[[redirects]]
+  from   = "/api/crm-clients"
+  to     = "/.netlify/functions/crm-clients"
   status = 200
 
 # ── SPA fallback : toute URL non trouvée → index.html ─────────────────────────
