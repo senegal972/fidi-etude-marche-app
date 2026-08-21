@@ -180,13 +180,70 @@
   }
 
   // ── Persistance ─────────────────────────────────────────────
-  var SIGN_KEY = 'fidi:avis:signataire';
+  var SIGN_KEY = 'fidi:avis:signataire';           // legacy (profil unique)
+  var SIGNS_KEY = 'fidi:avis:signataires';         // multi-profils [{id,label,data}]
+  var SIGN_LAST_KEY = 'fidi:avis:signataire:last'; // id du dernier profil chargé
   var AVIS_PREFIX = 'fidi:avis:doc:';
   function loadSignataire() {
     try { var s = localStorage.getItem(SIGN_KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; }
   }
   function saveSignataire(sig) {
     try { localStorage.setItem(SIGN_KEY, JSON.stringify(sig)); return true; } catch (e) { return false; }
+  }
+  function listSignatures() {
+    try {
+      var raw = localStorage.getItem(SIGNS_KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(arr)) return [];
+      // Migration douce : si aucun profil mais legacy présent, en fabriquer un
+      if (arr.length === 0) {
+        var leg = loadSignataire();
+        if (leg && (leg.nom || leg.societe)) {
+          var mig = { id: 'legacy', label: leg.societe || leg.nom || 'Profil par défaut', data: leg };
+          arr = [mig];
+          try { localStorage.setItem(SIGNS_KEY, JSON.stringify(arr)); } catch (e) {}
+        }
+      }
+      return arr;
+    } catch (e) { return []; }
+  }
+  function writeSignatures(arr) {
+    try { localStorage.setItem(SIGNS_KEY, JSON.stringify(arr || [])); return true; } catch (e) { return false; }
+  }
+  function saveSignatureAs(label, data) {
+    var arr = listSignatures();
+    var id = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    arr.push({ id: id, label: String(label || 'Sans nom').slice(0, 80), data: JSON.parse(JSON.stringify(data || {})) });
+    writeSignatures(arr);
+    try { localStorage.setItem(SIGN_LAST_KEY, id); } catch (e) {}
+    return id;
+  }
+  function updateSignature(id, data, newLabel) {
+    var arr = listSignatures();
+    for (var i = 0; i < arr.length; i++) {
+      if (arr[i].id === id) {
+        arr[i].data = JSON.parse(JSON.stringify(data || {}));
+        if (newLabel) arr[i].label = String(newLabel).slice(0, 80);
+        writeSignatures(arr);
+        return true;
+      }
+    }
+    return false;
+  }
+  function deleteSignature(id) {
+    var arr = listSignatures().filter(function (x) { return x.id !== id; });
+    return writeSignatures(arr);
+  }
+  function findSignature(id) {
+    var arr = listSignatures();
+    for (var i = 0; i < arr.length; i++) if (arr[i].id === id) return arr[i];
+    return null;
+  }
+  function currentSignatureId() {
+    try { return localStorage.getItem(SIGN_LAST_KEY) || ''; } catch (e) { return ''; }
+  }
+  function setCurrentSignatureId(id) {
+    try { localStorage.setItem(SIGN_LAST_KEY, id || ''); } catch (e) {}
   }
   function listSavedAvis() {
     var out = [];
@@ -881,7 +938,24 @@
       return head("Réserves et limites de l'avis", 'Texte standard éditable') + fld('Texte des réserves', 'reserves', { type: 'textarea', rows: 14 });
     }
     if (id === 'signature') {
-      return head('Signataire — en-tête & bas de page', "Identité de l'agent : ces champs apparaissent en en-tête et bas du PDF. Tout agent peut personnaliser son avis.") +
+      var _profs = listSignatures();
+      var _cur = currentSignatureId();
+      var _opts = '<option value="">— Choisir un profil enregistré —</option>' +
+        _profs.map(function (p) {
+          var sel = p.id === _cur ? ' selected' : '';
+          return '<option value="' + p.id + '"' + sel + '>' + (p.label || '(sans nom)').replace(/"/g, '&quot;') + '</option>';
+        }).join('');
+      return head('Signataire — en-tête & bas de page', "Identité de l'agent : ces champs apparaissent en en-tête et bas du PDF. Plusieurs sociétés/profils peuvent être mémorisés puis choisis dans la liste.") +
+        '<div class="av-sec-head" style="margin-top:.25rem;"><h5 style="font-size:.95rem;">Profils enregistrés (sociétés)</h5></div>' +
+        '<div class="d-flex flex-wrap gap-2 align-items-end mb-3">' +
+          '<div style="flex:1; min-width:240px;">' +
+            '<label class="form-label small mb-1">Profil signataire</label>' +
+            '<select class="form-select form-select-sm" data-action="pick-sign">' + _opts + '</select>' +
+          '</div>' +
+          '<button class="btn btn-sm btn-outline-primary" data-action="save-sign-as"><i class="bi bi-plus-circle me-1"></i>Enregistrer comme nouveau profil</button>' +
+          '<button class="btn btn-sm btn-outline-secondary" data-action="update-sign"' + (_cur ? '' : ' disabled') + '><i class="bi bi-save me-1"></i>Mettre à jour le profil courant</button>' +
+          '<button class="btn btn-sm btn-outline-danger" data-action="del-sign"' + (_cur ? '' : ' disabled') + '><i class="bi bi-trash me-1"></i>Supprimer le profil</button>' +
+        '</div>' +
         '<div class="av-sec-head" style="margin-top:.5rem;"><h5 style="font-size:.95rem;">Identité personnelle</h5></div>' +
         '<div class="av-grid-2">' +
           fld('Nom / prénom', 'signataire.nom') +
@@ -1482,6 +1556,19 @@
       handlePhotoAdd(el.files && el.files[0]);
       return;
     }
+    // Sélecteur profil signataire (multi-sociétés)
+    if (el.tagName === 'SELECT' && el.dataset.action === 'pick-sign') {
+      var pid = el.value;
+      if (!pid) { setCurrentSignatureId(''); showSection('signature'); return; }
+      var prof = findSignature(pid);
+      if (!prof) { toast('Profil introuvable', true); return; }
+      state.data.signataire = Object.assign({}, defaultData().signataire, prof.data || {});
+      setCurrentSignatureId(pid);
+      saveSignataire(state.data.signataire); // maj legacy
+      showSection('signature');
+      toast('Profil chargé : ' + prof.label);
+      return;
+    }
     var isCb = el.type === 'checkbox';
     var val = isCb ? el.checked : el.value;
     if (el.dataset.p) setPath(state.data, el.dataset.p, val);
@@ -1567,6 +1654,38 @@
       state.data.signataire = Object.assign({}, defaultData().signataire, mem);
       showSection('signature');
       toast('Signataire rechargé');
+    }
+    else if (a === 'save-sign-as') {
+      var lbl = prompt('Nom du profil (ex : « OPTIMMO DOM — Fort-de-France ») :',
+        (state.data.signataire && (state.data.signataire.societe || state.data.signataire.nom)) || 'Nouveau profil');
+      if (!lbl) return;
+      var nid = saveSignatureAs(lbl, state.data.signataire);
+      setCurrentSignatureId(nid);
+      saveSignataire(state.data.signataire); // maj legacy pour rétrocompat
+      showSection('signature');
+      toast('Profil enregistré : ' + lbl);
+    }
+    else if (a === 'update-sign') {
+      var cid = currentSignatureId();
+      if (!cid) { toast('Aucun profil courant', true); return; }
+      var prof = findSignature(cid);
+      var nlbl = prompt('Renommer le profil (laisser tel quel pour ne pas changer) :', prof ? prof.label : '');
+      if (nlbl === null) return;
+      if (updateSignature(cid, state.data.signataire, nlbl || undefined)) {
+        saveSignataire(state.data.signataire);
+        showSection('signature');
+        toast('Profil mis à jour');
+      } else toast('Profil introuvable', true);
+    }
+    else if (a === 'del-sign') {
+      var did = currentSignatureId();
+      if (!did) { toast('Aucun profil courant', true); return; }
+      var dprof = findSignature(did);
+      if (!confirm('Supprimer le profil « ' + (dprof ? dprof.label : did) + ' » ? (les infos actuellement affichées restent modifiables)')) return;
+      deleteSignature(did);
+      setCurrentSignatureId('');
+      showSection('signature');
+      toast('Profil supprimé');
     }
     else if (a === 'etat-preset') {
       var pv = num(t.dataset.preset);
