@@ -73,6 +73,16 @@
 [functions."factures-client"]
   timeout = 15
 
+[functions."entreprises-adresse"]
+  timeout = 12
+
+[functions."urbanisme"]
+  timeout = 15
+
+[functions."pdf-render"]
+  timeout = 26
+  included_files = ["node_modules/@sparticuz/chromium/**"]
+
 # ── Redirections API → Netlify Functions ──────────────────────────────────────
 [[redirects]]
   from   = "/api/analyse"
@@ -266,6 +276,21 @@
 [[redirects]]
   from   = "/api/factures/client"
   to     = "/.netlify/functions/factures-client"
+  status = 200
+
+[[redirects]]
+  from   = "/api/entreprises-adresse"
+  to     = "/.netlify/functions/entreprises-adresse"
+  status = 200
+
+[[redirects]]
+  from   = "/api/urbanisme"
+  to     = "/.netlify/functions/urbanisme"
+  status = 200
+
+[[redirects]]
+  from   = "/api/pdf-render"
+  to     = "/.netlify/functions/pdf-render"
   status = 200
 
 # ── SPA fallback : toute URL non trouvée → index.html ─────────────────────────
