@@ -38,10 +38,32 @@
   function clone(x) { return JSON.parse(JSON.stringify(x)); }
 
   // ── Modèle par défaut ───────────────────────────────────────
+  // Génère une référence unique FIDI-AV-YYYY-NNN où NNN = max des avis
+  // existants (localStorage) + 1. Évite l'écrasement Notion : chaque nouvel
+  // avis a sa propre clé, donc son propre enregistrement dans la base.
+  function nextAvisRef() {
+    var y = new Date().getFullYear();
+    var prefix = 'FIDI-AV-' + y + '-';
+    var maxN = 0;
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (!k || k.indexOf(AVIS_PREFIX) !== 0) continue;
+        var ref = k.slice(AVIS_PREFIX.length);
+        if (ref.indexOf(prefix) === 0) {
+          var n = parseInt(ref.slice(prefix.length), 10);
+          if (n > maxN) maxN = n;
+        }
+      }
+    } catch (e) {}
+    var next = String(maxN + 1).padStart(3, '0');
+    return prefix + next;
+  }
+
   function defaultData() {
     var y = new Date().getFullYear();
     return {
-      metadata: { ref: 'FIDI-AV-' + y + '-001', date: new Date().toISOString().slice(0, 10), lieuEtablissement: 'Fort-de-France',
+      metadata: { ref: nextAvisRef(), date: new Date().toISOString().slice(0, 10), lieuEtablissement: 'Fort-de-France',
         nature: 'vente' // 'vente' (défaut) | 'location' — pilote UI et rendu doc
       },
       bien: {
@@ -577,13 +599,18 @@
   function renderSection(id) {
     var d = state.data, b = d.bien;
     if (id === 'metadata') {
-      return head('Référence et destinataire', "Identifiants administratifs de l'avis + client destinataire") +
+      return head('Référence et destinataire', "Identifiants administratifs de l'avis + coordonnées client") +
         fld('Référence interne', 'metadata.ref', { tip: 'Format conseillé : FIDI-AV-AAAA-NNN' }) +
         '<div class="av-grid-2">' + fld("Date d'établissement", 'metadata.date', { type: 'date' }) +
         fld("Lieu d'établissement", 'metadata.lieuEtablissement') + '</div>' +
+        '<div class="av-sec-head" style="margin-top:1rem;"><h5 style="font-size:1rem;">Coordonnées du destinataire</h5></div>' +
         '<div class="av-grid-2">' +
-          fld('Destinataire (nom / société)', 'metadata.client', { ph: 'Ex : Mme Dupont / SCI Bellevue', tip: 'Client à qui est adressé l\'avis' }) +
-          fld('Email destinataire', 'metadata.emailClient', { type: 'email', ph: 'client@exemple.com' }) +
+          fld('Nom / société', 'metadata.client', { ph: 'Ex : Mme Dupont / SCI Bellevue' }) +
+          fld('Adresse postale', 'metadata.adresseClient', { ph: 'Ex : 12 rue de la Paix, 97200 Fort-de-France' }) +
+        '</div>' +
+        '<div class="av-grid-2">' +
+          fld('E-mail', 'metadata.emailClient', { type: 'email', ph: 'client@exemple.com' }) +
+          fld('Téléphone', 'metadata.telephoneClient', { type: 'tel', ph: '+596 6 96 12 34 56' }) +
         '</div>';
     }
     if (id === 'bien') {
@@ -675,20 +702,30 @@
       return renderLocalisation(d);
     }
     if (id === 'marche') {
+      var isLocM = natureCourante() === 'location';
       var rows = d.marche.sources.map(function (s, i) {
+        var ph = isLocM ? 'ex : Carte des loyers DHUP 2024' : 'ex : DVF 2024';
         return '<div class="av-row" style="grid-template-columns:1fr 70px 70px 70px 28px;">' +
-          '<input type="text" placeholder="ex : DVF 2024" value="' + esc(s.nom) + '" data-list="marche.sources" data-idx="' + i + '" data-key="nom"/>' +
+          '<input type="text" placeholder="' + ph + '" value="' + esc(s.nom) + '" data-list="marche.sources" data-idx="' + i + '" data-key="nom"/>' +
           '<input type="number" placeholder="Bas" value="' + esc(s.bas) + '" data-list="marche.sources" data-idx="' + i + '" data-key="bas"/>' +
           '<input type="number" placeholder="Moyen" value="' + esc(s.moyen) + '" data-list="marche.sources" data-idx="' + i + '" data-key="moyen"/>' +
           '<input type="number" placeholder="Haut" value="' + esc(s.haut) + '" data-list="marche.sources" data-idx="' + i + '" data-key="haut"/>' +
           '<button class="av-del" data-listdel="marche.sources" data-idx="' + i + '" title="Supprimer">✕</button></div>';
       }).join('');
-      return head('Analyse du marché local', 'Sources et prix au m² constatés') +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem;"><label style="font-weight:700;font-size:.78rem;">Sources de prix au m² <span class="av-prefill-flag">étude</span></label>' +
-        '<button class="av-add" data-listadd="marche.sources">+ Ajouter une source</button></div>' + rows +
-        '<div class="av-box"><div class="av-box-title">Moyenne retenue pour le calcul</div><div class="av-grid-3">' +
-        fld('Prix bas (€/m²)', 'marche.moyenneBas', { type: 'number', flag: true }) + fld('Prix moyen (€/m²)', 'marche.moyenneMoyen', { type: 'number', flag: true }) + fld('Prix haut (€/m²)', 'marche.moyenneHaut', { type: 'number', flag: true }) + '</div></div>' +
-        '<div class="av-grid-2">' + fld('Évolution 12 mois', 'marche.evol12m', { ph: '+3 %' }) + fld('Évolution 3 mois', 'marche.evol3m', { ph: '+6 %' }) + '</div>' +
+      var subLbl = isLocM ? 'Loyers médians €/m²/mois (Carte des loyers DHUP/MEF, observatoires locaux)' : 'Sources et prix au m² constatés';
+      var unite = isLocM ? '€/m²/mois' : '€/m²';
+      var srcLbl = isLocM ? 'Sources de loyers pratiqués' : 'Sources de prix au m²';
+      // Aide : bouton auto-fill depuis Carte des loyers DHUP (déjà chargée pour l'étude)
+      var autoBtn = isLocM ? '<button class="btn btn-sm btn-outline-primary ms-2" type="button" onclick="factRemplirLoyersDHUP()" title="Récupérer automatiquement les loyers de la commune depuis la Carte des loyers DHUP/MEF"><i class="bi bi-download me-1"></i>Auto-remplir depuis DHUP</button>' : '';
+      var nb = isLocM ?
+        '<div class="alert alert-info small py-2 mb-2"><i class="bi bi-info-circle me-1"></i><strong>Note importante :</strong> DVF (données publiques) ne contient QUE des ventes, pas de loyers. Les loyers de marché proviennent de la <b>Carte des loyers DHUP/MEF</b> (loyer médian €/m²/mois par commune) et des comparables importés depuis les portails d\'annonces.</div>' : '';
+      return head(isLocM ? 'Analyse du marché locatif' : 'Analyse du marché local', subLbl) +
+        nb +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem;flex-wrap:wrap;gap:.4rem;"><label style="font-weight:700;font-size:.78rem;">' + srcLbl + ' <span class="av-prefill-flag">étude</span></label>' +
+        '<div>' + autoBtn + '<button class="av-add" data-listadd="marche.sources">+ Ajouter une source</button></div></div>' + rows +
+        '<div class="av-box"><div class="av-box-title">' + (isLocM ? 'Loyer médian retenu pour le calcul' : 'Moyenne retenue pour le calcul') + '</div><div class="av-grid-3">' +
+        fld((isLocM ? 'Bas' : 'Prix bas') + ' (' + unite + ')', 'marche.moyenneBas', { type: 'number', step: '0.01', flag: true }) + fld((isLocM ? 'Médiane' : 'Prix moyen') + ' (' + unite + ')', 'marche.moyenneMoyen', { type: 'number', step: '0.01', flag: true }) + fld((isLocM ? 'Haut' : 'Prix haut') + ' (' + unite + ')', 'marche.moyenneHaut', { type: 'number', step: '0.01', flag: true }) + '</div></div>' +
+        '<div class="av-grid-2">' + fld('Évolution 12 mois', 'marche.evol12m', { ph: isLocM ? '+2 % (loyers)' : '+3 %' }) + fld('Évolution 3 mois', 'marche.evol3m', { ph: '+0.5 %' }) + '</div>' +
         fld('Commentaire de tendance', 'marche.commentaire', { type: 'textarea', rows: 2, flag: true });
     }
     if (id === 'comparables') {
@@ -843,6 +880,26 @@
     if (!L) { state.data = ensureExpertBlock(state.data); L = state.data.locatif; }
     var b = state.data.bien;
     var surf = num(b.surfaceCarrez);
+    var m = state.data.marche || {};
+
+    // ── AUTOMATISATION (pt 4 directive) — remplir les champs vides depuis
+    // les données déjà connues (étude, marché saisi, DPE, zone tendue).
+    // Ne remplace jamais un champ déjà saisi.
+    if (!L.loyerM2Marche && m.moyenneMoyen) L.loyerM2Marche = m.moyenneMoyen;
+    if (!L.dpe && window.__fidiData && window.__fidiData.dpe) {
+      // Si étude fournit un DPE dominant, on le prend comme suggestion neutre
+      var dpeStats = window.__fidiData.dpe;
+      var topDpe = Object.keys(dpeStats).sort(function (a, b) { return (dpeStats[b] || 0) - (dpeStats[a] || 0); })[0];
+      if (topDpe && ['A','B','C','D','E','F','G'].indexOf(topDpe) >= 0) L.dpe = topDpe;
+    }
+    // Zone tendue : par défaut FALSE en Martinique/DOM (jamais de zone tendue)
+    var cp = String(b.cp || '');
+    if (cp && /^97[12345]/.test(cp)) L.zoneTendue = false;
+    // Dépôt garantie : 1 mois HC (bail vide) ou 2 mois (meublé) — auto
+    if (!L.depotGarantie && L.loyerHC) {
+      var mult = (L.typeBail === 'meuble') ? 2 : 1;
+      L.depotGarantie = String(num(L.loyerHC) * mult);
+    }
     // Alertes calculées
     var year = new Date().getFullYear();
     var dpeUpper = String(L.dpe || '').toUpperCase();
@@ -1962,6 +2019,56 @@
     } catch (e) { toast('Erreur : ' + e.message, true); }
   }
 
+  // ─── Marché locatif : auto-remplissage depuis Carte des loyers DHUP/MEF ──
+  // La Carte des loyers (DHUP/MEF) fournit un loyer médian €/m²/mois par commune.
+  // On l'appelle via /api/loyers avec le citycode récupéré depuis window.__fidiData
+  // ou depuis la commune saisie (fallback géocodage).
+  window.factRemplirLoyersDHUP = async function () {
+    try {
+      var b = state.data.bien;
+      // 1. citycode direct depuis l'étude en cours ?
+      var citycode = (window.__fidiData && window.__fidiData.localisation && window.__fidiData.localisation.citycode) || '';
+      // 2. sinon, géocode la commune saisie
+      if (!citycode && (b.commune || b.cp)) {
+        var q = encodeURIComponent(((b.commune || '') + ' ' + (b.cp || '')).trim());
+        var g = await fetch('https://api-adresse.data.gouv.fr/search/?q=' + q + '&limit=1').then(function (r) { return r.json(); });
+        citycode = (((g || {}).features || [])[0] || {}).properties && g.features[0].properties.citycode || '';
+      }
+      if (!citycode) { toast('Impossible : commune inconnue (renseignez commune + code postal)', true); return; }
+      toast('Appel DHUP…');
+      var r = await fetch('/api/loyers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code_insee: citycode }) });
+      var j = await r.json();
+      if (!j || j.disponible === false) { toast('Carte des loyers indisponible pour cette commune', true); return; }
+      // Le bien peut être maison ou appartement → choix selon b.type
+      var typeBien = (b.type || '').toLowerCase();
+      var isMaison = /maison|villa/.test(typeBien);
+      var loyerM2 = isMaison ? j.loyer_m2_maison : j.loyer_m2_appartement;
+      var loyerAlt = isMaison ? j.loyer_m2_appartement : j.loyer_m2_maison;
+      if (!loyerM2 && loyerAlt) loyerM2 = loyerAlt;
+      if (!loyerM2) { toast('Aucun loyer médian retourné', true); return; }
+      // Fourchette : ±15 % autour de la médiane (usage marché)
+      var bas = Math.round(loyerM2 * 0.85 * 100) / 100;
+      var med = Math.round(loyerM2 * 100) / 100;
+      var haut = Math.round(loyerM2 * 1.15 * 100) / 100;
+      // Ajout comme source + remplissage moyennes
+      var d = state.data;
+      // Nettoie sources précédentes DHUP pour éviter les doublons
+      d.marche.sources = (d.marche.sources || []).filter(function (s) { return s.nom && s.nom.indexOf('DHUP') < 0; });
+      d.marche.sources.push({
+        nom: 'Carte des loyers DHUP/MEF ' + (j.annee || '') + (isMaison ? ' — maison' : ' — appartement'),
+        bas: bas, moyen: med, haut: haut,
+      });
+      d.marche.moyenneBas = String(bas);
+      d.marche.moyenneMoyen = String(med);
+      d.marche.moyenneHaut = String(haut);
+      d.marche.commentaire = 'Loyer médian de marché issu de la Carte des loyers DHUP/MEF ' + (j.annee || '') + ' pour la commune de ' + (j.libelle || b.commune || '') + '. Fourchette ± 15 %.';
+      toast('Loyers DHUP importés : ' + med + ' €/m²/mois');
+      showSection('marche');
+    } catch (e) {
+      toast('Erreur DHUP : ' + e.message, true);
+    }
+  };
+
   // ─── Photos du bien (max 2, compression canvas ~800px JPEG 80%) ──────────
   function handlePhotoAdd(file) {
     if (!file) return;
@@ -2274,7 +2381,12 @@
     html += '<div class="title-block"><div class="t1">' + _titreDoc + '</div>' +
       '<div class="t2">' + esc(b.type || '[Type de bien]') + _locStr + (_adrClean ? ', ' + esc(_adrClean) : '') + '</div>' +
       '<div class="t3">Réf. : ' + esc(data.metadata.ref) + '  –  Établi le ' + (formatDateFR(data.metadata.date) || '[date]') + '</div>' +
-      (_client ? '<div class="t3" style="margin-top:4pt;">Destinataire : <b>' + esc(_client) + '</b>' + (data.metadata.emailClient ? ' &lt;' + esc(data.metadata.emailClient) + '&gt;' : '') + '</div>' : '') +
+      (_client ?
+        '<div class="t3" style="margin-top:4pt;">Destinataire : <b>' + esc(_client) + '</b>' +
+        (data.metadata.adresseClient ? ' — ' + esc(data.metadata.adresseClient) : '') +
+        (data.metadata.emailClient ? ' &lt;' + esc(data.metadata.emailClient) + '&gt;' : '') +
+        (data.metadata.telephoneClient ? ' · ' + esc(data.metadata.telephoneClient) : '') +
+        '</div>' : '') +
       '</div>';
 
     // Bloc « Cadre locatif » injecté dans le document si nature=location et données saisies
@@ -2484,7 +2596,7 @@
         comps.map(function (cp) {
           var su = num(cp.surface), pr = num(cp.prix), pm2 = pr / su, adj = pm2 * (1 + num(cp.ajustementPct) / 100);
           var ref = extractRef(cp);
-          var refCell = ref ? (cp.lien ? '<a href="' + esc(cp.lien) + '" style="color:#1a3a6e;">' + esc(ref) + '</a>' : esc(ref)) : '—';
+          var refCell = ref ? (cp.lien ? '<a href="' + esc(cp.lien) + '" target="_blank" rel="noopener noreferrer" style="color:#1a3a6e;">' + esc(ref) + ' ↗</a>' : esc(ref)) : '—';
           return '<tr><td>' + esc(cp.source) + '</td>' +
             '<td style="font-size:8pt;font-family:monospace;">' + refCell + '</td>' +
             '<td>' + (cp.nature === 'vendu' ? (isLoc43 ? 'Loué' : 'Vendu') : 'Annonce') + '</td><td>' + esc(cp.type || '—') + '</td>' +
@@ -2498,22 +2610,42 @@
 
     if (_nature === 'location') {
       // ── Section 5 LOCATIVE : Valeur locative retenue ──────────
+      // Sources d'estimation VLM par ordre de priorité :
+      //   1. Loyer HC saisi manuellement (locatif.loyerHC)
+      //   2. Loyer marché saisi (locatif.loyerM2Marche) × surface
+      //   3. Médiane du marché (marche.moyenneMoyen) × surface
+      //   4. Médiane des comparables ACM (calc.acmM2) × surface
       var LL5 = data.locatif || {};
       var _surf5 = num(b.surfaceCarrez);
-      var _loyRetenu = num(LL5.loyerHC);
-      var _loyM2 = (_loyRetenu && _surf5) ? (_loyRetenu / _surf5) : null;
+      var _loyM2Saisi = num(LL5.loyerM2Marche);
+      var _loyM2Marche = num(m.moyenneMoyen);
+      var _loyM2ACM = num(calc.acmM2);
+      var _loyM2Ref = _loyM2Saisi || _loyM2Marche || _loyM2ACM || 0;
+      var _loyHCSaisi = num(LL5.loyerHC);
+      var _loyRetenu = _loyHCSaisi || (_surf5 && _loyM2Ref ? Math.round(_surf5 * _loyM2Ref / 10) * 10 : 0);
+      var _loyM2Ret = (_loyRetenu && _surf5) ? (_loyRetenu / _surf5) : _loyM2Ref;
       var _annuel5 = _loyRetenu * 12;
       var _tauxCap5 = num(LL5.tauxCapitalisation) || 6.5;
       var _valCap = (_tauxCap5 > 0 && _annuel5) ? Math.round(_annuel5 * 100 / _tauxCap5) : null;
+      // Fourchette VLM : ±10 % autour du retenu (usage marché courant)
+      var _vlmBas = _loyRetenu ? Math.round(_loyRetenu * 0.90 / 10) * 10 : 0;
+      var _vlmHaut = _loyRetenu ? Math.round(_loyRetenu * 1.10 / 10) * 10 : 0;
+      var _sourceLbl = _loyHCSaisi ? 'saisi manuellement' :
+        _loyM2Saisi ? 'basé sur loyer marché saisi' :
+        _loyM2Marche ? 'basé sur médiane marché (section 5)' :
+        _loyM2ACM ? 'basé sur médiane comparables ACM' : '[loyer non renseigné]';
       html += '<h1>5. Détermination de la valeur locative de marché (VLM)</h1>' +
+        '<p style="font-size:9pt;color:#5c6470;">Méthode retenue : <b>' + _sourceLbl + '</b>. Fourchette ± 10 % (usage CEE marché locatif).</p>' +
         '<table>' +
-          (_loyRetenu ? '<tr><td class="lbl">Loyer HC retenu</td><td class="center bold">' + fmtE(_loyRetenu) + ' / mois</td></tr>' : '') +
-          (_loyM2 ? '<tr><td class="lbl">Soit</td><td class="center">' + _loyM2.toFixed(2) + ' €/m²/mois</td></tr>' : '') +
-          (LL5.chargesRecup ? '<tr><td class="lbl">Charges récupérables</td><td class="center">' + fmtE(LL5.chargesRecup) + ' / mois</td></tr>' : '') +
-          (LL5.chargesRecup ? '<tr><td class="lbl">Total charges comprises (CC)</td><td class="center bold">' + fmtE(num(LL5.loyerHC) + num(LL5.chargesRecup)) + ' / mois</td></tr>' : '') +
+          '<tr><td class="lbl">Surface habitable</td><td class="center">' + (_surf5 ? _surf5 + ' m²' : '—') + '</td></tr>' +
+          (_loyM2Ret ? '<tr><td class="lbl">Loyer médian retenu / m²</td><td class="center">' + _loyM2Ret.toFixed(2) + ' €/m²/mois</td></tr>' : '') +
+          (_loyRetenu ? '<tr><td class="lbl">Loyer HC calculé (surface × médiane)</td><td class="center bold">' + fmtE(_loyRetenu) + ' / mois</td></tr>' : '') +
+          (_vlmBas && _vlmHaut ? '<tr><td class="lbl">Fourchette basse (−10 %) / haute (+10 %)</td><td class="center">' + fmtE(_vlmBas) + ' – ' + fmtE(_vlmHaut) + ' / mois</td></tr>' : '') +
+          (LL5.chargesRecup ? '<tr><td class="lbl">Charges récupérables (décret 87-713)</td><td class="center">' + fmtE(LL5.chargesRecup) + ' / mois</td></tr>' : '') +
+          (LL5.chargesRecup && _loyRetenu ? '<tr><td class="lbl">Total charges comprises (CC)</td><td class="center bold">' + fmtE(_loyRetenu + num(LL5.chargesRecup)) + ' / mois</td></tr>' : '') +
           (_annuel5 ? '<tr><td class="lbl">Loyer annuel HC</td><td class="center">' + fmtE(_annuel5) + ' / an</td></tr>' : '') +
           (_valCap ? '<tr><td class="lbl">Valeur vénale par capitalisation (contrôle)</td><td class="center">' + fmtE(_valCap) + ' <span style="color:#5c6470;">(taux ' + _tauxCap5 + ' %)</span></td></tr>' : '') +
-          '<tr class="gold-row"><td>VALEUR LOCATIVE DE MARCHÉ (VLM) — loyer mensuel HC retenu</td><td class="center">' + (_loyRetenu ? fmtE(_loyRetenu) : '[à saisir dans Cadre locatif]') + '</td></tr>' +
+          '<tr class="gold-row"><td>VALEUR LOCATIVE DE MARCHÉ (VLM) — loyer mensuel HC retenu</td><td class="center">' + (_loyRetenu ? fmtE(_loyRetenu) : '[renseignez loyer marché ou HC dans Cadre locatif]') + '</td></tr>' +
         '</table>';
     } else {
       // ── Section 5 VENTE : Valeur vénale (inchangée) ────────────
