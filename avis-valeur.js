@@ -160,9 +160,21 @@
       conclusion: { texte: '', potentielBas: '', potentielHaut: '' },
       reserves: "Le présent avis a été établi sur la base des informations communiquées par le mandant et des données publiques de marché. Il n'engage le rédacteur qu'à hauteur d'un avis indicatif. Il ne se substitue ni à une expertise judiciaire, ni à un rapport d'évaluation au sens de la Charte de l'Expertise en Évaluation Immobilière.\n\nLa valeur retenue est susceptible d'évoluer en fonction : (i) d'éventuels diagnostics techniques défavorables (amiante, termites, électricité, DPE, ERP – risques cycloniques et sismiques en Martinique) non encore portés à notre connaissance ; (ii) de l'état réel du locataire en place (régularité des paiements, durée de bail résiduelle, indexation IRL) ; (iii) de l'évolution du marché immobilier local sur les 12 prochains mois.\n\nAucune visite physique du bien n'a été matérialisée par procès-verbal contradictoire ; l'avis repose sur les éléments documentaires transmis.",
       signataire: {
-        nom: 'Franck FIDI', fonction: 'Mandataire en immobilier',
-        email: 'franck.fidi@sextantfrance.fr', societe: 'OPTIMMO DOM',
-        adresseSociete: '483 Avenue Victor Coridun, 97200 Fort-de-France'
+        nom: 'Franck FIDI',
+        fonction: 'Mandataire en immobilier',
+        email: 'franck.fidi@sextantfrance.fr',
+        telephone: '',
+        societe: 'OPTIMMO DOM',
+        adresseSociete: '483 Avenue Victor Coridun',
+        ville: 'Fort-de-France',
+        codePostal: '97200',
+        region: 'Martinique',       // île / région / département
+        carteProHoguet: '',          // n° carte pro loi Hoguet + CCI émettrice
+        siret: '',                   // SIRET société
+        rcs: '',                     // RCS ville d'immatriculation
+        logoUrl: '',                 // URL image logo (affichée en-tête)
+        headerLibre: '',             // texte libre en-tête (ex : slogan)
+        footerLibre: '',             // texte libre bas de page (ex : mentions légales additionnelles)
       }
     };
   }
@@ -523,6 +535,11 @@
     if (!d.metadata) d.metadata = def.metadata;
     if (!d.metadata.nature) d.metadata.nature = 'vente';
     if (d.bien && !Array.isArray(d.bien.photos)) d.bien.photos = [];
+    // Rétrocompat signataire enrichi (champs ville/région/logo/carte pro etc.)
+    if (d.signataire) {
+      var sdef = def.signataire;
+      Object.keys(sdef).forEach(function (k) { if (d.signataire[k] == null) d.signataire[k] = sdef[k]; });
+    }
     return d;
   }
 
@@ -860,10 +877,43 @@
       return head("Réserves et limites de l'avis", 'Texte standard éditable') + fld('Texte des réserves', 'reserves', { type: 'textarea', rows: 14 });
     }
     if (id === 'signature') {
-      return head('Signataire', 'Identité et coordonnées en bas du document') +
-        '<div class="av-grid-2">' + fld('Nom', 'signataire.nom') + fld('Fonction', 'signataire.fonction') + fld('Email', 'signataire.email', { type: 'email' }) + fld('Société', 'signataire.societe') + '</div>' +
+      return head('Signataire — en-tête & bas de page', "Identité de l'agent : ces champs apparaissent en en-tête et bas du PDF. Tout agent peut personnaliser son avis.") +
+        '<div class="av-sec-head" style="margin-top:.5rem;"><h5 style="font-size:.95rem;">Identité personnelle</h5></div>' +
+        '<div class="av-grid-2">' +
+          fld('Nom / prénom', 'signataire.nom') +
+          fld('Fonction', 'signataire.fonction', { ph: 'Ex : Mandataire en immobilier / Agent commercial' }) +
+        '</div>' +
+        '<div class="av-grid-2">' +
+          fld('Email professionnel', 'signataire.email', { type: 'email' }) +
+          fld('Téléphone', 'signataire.telephone', { type: 'tel', ph: '+596 6 96 12 34 56' }) +
+        '</div>' +
+
+        '<div class="av-sec-head" style="margin-top:1rem;"><h5 style="font-size:.95rem;">Société / réseau</h5></div>' +
+        '<div class="av-grid-2">' +
+          fld('Nom société', 'signataire.societe') +
+          fld('SIRET', 'signataire.siret', { ph: '123 456 789 00012' }) +
+        '</div>' +
         fld('Adresse de la société', 'signataire.adresseSociete') +
-        '<button class="btn btn-sm btn-outline-primary mt-2" data-action="save-sign"><i class="bi bi-save me-1"></i>Mémoriser ce signataire par défaut</button>';
+        '<div class="av-grid-3">' +
+          fld('Code postal', 'signataire.codePostal') +
+          fld('Ville', 'signataire.ville') +
+          fld('Île / région / département', 'signataire.region', { ph: 'Ex : Martinique · Guadeloupe · Guyane · Métropole' }) +
+        '</div>' +
+        '<div class="av-grid-2">' +
+          fld('N° carte pro (loi Hoguet)', 'signataire.carteProHoguet', { ph: 'Ex : CPI 9721 2020 000 000 000 — CCI Martinique' }) +
+          fld('RCS (ville immatriculation)', 'signataire.rcs', { ph: 'Ex : RCS Fort-de-France' }) +
+        '</div>' +
+
+        '<div class="av-sec-head" style="margin-top:1rem;"><h5 style="font-size:.95rem;">Personnalisation en-tête / bas de page</h5></div>' +
+        fld('URL du logo (image en en-tête)', 'signataire.logoUrl', { type: 'url', ph: 'https://exemple.com/logo.png (recommandé : 200×80 px)' }) +
+        fld('Texte libre en-tête (slogan, agence…)', 'signataire.headerLibre', { ta: true, rows: 2, ph: 'Ex : Votre partenaire immobilier en Martinique depuis 2015' }) +
+        fld('Texte libre bas de page (mentions additionnelles)', 'signataire.footerLibre', { ta: true, rows: 2, ph: 'Ex : Assuré RC pro Allianz n° 123456 · Membre FNAIM' }) +
+
+        '<div class="d-flex gap-2 mt-3">' +
+          '<button class="btn btn-sm btn-outline-primary" data-action="save-sign"><i class="bi bi-save me-1"></i>Mémoriser ce signataire par défaut</button>' +
+          '<button class="btn btn-sm btn-outline-secondary" data-action="load-sign"><i class="bi bi-arrow-clockwise me-1"></i>Recharger le signataire mémorisé</button>' +
+        '</div>' +
+        '<div class="av-tip mt-2 small">Les infos mémorisées sont réutilisées automatiquement pour tous vos futurs avis. Chaque agent qui utilise l\'app peut personnaliser les siennes sur son navigateur.</div>';
     }
     if (id === 'methodes') {
       return renderMethodesSection();
@@ -1507,6 +1557,13 @@
     else if (a === 'load') doLoad();
     else if (a === 'delete') doDelete();
     else if (a === 'save-sign') { if (saveSignataire(state.data.signataire)) toast('Signataire mémorisé'); }
+    else if (a === 'load-sign') {
+      var mem = loadSignataire();
+      if (!mem) { toast('Aucun signataire mémorisé', true); return; }
+      state.data.signataire = Object.assign({}, defaultData().signataire, mem);
+      showSection('signature');
+      toast('Signataire rechargé');
+    }
     else if (a === 'etat-preset') {
       var pv = num(t.dataset.preset);
       VET_COMPOSANTS.forEach(function (cmp) { state.data.etat.composants[cmp.key] = pv; });
@@ -2361,12 +2418,22 @@
     var sourcesNoms = m.sources.filter(function (s) { return s.nom; }).map(function (s) { return esc(s.nom.split(' (')[0]); }).join(', ') || '[sources de marché]';
 
     var html = '';
+    // ─── EN-TÊTE personnalisable par l'agent ─────────────────────────────────
+    var _lieuHeader = [sig.ville, sig.region].filter(Boolean).join(' – ') || 'Martinique';
+    var _natureHeader = (data.metadata && data.metadata.nature === 'location') ? 'Avis de valeur locative' : 'Avis de valeur immobilière';
+    var _logoCell = sig.logoUrl
+      ? '<td style="border:none;width:80px;padding:0;vertical-align:top;"><img src="' + esc(sig.logoUrl) + '" alt="logo" style="max-width:80px;max-height:60px;object-fit:contain;"/></td>'
+      : '';
     html += '<div class="header-bar"><table style="border:none;width:100%;"><tr style="border:none;">' +
-      '<td style="border:none;width:60%;padding:0;"><div class="left">' + esc(sig.societe || 'FIDI') + '</div>' +
-      '<div style="color:#5c6470;font-size:9px;font-style:italic;">Avis de valeur immobilière</div>' +
-      '<div style="color:#5c6470;font-size:9px;">Martinique – étude de marché FIDI</div></td>' +
-      '<td style="border:none;width:40%;padding:0;text-align:right;"><div style="color:#1a3a6e;font-weight:bold;">' + esc(sig.nom) + '</div>' +
-      '<div>' + esc(sig.fonction) + '</div><div>' + esc(sig.email) + '</div></td></tr></table></div>';
+      _logoCell +
+      '<td style="border:none;padding:0;"><div class="left">' + esc(sig.societe || 'FIDI') + '</div>' +
+      '<div style="color:#5c6470;font-size:9px;font-style:italic;">' + _natureHeader + '</div>' +
+      '<div style="color:#5c6470;font-size:9px;">' + esc(_lieuHeader) + (sig.headerLibre ? ' — ' + esc(sig.headerLibre) : '') + '</div></td>' +
+      '<td style="border:none;padding:0;text-align:right;vertical-align:top;">' +
+        '<div style="color:#1a3a6e;font-weight:bold;">' + esc(sig.nom) + '</div>' +
+        '<div>' + esc(sig.fonction) + '</div>' +
+        '<div>' + esc(sig.email) + (sig.telephone ? ' · ' + esc(sig.telephone) : '') + '</div>' +
+      '</td></tr></table></div>';
 
     var _nature = (data.metadata && data.metadata.nature) || 'vente';
     var _titreDoc = _nature === 'location' ? 'AVIS DE VALEUR LOCATIVE' : 'AVIS DE VALEUR';
@@ -2722,10 +2789,23 @@
     html += '<h1>8. Réserves et limites de l\'avis</h1><div class="reserves">' +
       String(data.reserves || '').split('\n\n').map(function (p) { return '<p>' + esc(p) + '</p>'; }).join('') + '</div>';
 
-    html += '<div class="signature"><p style="font-style:italic;">Fait à ' + esc(data.metadata.lieuEtablissement) + ', le ' + formatDateFR(data.metadata.date) + '</p>' +
-      '<p class="name">' + esc(sig.nom) + '</p><p>' + esc(sig.fonction) + '</p>' +
-      '<p style="color:#5c6470;">' + esc(sig.societe) + ' – ' + esc(sig.adresseSociete) + '</p>' +
-      '<p style="color:#5c6470;">' + esc(sig.email) + '</p></div>';
+    // ─── SIGNATURE — bloc identité complète + mentions légales ─────────────
+    var _adrSoc = [sig.adresseSociete, sig.codePostal, sig.ville].filter(Boolean).join(' — ');
+    var _contact = [sig.email, sig.telephone].filter(Boolean).join(' · ');
+    var _legales = [
+      sig.siret ? 'SIRET ' + sig.siret : '',
+      sig.rcs ? sig.rcs : '',
+      sig.carteProHoguet ? 'Carte pro : ' + sig.carteProHoguet : '',
+    ].filter(Boolean).join(' · ');
+    html += '<div class="signature">' +
+      '<p style="font-style:italic;">Fait à ' + esc(data.metadata.lieuEtablissement || sig.ville || '') + ', le ' + formatDateFR(data.metadata.date) + '</p>' +
+      '<p class="name">' + esc(sig.nom) + '</p>' +
+      '<p>' + esc(sig.fonction) + '</p>' +
+      '<p style="color:#5c6470;">' + esc(sig.societe) + (_adrSoc ? ' – ' + esc(_adrSoc) : '') + '</p>' +
+      (_contact ? '<p style="color:#5c6470;">' + esc(_contact) + '</p>' : '') +
+      (_legales ? '<p style="color:#5c6470;font-size:8pt;">' + esc(_legales) + '</p>' : '') +
+      (sig.footerLibre ? '<p style="color:#5c6470;font-size:8pt;font-style:italic;margin-top:6pt;">' + esc(sig.footerLibre) + '</p>' : '') +
+      '</div>';
 
     return html;
   }
