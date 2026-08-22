@@ -287,10 +287,12 @@
     return writeClients(arr);
   }
   function findClient(id) {
-    var arr = listClients();
+    // Cherche dans local ET cache CRM (sinon sélection d'un client CRM échoue)
+    var arr = listClientsMerged();
     for (var i = 0; i < arr.length; i++) if (arr[i].id === id) return arr[i];
     return null;
   }
+  function isCrmClient(id) { return typeof id === 'string' && id.indexOf('crm:') === 0; }
   function currentClientId() {
     try { return localStorage.getItem(CLIENT_LAST_KEY) || ''; } catch (e) { return ''; }
   }
@@ -1880,6 +1882,7 @@
     else if (a === 'update-client') {
       var uid = currentClientId();
       if (!uid) { toast('Aucun client courant', true); return; }
+      if (isCrmClient(uid)) { alert('Ce client vient du CRM Notion. Modifiez-le directement dans Notion, puis « Synchroniser CRM ».'); return; }
       var uprof = findClient(uid);
       var uLbl = prompt('Renommer le client (laisser tel quel pour ne pas changer) :', uprof ? uprof.label : '');
       if (uLbl === null) return;
@@ -1897,6 +1900,7 @@
     else if (a === 'del-client') {
       var did2 = currentClientId();
       if (!did2) { toast('Aucun client courant', true); return; }
+      if (isCrmClient(did2)) { alert('Ce client vient du CRM Notion — suppression seulement possible dans Notion.'); return; }
       var dp2 = findClient(did2);
       if (!confirm('Supprimer le client « ' + (dp2 ? dp2.label : did2) + ' » ?')) return;
       deleteClient(did2);
