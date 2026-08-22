@@ -501,7 +501,12 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
       </div>
       <div class="d-flex gap-2 align-items-center flex-wrap">
         <span class="badge bg-secondary" id="res-date" style="font-size:.7rem;"></span>
-        <input type="text" id="inputDestinataire" class="form-control form-control-sm" placeholder="Destinataire (optionnel)" style="max-width:190px;" title="Nom du destinataire de l'étude">
+        <div class="input-group input-group-sm" style="max-width:280px;">
+          <input type="text" id="inputDestinataire" class="form-control form-control-sm" placeholder="Destinataire (optionnel)" title="Nom du destinataire de l'étude" list="etudeClientsList" autocomplete="off">
+          <datalist id="etudeClientsList"></datalist>
+          <button class="btn btn-outline-secondary" type="button" onclick="etudePickClient()" title="Choisir un client mémorisé"><i class="bi bi-person-lines-fill"></i></button>
+          <button class="btn btn-outline-secondary" type="button" onclick="etudeSaveClient()" title="Mémoriser ce client"><i class="bi bi-person-plus"></i></button>
+        </div>
 
         <!-- 3 actions primaires (visibles) -->
         <button class="btn btn-sm btn-outline-info" id="btnSaveEtude" onclick="saveEtudeCloud()" title="Sauvegarder cette étude dans Notion">
@@ -531,7 +536,8 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
             <i class="bi bi-three-dots"></i>
           </button>
           <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="ddResBar">
-            <li><a class="dropdown-item btn-pdf" href="#" onclick="exportPdf();return false;"><i class="bi bi-file-earmark-pdf me-2 text-danger"></i>Télécharger le rapport PDF</a></li>
+            <li><a class="dropdown-item btn-pdf" href="#" onclick="exportPdfServeur();return false;" title="Rendu Chromium serveur — texte vectoriel copiable, plus fidèle"><i class="bi bi-file-earmark-pdf-fill me-2 text-success"></i><strong>PDF haute qualité (serveur)</strong> <small class="text-muted">— recommandé</small></a></li>
+            <li><a class="dropdown-item btn-pdf" href="#" onclick="exportPdf();return false;"><i class="bi bi-file-earmark-pdf me-2 text-danger"></i>PDF navigateur (rapide)</a></li>
             <li><a class="dropdown-item btn-print" href="#" onclick="exportPdf();return false;"><i class="bi bi-printer me-2"></i>Imprimer</a></li>
           </ul>
         </div>
@@ -1518,6 +1524,90 @@ function etudeRef(d, inputs){
   const destRaw = (inputs.destinataire || (document.getElementById('inputDestinataire') && document.getElementById('inputDestinataire').value) || '').trim();
   const dest = destRaw ? destRaw.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,25) : '';
   return 'FIDI-EM-' + day + (dest ? '-'+dest : '') + '-' + cc;
+}
+
+// ── Base clients partagée (localStorage — même clé que module Avis) ────────
+function etudeGetClients(){
+  try { var raw = localStorage.getItem('fidi:clients'); var a = raw ? JSON.parse(raw) : []; return Array.isArray(a) ? a : []; }
+  catch(e){ return []; }
+}
+function etudeGetCrmCache(){
+  try {
+    if (localStorage.getItem('fidi:crm:enabled') !== '1') return [];
+    var raw = localStorage.getItem('fidi:crm:cache:clients'); var a = raw ? JSON.parse(raw) : [];
+    return Array.isArray(a) ? a : [];
+  } catch(e){ return []; }
+}
+function etudeAllClients(){ return etudeGetClients().concat(etudeGetCrmCache()); }
+function etudeRefreshDatalist(){
+  var dl = document.getElementById('etudeClientsList'); if(!dl) return;
+  var seen = {}; var opts = '';
+  etudeAllClients().forEach(function(c){
+    var label = (c.label || c.nom || '').trim(); if(!label || seen[label]) return; seen[label] = true;
+    var tag = c.source === 'crm' ? ' [CRM]' : '';
+    opts += '<option value="' + label.replace(/"/g,'&quot;') + '">' + label + tag + '</option>';
+  });
+  dl.innerHTML = opts;
+}
+function etudePickClient(){
+  var arr = etudeAllClients();
+  if(!arr.length){ alert("Aucun client mémorisé.\n\nOuvrez un avis de valeur > section « Référence » pour créer votre premier client."); return; }
+  var lines = arr.map(function(c,i){ return (i+1)+'. '+(c.label||c.nom)+ (c.source==='crm'?' [CRM]':''); }).join('\n');
+  var pick = prompt('Choisir un client (numéro) :\n\n'+lines);
+  var idx = parseInt(pick,10)-1;
+  if(isNaN(idx) || idx<0 || idx>=arr.length) return;
+  var c = arr[idx];
+  var inp = document.getElementById('inputDestinataire');
+  if(inp){ inp.value = c.nom || c.label || ''; inp.dispatchEvent(new Event('input',{bubbles:true})); }
+}
+function etudeSaveClient(){
+  var inp = document.getElementById('inputDestinataire');
+  var nom = inp ? inp.value.trim() : '';
+  if(!nom){ alert('Renseigner un nom dans le champ Destinataire.'); return; }
+  var lbl = prompt('Nom du profil client à mémoriser :', nom);
+  if(!lbl) return;
+  var arr = etudeGetClients();
+  var id = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+  arr.push({ id:id, label:lbl.slice(0,80), nom:nom, source:'local' });
+  try { localStorage.setItem('fidi:clients', JSON.stringify(arr)); localStorage.setItem('fidi:clients:last', id); } catch(e){}
+  etudeRefreshDatalist();
+  if(typeof toast==='function') toast('Client mémorisé : '+lbl);
+  else alert('Client mémorisé : '+lbl);
+}
+document.addEventListener('DOMContentLoaded', etudeRefreshDatalist);
+
+// ── PDF haute qualité serveur (Puppeteer /api/pdf-render) ──────────────────
+async function exportPdfServeur(){
+  var wrap = document.getElementById('rapport-a4-wrap') || document.querySelector('.rapport-a4-container') || document.body;
+  var css = Array.from(document.styleSheets).map(function(s){
+    try { return Array.from(s.cssRules).map(function(r){return r.cssText;}).join('\n'); }
+    catch(e){ return ''; }
+  }).join('\n');
+  var html = '<!doctype html><html><head><meta charset="utf-8"><title>FIDI</title><style>'+css+'</style></head><body>'+wrap.outerHTML+'</body></html>';
+  var btn = event && event.target ? event.target.closest('a,button') : null;
+  var orig = btn ? btn.innerHTML : '';
+  if(btn){ btn.style.pointerEvents='none'; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Génération…'; }
+  try {
+    var r = await fetch('/api/pdf-render', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ html: html, filename: 'fidi-etude-'+Date.now()+'.pdf' })
+    });
+    if(!r.ok){
+      var t = await r.text();
+      alert('Rendu PDF serveur échoué (HTTP '+r.status+') — fallback impression navigateur.\n\n'+t.slice(0,300));
+      if(typeof exportPdf==='function') exportPdf();
+      return;
+    }
+    var blob = await r.blob();
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a'); a.href = url; a.download = 'fidi-etude.pdf'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+  } catch(e){
+    alert('Erreur réseau : '+e.message+'\n\nFallback impression navigateur.');
+    if(typeof exportPdf==='function') exportPdf();
+  } finally {
+    if(btn){ btn.style.pointerEvents=''; btn.innerHTML = orig; }
+  }
 }
 
 async function saveEtudeCloud(){

@@ -303,19 +303,32 @@
   function setCrmEnabled(on) {
     try { localStorage.setItem(CRM_ENABLED_KEY, on ? '1' : ''); } catch (e) {}
   }
-  // Import CRM Notion (best-effort ; échec silencieux si endpoint indisponible)
+  // Import CRM Notion (best-effort). Callback reçoit un objet {ok, items, configured, hint, error, http}.
   function fetchCrmClients(cb) {
-    if (!crmEnabled()) { cb(null); return; }
+    if (!crmEnabled()) { cb({ ok: false, error: 'CRM désactivé', items: [], configured: false }); return; }
     try {
-      fetch('/api/crm-clients', { headers: { 'Accept': 'application/json' } })
-        .then(function (r) { return r.ok ? r.json() : null; })
-        .then(function (j) {
-          if (!j || !Array.isArray(j.items)) { cb(null); return; }
-          try { localStorage.setItem(CRM_CACHE_KEY, JSON.stringify(j.items)); } catch (e) {}
-          cb(j.items);
+      fetch('/api/crm-clients', { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+        .then(function (r) {
+          return r.json().then(function (j) { return { j: j, http: r.status, ok: r.ok }; })
+            .catch(function () { return { j: {}, http: r.status, ok: r.ok }; });
         })
-        .catch(function () { cb(null); });
-    } catch (e) { cb(null); }
+        .then(function (res) {
+          var j = res.j || {};
+          var items = Array.isArray(j.items) ? j.items : [];
+          if (res.ok && items.length) {
+            try { localStorage.setItem(CRM_CACHE_KEY, JSON.stringify(items)); } catch (e) {}
+          }
+          cb({
+            ok: !!res.ok,
+            http: res.http,
+            configured: j.configured !== false,
+            items: items,
+            hint: j.hint || '',
+            error: j.error || (res.ok ? '' : 'HTTP ' + res.http),
+          });
+        })
+        .catch(function (e) { cb({ ok: false, error: 'Réseau: ' + (e && e.message || 'inconnu'), items: [], configured: false }); });
+    } catch (e) { cb({ ok: false, error: e.message, items: [], configured: false }); }
   }
   function listClientsMerged() {
     var local = listClients();
@@ -798,7 +811,8 @@
             '<input type="checkbox" data-action="toggle-crm"' + (_crmOn ? ' checked' : '') + ' style="vertical-align:-2px;margin-right:4px;"/>' +
             'Activer connecteur CRM (Notion FIDI)' +
           '</label>' +
-          (_crmOn ? '<button class="btn btn-sm btn-outline-info" data-action="crm-sync"><i class="bi bi-arrow-repeat me-1"></i>Synchroniser CRM maintenant</button>' : '') +
+          (_crmOn ? '<button class="btn btn-sm btn-outline-info" data-action="crm-sync"><i class="bi bi-arrow-repeat me-1"></i>Synchroniser CRM</button>' : '') +
+          (_crmOn ? '<button class="btn btn-sm btn-outline-success" data-action="crm-create" title="Envoyer les coordonnées ci-dessous dans la base Notion Contacts"><i class="bi bi-cloud-upload me-1"></i>Créer dans CRM</button>' : '') +
           '<span class="text-muted">' + _cli.length + ' client(s) au total' + (_crmOn ? ' — CRM actif' : ' — mode local uniquement') + '</span>' +
         '</div>' +
 
@@ -1611,7 +1625,10 @@
       '<button class="btn btn-sm btn-outline-secondary" data-action="partager" title="Partager cet avis"><i class="bi bi-share me-1"></i>Partager</button>' +
       '<button class="btn btn-sm btn-outline-warning" data-action="facturer" title="Facturer & envoyer cet avis"><i class="bi bi-receipt me-1"></i>Facturer</button>' +
       '<button class="btn btn-sm btn-outline-dark" data-action="toggle-preview"><i class="bi bi-eye me-1"></i>Aperçu</button>' +
-      '<button class="btn btn-sm btn-danger" data-action="pdf"><i class="bi bi-file-earmark-pdf me-1"></i>PDF</button>' +
+      '<div class="btn-group btn-group-sm">' +
+      '<button class="btn btn-success" data-action="pdf-server" title="Rendu serveur haute qualité (texte copiable)"><i class="bi bi-file-earmark-pdf-fill me-1"></i>PDF HQ</button>' +
+      '<button class="btn btn-danger" data-action="pdf" title="Impression navigateur (fallback rapide)"><i class="bi bi-file-earmark-pdf"></i></button>' +
+      '</div>' +
       '</div></div>' +
       '</div></div></div>';
 
@@ -1709,10 +1726,14 @@
       setCrmEnabled(el.checked);
       if (el.checked) {
         toast('CRM activé — synchronisation en cours…');
-        fetchCrmClients(function (items) {
+        fetchCrmClients(function (res) {
           showSection('metadata');
-          if (items) toast(items.length + ' client(s) importés du CRM');
-          else toast('CRM activé (aucun client trouvé ou endpoint absent)', true);
+          if (!res.ok) { toast('CRM injoignable : ' + (res.error || 'erreur inconnue'), true); return; }
+          if (!res.configured) {
+            alert("CRM Notion NON CONFIGURÉ côté serveur.\n\n" + (res.hint || 'Définir NOTION_TOKEN + NOTION_DB_CRM_CLIENTS dans Netlify.') + "\n\nEn attendant, tu peux utiliser la base clients locale (sans CRM).");
+            return;
+          }
+          toast(res.items.length + ' client(s) importés du CRM');
         });
       } else {
         showSection('metadata');
@@ -1885,11 +1906,41 @@
     }
     else if (a === 'crm-sync') {
       toast('Synchronisation CRM…');
-      fetchCrmClients(function (items) {
-        if (!items) { toast('CRM indisponible ou vide', true); return; }
+      fetchCrmClients(function (res) {
+        if (!res.ok) { toast('CRM injoignable : ' + (res.error || 'erreur inconnue'), true); return; }
+        if (!res.configured) {
+          alert("CRM Notion NON CONFIGURÉ côté serveur.\n\n" + (res.hint || 'Définir NOTION_TOKEN + NOTION_DB_CRM_CLIENTS dans Netlify.'));
+          return;
+        }
         showSection('metadata');
-        toast(items.length + ' client(s) importés du CRM');
+        toast(res.items.length + ' client(s) importés du CRM');
       });
+    }
+    else if (a === 'crm-create') {
+      var cliCreate = {
+        nom: (state.data.metadata && state.data.metadata.client) || '',
+        adresse: (state.data.metadata && state.data.metadata.adresseClient) || '',
+        email: (state.data.metadata && state.data.metadata.emailClient) || '',
+        telephone: (state.data.metadata && state.data.metadata.telephoneClient) || '',
+      };
+      if (!cliCreate.nom && !cliCreate.email) { toast('Renseigner au moins Nom ou Email', true); return; }
+      toast('Création dans le CRM Notion…');
+      fetch('/api/crm-clients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(cliCreate),
+      })
+        .then(function (r) { return r.json().then(function (j) { return { j: j, ok: r.ok, http: r.status }; }); })
+        .then(function (res) {
+          if (!res.ok) {
+            alert('Échec création CRM : ' + (res.j && res.j.error || 'HTTP ' + res.http) + (res.j && res.j.hint ? '\n\n' + res.j.hint : ''));
+            return;
+          }
+          toast('Client créé dans le CRM Notion');
+          fetchCrmClients(function () { showSection('metadata'); });
+        })
+        .catch(function (e) { toast('Erreur réseau : ' + e.message, true); });
     }
     else if (a === 'del-sign') {
       var did = currentSignatureId();
@@ -1921,6 +1972,7 @@
     else if (a === 'ext-set-token-loyers') setExtensionTokenLoyers();
     else if (a === 'ext-import-selected-loyers') importSelectedLoyersFromExt();
     else if (a === 'pdf') exportPdf();
+    else if (a === 'pdf-server') doExportPdfServer();
   }
 
   // Importe les ventes DVF proches (transactions individuelles de l'étude) comme comparables
@@ -2269,6 +2321,42 @@
     };
     window.addEventListener('afterprint', done);
     setTimeout(function () { window.print(); }, 60);
+  }
+
+  // ── PDF haute qualité via /api/pdf-render (Chromium serverless) ─────────
+  async function doExportPdfServer() {
+    var ref = (state.data && state.data.metadata && state.data.metadata.ref) || 'rapport';
+    if (window.Compte && !(await window.Compte.consume('avis', ref))) return;
+    var filename = 'Avis_de_valeur_' + String(ref).replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 50) + '.pdf';
+    var body = '<div class="avis-doc">' + buildAvisDocHTML(state.data, compute(state.data)) + '</div>';
+    var css = Array.from(document.styleSheets).map(function (s) {
+      try { return Array.from(s.cssRules).map(function (r) { return r.cssText; }).join('\n'); }
+      catch (e) { return ''; }
+    }).join('\n');
+    var html = '<!doctype html><html><head><meta charset="utf-8"><title>' + filename + '</title><style>' + css + '\nbody{background:#fff;}</style></head><body>' + body + '</body></html>';
+    toast('Génération PDF serveur…');
+    try {
+      var r = await fetch('/api/pdf-render', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ html: html, filename: filename }),
+      });
+      if (!r.ok) {
+        var t = await r.text();
+        alert('Rendu PDF serveur échoué (HTTP ' + r.status + ')\n\n' + t.slice(0, 400) + '\n\nFallback : impression navigateur.');
+        doExportPdf();
+        return;
+      }
+      var blob = await r.blob();
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a'); a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+      toast('PDF téléchargé');
+    } catch (e) {
+      alert('Erreur réseau : ' + e.message + '\n\nFallback : impression navigateur.');
+      doExportPdf();
+    }
   }
 
   // ── Toast léger ─────────────────────────────────────────────

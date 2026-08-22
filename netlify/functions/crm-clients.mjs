@@ -7,26 +7,29 @@
 //   Nom (title), Email (email), Téléphone (phone_number), Adresse (rich_text),
 //   Ville (rich_text), Code postal (rich_text), Type (select), Notes (rich_text)
 
-import { hasToken, queryDatabase } from "./_notion.mjs";
+import { hasToken, queryDatabase, createPage } from "./_notion.mjs";
 
 const CORS = {
   "Content-Type": "application/json; charset=utf-8",
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "Content-Type",
-  "Cache-Control": "private, max-age=300",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Cache-Control": "private, max-age=60",
 };
 
 function j(status, body) { return { statusCode: status, headers: CORS, body: JSON.stringify(body) }; }
 
-const CRM_DB = process.env.NOTION_DB_CRM_CLIENTS || "";
+// Defaults calés sur la DB « Contacts CRM » du hub Optimmo Dom.
+// Chaque nom peut être surchargé via env NOTION_CRM_PROP_* si la DB diffère.
+const CRM_DB = process.env.NOTION_DB_CRM_CLIENTS || "cbb61ceb-5059-440d-b4c2-e18ca8fb1dab";
 const PROP = {
-  nom:       process.env.NOTION_CRM_PROP_NOM       || "Nom",
+  nom:       process.env.NOTION_CRM_PROP_NOM       || "Nom complet",  // title
   email:     process.env.NOTION_CRM_PROP_EMAIL     || "Email",
   telephone: process.env.NOTION_CRM_PROP_TELEPHONE || "Téléphone",
   adresse:   process.env.NOTION_CRM_PROP_ADRESSE   || "Adresse",
-  ville:     process.env.NOTION_CRM_PROP_VILLE     || "Ville",
-  cp:        process.env.NOTION_CRM_PROP_CP        || "Code postal",
-  type:      process.env.NOTION_CRM_PROP_TYPE      || "Type",
+  ville:     process.env.NOTION_CRM_PROP_VILLE     || "Localisation bien",
+  cp:        process.env.NOTION_CRM_PROP_CP        || "",              // pas de champ dédié CP
+  type:      process.env.NOTION_CRM_PROP_TYPE      || "Statut",       // vendeur/acquéreur/bailleur
   notes:     process.env.NOTION_CRM_PROP_NOTES     || "Notes",
 };
 
@@ -56,9 +59,52 @@ function toClient(page) {
   };
 }
 
+function toNotionProps(client) {
+  const p = {};
+  const nom = String(client.nom || client.label || "").trim();
+  if (nom) p[PROP.nom] = { title: [{ text: { content: nom.slice(0, 200) } }] };
+  const email = String(client.email || "").trim();
+  if (email) p[PROP.email] = { email };
+  const tel = String(client.telephone || "").trim();
+  if (tel) p[PROP.telephone] = { phone_number: tel };
+  const adresse = String(client.adresse || "").trim();
+  if (adresse) p[PROP.adresse] = { rich_text: [{ text: { content: adresse.slice(0, 2000) } }] };
+  const ville = String(client.ville || "").trim();
+  if (ville) p[PROP.ville] = { rich_text: [{ text: { content: ville.slice(0, 200) } }] };
+  const cp = String(client.cp || "").trim();
+  if (cp) p[PROP.cp] = { rich_text: [{ text: { content: cp.slice(0, 20) } }] };
+  const type = String(client.type || "").trim();
+  if (type) p[PROP.type] = { select: { name: type.slice(0, 100) } };
+  const notes = String(client.notes || "").trim();
+  if (notes) p[PROP.notes] = { rich_text: [{ text: { content: notes.slice(0, 2000) } }] };
+  return p;
+}
+
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return j(200, {});
-  if (event.httpMethod !== "GET") return j(405, { error: "GET requis" });
+
+  if (event.httpMethod === "POST") {
+    if (!CRM_DB || !hasToken()) {
+      return j(503, {
+        error: "CRM non configuré",
+        configured: false,
+        hint: "Définir NOTION_TOKEN + NOTION_DB_CRM_CLIENTS dans Netlify pour activer la création côté CRM.",
+      });
+    }
+    let body;
+    try { body = JSON.parse(event.body || "{}"); }
+    catch { return j(400, { error: "JSON invalide" }); }
+    if (!body.nom && !body.email) return j(400, { error: "nom ou email requis" });
+    try {
+      const props = toNotionProps(body);
+      const page = await createPage(CRM_DB, props);
+      return j(200, { ok: true, created: true, id: page.id, client: toClient(page) });
+    } catch (e) {
+      return j(e.status || 500, { error: e.message, notion: e.notion || null });
+    }
+  }
+
+  if (event.httpMethod !== "GET") return j(405, { error: "GET ou POST requis" });
 
   if (!CRM_DB || !hasToken()) {
     return j(200, {
