@@ -59,6 +59,19 @@ export const handler = async (event) => {
     });
 
     await page.setContent(html, { waitUntil: "networkidle0", timeout: 20000 });
+    // Attend explicitement fin de chargement de chaque <img> (Chromium ne considère pas
+    // toujours les <img> à src distant comme réseau bloquant → PDF sans images).
+    await page.evaluate(() => Promise.all(
+      Array.from(document.images).map((img) => {
+        if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+        return new Promise((resolve) => {
+          const done = () => resolve();
+          img.addEventListener("load", done, { once: true });
+          img.addEventListener("error", done, { once: true });
+          setTimeout(done, 8000);
+        });
+      })
+    ));
     await page.emulateMediaType("print");
 
     const pdf = await page.pdf({

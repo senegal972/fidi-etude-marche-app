@@ -801,8 +801,9 @@
         '<div class="av-sec-head" style="margin-top:1rem;"><h5 style="font-size:1rem;">Base de destinataires (clients)</h5></div>' +
         '<div class="d-flex flex-wrap gap-2 align-items-end mb-2">' +
           '<div style="flex:1; min-width:240px;">' +
-            '<label class="form-label small mb-1">Sélectionner un client mémorisé</label>' +
-            '<select class="form-select form-select-sm" data-action="pick-client">' + _cliOpts + '</select>' +
+            '<label class="form-label small mb-1">Sélectionner un client mémorisé (tapez pour filtrer)</label>' +
+            '<input type="search" class="form-control form-control-sm mb-1" placeholder="🔍 Rechercher (nom, email, société…)" data-action="filter-client" oninput="(function(inp){var s=(inp.value||\'\').toLowerCase().trim();var sel=inp.parentNode.querySelector(\'select[data-action=pick-client]\');if(!sel)return;Array.prototype.forEach.call(sel.options,function(o){if(!o.value){o.hidden=false;return;}o.hidden=s && o.textContent.toLowerCase().indexOf(s)<0;});})(this)"/>' +
+            '<select class="form-select form-select-sm" data-action="pick-client" size="6" style="min-height:auto;">' + _cliOpts + '</select>' +
           '</div>' +
           '<button class="btn btn-sm btn-outline-primary" data-action="save-client-as"><i class="bi bi-person-plus me-1"></i>Enregistrer comme nouveau client</button>' +
           '<button class="btn btn-sm btn-outline-secondary" data-action="update-client"' + (_cur ? '' : ' disabled') + '><i class="bi bi-save me-1"></i>Mettre à jour</button>' +
@@ -945,7 +946,22 @@
         '<div class="av-box"><div class="av-box-title">' + (isLocM ? 'Loyer médian retenu pour le calcul' : 'Moyenne retenue pour le calcul') + '</div><div class="av-grid-3">' +
         fld((isLocM ? 'Bas' : 'Prix bas') + ' (' + unite + ')', 'marche.moyenneBas', { type: 'number', step: '0.01', flag: true }) + fld((isLocM ? 'Médiane' : 'Prix moyen') + ' (' + unite + ')', 'marche.moyenneMoyen', { type: 'number', step: '0.01', flag: true }) + fld((isLocM ? 'Haut' : 'Prix haut') + ' (' + unite + ')', 'marche.moyenneHaut', { type: 'number', step: '0.01', flag: true }) + '</div></div>' +
         '<div class="av-grid-2">' + fld('Évolution 12 mois', 'marche.evol12m', { ph: isLocM ? '+2 % (loyers)' : '+3 %' }) + fld('Évolution 3 mois', 'marche.evol3m', { ph: '+0.5 %' }) + '</div>' +
-        fld('Commentaire de tendance', 'marche.commentaire', { type: 'textarea', rows: 2, flag: true });
+        fld('Commentaire de tendance', 'marche.commentaire', { type: 'textarea', rows: 2, flag: true }) +
+        (isLocM && Array.isArray(d.marche.sourcesDvf) && d.marche.sourcesDvf.length ? (
+          '<div class="av-box" style="margin-top:1rem;border-left:3px solid var(--fidi-blue,#1a4b8e);background:#f0f6ff;">' +
+            '<div class="av-box-title" style="color:#1a4b8e;"><i class="bi bi-cash-coin me-1"></i>Sources DVF (ventes €/m²) — contrôle par capitalisation</div>' +
+            '<div class="small text-muted mb-2">Ces prix de VENTE (€/m²) ne sont <b>pas</b> des loyers. Ils servent au contrôle par la méthode de capitalisation (valeur vénale = loyer annuel ÷ taux de capi). Ne pas les mélanger avec les loyers ci-dessus.</div>' +
+            d.marche.sourcesDvf.map(function (s, i) {
+              return '<div class="av-row" style="grid-template-columns:1fr 70px 70px 70px 28px;">' +
+                '<input type="text" placeholder="ex : DVF 2024" value="' + esc(s.nom) + '" data-list="marche.sourcesDvf" data-idx="' + i + '" data-key="nom"/>' +
+                '<input type="number" placeholder="Bas" value="' + esc(s.bas) + '" data-list="marche.sourcesDvf" data-idx="' + i + '" data-key="bas"/>' +
+                '<input type="number" placeholder="Moyen €/m²" value="' + esc(s.moyen) + '" data-list="marche.sourcesDvf" data-idx="' + i + '" data-key="moyen"/>' +
+                '<input type="number" placeholder="Haut" value="' + esc(s.haut) + '" data-list="marche.sourcesDvf" data-idx="' + i + '" data-key="haut"/>' +
+                '<button class="av-del" data-listdel="marche.sourcesDvf" data-idx="' + i + '" title="Supprimer">✕</button></div>';
+            }).join('') +
+            '<div class="text-end mt-1"><button class="av-add" data-listadd="marche.sourcesDvf">+ Ajouter une source DVF</button></div>' +
+          '</div>'
+        ) : '');
     }
     if (id === 'comparables') {
       var isLocCmp = natureCourante() === 'location';
@@ -2337,7 +2353,10 @@
       try { return Array.from(s.cssRules).map(function (r) { return r.cssText; }).join('\n'); }
       catch (e) { return ''; }
     }).join('\n');
-    var html = '<!doctype html><html><head><meta charset="utf-8"><title>' + filename + '</title><style>' + css + '\nbody{background:#fff;}</style></head><body>' + body + '</body></html>';
+    // <base href> critique : sans lui, Chromium résout les URL relatives depuis about:blank
+    // (échec silencieux des <img src="/api/img-proxy?..."> = carte IGN + assets internes).
+    var origin = (location && location.origin) || 'https://fidi-etude-marche-app.netlify.app';
+    var html = '<!doctype html><html><head><meta charset="utf-8"><base href="' + origin + '/"><title>' + filename + '</title><style>' + css + '\nbody{background:#fff;}</style></head><body>' + body + '</body></html>';
     toast('Génération PDF serveur…');
     try {
       var r = await fetch('/api/pdf-render', {
@@ -3391,6 +3410,15 @@
       d.locatif.dureeBail = d.locatif.dureeBail || 36;
       d.locatif.depotGarantie = d.locatif.depotGarantie || (num(d.locatif.loyerHC) || '');
       d.locatif.tauxCapitalisation = d.locatif.tauxCapitalisation || 6.5;
+      // Sépare DVF (ventes €/m²) et DHUP (loyers €/m²/mois) : les DVF n'ont pas leur place
+      // dans « sources de loyers pratiqués ». On les déplace dans marche.sourcesDvf pour
+      // le contrôle par capitalisation (méthode inverse), pas pour la comparaison locative.
+      d.marche = d.marche || {};
+      var srcs = Array.isArray(d.marche.sources) ? d.marche.sources : [];
+      var dvfSrcs = srcs.filter(function (s) { return /^DVF/i.test(s.nom || ''); });
+      var loyerSrcs = srcs.filter(function (s) { return !/^DVF/i.test(s.nom || ''); });
+      d.marche.sources = loyerSrcs;
+      d.marche.sourcesDvf = (d.marche.sourcesDvf && d.marche.sourcesDvf.length) ? d.marche.sourcesDvf : dvfSrcs;
     } else {
       // Valeurs par défaut avis VENTE (déjà en place, on garantit)
       d.calcul = d.calcul || {};

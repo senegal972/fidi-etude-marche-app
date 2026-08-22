@@ -1583,7 +1583,8 @@ async function exportPdfServeur(){
     try { return Array.from(s.cssRules).map(function(r){return r.cssText;}).join('\n'); }
     catch(e){ return ''; }
   }).join('\n');
-  var html = '<!doctype html><html><head><meta charset="utf-8"><title>FIDI</title><style>'+css+'</style></head><body>'+wrap.outerHTML+'</body></html>';
+  var origin = (location && location.origin) || 'https://fidi-etude-marche-app.netlify.app';
+  var html = '<!doctype html><html><head><meta charset="utf-8"><base href="'+origin+'/"><title>FIDI</title><style>'+css+'</style></head><body>'+wrap.outerHTML+'</body></html>';
   var btn = event && event.target ? event.target.closest('a,button') : null;
   var orig = btn ? btn.innerHTML : '';
   if(btn){ btn.style.pointerEvents='none'; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Génération…'; }
