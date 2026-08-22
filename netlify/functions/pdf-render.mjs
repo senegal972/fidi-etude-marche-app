@@ -38,11 +38,14 @@ export const handler = async (event) => {
   const margin = body.margin || { top: "12mm", bottom: "16mm", left: "12mm", right: "12mm" };
 
   let browser;
+  let execPath;
   try {
+    execPath = await chromium.executablePath();
+    if (!execPath) throw new Error("chromium.executablePath() returned empty — @sparticuz/chromium bundle absent du deploy");
     browser = await puppeteer.launch({
-      args: chromium.args,
+      args: [...chromium.args, "--no-sandbox", "--disable-setuid-sandbox"],
       defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
+      executablePath: execPath,
       headless: chromium.headless,
     });
     const page = await browser.newPage();
@@ -82,6 +85,6 @@ export const handler = async (event) => {
     };
   } catch (e) {
     if (browser) { try { await browser.close(); } catch {} }
-    return errResp(500, `Rendu PDF échoué : ${e.message}`);
+    return errResp(500, `Rendu PDF échoué : ${e.message} | execPath=${execPath || "(non résolu)"}`);
   }
 };

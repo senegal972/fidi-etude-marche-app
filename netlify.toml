@@ -81,7 +81,12 @@
 
 [functions."pdf-render"]
   timeout = 26
-  included_files = ["node_modules/@sparticuz/chromium/**"]
+  node_bundler = "esbuild"
+  external_node_modules = ["@sparticuz/chromium", "puppeteer-core"]
+  included_files = [
+    "node_modules/@sparticuz/chromium/**",
+    "node_modules/@sparticuz/chromium/bin/**"
+  ]
 
 [functions."crm-clients"]
   timeout = 15
