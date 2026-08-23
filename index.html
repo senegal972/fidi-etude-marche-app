@@ -589,6 +589,16 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
                 <i class="bi bi-signpost-split me-1"></i>Waze
               </a>
             </div>
+            <!-- Enrichissement local — Géorisques + ONF + IDG régionales -->
+            <div id="enrichLocalWrap" class="mt-3 pt-3 border-top">
+              <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                <button class="btn btn-sm btn-outline-danger" type="button" onclick="etudeEnrichirLocal()">
+                  <i class="bi bi-shield-exclamation me-1"></i>Enrichir : Géorisques + ONF + IDG régionale
+                </button>
+                <span class="small text-muted">Interroge 3 sources publiques par coordonnées</span>
+              </div>
+              <div id="enrichLocalOut" class="row g-2"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -1611,6 +1621,63 @@ async function exportPdfServeur(){
   } finally {
     if(btn){ btn.style.pointerEvents=''; btn.innerHTML = orig; }
   }
+}
+
+// ── Enrichissement local (Géorisques + ONF + IDG régionale) ─────────
+async function etudeEnrichirLocal(){
+  var d = window.__fidiData; if(!d || !d.localisation){ alert("Lancez une analyse d'étude avant."); return; }
+  var lat = d.localisation.lat, lon = d.localisation.lon, insee = d.localisation.citycode || '';
+  var out = document.getElementById('enrichLocalOut');
+  out.innerHTML = '<div class="col-12 small text-muted"><span class="spinner-border spinner-border-sm me-1"></span> Interrogation Géorisques + ONF + IDG…</div>';
+  var idgUrl = '';
+  if(lat >= 14 && lat <= 15 && lon <= -60.5 && lon >= -61.5) idgUrl = '/api/geomartinique?lat='+lat+'&lon='+lon;
+  else if(lat >= 15 && lat <= 17 && lon <= -60 && lon >= -62.5) idgUrl = '/api/karugeo?lat='+lat+'&lon='+lon;
+  else if(lat >= 2 && lat <= 6 && lon <= -51 && lon >= -55) idgUrl = '/api/geoguyane?lat='+lat+'&lon='+lon;
+  var urls = [
+    { key:'georisques', label:'Géorisques', url:'/api/georisques-adresse?lat='+lat+'&lon='+lon+(insee?'&insee='+insee:''), color:'danger' },
+    { key:'onf', label:'ONF forêts', url:'/api/onf?lat='+lat+'&lon='+lon+'&radius=1', color:'success' },
+  ];
+  if(idgUrl) urls.push({ key:'idg', label:'IDG régionale', url:idgUrl, color:'primary' });
+  var results = await Promise.all(urls.map(u =>
+    fetch(u.url).then(r => r.ok ? r.json() : null).catch(() => null).then(data => ({...u, data}))
+  ));
+  var html = '';
+  results.forEach(r => {
+    var body = '';
+    if(!r.data){ body = '<span class="text-muted small">Indisponible</span>'; }
+    else if(r.key === 'georisques' && r.data.details){
+      var det = r.data.details;
+      var chips = [];
+      if(det.ppr && det.ppr.count) chips.push('<span class="badge bg-warning text-dark">PPR '+det.ppr.count+'</span>');
+      if(det.radon && det.radon.items && det.radon.items[0]){ var cat = det.radon.items[0].classe_potentiel || det.radon.items[0].categorie || det.radon.items[0].classe || '?'; chips.push('<span class="badge bg-'+(String(cat)==='3'?'danger':'secondary')+'">Radon '+cat+'</span>'); }
+      if(det.argiles && det.argiles.items && det.argiles.items[0]){ var arg = det.argiles.items[0].exposition || det.argiles.items[0].niveau || '?'; chips.push('<span class="badge bg-info text-dark">Argiles '+arg+'</span>'); }
+      if(det.catnat && det.catnat.count) chips.push('<span class="badge bg-secondary">CatNat '+det.catnat.count+'</span>');
+      if(det.cavites && det.cavites.count) chips.push('<span class="badge bg-warning text-dark">Cavités '+det.cavites.count+'</span>');
+      if(det.installations_classees && det.installations_classees.count) chips.push('<span class="badge bg-secondary">ICPE '+det.installations_classees.count+'</span>');
+      if(det.sites_pollues && det.sites_pollues.count) chips.push('<span class="badge bg-danger">SSP '+det.sites_pollues.count+'</span>');
+      body = chips.length ? chips.join(' ') : '<span class="text-success small">Aucun risque significatif dans le rayon</span>';
+    }
+    else if(r.key === 'onf'){
+      body = (r.data.count > 0)
+        ? '<span class="badge bg-success">Point en forêt publique ONF</span> <span class="small text-muted">('+r.data.source+')</span>'
+        : '<span class="text-muted small">Hors forêt publique</span>';
+    }
+    else if(r.key === 'idg'){
+      var groups = r.data.groups || {};
+      var ks = Object.keys(groups);
+      if(ks.length){
+        body = ks.map(k => '<span class="badge bg-primary">'+k+' '+groups[k].count+'</span>').join(' ');
+      } else if(r.data.count > 0) body = '<span class="badge bg-primary">'+r.data.count+' couche(s)</span>';
+      else body = '<span class="text-muted small">'+(r.data.note || 'Aucune couche')+'</span>';
+    }
+    html += '<div class="col-12 col-md-6 col-lg-4">'+
+      '<div class="p-2 border rounded small" style="background:#fafbfc;">'+
+        '<div class="fw-bold mb-1 text-'+r.color+'"><i class="bi bi-circle-fill me-1"></i>'+r.label+'</div>'+
+        '<div>'+body+'</div>'+
+      '</div>'+
+    '</div>';
+  });
+  out.innerHTML = html || '<div class="col-12 small text-muted">Aucune donnée</div>';
 }
 
 async function saveEtudeCloud(){

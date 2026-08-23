@@ -551,6 +551,7 @@
       '<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin:.5rem 0;">' +
       (mapsUrl ? '<a class="btn btn-sm btn-outline-primary" href="' + mapsUrl + '" target="_blank" rel="noopener"><i class="bi bi-geo-alt me-1"></i>Voir sur Google Maps</a>' : '') +
       '<a class="btn btn-sm btn-outline-secondary" href="https://www.georisques.gouv.fr/" target="_blank" rel="noopener"><i class="bi bi-shield-exclamation me-1"></i>Géorisques</a>' +
+      (hasGeo ? '<button class="btn btn-sm btn-outline-danger" type="button" onclick="avisEnrichirRisques()" title="Interroge Géorisques + ONF + IDG régionale (KaruGéo/GéoMartinique/GéoGuyane) par coordonnées"><i class="bi bi-download me-1"></i>Enrichir depuis Géorisques + IDG</button>' : '') +
       '</div>' +
       '<div class="av-grid-2">' + fld('Adresse', 'loc.adresse', { flag: true }) +
       '<div class="av-grid-2">' + fld('Latitude', 'loc.lat') + fld('Longitude', 'loc.lon') + '</div></div>' +
@@ -2740,6 +2741,72 @@
   // BDNB officielle CSTB nécessite un abonnement. On combine à la place les
   // sources publiques ouvertes : ADEME DPE V2 (perf énergétique + année de
   // construction + surface) + RNB (identifiant national bâtiment + adresses).
+  window.avisEnrichirRisques = async function () {
+    try {
+      var L = state.data.loc || {};
+      var lat = num(L.lat), lon = num(L.lon);
+      if (!lat || !lon) { toast('Coordonnées manquantes (lat/lon dans Localisation)', true); return; }
+      var cp = (state.data.bien && state.data.bien.cp) || '';
+      var insee = ((window.__fidiData || {}).localisation || {}).citycode || '';
+      toast('Interrogation Géorisques + IDG régionales…');
+      // Sélection IDG selon zone
+      var idgUrl = '';
+      if (lat >= 14 && lat <= 15 && lon <= -60.5 && lon >= -61.5) idgUrl = '/api/geomartinique?lat=' + lat + '&lon=' + lon;
+      else if (lat >= 15 && lat <= 17 && lon <= -60 && lon >= -62.5) idgUrl = '/api/karugeo?lat=' + lat + '&lon=' + lon;
+      else if (lat >= 2 && lat <= 6 && lon <= -51 && lon >= -55) idgUrl = '/api/geoguyane?lat=' + lat + '&lon=' + lon;
+      // Fetch en parallèle : Géorisques par point, ONF, IDG régionale
+      var urls = [
+        '/api/georisques-adresse?lat=' + lat + '&lon=' + lon + (insee ? '&insee=' + insee : ''),
+        '/api/onf?lat=' + lat + '&lon=' + lon + '&radius=1',
+      ];
+      if (idgUrl) urls.push(idgUrl);
+      var results = await Promise.all(urls.map(function (u) {
+        return fetch(u).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+      }));
+      var gr = results[0], onf = results[1], idg = results[2] || null;
+      // Extraction & fusion
+      var vigilances = [];
+      var risqueSummary = [];
+      if (gr && gr.details) {
+        var d = gr.details;
+        if (d.ppr && d.ppr.count > 0) {
+          var pprList = (d.ppr.items || []).map(function (p) { return p.libelle_type_ppr || p.libelle_type_risque || p.libelle || ''; }).filter(Boolean).slice(0, 3);
+          if (pprList.length) { risqueSummary.push('PPR : ' + pprList.join(', ')); vigilances.push('PPR applicable : ' + pprList.join(' · ')); }
+        }
+        if (d.radon && d.radon.items && d.radon.items[0]) {
+          var rad = d.radon.items[0];
+          var radCat = rad.classe_potentiel || rad.categorie || rad.classe || '';
+          if (radCat) { state.data.loc.radon = 'Catégorie ' + radCat; risqueSummary.push('Radon ' + radCat); if (String(radCat) === '3') vigilances.push('Radon catégorie 3 (élevé) — ventilation à contrôler'); }
+        }
+        if (d.argiles && d.argiles.items && d.argiles.items[0]) {
+          var arg = d.argiles.items[0];
+          var argN = arg.exposition || arg.niveau || arg.classe_argile || '';
+          if (argN) { risqueSummary.push('Retrait-gonflement argiles : ' + argN); if (/for|éle/i.test(argN)) vigilances.push('Retrait-gonflement argiles ' + argN + ' — fondations à surveiller'); }
+        }
+        if (d.catnat && d.catnat.count > 5) { risqueSummary.push(d.catnat.count + ' arrêtés CatNat sur la commune'); vigilances.push('Historique CatNat : ' + d.catnat.count + ' arrêtés'); }
+        if (d.cavites && d.cavites.count > 0) { risqueSummary.push(d.cavites.count + ' cavité(s) souterraine(s) < 1 km'); vigilances.push('Cavités souterraines dans le rayon (' + d.cavites.count + ')'); }
+        if (d.installations_classees && d.installations_classees.count > 0) { risqueSummary.push(d.installations_classees.count + ' ICPE proches'); if (d.installations_classees.count >= 3) vigilances.push('Concentration ICPE (' + d.installations_classees.count + ') dans le rayon'); }
+        if (d.sites_pollues && d.sites_pollues.count > 0) { vigilances.push(d.sites_pollues.count + ' site(s) SSP à proximité'); risqueSummary.push('Sites pollués : ' + d.sites_pollues.count); }
+      }
+      if (onf && onf.count > 0) { risqueSummary.push('Forêt publique ONF détectée'); vigilances.push('Point en/limite forêt publique ONF — impact constructibilité'); }
+      if (idg && idg.total_count > 0) {
+        Object.keys(idg.groups || {}).forEach(function (k) { risqueSummary.push('IDG · ' + k + ' (' + idg.groups[k].count + ')'); });
+      } else if (idg && idg.count > 0) {
+        risqueSummary.push('IDG régionale : ' + idg.count + ' couche(s)');
+      }
+      // Injection state
+      state.data.loc.risquesDetail = risqueSummary.join(' | ') || state.data.loc.risquesDetail;
+      // Ajoute aux vigilances section 9 sans doublon
+      state.data.vigilances = (state.data.vigilances || []).filter(function (v) { return v && v.trim(); });
+      vigilances.forEach(function (v) {
+        if (state.data.vigilances.indexOf(v) < 0) state.data.vigilances.push(v);
+      });
+      // Recharge section
+      showSection(state.section);
+      toast(risqueSummary.length + ' info(s) risque(s) intégrée(s)' + (vigilances.length ? ' + ' + vigilances.length + ' vigilance(s)' : ''));
+    } catch (e) { toast('Erreur enrichissement : ' + e.message, true); }
+  };
+
   window.avisPrefillBati = async function () {
     try {
       var b = state.data.bien;
