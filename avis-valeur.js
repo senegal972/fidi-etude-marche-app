@@ -1282,7 +1282,13 @@
     // ── AUTOMATISATION (pt 4 directive) — remplir les champs vides depuis
     // les données déjà connues (étude, marché saisi, DPE, zone tendue).
     // Ne remplace jamais un champ déjà saisi.
-    if (!L.loyerM2Marche && m.moyenneMoyen) L.loyerM2Marche = m.moyenneMoyen;
+    // GARDE-FOU CRITIQUE : marche.moyenneMoyen contient un PRIX DE VENTE €/m²
+    // (issu de l'étude). Ne jamais le recopier comme loyer €/m²/mois — sinon on
+    // affiche des loyers 100 000× trop élevés (ex 2431 €/m² au lieu de 15 €/m²/mois).
+    // Un loyer plausible < 200 €/m²/mois (Paris centre = ~35, DOM = 8-20).
+    if (!L.loyerM2Marche && m.moyenneMoyen && num(m.moyenneMoyen) < 200) {
+      L.loyerM2Marche = m.moyenneMoyen;
+    }
     if (!L.dpe && window.__fidiData && window.__fidiData.dpe) {
       // Si étude fournit un DPE dominant, on le prend comme suggestion neutre
       var dpeStats = window.__fidiData.dpe;
@@ -1331,7 +1337,7 @@
       // ── Loyer & charges ──
       '<h6 class="mt-3">Loyer et charges</h6>' +
       '<div class="av-grid-4">' +
-        fld('Loyer HC €/mois', 'locatif.loyerHC', { type: 'number', tip: 'Hors charges — retenu comme VLM' }) +
+        fld('Loyer HC €/mois', 'locatif.loyerHC', { type: 'number', tip: 'Hors charges — retenu comme VLM. NE PAS saisir la valeur vénale ici !' }) +
         fld('Charges récup. €/mois', 'locatif.chargesRecup', { type: 'number', tip: 'Provisions selon décret 87-713' }) +
         fld('Dépôt garantie €', 'locatif.depotGarantie', { type: 'number', tip: '1 mois HC (vide) · 2 mois HC (meublé)' }) +
         fld('Honoraires location €', 'locatif.honoraires', { type: 'number', tip: 'Plafonné loi ALUR selon zone : 8 à 12 €/m² à l\'entrée' }) +
@@ -3201,10 +3207,13 @@
       var LL = data.locatif;
       var bailLbl = { vide: 'Bail vide (loi 89-462, 3 ans)', meuble: 'Bail meublé (loi ALUR, 1 an)', mobilite: 'Bail mobilité (loi ELAN, 1-10 mois)', commercial: 'Bail commercial (3-6-9, art. L.145 C.com.)', professionnel: 'Bail professionnel (6 ans)' }[LL.typeBail || 'vide'];
       var _surf = num(b.surfaceCarrez);
-      var _loyM2 = (num(LL.loyerHC) && _surf) ? (num(LL.loyerHC) / _surf).toFixed(2) : null;
-      var _annuel = num(LL.loyerHC) * 12;
+      // Sanity : loyer HC > 50 000 €/mois = prix vente confondu, on n'affiche rien
+      var _lhc = num(LL.loyerHC);
+      if (_lhc >= 50000) _lhc = 0;
+      var _loyM2 = (_lhc && _surf) ? (_lhc / _surf).toFixed(2) : null;
+      var _annuel = _lhc * 12;
       var _cap = (num(LL.tauxCapitalisation) > 0 && _annuel) ? Math.round(_annuel * 100 / num(LL.tauxCapitalisation)) : null;
-      var _rend = (num(LL.loyerHC) && num(b.prixVente)) ? (_annuel * 100 / num(b.prixVente)) : null;
+      var _rend = (_lhc && num(b.prixVente)) ? (_annuel * 100 / num(b.prixVente)) : null;
       var _dpe = String(LL.dpe || '').toUpperCase();
       var _y = new Date().getFullYear();
       var _interdit = (_dpe === 'G' && _y >= 2025) || (_dpe === 'F' && _y >= 2028) || (_dpe === 'E' && _y >= 2034);
@@ -3212,7 +3221,7 @@
       var mentionsLoc = [];
       if (bailLbl) mentionsLoc.push(row('Cadre juridique', bailLbl));
       if (LL.dureeBail) mentionsLoc.push(row('Durée', esc(LL.dureeBail) + ' mois'));
-      if (LL.loyerHC) mentionsLoc.push(row('Loyer HC retenu', fmtE(LL.loyerHC) + ' / mois' + (_loyM2 ? ' — soit ' + _loyM2 + ' €/m²/mois' : '')));
+      if (_lhc) mentionsLoc.push(row('Loyer HC retenu', fmtE(_lhc) + ' / mois' + (_loyM2 ? ' — soit ' + _loyM2 + ' €/m²/mois' : '')));
       if (LL.chargesRecup) mentionsLoc.push(row('Charges récupérables', fmtE(LL.chargesRecup) + ' / mois (décret 87-713)'));
       if (LL.depotGarantie) mentionsLoc.push(row('Dépôt de garantie', fmtE(LL.depotGarantie)));
       if (LL.honoraires) mentionsLoc.push(row('Honoraires de location', fmtE(LL.honoraires) + ' (plafond loi ALUR)'));
@@ -3424,11 +3433,15 @@
       //   4. Médiane des comparables ACM (calc.acmM2) × surface
       var LL5 = data.locatif || {};
       var _surf5 = num(b.surfaceCarrez);
-      var _loyM2Saisi = num(LL5.loyerM2Marche);
-      var _loyM2Marche = num(m.moyenneMoyen);
-      var _loyM2ACM = num(calc.acmM2);
+      // Sanity : un loyer m²/mois plausible est < 200 € (Paris < 40, DOM 8-20).
+      // Toute valeur >= 200 est un prix VENTE €/m² qu'on refuse.
+      var _sanityLoy = function (v) { return (v && v < 200) ? v : 0; };
+      var _loyM2Saisi = _sanityLoy(num(LL5.loyerM2Marche));
+      var _loyM2Marche = _sanityLoy(num(m.moyenneMoyen));
+      var _loyM2ACM = _sanityLoy(num(calc.acmM2));
       var _loyM2Ref = _loyM2Saisi || _loyM2Marche || _loyM2ACM || 0;
-      var _loyHCSaisi = num(LL5.loyerHC);
+      // Loyer HC saisi accepté seulement si < 50 000 €/mois (au-delà = prix vente saisi par erreur)
+      var _loyHCSaisi = num(LL5.loyerHC) < 50000 ? num(LL5.loyerHC) : 0;
       var _loyRetenu = _loyHCSaisi || (_surf5 && _loyM2Ref ? Math.round(_surf5 * _loyM2Ref / 10) * 10 : 0);
       var _loyM2Ret = (_loyRetenu && _surf5) ? (_loyRetenu / _surf5) : _loyM2Ref;
       var _annuel5 = _loyRetenu * 12;
@@ -3657,6 +3670,18 @@
       var loyerSrcs = srcs.filter(function (s) { return !/^DVF/i.test(s.nom || ''); });
       d.marche.sources = loyerSrcs;
       d.marche.sourcesDvf = (d.marche.sourcesDvf && d.marche.sourcesDvf.length) ? d.marche.sourcesDvf : dvfSrcs;
+      // GARDE-FOU : marche.moyenne* contient des PRIX VENTE €/m² issus de l'étude.
+      // En location, ces valeurs (>200 €/m²) ne sont PAS des loyers €/m²/mois — les wipe
+      // pour éviter que factRemplirLoyersDHUP/PDF section 5 les affiche comme loyer.
+      if (num(d.marche.moyenneMoyen) >= 200) {
+        d.marche.moyenneMoyenVente = d.marche.moyenneMoyen; // conservé pour capi
+        d.marche.moyenneBasVente = d.marche.moyenneBas;
+        d.marche.moyenneHautVente = d.marche.moyenneHaut;
+        d.marche.moyenneMoyen = ''; d.marche.moyenneBas = ''; d.marche.moyenneHaut = '';
+      }
+      // Idem loyerM2Marche : si > 200 c'est du prix vente, pas un loyer
+      if (num(d.locatif.loyerM2Marche) >= 200) d.locatif.loyerM2Marche = '';
+      if (num(d.locatif.loyerHC) >= 50000) d.locatif.loyerHC = ''; // > 50k€/mois = vraisemblablement prix vente saisi par erreur
     } else {
       // Valeurs par défaut avis VENTE (déjà en place, on garantit)
       d.calcul = d.calcul || {};

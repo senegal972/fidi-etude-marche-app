@@ -116,19 +116,38 @@ export const handler = async (event) => {
   }
 
   try {
+    // Filtre : ne remonter QUE les vrais clients (Statut OU Qualité contact renseignés).
+    // Sinon la base Contacts CRM contient 6000+ leads Gmail bruts non qualifiés.
+    // Surchargeable via env NOTION_CRM_FILTER_JSON pour cas particuliers.
+    let filter;
+    try {
+      filter = process.env.NOTION_CRM_FILTER_JSON ? JSON.parse(process.env.NOTION_CRM_FILTER_JSON) : {
+        or: [
+          { property: "Statut", select: { is_not_empty: true } },
+          { property: "Qualité contact", select: { is_not_empty: true } },
+          { property: "Étape pipeline", number: { is_not_empty: true } },
+        ],
+      };
+    } catch { filter = undefined; }
+
     const pages = [];
     let cursor;
     for (let i = 0; i < 5; i++) {
       const r = await queryDatabase(CRM_DB, {
         page_size: 100,
         start_cursor: cursor,
+        ...(filter ? { filter } : {}),
       });
       pages.push(...(r.results || []));
       if (!r.has_more) break;
       cursor = r.next_cursor;
     }
     const items = pages.map(toClient).filter((c) => c.nom || c.email);
-    return j(200, { ok: true, configured: true, count: items.length, items });
+    return j(200, {
+      ok: true, configured: true, count: items.length, items,
+      filter_applied: !!filter,
+      note: "Filtre : contacts avec Statut / Qualité / Étape pipeline renseignés. Surchargeable via NOTION_CRM_FILTER_JSON ou changer la DB via NOTION_DB_CRM_CLIENTS (ex : 11b1edbd9fd04319ba3a708cdb0db6c4 pour Acquéreurs Optimmo).",
+    });
   } catch (e) {
     return j(e.status || 500, { error: e.message, notion: e.notion || null, configured: true });
   }
