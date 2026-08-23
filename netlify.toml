@@ -91,6 +91,21 @@
 [functions."crm-clients"]
   timeout = 15
 
+[functions."georisques-adresse"]
+  timeout = 20
+
+[functions."onf"]
+  timeout = 15
+
+[functions."karugeo"]
+  timeout = 20
+
+[functions."geomartinique"]
+  timeout = 20
+
+[functions."geoguyane"]
+  timeout = 20
+
 # ── Redirections API → Netlify Functions ──────────────────────────────────────
 [[redirects]]
   from   = "/api/analyse"
@@ -304,6 +319,31 @@
 [[redirects]]
   from   = "/api/crm-clients"
   to     = "/.netlify/functions/crm-clients"
+  status = 200
+
+[[redirects]]
+  from   = "/api/georisques-adresse"
+  to     = "/.netlify/functions/georisques-adresse"
+  status = 200
+
+[[redirects]]
+  from   = "/api/onf"
+  to     = "/.netlify/functions/onf"
+  status = 200
+
+[[redirects]]
+  from   = "/api/karugeo"
+  to     = "/.netlify/functions/karugeo"
+  status = 200
+
+[[redirects]]
+  from   = "/api/geomartinique"
+  to     = "/.netlify/functions/geomartinique"
+  status = 200
+
+[[redirects]]
+  from   = "/api/geoguyane"
+  to     = "/.netlify/functions/geoguyane"
   status = 200
 
 # ── SPA fallback : toute URL non trouvée → index.html ─────────────────────────
