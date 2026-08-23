@@ -246,6 +246,103 @@
     try { localStorage.setItem(SIGN_LAST_KEY, id || ''); } catch (e) {}
   }
 
+  // ── Taux de capitalisation — auto par région + secteur ────────
+  // Baseline observée marché DOM + fourchettes métier CEE.
+  // Chaque agent peut surcharger via `state.data.calcul.tauxCapi` (vente)
+  // ou `state.data.locatif.tauxCapitalisation` (location).
+  var CAPI_TAUX = {
+    // DOM
+    martinique: { centre: 5.75, peri: 6.25, standard: 6.75, rural: 7.50, difficile: 8.50 },
+    guadeloupe: { centre: 5.75, peri: 6.25, standard: 6.75, rural: 7.50, difficile: 8.50 },
+    guyane:     { centre: 6.25, peri: 7.00, standard: 7.50, rural: 8.50, difficile: 9.50 },
+    reunion:    { centre: 5.50, peri: 6.00, standard: 6.50, rural: 7.50, difficile: 8.50 },
+    mayotte:    { centre: 6.50, peri: 7.50, standard: 8.00, rural: 9.00, difficile: 10.00 },
+    // Métropole (3 strates par taille de marché)
+    metropole_paris: { centre: 3.00, peri: 4.00, standard: 4.50, rural: 5.50, difficile: 6.50 },
+    metropole_grand: { centre: 4.00, peri: 4.75, standard: 5.25, rural: 6.00, difficile: 7.00 },
+    metropole_moyen: { centre: 5.00, peri: 5.75, standard: 6.25, rural: 7.00, difficile: 8.00 },
+    metropole_petit: { centre: 5.75, peri: 6.50, standard: 7.00, rural: 7.75, difficile: 8.75 },
+  };
+  var CAPI_REGION_LABEL = {
+    martinique: 'Martinique', guadeloupe: 'Guadeloupe', guyane: 'Guyane',
+    reunion: 'La Réunion', mayotte: 'Mayotte',
+    metropole_paris: 'Île-de-France dense', metropole_grand: 'Grande métropole',
+    metropole_moyen: 'Ville moyenne', metropole_petit: 'Petite ville / rural',
+  };
+  var CAPI_TIER_LABEL = {
+    centre: 'Centre-ville / chef-lieu', peri: 'Périphérie proche',
+    standard: 'Ancien standard / bourgs', rural: 'Rural / éloigné',
+    difficile: 'Locatif difficile (vétusté, vacance élevée)',
+  };
+  // Centres-villes / chefs-lieux par CP (liste extensible)
+  var CAPI_CENTRES_CP = {
+    '97200': true, '97110': true, '97300': true, '97400': true, '97600': true,
+    '75001': true, '75002': true, '75003': true, '75004': true, '75005': true,
+    '75006': true, '75007': true, '75008': true, '75009': true, '75010': true,
+    '75011': true, '75012': true, '75013': true, '75014': true, '75015': true,
+    '75016': true, '75017': true, '75018': true, '75019': true, '75020': true,
+    '13001': true, '13002': true, '13006': true,
+    '69001': true, '69002': true, '69003': true, '69005': true, '69006': true,
+    '31000': true, '33000': true, '34000': true, '35000': true, '44000': true,
+    '54000': true, '59000': true, '67000': true, '76000': true,
+  };
+  // CP périphérie DOM (bagne autour des chefs-lieux)
+  var CAPI_PERI_CP = {
+    // Martinique — couronne Fort-de-France
+    '97232': true, '97233': true, '97234': true, '97231': true, '97224': true,
+    '97228': true, '97229': true, '97215': true, '97220': true,
+    // Guadeloupe — couronne Pointe-à-Pitre / Basse-Terre
+    '97139': true, '97170': true, '97180': true, '97190': true, '97142': true,
+    '97120': true, '97122': true,
+    // Guyane — couronne Cayenne
+    '97354': true, '97355': true, '97356': true, '97351': true,
+    // Réunion — couronne Saint-Denis
+    '97490': true, '97491': true, '97417': true, '97420': true, '97460': true,
+  };
+  function detectCapiRegion(cp) {
+    var s = String(cp || '').trim();
+    if (/^971/.test(s)) return 'guadeloupe';
+    if (/^972/.test(s)) return 'martinique';
+    if (/^973/.test(s)) return 'guyane';
+    if (/^974/.test(s)) return 'reunion';
+    if (/^976/.test(s)) return 'mayotte';
+    if (/^75/.test(s) || /^92/.test(s) || /^93/.test(s) || /^94/.test(s)) return 'metropole_paris';
+    if (/^13[0-9]{3}$/.test(s) || /^69[0-9]{3}$/.test(s) || /^31/.test(s) ||
+        /^33/.test(s) || /^59/.test(s) || /^67/.test(s) || /^44/.test(s)) return 'metropole_grand';
+    if (!s) return 'metropole_moyen';
+    // Départements ruraux typiques
+    if (/^(04|05|09|12|15|19|23|43|46|48|55|58|82)/.test(s)) return 'metropole_petit';
+    return 'metropole_moyen';
+  }
+  function detectCapiTier(cp, bien) {
+    var s = String(cp || '').trim();
+    var etat = String((bien && bien.etat) || '').toLowerCase();
+    // État catastrophique → locatif difficile
+    if (etat.indexOf('ruine') >= 0 || etat.indexOf('rénover') >= 0 || etat.indexOf('renover') >= 0) return 'difficile';
+    if (CAPI_CENTRES_CP[s]) return 'centre';
+    if (CAPI_PERI_CP[s]) return 'peri';
+    // CP se terminant par 00 ou 10 souvent = chef-lieu → centre par défaut si non listé
+    if (/00$/.test(s) && !/^97/.test(s)) return 'standard';
+    return 'standard';
+  }
+  function suggestTauxCapi(bien, forceTier) {
+    var cp = (bien && bien.cp) || '';
+    var region = detectCapiRegion(cp);
+    var tier = forceTier || detectCapiTier(cp, bien);
+    var table = CAPI_TAUX[region] || CAPI_TAUX.metropole_moyen;
+    var taux = table[tier] != null ? table[tier] : table.standard;
+    return {
+      taux: taux, region: region, tier: tier,
+      regionLabel: CAPI_REGION_LABEL[region] || region,
+      tierLabel: CAPI_TIER_LABEL[tier] || tier,
+      rationale: 'Auto : ' + (CAPI_REGION_LABEL[region] || region) +
+        ' · ' + (CAPI_TIER_LABEL[tier] || tier) +
+        ' → ' + taux.toFixed(2) + ' % (fourchette CEE ±0,5 %)',
+    };
+  }
+  // Expose pour usage étude + inspection console
+  window.FIDI_TauxCapi = { suggest: suggestTauxCapi, regions: CAPI_REGION_LABEL, tiers: CAPI_TIER_LABEL, table: CAPI_TAUX };
+
   // ── Base clients (destinataires) — locale + CRM optionnel ─────
   var CLIENTS_KEY = 'fidi:clients';                // [{id,label,nom,adresse,cp,ville,email,telephone,type,notes,source}]
   var CLIENT_LAST_KEY = 'fidi:clients:last';       // id dernier client chargé
@@ -1048,9 +1145,23 @@
       return head('Détermination de la valeur vénale', 'Méthodes combinées en une valeur retenue pondérée') +
         '<div class="av-grid-3">' +
         fld('€/m² ACM retenu', 'acm.prixM2Manuel', { type: 'number', tip: 'Vide = médiane comparables (' + (acmPlace ? fmt(acmPlace) + ' €' : '—') + ')', ph: acmPlace ? String(acmPlace) : '' }) +
-        fld('Taux de capitalisation (%)', 'calcul.tauxCapi', { type: 'number', step: '0.1', tip: '6 à 7 % typique Martinique' }) +
+        fld('Taux de capitalisation (%)', 'calcul.tauxCapi', { type: 'number', step: '0.1', tip: 'Auto-suggéré selon région + secteur (CP du bien)' }) +
         fld("Décote d'occupation (%)", 'calcul.decoteOccupation', { type: 'number', step: '1', tip: '0 libre — 5 à 15 % occupé' }) +
         '</div>' +
+        (function () {
+          var sTiers = Object.keys(CAPI_TIER_LABEL).map(function (k) {
+            return '<option value="' + k + '">' + CAPI_TIER_LABEL[k] + '</option>';
+          }).join('');
+          var rat = (d.calcul && d.calcul.tauxCapiRationale) || '';
+          return '<div class="alert alert-light border small py-2 mb-2" style="border-left:3px solid #b87333 !important;">' +
+            '<div class="d-flex flex-wrap gap-2 align-items-center">' +
+              '<i class="bi bi-percent"></i><label class="mb-0"><b>Secteur (surcharge manuelle) :</b></label>' +
+              '<select class="form-select form-select-sm" style="max-width:280px;" data-action="pick-capi-tier">' + sTiers + '</select>' +
+              '<button class="btn btn-sm btn-outline-primary" type="button" data-action="recalc-capi"><i class="bi bi-magic me-1"></i>Recalculer auto (depuis CP)</button>' +
+            '</div>' +
+            (rat ? '<div class="mt-1 text-muted"><i class="bi bi-info-circle me-1"></i>' + esc(rat) + '</div>' : '') +
+          '</div>';
+        })() +
         '<div class="av-box"><div class="av-box-title">Méthodes & pondération</div>' +
         methodRow('comparaison', 'Comparaison directe (ACM)') +
         methodRow('surfacePonderee', 'Surface pondérée') +
@@ -1232,8 +1343,25 @@
         fld('Loyer marché €/m²/mois', 'locatif.loyerM2Marche', { type: 'number', tip: 'Médiane des comparables · Carte des loyers DHUP en Martinique' }) +
         fld('Loyer réf. €/m²/mois (zone tendue)', 'locatif.loyerRef', { type: 'number', tip: 'Loyer de référence publié par arrêté préfectoral' }) +
         fld('Loyer réf. majoré €/m²/mois', 'locatif.loyerRefMajore', { type: 'number', tip: 'Réf +20 % — plafond légal en zone tendue' }) +
-        fld('Taux capi. cible %', 'locatif.tauxCapitalisation', { type: 'number', tip: 'Pour capitalisation inverse (VV cible = loyer annuel / taux)' }) +
+        fld('Taux capi. cible %', 'locatif.tauxCapitalisation', { type: 'number', tip: 'Pour capitalisation inverse (VV cible = loyer annuel / taux). Auto-suggéré selon région + secteur.' }) +
       '</div>' +
+      // Sélecteur secteur + rationale auto
+      (function () {
+        var sTiers = Object.keys(CAPI_TIER_LABEL).map(function (k) {
+          var cur = (state.data.locatif && state.data.locatif.tauxCapiTier === CAPI_TIER_LABEL[k]) ? ' selected' : '';
+          return '<option value="' + k + '"' + cur + '>' + CAPI_TIER_LABEL[k] + '</option>';
+        }).join('');
+        var rat = (state.data.locatif && state.data.locatif.tauxCapiRationale) || '';
+        return '<div class="alert alert-light border small py-2 mb-2" style="border-left:3px solid #b87333 !important;">' +
+          '<div class="d-flex flex-wrap gap-2 align-items-center">' +
+            '<i class="bi bi-percent"></i>' +
+            '<label class="mb-0"><b>Secteur (auto détecté depuis CP) :</b></label>' +
+            '<select class="form-select form-select-sm" style="max-width:280px;" data-action="pick-capi-tier">' + sTiers + '</select>' +
+            '<button class="btn btn-sm btn-outline-primary" type="button" data-action="recalc-capi"><i class="bi bi-magic me-1"></i>Recalculer auto</button>' +
+          '</div>' +
+          (rat ? '<div class="mt-1 text-muted"><i class="bi bi-info-circle me-1"></i>' + esc(rat) + '</div>' : '') +
+        '</div>';
+      })() +
       (loyerMoisSuggere ? '<div class="av-tip small mb-2">Loyer marché estimé : <strong>' + fmt(loyerMoisSuggere) + ' €/mois</strong> (' + surf + ' m² × ' + loyerM2.toFixed(2) + ' €/m²)</div>' : '') +
       (conforme != null ? '<div class="alert ' + (conforme ? 'alert-success' : 'alert-warning') + ' small py-2 mb-2"><i class="bi bi-' + (conforme ? 'check' : 'x') + '-circle me-1"></i>' + (conforme ? 'Loyer conforme au plafond (zone tendue)' : 'Loyer <strong>dépasse</strong> le loyer de référence majoré — encadrement loyers non respecté') + '</div>' : '') +
 
@@ -1739,6 +1867,22 @@
       toast('Client chargé : ' + (cp.label || cp.nom));
       return;
     }
+    // Sélecteur secteur taux capi (force override)
+    if (el.tagName === 'SELECT' && el.dataset.action === 'pick-capi-tier') {
+      var tier = el.value;
+      var sugg = suggestTauxCapi(state.data.bien || {}, tier);
+      state.data.locatif = state.data.locatif || {};
+      state.data.locatif.tauxCapitalisation = sugg.taux;
+      state.data.locatif.tauxCapiRationale = sugg.rationale + ' [secteur forcé]';
+      state.data.locatif.tauxCapiTier = sugg.tierLabel;
+      state.data.locatif.tauxCapiRegion = sugg.regionLabel;
+      state.data.calcul = state.data.calcul || {};
+      state.data.calcul.tauxCapi = sugg.taux;
+      state.data.calcul.tauxCapiRationale = sugg.rationale + ' [secteur forcé]';
+      showSection(state.section);
+      toast('Taux mis à jour : ' + sugg.taux.toFixed(2) + ' %');
+      return;
+    }
     // Toggle CRM
     if (el.type === 'checkbox' && el.dataset.action === 'toggle-crm') {
       setCrmEnabled(el.checked);
@@ -1923,6 +2067,19 @@
       setCurrentClientId('');
       showSection('metadata');
       toast('Client supprimé');
+    }
+    else if (a === 'recalc-capi') {
+      var sugg2 = suggestTauxCapi(state.data.bien || {});
+      state.data.locatif = state.data.locatif || {};
+      state.data.locatif.tauxCapitalisation = sugg2.taux;
+      state.data.locatif.tauxCapiRationale = sugg2.rationale;
+      state.data.locatif.tauxCapiTier = sugg2.tierLabel;
+      state.data.locatif.tauxCapiRegion = sugg2.regionLabel;
+      state.data.calcul = state.data.calcul || {};
+      state.data.calcul.tauxCapi = sugg2.taux;
+      state.data.calcul.tauxCapiRationale = sugg2.rationale;
+      showSection(state.section);
+      toast('Taux auto : ' + sugg2.taux.toFixed(2) + ' % (' + sugg2.tierLabel + ')');
     }
     else if (a === 'crm-sync') {
       toast('Synchronisation CRM…');
@@ -3228,12 +3385,15 @@
           (LL5.chargesRecup && _loyRetenu ? '<tr><td class="lbl">Total charges comprises (CC)</td><td class="center bold">' + fmtE(_loyRetenu + num(LL5.chargesRecup)) + ' / mois</td></tr>' : '') +
           (_annuel5 ? '<tr><td class="lbl">Loyer annuel HC</td><td class="center">' + fmtE(_annuel5) + ' / an</td></tr>' : '') +
           (_valCap ? '<tr><td class="lbl">Valeur vénale par capitalisation (contrôle)</td><td class="center">' + fmtE(_valCap) + ' <span style="color:#5c6470;">(taux ' + _tauxCap5 + ' %)</span></td></tr>' : '') +
+          (_valCap && LL5.tauxCapiRationale ? '<tr><td class="lbl" style="font-size:8pt;color:#5c6470;font-style:italic;">Justification du taux</td><td class="center" style="font-size:8pt;color:#5c6470;font-style:italic;">' + esc(LL5.tauxCapiRationale) + '</td></tr>' : '') +
           '<tr class="gold-row"><td>VALEUR LOCATIVE DE MARCHÉ (VLM) — loyer mensuel HC retenu</td><td class="center">' + (_loyRetenu ? fmtE(_loyRetenu) : '[renseignez loyer marché ou HC dans Cadre locatif]') + '</td></tr>' +
         '</table>';
     } else {
       // ── Section 5 VENTE : Valeur vénale (inchangée) ────────────
       html += '<h1>5. Détermination de la valeur vénale</h1>' +
         '<p>La valeur retenue résulte de la <b>combinaison pondérée</b> des méthodes applicables au bien :</p>' +
+        (data.calcul && data.calcul.tauxCapiRationale ?
+          '<p style="font-size:8pt;color:#5c6470;font-style:italic;margin:-6px 0 6px;"><b>Taux de capitalisation retenu : ' + num(data.calcul.tauxCapi).toFixed(2) + ' %</b> — ' + esc(data.calcul.tauxCapiRationale) + '</p>' : '') +
         '<table><tr><th>Méthode</th><th class="center">Valeur</th><th class="center">Poids</th><th class="center">Contribution</th></tr>' +
         calc.methodes.map(function (e) {
           return '<tr' + (e.actif ? '' : ' style="color:#9aa0a6;"') + '><td>' + esc(e.label) + '</td>' +
@@ -3405,16 +3565,22 @@
   // Applique les paramètres par défaut adaptés à la nature (Phase 5 directive Qwen)
   function applyDefaultsForNature(nat) {
     var d = state.data;
+    // Suggestion automatique du taux de capi selon région + secteur (CP + état)
+    var suggCapi = suggestTauxCapi(d.bien || {});
     if (nat === 'location') {
       // Valeurs par défaut avis LOCATIF
       d.calcul = d.calcul || {};
-      d.calcul.tauxCapi = d.calcul.tauxCapi || 6.5;
+      d.calcul.tauxCapi = d.calcul.tauxCapi || suggCapi.taux;
+      d.calcul.tauxCapiRationale = suggCapi.rationale;
       d.locatif = d.locatif || defaultData().locatif;
       // Bail vide par défaut, IRL cadre standard
       d.locatif.typeBail = d.locatif.typeBail || 'vide';
       d.locatif.dureeBail = d.locatif.dureeBail || 36;
       d.locatif.depotGarantie = d.locatif.depotGarantie || (num(d.locatif.loyerHC) || '');
-      d.locatif.tauxCapitalisation = d.locatif.tauxCapitalisation || 6.5;
+      d.locatif.tauxCapitalisation = d.locatif.tauxCapitalisation || suggCapi.taux;
+      d.locatif.tauxCapiRationale = suggCapi.rationale;
+      d.locatif.tauxCapiRegion = suggCapi.regionLabel;
+      d.locatif.tauxCapiTier = suggCapi.tierLabel;
       // Sépare DVF (ventes €/m²) et DHUP (loyers €/m²/mois) : les DVF n'ont pas leur place
       // dans « sources de loyers pratiqués ». On les déplace dans marche.sourcesDvf pour
       // le contrôle par capitalisation (méthode inverse), pas pour la comparaison locative.
@@ -3427,7 +3593,8 @@
     } else {
       // Valeurs par défaut avis VENTE (déjà en place, on garantit)
       d.calcul = d.calcul || {};
-      d.calcul.tauxCapi = d.calcul.tauxCapi || 6.5;
+      d.calcul.tauxCapi = d.calcul.tauxCapi || suggCapi.taux;
+      d.calcul.tauxCapiRationale = suggCapi.rationale;
       d.calcul.decoteOccupation = d.calcul.decoteOccupation != null ? d.calcul.decoteOccupation : 10;
     }
   }
