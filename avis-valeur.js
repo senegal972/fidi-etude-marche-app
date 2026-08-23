@@ -2057,9 +2057,14 @@
   }
 
   function navSection(dir) {
-    var i = SECTIONS.findIndex(function (s) { return s.id === state.section; });
+    // Suit l'ordre RÉEL des onglets affichés (nature/mode-dependent), pas la liste
+    // statique SECTIONS. Sinon en location : loyers (masqué) et locatif (dynamique)
+    // décalent la nav et « Suivant » renvoie à la mauvaise section.
+    var vis = visibleSections();
+    var i = vis.findIndex(function (s) { return s.id === state.section; });
+    if (i < 0) { showSection(vis[0].id); return; }
     var j = i + dir;
-    if (j >= 0 && j < SECTIONS.length) showSection(SECTIONS[j].id);
+    if (j >= 0 && j < vis.length) showSection(vis[j].id);
   }
   function togglePreview() {
     state.preview = !state.preview;
