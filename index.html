@@ -555,81 +555,9 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
       </div>
     </div>
 
-    <!-- ROW 1 : Score + KPIs + Carte -->
+    <!-- ROW 1A : Carte pleine largeur -->
     <div class="row g-3 mb-3">
-
-      <!-- Score -->
-      <div class="col-md-4 col-lg-3">
-        <div class="score-card">
-          <div class="section-title"><i class="bi bi-trophy"></i>Score de potentiel</div>
-          <div class="score-gauge-wrap">
-            <canvas id="gaugeChart" width="160" height="160"></canvas>
-            <div class="score-value">
-              <div class="score-number" id="scoreNumber">—</div>
-              <div class="score-label">/ 100</div>
-            </div>
-          </div>
-          <div class="score-verdict" id="scoreVerdict"></div>
-          <div id="axesContainer"></div>
-        </div>
-      </div>
-
-      <!-- KPIs -->
-      <div class="col-md-4 col-lg-5">
-        <div class="row g-2 h-100">
-          <div class="col-6">
-            <div class="kpi-card">
-              <div class="kpi-icon" style="color:var(--fidi-blue);"><i class="bi bi-house-fill"></i></div>
-              <div class="kpi-value" id="kpi-prix-maison">—</div>
-              <div class="kpi-label">€/m² maison</div>
-              <div class="kpi-sub" id="kpi-evol-maison"></div>
-            </div>
-          </div>
-          <div class="col-6">
-            <div class="kpi-card">
-              <div class="kpi-icon" style="color:#6f42c1;"><i class="bi bi-building"></i></div>
-              <div class="kpi-value" id="kpi-prix-appart">—</div>
-              <div class="kpi-label">€/m² appartement</div>
-              <div class="kpi-sub" id="kpi-evol-appart"></div>
-            </div>
-          </div>
-          <div class="col-6">
-            <div class="kpi-card">
-              <div class="kpi-icon" style="color:#0d6efd;"><i class="bi bi-arrow-left-right"></i></div>
-              <div class="kpi-value" id="kpi-transactions">—</div>
-              <div class="kpi-label">Transactions / an</div>
-              <div class="kpi-sub" id="kpi-trans-sub"></div>
-            </div>
-          </div>
-          <div class="col-6">
-            <div class="kpi-card">
-              <div class="kpi-icon" style="color:#198754;"><i class="bi bi-people-fill"></i></div>
-              <div class="kpi-value" id="kpi-population">—</div>
-              <div class="kpi-label">Habitants</div>
-              <div class="kpi-sub" id="kpi-pop-sub"></div>
-            </div>
-          </div>
-          <div class="col-6">
-            <div class="kpi-card">
-              <div class="kpi-icon" style="color:#c0392b;"><i class="bi bi-clock-history"></i></div>
-              <div class="kpi-value" id="kpi-delai">—</div>
-              <div class="kpi-label">Délai vente estimé</div>
-              <div class="kpi-sub" id="kpi-delai-sub"></div>
-            </div>
-          </div>
-          <div class="col-6">
-            <div class="kpi-card">
-              <div class="kpi-icon" style="color:#20c997;"><i class="bi bi-cash-coin"></i></div>
-              <div class="kpi-value" id="kpi-loyer">—</div>
-              <div class="kpi-label">Loyer marché €/m²/mois</div>
-              <div class="kpi-sub" id="kpi-loyer-sub"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Carte -->
-      <div class="col-md-4 col-lg-4">
+      <div class="col-12">
         <div class="map-card">
           <div class="map-header"><i class="bi bi-geo-alt me-1"></i>Localisation · Cadastre & Urbanisme</div>
           <div id="map"></div>
@@ -660,6 +588,80 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
               <a id="gpsWaze" href="#" target="_blank" rel="noopener" class="btn btn-sm btn-outline-info" title="Ouvrir le point GPS dans Waze">
                 <i class="bi bi-signpost-split me-1"></i>Waze
               </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROW 1B : Score + KPIs (sous la carte) -->
+    <div class="row g-3 mb-3">
+
+      <!-- Score -->
+      <div class="col-12 col-md-5 col-lg-4 col-xl-3">
+        <div class="score-card">
+          <div class="section-title"><i class="bi bi-trophy"></i>Score de potentiel</div>
+          <div class="score-gauge-wrap">
+            <canvas id="gaugeChart" width="160" height="160"></canvas>
+            <div class="score-value">
+              <div class="score-number" id="scoreNumber">—</div>
+              <div class="score-label">/ 100</div>
+            </div>
+          </div>
+          <div class="score-verdict" id="scoreVerdict"></div>
+          <div id="axesContainer"></div>
+        </div>
+      </div>
+
+      <!-- KPIs — grille responsive : 2 col mobile, 3 col tablette, 6 col desktop large -->
+      <div class="col-12 col-md-7 col-lg-8 col-xl-9">
+        <div class="row g-2 h-100">
+          <div class="col-6 col-md-4 col-xl-2">
+            <div class="kpi-card">
+              <div class="kpi-icon" style="color:var(--fidi-blue);"><i class="bi bi-house-fill"></i></div>
+              <div class="kpi-value" id="kpi-prix-maison">—</div>
+              <div class="kpi-label">€/m² maison</div>
+              <div class="kpi-sub" id="kpi-evol-maison"></div>
+            </div>
+          </div>
+          <div class="col-6 col-md-4 col-xl-2">
+            <div class="kpi-card">
+              <div class="kpi-icon" style="color:#6f42c1;"><i class="bi bi-building"></i></div>
+              <div class="kpi-value" id="kpi-prix-appart">—</div>
+              <div class="kpi-label">€/m² appartement</div>
+              <div class="kpi-sub" id="kpi-evol-appart"></div>
+            </div>
+          </div>
+          <div class="col-6 col-md-4 col-xl-2">
+            <div class="kpi-card">
+              <div class="kpi-icon" style="color:#0d6efd;"><i class="bi bi-arrow-left-right"></i></div>
+              <div class="kpi-value" id="kpi-transactions">—</div>
+              <div class="kpi-label">Transactions / an</div>
+              <div class="kpi-sub" id="kpi-trans-sub"></div>
+            </div>
+          </div>
+          <div class="col-6 col-md-4 col-xl-2">
+            <div class="kpi-card">
+              <div class="kpi-icon" style="color:#198754;"><i class="bi bi-people-fill"></i></div>
+              <div class="kpi-value" id="kpi-population">—</div>
+              <div class="kpi-label">Habitants</div>
+              <div class="kpi-sub" id="kpi-pop-sub"></div>
+            </div>
+          </div>
+          <div class="col-6 col-md-4 col-xl-2">
+            <div class="kpi-card">
+              <div class="kpi-icon" style="color:#c0392b;"><i class="bi bi-clock-history"></i></div>
+              <div class="kpi-value" id="kpi-delai">—</div>
+              <div class="kpi-label">Délai vente estimé</div>
+              <div class="kpi-sub" id="kpi-delai-sub"></div>
+            </div>
+          </div>
+          <div class="col-6 col-md-4 col-xl-2">
+            <div class="kpi-card">
+              <div class="kpi-icon" style="color:#20c997;"><i class="bi bi-cash-coin"></i></div>
+              <div class="kpi-value" id="kpi-loyer">—</div>
+              <div class="kpi-label">Loyer marché €/m²/mois</div>
+              <div class="kpi-sub" id="kpi-loyer-sub"></div>
             </div>
           </div>
         </div>
