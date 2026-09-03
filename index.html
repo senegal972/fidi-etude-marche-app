@@ -4267,7 +4267,7 @@ window.Compte = (function(){
     let root = document.getElementById('compteModalRoot');
     if(!root.dataset.built){
       root.innerHTML =
-        '<div class="modal fade" id="compteModal" tabindex="-1"><div class="modal-dialog modal-dialog-scrollable">'+
+        '<div class="modal fade" id="compteModal" tabindex="-1"><div class="modal-dialog modal-xl modal-dialog-scrollable">'+
         '<div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="compteTitre">Mon compte</h5>'+
         '<button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>'+
         '<div class="modal-body" id="compteBody"></div></div></div></div>';
@@ -4325,29 +4325,77 @@ window.Compte = (function(){
         '</div>'+
         '<div class="tab-pane fade" id="tabOffres"><div id="offresBox" class="small text-muted">Chargement…</div></div>'+
         (admin ? '<div class="tab-pane fade" id="tabAdmin">'+
-          '<div class="border rounded p-2 mb-3"><div class="fw-semibold small mb-2">Créer un compte</div>'+
-            '<input class="form-control form-control-sm mb-1" id="adEmail" placeholder="E-mail">'+
-            '<input class="form-control form-control-sm mb-1" id="adNom" placeholder="Nom">'+
-            '<input class="form-control form-control-sm mb-1" id="adPwd" placeholder="Mot de passe (optionnel — sinon généré)">'+
-            '<div class="d-flex gap-1 mb-1"><input type="number" class="form-control form-control-sm" id="adCredits" placeholder="Crédits" style="max-width:100px;">'+
-            '<input type="number" class="form-control form-control-sm" id="adQuota" placeholder="Essais (5)" style="max-width:100px;">'+
-            '<select class="form-select form-select-sm" id="adRole"><option value="Collaborateur">Collaborateur</option><option value="Administrateur">Administrateur</option></select></div>'+
-            '<div class="form-check form-check-sm mb-1"><input class="form-check-input" type="checkbox" id="adIllimite"><label class="form-check-label small" for="adIllimite">Accès illimité (partenaire — aucun crédit consommé)</label></div>'+
-            '<button class="btn btn-primary btn-sm" onclick="Compte.adminCreate()">Créer</button>'+
-            '<div class="small mt-1" id="adMsg"></div></div>'+
-          '<div class="fw-semibold small mb-2">Comptes</div><div id="adList" class="small text-muted">Chargement…</div>'+
-          '<hr class="my-3">'+
-          '<div class="fw-semibold small mb-2"><i class="bi bi-tags me-1"></i>Grille tarifaire (facturation client)</div>'+
-          '<div class="border rounded p-2 mb-2">'+
-            '<div class="row g-1 mb-1">'+
-              '<div class="col-12"><input class="form-control form-control-sm" id="tfNom" placeholder="Nom de la prestation"></div>'+
-              '<div class="col-6"><select class="form-select form-select-sm" id="tfCat"><option>Avis de valeur</option><option>Étude de marché</option><option>Option</option><option>Forfait</option></select></div>'+
-              '<div class="col-3"><input type="number" min="0" class="form-control form-control-sm" id="tfPrix" placeholder="€ TTC"></div>'+
-              '<div class="col-3"><button class="btn btn-primary btn-sm w-100" onclick="Compte.tarifCreate()">Ajouter</button></div>'+
+          // ── Header actions : créer compte + copier lien signup + filtres ───
+          '<div class="d-flex flex-wrap gap-2 align-items-center mb-3 pb-2 border-bottom">'+
+            '<div class="fw-bold" style="font-size:1.05rem;color:#1f1a14;"><i class="bi bi-people-fill me-2" style="color:#b87333;"></i>Gestion des comptes</div>'+
+            '<div class="ms-auto d-flex gap-2 flex-wrap">'+
+              '<input type="search" class="form-control form-control-sm" id="adFilterQ" placeholder="🔍 Rechercher (nom, email, réseau)" oninput="Compte.adminRefresh()" style="max-width:260px;">'+
+              '<select class="form-select form-select-sm" id="adFilterReseau" onchange="Compte.adminRefresh()" style="max-width:180px;"><option value="">Tous réseaux</option></select>'+
+              '<button class="btn btn-sm btn-outline-primary" onclick="Compte.copySignupLink()"><i class="bi bi-link-45deg me-1"></i>Copier lien inscription</button>'+
+              '<button class="btn btn-sm btn-primary" onclick="Compte.openCreateForm()"><i class="bi bi-person-plus-fill me-1"></i>Créer un compte</button>'+
             '</div>'+
-            '<div class="small" id="tfMsg"></div>'+
           '</div>'+
-          '<div id="adTarifs" class="small text-muted">Chargement…</div>'+
+
+          // ── Formulaire création (initialement caché, révélé sur clic) ───
+          '<div class="border rounded p-3 mb-3 d-none" id="adCreateForm" style="background:#f8f9fa;border-left:3px solid #b87333!important;">'+
+            '<div class="d-flex align-items-center mb-2"><div class="fw-semibold">Nouveau compte</div>'+
+              '<button class="btn btn-sm btn-outline-secondary ms-auto" onclick="Compte.closeCreateForm()"><i class="bi bi-x"></i></button>'+
+            '</div>'+
+            '<div class="row g-2">'+
+              '<div class="col-md-4"><label class="form-label small mb-0">E-mail *</label><input type="email" class="form-control form-control-sm" id="adEmail" placeholder="prenom.nom@exemple.com"></div>'+
+              '<div class="col-md-4"><label class="form-label small mb-0">Nom / Prénom</label><input class="form-control form-control-sm" id="adNom" placeholder="Franck Dupont"></div>'+
+              '<div class="col-md-4"><label class="form-label small mb-0">Réseau / Groupe</label>'+
+                '<input class="form-control form-control-sm" id="adReseau" list="adReseauList" placeholder="Sextant France, Optimmo Dom…">'+
+                '<datalist id="adReseauList"><option value="Sextant France"><option value="Optimmo Dom"><option value="Indépendant"></datalist>'+
+              '</div>'+
+              '<div class="col-md-3"><label class="form-label small mb-0">Rôle</label>'+
+                '<select class="form-select form-select-sm" id="adRole"><option value="Collaborateur">Collaborateur</option><option value="Administrateur">Administrateur</option></select>'+
+              '</div>'+
+              '<div class="col-md-3"><label class="form-label small mb-0">Crédits initiaux</label><input type="number" class="form-control form-control-sm" id="adCredits" placeholder="0"></div>'+
+              '<div class="col-md-3"><label class="form-label small mb-0">Essais recherches</label><input type="number" class="form-control form-control-sm" id="adQuota" placeholder="5"></div>'+
+              '<div class="col-md-3"><label class="form-label small mb-0">Grille tarifaire</label>'+
+                '<select class="form-select form-select-sm" id="adTarifGroup"><option value="">Standard (par défaut)</option><option value="Sextant">Sextant</option><option value="Partenaire">Partenaire</option></select>'+
+              '</div>'+
+              '<div class="col-md-8 d-flex align-items-end">'+
+                '<div class="form-check"><input class="form-check-input" type="checkbox" id="adIllimite"><label class="form-check-label small" for="adIllimite">Accès illimité (aucun crédit consommé)</label></div>'+
+                '<div class="ms-3 form-check"><input class="form-check-input" type="checkbox" id="adAutoPwd" checked><label class="form-check-label small" for="adAutoPwd">Générer mot de passe fort (16 chars, style Google)</label></div>'+
+              '</div>'+
+              '<div class="col-md-4"><label class="form-label small mb-0">Mot de passe manuel</label><input class="form-control form-control-sm" id="adPwd" placeholder="(laissez vide pour générer)"></div>'+
+            '</div>'+
+            '<div class="d-flex gap-2 mt-3">'+
+              '<button class="btn btn-primary btn-sm" onclick="Compte.adminCreate()"><i class="bi bi-check-lg me-1"></i>Créer le compte</button>'+
+              '<button class="btn btn-outline-secondary btn-sm" onclick="Compte.closeCreateForm()">Annuler</button>'+
+              '<div class="small mt-1 ms-auto" id="adMsg"></div>'+
+            '</div>'+
+          '</div>'+
+
+          // ── Tableau Comptes ───
+          '<div class="table-responsive mb-4"><table class="table table-sm table-hover align-middle" style="font-size:.85rem;"><thead style="background:#efe9d9;color:#4a4238;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;">'+
+            '<tr><th style="padding:.6rem .5rem;">Compte</th><th>Réseau</th><th>Rôle</th><th>Statut</th><th class="text-center">Crédits</th><th class="text-center">Essais</th><th>Grille tarif.</th><th class="text-end">Actions</th></tr>'+
+          '</thead><tbody id="adListBody"><tr><td colspan="8" class="text-muted small p-3">Chargement…</td></tr></tbody></table></div>'+
+
+          // ── Section Grille tarifaire ───
+          '<div class="d-flex flex-wrap gap-2 align-items-center mb-3 pb-2 border-bottom mt-4">'+
+            '<div class="fw-bold" style="font-size:1.05rem;color:#1f1a14;"><i class="bi bi-tags-fill me-2" style="color:#b87333;"></i>Grille tarifaire (facturation client)</div>'+
+            '<div class="ms-auto d-flex gap-2">'+
+              '<select class="form-select form-select-sm" id="tfGroup" onchange="Compte.loadTarifsAdmin()" style="max-width:180px;">'+
+                '<option value="">Standard</option><option value="Sextant">Sextant</option><option value="Partenaire">Partenaire</option>'+
+              '</select>'+
+              '<button class="btn btn-sm btn-primary" onclick="Compte.openTarifForm()"><i class="bi bi-plus-lg me-1"></i>Ajouter une prestation</button>'+
+            '</div>'+
+          '</div>'+
+          '<div class="border rounded p-3 mb-3 d-none" id="tfCreateForm" style="background:#f8f9fa;border-left:3px solid #b87333!important;">'+
+            '<div class="row g-2">'+
+              '<div class="col-md-5"><input class="form-control form-control-sm" id="tfNom" placeholder="Nom de la prestation"></div>'+
+              '<div class="col-md-3"><select class="form-select form-select-sm" id="tfCat"><option>Avis de valeur</option><option>Étude de marché</option><option>Option</option><option>Forfait</option></select></div>'+
+              '<div class="col-md-2"><input type="number" min="0" class="form-control form-control-sm" id="tfPrix" placeholder="€ TTC"></div>'+
+              '<div class="col-md-2 d-flex gap-1"><button class="btn btn-primary btn-sm flex-fill" onclick="Compte.tarifCreate()">Ajouter</button><button class="btn btn-outline-secondary btn-sm" onclick="Compte.closeTarifForm()"><i class="bi bi-x"></i></button></div>'+
+            '</div>'+
+            '<div class="small mt-1" id="tfMsg"></div>'+
+          '</div>'+
+          '<div class="table-responsive"><table class="table table-sm align-middle" style="font-size:.85rem;"><thead style="background:#efe9d9;color:#4a4238;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;">'+
+            '<tr><th style="padding:.6rem .5rem;">Prestation</th><th>Catégorie</th><th class="text-end">Prix TTC</th><th>Statut</th><th class="text-end">Actions</th></tr>'+
+          '</thead><tbody id="adTarifsBody"><tr><td colspan="5" class="text-muted small p-3">Chargement…</td></tr></tbody></table></div>'+
         '</div>' : '')+
       '</div>';
   }
@@ -4378,46 +4426,122 @@ window.Compte = (function(){
     const r = await fetch('/api/admin/users', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({action},payload||{}))});
     return { ok:r.ok, data: await r.json().catch(()=>({})) };
   }
+  let _adminUsersCache = [];
   async function adminList(){
-    const el = document.getElementById('adList'); if(!el) return;
+    const body = document.getElementById('adListBody'); if(!body) return;
+    body.innerHTML = '<tr><td colspan="8" class="text-muted small p-3"><span class="spinner-border spinner-border-sm me-1"></span> Chargement…</td></tr>';
     const {ok,data} = await admin('list');
-    if(!ok){ el.textContent = data.error||'Erreur.'; return; }
+    if(!ok){ body.innerHTML = '<tr><td colspan="8" class="text-danger p-3">'+esc(data.error||'Erreur.')+'</td></tr>'; return; }
+    _adminUsersCache = data.users || [];
+    state.superAdmin = data.super_admin || 'contact@fidiconseil.com';
+    // Alimente le sélecteur réseau
+    const sel = document.getElementById('adFilterReseau');
+    if(sel){
+      const reseaux = Array.from(new Set(_adminUsersCache.map(u => u.reseau).filter(Boolean))).sort();
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">Tous réseaux</option>' + reseaux.map(r => '<option value="'+esc(r)+'"'+(r===cur?' selected':'')+'>'+esc(r)+'</option>').join('');
+    }
+    adminRefresh();
+  }
+  function adminRefresh(){
+    const body = document.getElementById('adListBody'); if(!body) return;
+    const q = ((document.getElementById('adFilterQ')||{}).value||'').toLowerCase().trim();
+    const rsFilter = ((document.getElementById('adFilterReseau')||{}).value||'').trim();
     const moi = (state.user && state.user.email) || '';
-    el.innerHTML = (data.users||[]).map(u => {
+    const isSA = moi === (state.superAdmin || 'contact@fidiconseil.com');
+    const rows = _adminUsersCache.filter(u => {
+      if(rsFilter && u.reseau !== rsFilter) return false;
+      if(!q) return true;
+      return (u.email+' '+u.nom+' '+(u.reseau||'')).toLowerCase().indexOf(q) >= 0;
+    }).map(u => {
       const self = u.email === moi;
-      const admin = u.role === 'Administrateur';
-      const unlimited = admin || u.illimite;
-      const credLabel = unlimited ? '∞' : (u.credits + ' cr.');
-      const quotaLabel = unlimited ? '' : ' · <span class="text-muted" style="font-size:.72rem;">'+(u.recherches||0)+'/'+(u.quota!=null?u.quota:5)+' essais</span>';
-      const illimiteBadge = u.illimite ? ' <span class="badge bg-dark">illimité</span>' : '';
-      const actions = self
-        ? '<span class="badge bg-info text-dark">vous</span>'
-        : '<div class="btn-group btn-group-sm mt-1">'+
-            (unlimited ? '' : '<button class="btn btn-outline-secondary py-0" onclick="Compte.adminCredit(\''+esc(u.email)+'\')" title="Ajouter des crédits">+cr.</button>'+
-              '<button class="btn btn-outline-secondary py-0" onclick="Compte.adminQuota(\''+esc(u.email)+'\','+(u.quota!=null?u.quota:5)+')" title="Régler le nombre d\'essais">essais</button>')+
-            '<button class="btn btn-outline-'+(u.illimite?'dark':'secondary')+' py-0" onclick="Compte.adminIllimite(\''+esc(u.email)+'\','+(u.illimite?'false':'true')+')" title="Accès illimité (partenaire)">'+(u.illimite?'illimité':'∞?')+'</button>'+
-            '<button class="btn btn-outline-secondary py-0" onclick="Compte.adminToggle(\''+esc(u.email)+'\',\''+(u.statut==='Actif'?'Désactivé':'Actif')+'\')">'+(u.statut==='Actif'?'Désactiver':'Activer')+'</button>'+
-          '</div>';
-      return '<div class="d-flex justify-content-between align-items-center border-bottom py-1">'+
-        '<div>'+esc(u.nom||u.email)+' <span class="text-muted">('+esc(u.email)+')</span>'+illimiteBadge+'<br><span class="badge bg-secondary">'+esc(u.role)+'</span> <span class="badge '+(u.statut==='Actif'?'bg-success':'bg-danger')+'">'+esc(u.statut)+'</span></div>'+
-        '<div class="text-end"><span class="badge bg-warning text-dark">'+credLabel+'</span>'+quotaLabel+'<br>'+actions+'</div></div>';
-    }).join('') || '<span class="text-muted">Aucun compte.</span>';
+      const isAdm = u.role === 'Administrateur';
+      const unlimited = isAdm || u.illimite;
+      const credLabel = unlimited ? '<span title="Illimité" style="font-size:1.1rem;">∞</span>' : (u.credits + ' cr');
+      const essaisLabel = unlimited ? '—' : ((u.recherches||0)+'/'+(u.quota!=null?u.quota:5));
+      const statutBg = u.statut==='Actif' ? 'success' : 'secondary';
+      const reseauBadge = u.reseau ? '<span class="badge" style="background:#eaefeb;color:#1f4a3f;font-weight:500;">'+esc(u.reseau)+'</span>' : '<span class="text-muted small">—</span>';
+      const tarifBadge = u.tarifGroup ? '<span class="badge" style="background:#f5f1e8;color:#b87333;font-weight:500;">'+esc(u.tarifGroup)+'</span>' : '<span class="text-muted small">Standard</span>';
+      const roleBadge = isAdm ? '<span class="badge bg-dark">Admin</span>' : '<span class="badge" style="background:#efe9d9;color:#4a4238;">Collab.</span>';
+      const selfTag = self ? ' <span class="badge bg-info text-dark">vous</span>' : '';
+      const illimBadge = u.illimite && !isAdm ? ' <i class="bi bi-infinity" title="Accès illimité" style="color:#b87333;"></i>' : '';
+      // Actions contextuelles
+      const canDelete = isSA && !self && u.email !== state.superAdmin;
+      const canReseau = isSA;
+      const actions = self ? '<span class="text-muted small">vous</span>' :
+        '<div class="d-flex gap-1 justify-content-end flex-wrap">'+
+          (unlimited ? '' : '<button class="btn btn-sm btn-outline-secondary py-0 px-1" onclick="Compte.adminCredit(\''+esc(u.email)+'\')" title="Ajouter des crédits">+ cr.</button>') +
+          (unlimited ? '' : '<button class="btn btn-sm btn-outline-secondary py-0 px-1" onclick="Compte.adminQuota(\''+esc(u.email)+'\','+(u.quota!=null?u.quota:5)+')" title="Modifier essais">essais</button>') +
+          '<button class="btn btn-sm btn-outline-'+(u.illimite?'dark':'secondary')+' py-0 px-1" onclick="Compte.adminIllimite(\''+esc(u.email)+'\','+(!u.illimite)+')" title="Basculer accès illimité">∞</button>' +
+          (canReseau ? '<button class="btn btn-sm btn-outline-secondary py-0 px-1" onclick="Compte.adminReseau(\''+esc(u.email)+'\',\''+esc(u.reseau||'')+'\')" title="Réseau / Groupe"><i class="bi bi-tags"></i></button>' : '') +
+          '<button class="btn btn-sm btn-outline-secondary py-0 px-1" onclick="Compte.adminTarifGroup(\''+esc(u.email)+'\',\''+esc(u.tarifGroup||'')+'\')" title="Grille tarifaire"><i class="bi bi-currency-euro"></i></button>' +
+          '<button class="btn btn-sm btn-outline-'+(u.statut==='Actif'?'warning':'success')+' py-0 px-1" onclick="Compte.adminToggle(\''+esc(u.email)+'\',\''+(u.statut==='Actif'?'Désactivé':'Actif')+'\')">'+(u.statut==='Actif'?'Désactiver':'Activer')+'</button>' +
+          (canDelete ? '<button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="Compte.adminDelete(\''+esc(u.email)+'\')" title="Supprimer (super-admin)"><i class="bi bi-trash"></i></button>' : '') +
+        '</div>';
+      return '<tr>'+
+        '<td><div class="fw-semibold">'+esc(u.nom||u.email.split('@')[0])+selfTag+illimBadge+'</div><div class="text-muted small">'+esc(u.email)+'</div></td>'+
+        '<td>'+reseauBadge+'</td>'+
+        '<td>'+roleBadge+'</td>'+
+        '<td><span class="badge bg-'+statutBg+'">'+esc(u.statut||'Actif')+'</span></td>'+
+        '<td class="text-center"><span class="fw-semibold">'+credLabel+'</span></td>'+
+        '<td class="text-center text-muted small">'+essaisLabel+'</td>'+
+        '<td>'+tarifBadge+'</td>'+
+        '<td class="text-end">'+actions+'</td>'+
+      '</tr>';
+    }).join('');
+    body.innerHTML = rows || '<tr><td colspan="8" class="text-muted small p-3">Aucun compte trouvé avec ces critères.</td></tr>';
+  }
+  function openCreateForm(){ document.getElementById('adCreateForm').classList.remove('d-none'); document.getElementById('adEmail').focus(); }
+  function closeCreateForm(){ document.getElementById('adCreateForm').classList.add('d-none'); document.getElementById('adMsg').innerHTML=''; }
+  function openTarifForm(){ document.getElementById('tfCreateForm').classList.remove('d-none'); document.getElementById('tfNom').focus(); }
+  function closeTarifForm(){ document.getElementById('tfCreateForm').classList.add('d-none'); document.getElementById('tfMsg').innerHTML=''; }
+  function copySignupLink(){
+    const url = location.origin + '/#signup';
+    if(navigator.clipboard){ navigator.clipboard.writeText(url); alert('Lien inscription copié :\n'+url+'\n\n(La page publique d\'auto-inscription sera activée en Phase 2. Envoyez ce lien pour rester à jour.)'); }
+    else prompt('Lien inscription :', url);
+  }
+  async function adminDelete(email){
+    if(!confirm('SUPPRIMER définitivement le compte « '+email+' » ?\n\nLa page Notion sera archivée (mise en corbeille).')) return;
+    const {ok,data}=await admin('delete',{email});
+    if(!ok){ alert(data.error||'Erreur suppression'); return; } adminList();
+  }
+  async function adminReseau(email, cur){
+    const n=prompt('Réseau / Groupe pour '+email+' :\n(ex : Sextant France, Optimmo Dom, Indépendant. Vide = aucun.)', cur||'');
+    if(n===null) return;
+    const {ok,data}=await admin('set_reseau',{email,reseau:n.trim()});
+    if(!ok){ alert(data.error||'Erreur'); return; } adminList();
+  }
+  async function adminTarifGroup(email, cur){
+    const n=prompt('Grille tarifaire pour '+email+' :\n(ex : Standard, Sextant, Partenaire. Vide = Standard.)', cur||'');
+    if(n===null) return;
+    const {ok,data}=await admin('set_tarif_group',{email,tarifGroup:n.trim()});
+    if(!ok){ alert(data.error||'Erreur'); return; } adminList();
   }
   async function adminCreate(){
     const email=(document.getElementById('adEmail').value||'').trim();
     const nom=(document.getElementById('adNom').value||'').trim();
-    const password=(document.getElementById('adPwd').value||'').trim();
+    const autoPwd=(document.getElementById('adAutoPwd')||{}).checked;
+    let password=(document.getElementById('adPwd').value||'').trim();
+    if(autoPwd) password=''; // laisser serveur générer (16 chars fort)
     const credits=document.getElementById('adCredits').value;
     const quota=document.getElementById('adQuota').value;
     const illimite=document.getElementById('adIllimite').checked;
     const role=document.getElementById('adRole').value;
+    const reseau=(document.getElementById('adReseau')||{}).value||'';
+    const tarifGroup=(document.getElementById('adTarifGroup')||{}).value||'';
     const msg=document.getElementById('adMsg');
-    if(!email){ msg.textContent='E-mail requis.'; return; }
-    if(password && password.length < 6){ msg.innerHTML='<span class="text-danger">Mot de passe : 6 caractères minimum.</span>'; return; }
-    const {ok,data}=await admin('create',Object.assign({email,nom,credits,quota,illimite,role}, password?{password}:{}));
+    if(!email){ msg.innerHTML='<span class="text-danger">E-mail requis.</span>'; return; }
+    if(password && password.length < 8){ msg.innerHTML='<span class="text-danger">Mot de passe manuel : 8 caractères minimum.</span>'; return; }
+    const {ok,data}=await admin('create',Object.assign({email,nom,credits,quota,illimite,role,reseau,tarifGroup}, password?{password}:{}));
     if(!ok){ msg.innerHTML='<span class="text-danger">'+esc(data.error||'Erreur')+'</span>'; return; }
-    msg.innerHTML='<span class="text-success">Compte créé. Mot de passe '+(data.temp_password?('provisoire : <b>'+esc(data.temp_password)+'</b> — à transmettre.'):'défini (celui que vous avez saisi).')+'</span>';
-    ['adEmail','adNom','adPwd','adCredits','adQuota'].forEach(id=>document.getElementById(id).value=''); document.getElementById('adIllimite').checked=false;
+    if(data.temp_password){
+      const pw = data.temp_password;
+      msg.innerHTML='<span class="text-success">✓ Compte créé.</span> Mot de passe généré : <code style="background:#f5f1e8;padding:2px 6px;border-radius:3px;font-weight:600;">'+esc(pw)+'</code> <button class="btn btn-sm btn-outline-primary ms-1 py-0" onclick="navigator.clipboard&&navigator.clipboard.writeText(\''+pw.replace(/'/g,"\\'")+'\');this.textContent=\'✓ Copié\';"><i class="bi bi-clipboard"></i> Copier</button>';
+    } else {
+      msg.innerHTML='<span class="text-success">✓ Compte créé (mot de passe manuel).</span>';
+    }
+    ['adEmail','adNom','adPwd','adCredits','adQuota','adReseau'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; });
+    document.getElementById('adIllimite').checked=false;
     adminList();
   }
   async function adminCredit(email){
@@ -4543,30 +4667,36 @@ window.Compte = (function(){
 
   // ─── Grille tarifaire (admin) ─────────────────────────────────────────────
   async function loadTarifsAdmin(){
-    const box = document.getElementById('adTarifs'); if(!box) return;
+    const body = document.getElementById('adTarifsBody'); if(!body) return;
+    body.innerHTML = '<tr><td colspan="5" class="text-muted small p-3"><span class="spinner-border spinner-border-sm me-1"></span> Chargement…</td></tr>';
     try{
       const r = await fetch('/api/tarifs', {credentials:'same-origin'});
       const d = await r.json();
-      if(!r.ok){ box.innerHTML = '<span class="text-danger">'+esc(d.error||'Erreur')+'</span>'; return; }
-      renderTarifsAdmin(box, d.tarifs||[]);
-    }catch(e){ box.innerHTML = '<span class="text-danger">Erreur réseau.</span>'; }
+      if(!r.ok){ body.innerHTML = '<tr><td colspan="5" class="text-danger p-3">'+esc(d.error||'Erreur')+'</td></tr>'; return; }
+      renderTarifsAdmin(d.tarifs||[]);
+    }catch(e){ body.innerHTML = '<tr><td colspan="5" class="text-danger p-3">Erreur réseau.</td></tr>'; }
   }
-  function renderTarifsAdmin(box, tarifs){
-    if(!tarifs.length){ box.innerHTML = '<span class="text-muted">Aucune prestation — ajoutez-en ci-dessus.</span>'; return; }
+  function renderTarifsAdmin(tarifs){
+    const body = document.getElementById('adTarifsBody'); if(!body) return;
+    if(!tarifs.length){ body.innerHTML = '<tr><td colspan="5" class="text-muted small p-3">Aucune prestation. Cliquez « Ajouter une prestation » pour commencer.</td></tr>'; return; }
     const CATB = {'Avis de valeur':'primary','Étude de marché':'success','Option':'warning text-dark','Forfait':'info text-dark'};
-    box.innerHTML = tarifs.map(t =>
-      '<div class="d-flex justify-content-between align-items-center border-bottom py-1"'+(t.actif?'':' style="opacity:.5;"')+'>'+
-        '<div><b>'+esc(t.prestation)+'</b> <span class="badge bg-'+(CATB[t.categorie]||'secondary')+'">'+esc(t.categorie||'')+'</span>'+
-          (t.description?'<br><span class="text-muted" style="font-size:.72rem;">'+esc(t.description)+'</span>':'')+'</div>'+
-        '<div class="text-end" style="min-width:150px;">'+
-          '<span class="fw-bold">'+t.prix+' €</span>'+
-          '<div class="btn-group btn-group-sm mt-1">'+
-            '<button class="btn btn-outline-secondary py-0" onclick="Compte.tarifPrice(\''+t.id+'\','+t.prix+')">Prix</button>'+
-            '<button class="btn btn-outline-'+(t.actif?'success':'secondary')+' py-0" onclick="Compte.tarifToggle(\''+t.id+'\','+(t.actif?'false':'true')+')">'+(t.actif?'Actif':'Inactif')+'</button>'+
-            '<button class="btn btn-outline-danger py-0" title="Supprimer" onclick="Compte.tarifDelete(\''+t.id+'\',\''+esc(t.prestation).replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')">✕</button>'+
+    body.innerHTML = tarifs.map(t => {
+      const rowStyle = t.actif ? '' : ' style="opacity:.5;"';
+      return '<tr'+rowStyle+'>'+
+        '<td><div class="fw-semibold">'+esc(t.prestation)+'</div>'+
+          (t.description?'<div class="text-muted small">'+esc(t.description)+'</div>':'')+'</td>'+
+        '<td><span class="badge bg-'+(CATB[t.categorie]||'secondary')+'">'+esc(t.categorie||'')+'</span></td>'+
+        '<td class="text-end fw-bold" style="font-size:1rem;">'+t.prix+' €</td>'+
+        '<td><span class="badge bg-'+(t.actif?'success':'secondary')+'">'+(t.actif?'Actif':'Inactif')+'</span></td>'+
+        '<td class="text-end">'+
+          '<div class="d-flex gap-1 justify-content-end">'+
+            '<button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="Compte.tarifPrice(\''+t.id+'\','+t.prix+')" title="Modifier le prix">Prix</button>'+
+            '<button class="btn btn-sm btn-outline-'+(t.actif?'warning':'success')+' py-0 px-2" onclick="Compte.tarifToggle(\''+t.id+'\','+(!t.actif)+')">'+(t.actif?'Désactiver':'Activer')+'</button>'+
+            '<button class="btn btn-sm btn-outline-danger py-0 px-2" title="Supprimer" onclick="Compte.tarifDelete(\''+t.id+'\',\''+esc(t.prestation).replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')"><i class="bi bi-trash"></i></button>'+
           '</div>'+
-        '</div>'+
-      '</div>').join('');
+        '</td>'+
+      '</tr>';
+    }).join('');
   }
   async function tarifPost(payload){
     const r = await fetch('/api/tarifs', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
@@ -4602,7 +4732,9 @@ window.Compte = (function(){
 
   document.addEventListener('DOMContentLoaded', refresh);
   return { open, doLogin, logout, refresh, setCredits, setRecherches, consume, adminCreate, adminCredit, adminToggle,
-           adminIllimite, adminQuota, loadOffres, chooseOffer, payOffer, offerToggle, offerPrice,
+           adminIllimite, adminQuota, adminDelete, adminReseau, adminTarifGroup, adminRefresh,
+           openCreateForm, closeCreateForm, openTarifForm, closeTarifForm, copySignupLink,
+           loadOffres, chooseOffer, payOffer, offerToggle, offerPrice,
            loadTarifsAdmin, tarifCreate, tarifPrice, tarifToggle, tarifDelete,
            get state(){ return state; } };
 })();

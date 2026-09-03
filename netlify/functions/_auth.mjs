@@ -136,6 +136,11 @@ export async function createUser({ email, nom, password, role = "Collaborateur",
   });
 }
 
+export async function setPassword(pageId, newPassword) {
+  const { updatePage } = await import("./_notion.mjs");
+  return updatePage(pageId, { "Mot de passe": P.text(hashPassword(newPassword)) });
+}
+
 // ─── Cookies / requête ────────────────────────────────────────────────────────
 export function sessionCookie(token) {
   return `${COOKIE}=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${JWT_TTL}`;

@@ -114,16 +114,19 @@ export async function createPage(databaseId, properties) {
   return notionFetch("/pages", "POST", { parent: { database_id: databaseId }, properties });
 }
 
-export async function updatePage(pageId, properties) {
-  return notionFetch(`/pages/${pageId}`, "PATCH", { properties });
+export async function updatePage(pageId, properties, extra) {
+  const body = { properties: properties || {} };
+  if (extra && typeof extra === "object") Object.assign(body, extra);
+  return notionFetch(`/pages/${pageId}`, "PATCH", body);
+}
+
+// Archive une page (Notion : pas de vraie suppression, in_trash met en corbeille)
+export async function archivePage(pageId) {
+  return notionFetch(`/pages/${pageId}`, "PATCH", { in_trash: true });
 }
 
 export async function getPage(pageId) {
   return notionFetch(`/pages/${pageId}`, "GET");
-}
-
-export async function archivePage(pageId) {
-  return notionFetch(`/pages/${pageId}`, "PATCH", { archived: true });
 }
 
 export async function queryDatabase(databaseId, body = {}) {
