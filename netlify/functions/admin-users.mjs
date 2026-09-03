@@ -46,12 +46,14 @@ export const handler = async (event) => {
       const users = (data.results || []).map((pg) => {
         const u = userFromPage(pg);
         const props = pg.properties || {};
-        // Champs additionnels : Réseau, Grille tarifaire (facultatifs, fallback vide)
+        // Champs additionnels : Réseau, Grille tarifaire, facturation FIDI (facultatifs)
         const reseau = props["Réseau"]?.select?.name || "";
         const tarifGroup = props["Grille tarifaire"]?.select?.name || "";
+        const fidiEncaisse = !!(props["FIDI encaisse"]?.checkbox);
+        const commission = props["Commission FIDI %"]?.number ?? 25;
         return { email: u.email, nom: u.nom, role: u.role, statut: u.statut, credits: u.credits,
                  illimite: u.illimite, quota: u.quota, recherches: u.recherches,
-                 reseau, tarifGroup };
+                 reseau, tarifGroup, fidi_encaisse: fidiEncaisse, commission };
       });
       return authResp(200, { ok: true, users, super_admin: SUPER_ADMIN_EMAIL, me: me.user.email });
     }
@@ -135,6 +137,21 @@ export const handler = async (event) => {
       const g = String(b.tarifGroup || "").slice(0, 100);
       await updatePage(page.id, g ? { "Grille tarifaire": P.select(g) } : { "Grille tarifaire": { select: null } });
       return authResp(200, { ok: true, email, tarifGroup: g });
+    }
+    if (action === "set_nom") {
+      const nom = String(b.nom || "").slice(0, 200);
+      await updatePage(page.id, { "Nom": P.text(nom) });
+      return authResp(200, { ok: true, email, nom });
+    }
+    if (action === "set_commission") {
+      // Commission FIDI (%) si FIDI encaisse pour ce compte. 0 = aucune (agent encaisse lui-même).
+      const pct = parseFloat(b.commission);
+      if (!Number.isFinite(pct) || pct < 0 || pct > 100) return authResp(400, { error: "commission (0-100) requis" });
+      await updatePage(page.id, {
+        "FIDI encaisse": P.checkbox(!!b.fidi_encaisse),
+        "Commission FIDI %": P.number(pct),
+      });
+      return authResp(200, { ok: true, email, fidi_encaisse: !!b.fidi_encaisse, commission: pct });
     }
     if (action === "reset_password") {
       const newPwd = b.password ? String(b.password) : genPassword();

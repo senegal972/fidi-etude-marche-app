@@ -268,6 +268,11 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
       </ul>
     </div>
 
+    <!-- Bouton direct Présentation (chevalet visible, à côté du dropdown compte) -->
+    <button class="btn btn-sm btn-outline-warning d-none" id="btnPresentationDirect" type="button" onclick="Presentation.open()" title="Ouvrir la présentation ImmoData Pro (démo + partage)">
+      <i class="bi bi-easel-fill me-1"></i><span class="d-none d-md-inline">Présentation</span>
+    </button>
+
     <!-- Dropdown Compte + Ressources -->
     <div class="dropdown">
       <button class="btn btn-sm btn-outline-warning dropdown-toggle" type="button" id="ddCompte" data-bs-toggle="dropdown" aria-expanded="false">
@@ -4223,6 +4228,8 @@ window.Compte = (function(){
     const pill = document.getElementById('creditsPill');
     const btnPres = document.getElementById('btnPresentation');
     if(btnPres) btnPres.classList.toggle('d-none', !state.authenticated); // confidentiel : connectés seulement
+    const btnPresDir = document.getElementById('btnPresentationDirect');
+    if(btnPresDir) btnPresDir.classList.toggle('d-none', !state.authenticated);
     if(state.authenticated && state.user){
       if(lbl) lbl.textContent = state.user.nom || state.user.email;
       if(pill){
@@ -4303,7 +4310,8 @@ window.Compte = (function(){
         '<li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabIdent">Identité</button></li>'+
         '<li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabSolde">Mon solde</button></li>'+
         '<li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabOffres" onclick="Compte.loadOffres()">Offres & crédits</button></li>'+
-        (admin ? '<li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabAdmin">Administration</button></li>' : '')+
+        (admin ? '<li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabAdmin" title="Gestion des comptes et de la grille tarifaire">Administration</button></li>' : '')+
+        (admin ? '<li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabFactAdmin" onclick="Compte.loadFactAdmin()" title="Suivi des paiements encaissés par FIDI + commissions dues aux collaborateurs">Facturation FIDI</button></li>' : '')+
       '</ul>'+
       '<div class="tab-content">'+
         '<div class="tab-pane fade show active" id="tabIdent">'+
@@ -4397,6 +4405,30 @@ window.Compte = (function(){
             '<tr><th style="padding:.6rem .5rem;">Prestation</th><th>Catégorie</th><th class="text-end">Prix TTC</th><th>Statut</th><th class="text-end">Actions</th></tr>'+
           '</thead><tbody id="adTarifsBody"><tr><td colspan="5" class="text-muted small p-3">Chargement…</td></tr></tbody></table></div>'+
         '</div>' : '')+
+
+        // ─── Onglet Facturation FIDI (encaissement + commissions) ───
+        (admin ? '<div class="tab-pane fade" id="tabFactAdmin">'+
+          '<div class="d-flex flex-wrap gap-2 align-items-center mb-3 pb-2 border-bottom">'+
+            '<div class="fw-bold" style="font-size:1.05rem;color:#1f1a14;"><i class="bi bi-bank2 me-2" style="color:#b87333;"></i>Facturation FIDI — encaissement pour compte de</div>'+
+          '</div>'+
+          '<div class="alert alert-light border small mb-3" style="background:#f5f1e8;border-left:3px solid #b87333!important;">'+
+            '<div class="fw-semibold mb-1">Comment ça marche</div>'+
+            'Pour chaque collaborateur, tu peux choisir si <b>FIDI encaisse à sa place</b> (bouton <i class="bi bi-bank"></i> dans la table Comptes). '+
+            'Par défaut la commission FIDI est de <b>25 %</b>, modifiable individuellement. Ce que le collaborateur touche = Prix TTC − Commission.'+
+          '</div>'+
+          '<h6 class="mt-3">Collaborateurs en mode « FIDI encaisse »</h6>'+
+          '<div class="table-responsive"><table class="table table-sm align-middle" style="font-size:.85rem;">'+
+            '<thead style="background:#efe9d9;color:#4a4238;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;">'+
+              '<tr><th>Collaborateur</th><th>Réseau</th><th class="text-center">Commission FIDI</th><th class="text-end">Actions</th></tr>'+
+            '</thead><tbody id="factCollabBody"><tr><td colspan="4" class="text-muted small p-3">Chargement…</td></tr></tbody>'+
+          '</table></div>'+
+          '<h6 class="mt-4">Factures encaissées par FIDI</h6>'+
+          '<div class="table-responsive"><table class="table table-sm align-middle" style="font-size:.85rem;">'+
+            '<thead style="background:#efe9d9;color:#4a4238;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;">'+
+              '<tr><th>Réf</th><th>Date</th><th>Client</th><th>Collaborateur</th><th class="text-end">Prix TTC</th><th class="text-end">Commission FIDI</th><th class="text-end">Reverser</th><th>Statut</th></tr>'+
+            '</thead><tbody id="factListBody"><tr><td colspan="8" class="text-muted small p-3">La liste sera peuplée dès que des factures marquées « encaissement FIDI » seront émises. (À finaliser en Phase 3 — split PayPal automatique.)</td></tr></tbody>'+
+          '</table></div>'+
+        '</div>' : '')+
       '</div>';
   }
 
@@ -4472,11 +4504,13 @@ window.Compte = (function(){
         '<div class="d-flex gap-1 justify-content-end flex-wrap">'+
           (unlimited ? '' : '<button class="btn btn-sm btn-outline-secondary py-0 px-1" onclick="Compte.adminCredit(\''+esc(u.email)+'\')" title="Ajouter des crédits">+ cr.</button>') +
           (unlimited ? '' : '<button class="btn btn-sm btn-outline-secondary py-0 px-1" onclick="Compte.adminQuota(\''+esc(u.email)+'\','+(u.quota!=null?u.quota:5)+')" title="Modifier essais">essais</button>') +
-          '<button class="btn btn-sm btn-outline-'+(u.illimite?'dark':'secondary')+' py-0 px-1" onclick="Compte.adminIllimite(\''+esc(u.email)+'\','+(!u.illimite)+')" title="Basculer accès illimité">∞</button>' +
-          (canReseau ? '<button class="btn btn-sm btn-outline-secondary py-0 px-1" onclick="Compte.adminReseau(\''+esc(u.email)+'\',\''+esc(u.reseau||'')+'\')" title="Réseau / Groupe"><i class="bi bi-tags"></i></button>' : '') +
-          '<button class="btn btn-sm btn-outline-secondary py-0 px-1" onclick="Compte.adminTarifGroup(\''+esc(u.email)+'\',\''+esc(u.tarifGroup||'')+'\')" title="Grille tarifaire"><i class="bi bi-currency-euro"></i></button>' +
-          '<button class="btn btn-sm btn-outline-'+(u.statut==='Actif'?'warning':'success')+' py-0 px-1" onclick="Compte.adminToggle(\''+esc(u.email)+'\',\''+(u.statut==='Actif'?'Désactivé':'Actif')+'\')">'+(u.statut==='Actif'?'Désactiver':'Activer')+'</button>' +
-          (canDelete ? '<button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="Compte.adminDelete(\''+esc(u.email)+'\')" title="Supprimer (super-admin)"><i class="bi bi-trash"></i></button>' : '') +
+          '<button class="btn btn-sm btn-outline-secondary py-0 px-1" onclick="Compte.adminEditNom(\''+esc(u.email)+'\',\''+esc(u.nom||'').replace(/'/g,"\\'")+'\')" title="Modifier le nom du collaborateur"><i class="bi bi-pencil"></i></button>' +
+          '<button class="btn btn-sm btn-outline-'+(u.illimite?'dark':'secondary')+' py-0 px-1" onclick="Compte.adminIllimite(\''+esc(u.email)+'\','+(!u.illimite)+')" title="Basculer « accès illimité » (aucun crédit consommé, ex : partenaires FIDI)">∞</button>' +
+          (canReseau ? '<button class="btn btn-sm btn-outline-secondary py-0 px-1" onclick="Compte.adminReseau(\''+esc(u.email)+'\',\''+esc(u.reseau||'')+'\')" title="Affecter à un réseau / groupe (Sextant, Optimmo Dom…)"><i class="bi bi-tags"></i></button>' : '') +
+          '<button class="btn btn-sm btn-outline-secondary py-0 px-1" onclick="Compte.adminTarifGroup(\''+esc(u.email)+'\',\''+esc(u.tarifGroup||'')+'\')" title="Assigner une grille tarifaire spécifique (Standard, Sextant, Partenaire…)"><i class="bi bi-currency-euro"></i></button>' +
+          '<button class="btn btn-sm btn-outline-'+(u.fidi_encaisse?'success':'secondary')+' py-0 px-1" onclick="Compte.adminCommission(\''+esc(u.email)+'\','+(u.fidi_encaisse||false)+','+(u.commission!=null?u.commission:25)+')" title="Encaissement FIDI + commission % (par défaut 25 %)"><i class="bi bi-bank"></i></button>' +
+          '<button class="btn btn-sm btn-outline-'+(u.statut==='Actif'?'warning':'success')+' py-0 px-1" onclick="Compte.adminToggle(\''+esc(u.email)+'\',\''+(u.statut==='Actif'?'Désactivé':'Actif')+'\')" title="'+(u.statut==='Actif'?'Désactiver l\'accès (empêche la connexion)':'Réactiver l\'accès')+'">'+(u.statut==='Actif'?'Désactiver':'Activer')+'</button>' +
+          (canDelete ? '<button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="Compte.adminDelete(\''+esc(u.email)+'\')" title="Supprimer définitivement le compte (super-admin uniquement — archive Notion)"><i class="bi bi-trash"></i></button>' : '') +
         '</div>';
       return '<tr>'+
         '<td><div class="fw-semibold">'+esc(u.nom||u.email.split('@')[0])+selfTag+illimBadge+'</div><div class="text-muted small">'+esc(u.email)+'</div></td>'+
@@ -4504,6 +4538,24 @@ window.Compte = (function(){
     if(!confirm('SUPPRIMER définitivement le compte « '+email+' » ?\n\nLa page Notion sera archivée (mise en corbeille).')) return;
     const {ok,data}=await admin('delete',{email});
     if(!ok){ alert(data.error||'Erreur suppression'); return; } adminList();
+  }
+  async function adminEditNom(email, cur){
+    const n = prompt('Nom / Prénom du collaborateur :', cur||'');
+    if(n === null) return;
+    const {ok,data} = await admin('set_nom',{email,nom:n.trim()});
+    if(!ok){ alert(data.error||'Erreur'); return; } adminList();
+  }
+  async function adminCommission(email, curEncaisse, curPct){
+    const enc = confirm('FIDI encaisse-t-il les prestations pour '+email+' ?\n\nOui = FIDI reçoit les paiements et reverse au collaborateur après commission.\nNon = le collaborateur encaisse lui-même.');
+    let pct = curPct;
+    if(enc){
+      const s = prompt('Commission FIDI (%) :\n(par défaut 25 %, modifiable)', String(curPct||25));
+      if(s === null) return;
+      pct = parseFloat(String(s).replace(',','.'));
+      if(!isFinite(pct) || pct < 0 || pct > 100){ alert('Commission invalide (0-100).'); return; }
+    }
+    const {ok,data} = await admin('set_commission',{email,fidi_encaisse:enc,commission:pct});
+    if(!ok){ alert(data.error||'Erreur'); return; } adminList();
   }
   async function adminReseau(email, cur){
     const n=prompt('Réseau / Groupe pour '+email+' :\n(ex : Sextant France, Optimmo Dom, Indépendant. Vide = aucun.)', cur||'');
@@ -4699,10 +4751,13 @@ window.Compte = (function(){
         '<td class="text-end fw-bold" style="font-size:1rem;">'+t.prix+' €</td>'+
         '<td><span class="badge bg-'+(t.actif?'success':'secondary')+'">'+(t.actif?'Actif':'Inactif')+'</span></td>'+
         '<td class="text-end">'+
-          '<div class="d-flex gap-1 justify-content-end">'+
-            '<button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="Compte.tarifPrice(\''+t.id+'\','+t.prix+')" title="Modifier le prix">Prix</button>'+
-            '<button class="btn btn-sm btn-outline-'+(t.actif?'warning':'success')+' py-0 px-2" onclick="Compte.tarifToggle(\''+t.id+'\','+(!t.actif)+')">'+(t.actif?'Désactiver':'Activer')+'</button>'+
-            '<button class="btn btn-sm btn-outline-danger py-0 px-2" title="Supprimer" onclick="Compte.tarifDelete(\''+t.id+'\',\''+esc(t.prestation).replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')"><i class="bi bi-trash"></i></button>'+
+          '<div class="d-flex gap-1 justify-content-end flex-wrap">'+
+            '<button class="btn btn-sm btn-outline-secondary py-0 px-1" onclick="Compte.tarifEditNom(\''+t.id+'\',\''+esc(t.prestation).replace(/'/g,"\\'")+'\')" title="Modifier le nom de la prestation"><i class="bi bi-pencil"></i></button>'+
+            '<button class="btn btn-sm btn-outline-secondary py-0 px-1" onclick="Compte.tarifEditCat(\''+t.id+'\',\''+esc(t.categorie||'').replace(/'/g,"\\'")+'\')" title="Modifier la catégorie (Avis / Étude / Option / Forfait)"><i class="bi bi-collection"></i></button>'+
+            '<button class="btn btn-sm btn-outline-secondary py-0 px-1" onclick="Compte.tarifEditDesc(\''+t.id+'\',\''+esc(t.description||'').replace(/'/g,"\\'").replace(/\n/g,' ')+'\')" title="Modifier la description longue"><i class="bi bi-text-paragraph"></i></button>'+
+            '<button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="Compte.tarifPrice(\''+t.id+'\','+t.prix+')" title="Modifier le prix TTC">Prix</button>'+
+            '<button class="btn btn-sm btn-outline-'+(t.actif?'warning':'success')+' py-0 px-2" onclick="Compte.tarifToggle(\''+t.id+'\','+(!t.actif)+')" title="'+(t.actif?'Retirer cette prestation de la grille active':'Réactiver cette prestation')+'">'+(t.actif?'Désactiver':'Activer')+'</button>'+
+            '<button class="btn btn-sm btn-outline-danger py-0 px-2" title="Supprimer définitivement (archive Notion)" onclick="Compte.tarifDelete(\''+t.id+'\',\''+esc(t.prestation).replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')"><i class="bi bi-trash"></i></button>'+
           '</div>'+
         '</td>'+
       '</tr>';
@@ -4739,8 +4794,42 @@ window.Compte = (function(){
     const {ok,data} = await tarifPost({action:'delete', id}); if(!ok){ alert(data.error||'Erreur.'); return; }
     loadTarifsAdmin();
   }
+  async function tarifEditNom(id, cur){
+    const n = prompt('Nom de la prestation :', cur||''); if(n===null) return;
+    const v = n.trim(); if(!v){ alert('Nom requis.'); return; }
+    const {ok,data} = await tarifPost({action:'set_nom', id, nom:v}); if(!ok){ alert(data.error||'Erreur.'); return; }
+    loadTarifsAdmin();
+  }
+  async function tarifEditCat(id, cur){
+    const cats = ['Avis de valeur','Étude de marché','Option','Forfait'];
+    const n = prompt('Catégorie ('+cats.join(' / ')+') :', cur||'Avis de valeur');
+    if(n===null) return;
+    const {ok,data} = await tarifPost({action:'set_categorie', id, categorie:n.trim()}); if(!ok){ alert(data.error||'Erreur.'); return; }
+    loadTarifsAdmin();
+  }
+  async function tarifEditDesc(id, cur){
+    const n = prompt('Description (facultatif, 500 car. max) :', cur||''); if(n===null) return;
+    const {ok,data} = await tarifPost({action:'set_description', id, description:n}); if(!ok){ alert(data.error||'Erreur.'); return; }
+    loadTarifsAdmin();
+  }
 
   document.addEventListener('DOMContentLoaded', refresh);
+  function loadFactAdmin(){
+    // Affiche les collaborateurs avec fidi_encaisse=true, dérive depuis _adminUsersCache
+    const body = document.getElementById('factCollabBody'); if(!body) return;
+    if(!_adminUsersCache.length){ body.innerHTML = '<tr><td colspan="4" class="text-muted small p-3">Chargez d\'abord l\'onglet Administration.</td></tr>'; return; }
+    const list = _adminUsersCache.filter(u => u.fidi_encaisse);
+    if(!list.length){ body.innerHTML = '<tr><td colspan="4" class="text-muted small p-3">Aucun collaborateur en mode « FIDI encaisse ». Activez via le bouton <i class="bi bi-bank"></i> dans Administration.</td></tr>'; return; }
+    body.innerHTML = list.map(u =>
+      '<tr>'+
+        '<td><div class="fw-semibold">'+esc(u.nom||u.email.split('@')[0])+'</div><div class="text-muted small">'+esc(u.email)+'</div></td>'+
+        '<td>'+(u.reseau ? '<span class="badge" style="background:#eaefeb;color:#1f4a3f;">'+esc(u.reseau)+'</span>' : '<span class="text-muted small">—</span>')+'</td>'+
+        '<td class="text-center"><span class="badge bg-warning text-dark">'+(u.commission!=null?u.commission:25)+' %</span></td>'+
+        '<td class="text-end"><button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="Compte.adminCommission(\''+esc(u.email)+'\','+u.fidi_encaisse+','+(u.commission!=null?u.commission:25)+')" title="Modifier commission ou désactiver FIDI encaisse">Modifier</button></td>'+
+      '</tr>'
+    ).join('');
+  }
+
   async function bulkRecalc(dryRun){
     const base = parseFloat(document.getElementById('bulkBase').value);
     if(!isFinite(base) || base <= 0){ alert('Prix par crédit invalide.'); return; }
@@ -4758,9 +4847,10 @@ window.Compte = (function(){
 
   return { open, doLogin, logout, refresh, setCredits, setRecherches, consume, adminCreate, adminCredit, adminToggle,
            adminIllimite, adminQuota, adminDelete, adminReseau, adminTarifGroup, adminRefresh,
+           adminEditNom, adminCommission, loadFactAdmin,
            openCreateForm, closeCreateForm, openTarifForm, closeTarifForm, copySignupLink,
            loadOffres, chooseOffer, payOffer, offerToggle, offerPrice, bulkRecalc,
-           loadTarifsAdmin, tarifCreate, tarifPrice, tarifToggle, tarifDelete,
+           loadTarifsAdmin, tarifCreate, tarifPrice, tarifToggle, tarifDelete, tarifEditNom, tarifEditCat, tarifEditDesc,
            get state(){ return state; } };
 })();
 </script>
@@ -4823,12 +4913,29 @@ window.Presentation = (function(){
     if(typeof bootstrap === 'undefined'){ alert('Interface non chargée.'); return; }
     let root = document.getElementById('presModalRoot');
     root.innerHTML = '<div class="modal fade" id="presModal" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-scrollable">'+
-      '<div class="modal-content"><div class="modal-header"><h5 class="modal-title"><i class="bi bi-easel me-1"></i>Présentation ImmoData Pro</h5>'+
-      '<button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>'+
+      '<div class="modal-content"><div class="modal-header"><h5 class="modal-title"><i class="bi bi-easel-fill me-1" style="color:#b87333;"></i>Présentation ImmoData Pro</h5>'+
+      '<div class="ms-auto d-flex gap-2 align-items-center">'+
+        '<button class="btn btn-sm btn-outline-primary" onclick="Presentation.share()" title="Copier un lien de présentation à envoyer à un collaborateur"><i class="bi bi-share me-1"></i>Partager</button>'+
+        '<button type="button" class="btn-close" data-bs-dismiss="modal"></button>'+
+      '</div></div>'+
       '<div class="modal-body">'+body()+'</div></div></div></div>';
     new bootstrap.Modal(document.getElementById('presModal')).show();
   }
-  return { open };
+  function share(){
+    const url = location.origin + '/#presentation';
+    const shareText = 'Découvrez ImmoData Pro — l\'outil professionnel FIDI pour vos études de marché et avis de valeur immobilière :\n\n' + url;
+    // Tente Web Share API (mobile), sinon copie presse-papiers, sinon prompt
+    if(navigator.share){
+      navigator.share({ title:'ImmoData Pro — FIDI', text:shareText, url:url }).catch(()=>{});
+      return;
+    }
+    if(navigator.clipboard){
+      navigator.clipboard.writeText(shareText).then(()=>{
+        alert('Lien de présentation copié dans le presse-papiers.\n\n'+url+'\n\nCollez-le dans un e-mail, WhatsApp, SMS…');
+      }).catch(()=>prompt('Copiez et envoyez ce lien :', url));
+    } else prompt('Copiez et envoyez ce lien :', url);
+  }
+  return { open, share };
 })();
 </script>
 </body>

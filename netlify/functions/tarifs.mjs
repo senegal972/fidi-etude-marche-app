@@ -94,6 +94,22 @@ export const handler = async (event) => {
         await archivePage(id);
         return authResp(200, { ok: true, id, deleted: true });
       }
+      if (action === "set_nom") {
+        const nom = String(b.nom || "").trim().slice(0, 200);
+        if (!nom) return authResp(400, { error: "nom requis" });
+        await updatePage(id, { "Prestation": P.title(nom) });
+        return authResp(200, { ok: true, id, nom });
+      }
+      if (action === "set_categorie") {
+        const cat = String(b.categorie || "").trim().slice(0, 100);
+        await updatePage(id, cat ? { "Catégorie": P.select(cat) } : { "Catégorie": { select: null } });
+        return authResp(200, { ok: true, id, categorie: cat });
+      }
+      if (action === "set_description") {
+        const desc = String(b.description || "").slice(0, 500);
+        await updatePage(id, { "Description": P.text(desc) });
+        return authResp(200, { ok: true, id, description: desc });
+      }
       return authResp(400, { error: "Action inconnue : " + action });
     }
 
