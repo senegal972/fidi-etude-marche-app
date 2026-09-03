@@ -4581,6 +4581,16 @@ window.Compte = (function(){
     const groups = {};
     offres.forEach(o => { (groups[o.module] = groups[o.module]||[]).push(o); });
     let html = '<p class="text-muted">1 crédit = 1 étude de marché OU 1 avis de valeur. Crédits valables 12 mois, sans engagement.</p>';
+    if(admin){
+      html += '<div class="border rounded p-2 mb-3 d-flex flex-wrap gap-2 align-items-center" style="background:#f5f1e8;border-left:3px solid #b87333!important;">'+
+        '<i class="bi bi-magic" style="color:#b87333;font-size:1.2rem;"></i>'+
+        '<label class="mb-0 fw-semibold small">Recalcul global depuis prix par crédit :</label>'+
+        '<input type="number" step="0.01" id="bulkBase" class="form-control form-control-sm" value="45" style="max-width:100px;"> €/crédit'+
+        '<button class="btn btn-sm btn-outline-secondary" onclick="Compte.bulkRecalc(true)"><i class="bi bi-eye me-1"></i>Simuler</button>'+
+        '<button class="btn btn-sm btn-primary" onclick="Compte.bulkRecalc(false)"><i class="bi bi-check-lg me-1"></i>Appliquer à toutes les offres</button>'+
+        '<div class="small text-muted w-100">Formule : Prix TTC = Crédits × prix_base × (1 − Économie %). Base actuelle : <b>2 crédits = 90 €</b>. Économies (%) déjà définies par palier conservées.</div>'+
+      '</div>';
+    }
     ['Cumulatif','Études de marché','Avis de valeur'].forEach(mod => {
       const list = groups[mod]; if(!list||!list.length) return;
       html += '<h6 class="fw-bold mt-3">'+esc(MODLABEL[mod]||mod)+'</h6>';
@@ -4731,10 +4741,25 @@ window.Compte = (function(){
   }
 
   document.addEventListener('DOMContentLoaded', refresh);
+  async function bulkRecalc(dryRun){
+    const base = parseFloat(document.getElementById('bulkBase').value);
+    if(!isFinite(base) || base <= 0){ alert('Prix par crédit invalide.'); return; }
+    if(!dryRun && !confirm('Appliquer le recalcul à TOUTES les offres avec prix par crédit = '+base+' € ?\n\nÉconomies (%) actuelles conservées.')) return;
+    const r = await fetch('/api/offres', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'bulk_recalc', prix_credit_base:base, dry_run:!!dryRun})});
+    const d = await r.json();
+    if(!r.ok){ alert(d.error || 'Erreur.'); return; }
+    // Résumé compact des changements
+    const rows = (d.results||[]).filter(x => !x.skipped).map(x =>
+      x.module + ' · ' + x.credits + ' cr · éco ' + x.economie + '% : ' + (x.avant||'?') + '€ → ' + x.apres + '€ ('+ x.prix_credit +'€/cr)'
+    );
+    alert((dryRun ? 'SIMULATION — aucune modification\n\n' : '✓ Recalcul appliqué\n\n') + rows.join('\n'));
+    if(!dryRun){ const box=document.getElementById('offresBox'); if(box) box.dataset.loaded=''; loadOffres(); }
+  }
+
   return { open, doLogin, logout, refresh, setCredits, setRecherches, consume, adminCreate, adminCredit, adminToggle,
            adminIllimite, adminQuota, adminDelete, adminReseau, adminTarifGroup, adminRefresh,
            openCreateForm, closeCreateForm, openTarifForm, closeTarifForm, copySignupLink,
-           loadOffres, chooseOffer, payOffer, offerToggle, offerPrice,
+           loadOffres, chooseOffer, payOffer, offerToggle, offerPrice, bulkRecalc,
            loadTarifsAdmin, tarifCreate, tarifPrice, tarifToggle, tarifDelete,
            get state(){ return state; } };
 })();

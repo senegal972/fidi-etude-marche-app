@@ -62,6 +62,32 @@ export const handler = async (event) => {
       if (!isAdmin) return authResp(403, { error: "Réservé aux administrateurs." });
       let b; try { b = JSON.parse(event.body || "{}"); } catch { return authResp(400, { error: "Corps JSON invalide" }); }
       const action = String(b.action || "").toLowerCase();
+
+      // ── Action bulk : recalcul global depuis un prix par crédit de base ───
+      // Prix = Crédits × prix_credit_base × (1 - Économie/100)
+      // Défaut : 45 €/crédit (base 2 crédits = 90 €, souhait métier FIDI)
+      if (action === "bulk_recalc") {
+        const base = parseFloat(b.prix_credit_base);
+        if (!Number.isFinite(base) || base <= 0) return authResp(400, { error: "prix_credit_base requis (>0)" });
+        const dryRun = !!b.dry_run;
+        const offers = await allOffers();
+        const results = [];
+        for (const o of offers) {
+          if (!o.credits || o.credits <= 0) { results.push({ id: o.id, nom: o.nom, skipped: "credits<=0" }); continue; }
+          const econ = Number.isFinite(o.economie) ? o.economie : 0;
+          const prixCr = Math.round(base * (1 - econ / 100) * 100) / 100;
+          const prixTTC = Math.round(o.credits * prixCr);
+          if (!dryRun) {
+            await updatePage(o.id, {
+              "Prix TTC": P.number(prixTTC),
+              "Prix par crédit": P.number(prixCr),
+            });
+          }
+          results.push({ id: o.id, nom: o.nom, module: o.module, credits: o.credits, economie: econ, avant: o.prix, apres: prixTTC, prix_credit: prixCr });
+        }
+        return authResp(200, { ok: true, dry_run: dryRun, base_par_credit: base, count: results.length, results });
+      }
+
       const id = b.id;
       if (!id) return authResp(400, { error: "id requis" });
 
