@@ -4422,11 +4422,21 @@ window.Compte = (function(){
               '<tr><th>Collaborateur</th><th>Réseau</th><th class="text-center">Commission FIDI</th><th class="text-end">Actions</th></tr>'+
             '</thead><tbody id="factCollabBody"><tr><td colspan="4" class="text-muted small p-3">Chargement…</td></tr></tbody>'+
           '</table></div>'+
-          '<h6 class="mt-4">Factures encaissées par FIDI</h6>'+
+          '<div class="d-flex align-items-center gap-2 mt-4 mb-2">'+
+            '<h6 class="mb-0">Historique des factures</h6>'+
+            '<div class="btn-group btn-group-sm ms-2">'+
+              '<button class="btn btn-outline-secondary" data-fact-filter="all" onclick="Compte.loadFactAdmin(\'all\')">Toutes</button>'+
+              '<button class="btn btn-outline-secondary" data-fact-filter="fidi" onclick="Compte.loadFactAdmin(\'fidi\')" title="Uniquement factures marquées FIDI encaisse">FIDI encaisse</button>'+
+              '<button class="btn btn-outline-success" data-fact-filter="paid" onclick="Compte.loadFactAdmin(\'paid\')">Payées</button>'+
+              '<button class="btn btn-outline-warning" data-fact-filter="pending" onclick="Compte.loadFactAdmin(\'pending\')">À payer</button>'+
+            '</div>'+
+            '<button class="btn btn-sm btn-outline-info ms-auto" onclick="Compte.loadFactAdmin()" title="Recharger la liste depuis Notion"><i class="bi bi-arrow-clockwise"></i></button>'+
+          '</div>'+
+          '<div id="factStatsBox" class="row g-2 mb-2"></div>'+
           '<div class="table-responsive"><table class="table table-sm align-middle" style="font-size:.85rem;">'+
             '<thead style="background:#efe9d9;color:#4a4238;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;">'+
-              '<tr><th>Réf</th><th>Date</th><th>Client</th><th>Collaborateur</th><th class="text-end">Prix TTC</th><th class="text-end">Commission FIDI</th><th class="text-end">Reverser</th><th>Statut</th></tr>'+
-            '</thead><tbody id="factListBody"><tr><td colspan="8" class="text-muted small p-3">La liste sera peuplée dès que des factures marquées « encaissement FIDI » seront émises. (À finaliser en Phase 3 — split PayPal automatique.)</td></tr></tbody>'+
+              '<tr><th>Réf</th><th>Date</th><th>Client</th><th>Type</th><th class="text-end">TTC</th><th class="text-end" title="Commission FIDI si mode encaissement">Comm.</th><th class="text-end" title="À reverser au collaborateur">À reverser</th><th>Statut</th><th class="text-end">Actions</th></tr>'+
+            '</thead><tbody id="factListBody"><tr><td colspan="9" class="text-muted small p-3">Cliquez sur un filtre pour charger.</td></tr></tbody>'+
           '</table></div>'+
         '</div>' : '')+
       '</div>';
@@ -4814,20 +4824,75 @@ window.Compte = (function(){
   }
 
   document.addEventListener('DOMContentLoaded', refresh);
-  function loadFactAdmin(){
-    // Affiche les collaborateurs avec fidi_encaisse=true, dérive depuis _adminUsersCache
-    const body = document.getElementById('factCollabBody'); if(!body) return;
-    if(!_adminUsersCache.length){ body.innerHTML = '<tr><td colspan="4" class="text-muted small p-3">Chargez d\'abord l\'onglet Administration.</td></tr>'; return; }
-    const list = _adminUsersCache.filter(u => u.fidi_encaisse);
-    if(!list.length){ body.innerHTML = '<tr><td colspan="4" class="text-muted small p-3">Aucun collaborateur en mode « FIDI encaisse ». Activez via le bouton <i class="bi bi-bank"></i> dans Administration.</td></tr>'; return; }
-    body.innerHTML = list.map(u =>
-      '<tr>'+
-        '<td><div class="fw-semibold">'+esc(u.nom||u.email.split('@')[0])+'</div><div class="text-muted small">'+esc(u.email)+'</div></td>'+
-        '<td>'+(u.reseau ? '<span class="badge" style="background:#eaefeb;color:#1f4a3f;">'+esc(u.reseau)+'</span>' : '<span class="text-muted small">—</span>')+'</td>'+
-        '<td class="text-center"><span class="badge bg-warning text-dark">'+(u.commission!=null?u.commission:25)+' %</span></td>'+
-        '<td class="text-end"><button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="Compte.adminCommission(\''+esc(u.email)+'\','+u.fidi_encaisse+','+(u.commission!=null?u.commission:25)+')" title="Modifier commission ou désactiver FIDI encaisse">Modifier</button></td>'+
-      '</tr>'
-    ).join('');
+  async function loadFactAdmin(filter){
+    // 1. Collaborateurs FIDI encaisse (depuis cache admin)
+    const bodyC = document.getElementById('factCollabBody');
+    if(bodyC){
+      if(!_adminUsersCache.length){
+        // Charge à la volée si cache vide
+        await adminList();
+      }
+      const list = (_adminUsersCache||[]).filter(u => u.fidi_encaisse);
+      if(!list.length){ bodyC.innerHTML = '<tr><td colspan="4" class="text-muted small p-3">Aucun collaborateur en mode « FIDI encaisse ». Activez via le bouton <i class="bi bi-bank"></i> dans Administration.</td></tr>'; }
+      else bodyC.innerHTML = list.map(u =>
+        '<tr>'+
+          '<td><div class="fw-semibold">'+esc(u.nom||u.email.split('@')[0])+'</div><div class="text-muted small">'+esc(u.email)+'</div></td>'+
+          '<td>'+(u.reseau ? '<span class="badge" style="background:#eaefeb;color:#1f4a3f;">'+esc(u.reseau)+'</span>' : '<span class="text-muted small">—</span>')+'</td>'+
+          '<td class="text-center"><span class="badge bg-warning text-dark">'+(u.commission!=null?u.commission:25)+' %</span></td>'+
+          '<td class="text-end"><button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="Compte.adminCommission(\''+esc(u.email)+'\','+u.fidi_encaisse+','+(u.commission!=null?u.commission:25)+')" title="Modifier commission ou désactiver FIDI encaisse">Modifier</button></td>'+
+        '</tr>'
+      ).join('');
+    }
+
+    // 2. Historique des factures
+    const body = document.getElementById('factListBody'); if(!body) return;
+    body.innerHTML = '<tr><td colspan="9" class="text-muted small p-3"><span class="spinner-border spinner-border-sm me-1"></span> Chargement Notion…</td></tr>';
+    // Highlight filtre actif
+    document.querySelectorAll('[data-fact-filter]').forEach(b => b.classList.remove('active','fw-bold'));
+    if(filter){ const act = document.querySelector('[data-fact-filter="'+filter+'"]'); if(act){ act.classList.add('active','fw-bold'); } }
+    // Construit URL avec filtre
+    const params = [];
+    if(filter === 'fidi') params.push('fidi_only=1');
+    if(filter === 'paid') params.push('statut=Payée');
+    if(filter === 'pending') params.push('statut=À payer');
+    const url = '/api/factures-admin' + (params.length ? '?'+params.join('&') : '');
+    try {
+      const r = await fetch(url, {credentials:'same-origin'});
+      const d = await r.json();
+      if(!r.ok){ body.innerHTML = '<tr><td colspan="9" class="text-danger p-3">'+esc(d.error||'Erreur')+'</td></tr>'; return; }
+      // Stats top
+      const s = d.stats || {};
+      const statsBox = document.getElementById('factStatsBox');
+      if(statsBox){
+        statsBox.innerHTML =
+          '<div class="col-md-3"><div class="p-2 border rounded text-center" style="background:#f5f1e8;"><div class="fw-bold text-warning" style="font-size:1.2rem;">'+(s.total_ttc_paye||0).toFixed(2)+' €</div><div class="small text-muted">Total encaissé</div></div></div>'+
+          '<div class="col-md-3"><div class="p-2 border rounded text-center" style="background:#efe9d9;"><div class="fw-bold text-secondary" style="font-size:1.2rem;">'+(s.total_ttc_attente||0).toFixed(2)+' €</div><div class="small text-muted">En attente</div></div></div>'+
+          '<div class="col-md-3"><div class="p-2 border rounded text-center" style="background:#eaefeb;"><div class="fw-bold text-success" style="font-size:1.2rem;">'+(s.commissions_fidi_paye||0).toFixed(2)+' €</div><div class="small text-muted">Commission FIDI payée</div></div></div>'+
+          '<div class="col-md-3"><div class="p-2 border rounded text-center" style="background:#f5f1e8;border-left:3px solid #b87333!important;"><div class="fw-bold" style="font-size:1.2rem;color:#b87333;">'+(s.a_reverser||0).toFixed(2)+' €</div><div class="small text-muted">À reverser aux collaborateurs</div></div></div>';
+      }
+      const items = d.items || [];
+      if(!items.length){ body.innerHTML = '<tr><td colspan="9" class="text-muted small p-3">Aucune facture trouvée avec ce filtre.</td></tr>'; return; }
+      body.innerHTML = items.map(f => {
+        const statutBg = f.statut === 'Payée' ? 'success' : (f.statut === 'Annulée' ? 'secondary' : 'warning text-dark');
+        const fidiChip = f.fidi_encaisse ? ' <span class="badge bg-info text-dark" title="FIDI encaisse cette facture ('+f.commission_pct+' %)"><i class="bi bi-bank"></i></span>' : '';
+        return '<tr>'+
+          '<td><span class="fw-semibold">'+esc(f.ref||'—')+'</span>'+fidiChip+'</td>'+
+          '<td class="small">'+esc(f.date||'—')+'</td>'+
+          '<td><div>'+esc(f.client||'—')+'</div><div class="text-muted small">'+esc(f.email||'')+'</div></td>'+
+          '<td class="small">'+esc(f.type||'—')+'</td>'+
+          '<td class="text-end fw-semibold">'+(f.montant||0).toFixed(2)+' €</td>'+
+          '<td class="text-end small text-warning">'+(f.commission_eur ? f.commission_eur.toFixed(2)+' €' : '—')+'</td>'+
+          '<td class="text-end small" style="color:#b87333;">'+(f.reverser_eur ? f.reverser_eur.toFixed(2)+' €' : '—')+'</td>'+
+          '<td><span class="badge bg-'+statutBg+'">'+esc(f.statut||'?')+'</span></td>'+
+          '<td class="text-end">'+
+            (f.facture_url ? '<a class="btn btn-sm btn-outline-secondary py-0 px-1" href="'+f.facture_url+'" target="_blank" title="Voir la facture HTML"><i class="bi bi-eye"></i></a>' : '')+
+            (f.delivery_url ? ' <a class="btn btn-sm btn-outline-secondary py-0 px-1" href="'+f.delivery_url+'" target="_blank" title="Page de remise / paiement"><i class="bi bi-link-45deg"></i></a>' : '')+
+          '</td>'+
+        '</tr>';
+      }).join('');
+    } catch (e) {
+      body.innerHTML = '<tr><td colspan="9" class="text-danger p-3">Erreur réseau : '+esc(e.message)+'</td></tr>';
+    }
   }
 
   async function bulkRecalc(dryRun){

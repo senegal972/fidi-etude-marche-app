@@ -91,6 +91,9 @@
 [functions."crm-clients"]
   timeout = 15
 
+[functions."factures-admin"]
+  timeout = 20
+
 [functions."georisques-adresse"]
   timeout = 20
 
@@ -299,6 +302,11 @@
 [[redirects]]
   from   = "/api/factures/client"
   to     = "/.netlify/functions/factures-client"
+  status = 200
+
+[[redirects]]
+  from   = "/api/factures-admin"
+  to     = "/.netlify/functions/factures-admin"
   status = 200
 
 [[redirects]]
