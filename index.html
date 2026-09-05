@@ -3419,6 +3419,101 @@ function renderEstTypes(estimations, typeBien){
   // Affiche le bloc seulement si au moins un type a une estimation
   const any = defs.some(d=>estimations[d.key] && estimations[d.key].valeur_med!=null);
   wrap.style.display = any ? '' : 'none';
+  // Décote surfacique terrain (abattement de contenance) sous les cartes
+  renderTerrainDecote(estimations.terrain);
+}
+
+// ═══ Décote surfacique terrain (abattement de contenance) ════════════════════
+// Méthodologie expertise foncière : prix_m²(S) = prix_m²_réf × (S_réf / S)^α
+// α (élasticité) calibré selon le zonage PLU (GPU) du point analysé :
+//   U centre/tendu 0,15 · U standard 0,22 · AU 0,28 · A/N (rural) 0,35 · inconnu 0,25
+// Réf. : pratiques notariales & études foncières — élasticité prix/surface -0,20 à -0,35.
+// Plancher : 2 €/m² (valeur agricole DOM basse) — jamais en dessous.
+function terrainAlpha(){
+  const z = String(((window.__fidiGpu||{}).zone||{}).typezone || '').toUpperCase();
+  const cp = ((window.__fidiData||{}).localisation||{}).postcode || '';
+  if(z.startsWith('AU')) return { a:0.28, lbl:'zone à urbaniser (AU)' };
+  if(z.startsWith('U')){
+    const centre = /^(97200|97110|97300|97400)/.test(cp);
+    return centre ? { a:0.15, lbl:'zone urbaine centre (U — potentiel promoteur)' }
+                  : { a:0.22, lbl:'zone urbaine (U)' };
+  }
+  if(z.startsWith('A')) return { a:0.35, lbl:'zone agricole (A — bascule valeur agricole)' };
+  if(z.startsWith('N')) return { a:0.35, lbl:'zone naturelle (N)' };
+  return { a:0.25, lbl:'zonage non déterminé (moyenne)' };
+}
+function renderTerrainDecote(e){
+  let box = document.getElementById('terrainDecoteBox');
+  if(!e || e.prix_m2==null){ if(box) box.style.display='none'; return; }
+  if(!box){
+    const anchor = document.getElementById('estTypesBody');
+    if(!anchor) return;
+    box = document.createElement('div');
+    box.id = 'terrainDecoteBox';
+    box.className = 'col-12';
+    anchor.parentNode.appendChild(box);
+  }
+  box.style.display = '';
+  const alpha = terrainAlpha();
+  const sRef = e.surface || 1000;      // surface de référence du marché local
+  const pRef = e.prix_m2;              // €/m² observé à la surface de référence
+  const FLOOR = 2;                      // plancher agricole €/m²
+  const sizes = [500, 1000, 2500, 5000, 10000, 30000, 50000];
+  const calc = (S) => Math.max(FLOOR, pRef * Math.pow(sRef / S, alpha.a));
+  const rows = sizes.map(S => {
+    const p = calc(S);
+    const dec = Math.round((1 - p / pRef) * 100);
+    return `<tr${S===Math.round(sRef)?' style="background:#fff8e6;"':''}>
+      <td class="text-end fw-semibold">${fmt(S)} m²</td>
+      <td class="text-end">${p.toFixed(2)} €/m²</td>
+      <td class="text-end">${dec>0?'-':''}${dec !== 0 ? Math.abs(dec)+' %' : 'réf.'}</td>
+      <td class="text-end fw-bold" style="color:var(--fidi-blue);">${fmtEur(Math.round(p*S))}</td>
+    </tr>`;
+  }).join('');
+  box.innerHTML = `
+    <div class="border rounded p-2 mt-2" style="border-left:3px solid #198754!important;background:#f8fcf9;">
+      <div class="fw-semibold small mb-1" style="color:#198754;">
+        <i class="bi bi-rulers me-1"></i>Décote surfacique terrain (abattement de contenance)
+      </div>
+      <div class="small text-muted mb-2">
+        Formule : prix/m² = ${pRef.toFixed(0)} € × (${fmt(Math.round(sRef))} ÷ Surface)<sup>${alpha.a}</sup>
+        — coefficient α = <b>${alpha.a}</b> (${alpha.lbl}).
+        Plancher ${FLOOR} €/m² (valeur agricole). Un grand terrain vaut moins au m² qu'un petit : c'est l'abattement de contenance, pratiqué en expertise foncière.
+      </div>
+      <div class="d-flex flex-wrap gap-3">
+        <div class="table-responsive" style="flex:1;min-width:300px;">
+          <table class="table table-sm mb-1" style="font-size:.8rem;">
+            <thead><tr class="text-muted" style="font-size:.68rem;text-transform:uppercase;">
+              <th class="text-end">Surface</th><th class="text-end">Prix/m² ajusté</th><th class="text-end">Décote</th><th class="text-end">Valeur estimée</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        <div style="min-width:220px;">
+          <label class="form-label small mb-1 fw-semibold">Votre surface (m²) :</label>
+          <div class="input-group input-group-sm mb-1">
+            <input type="number" id="terrainCustomSurf" class="form-control" placeholder="ex : 12 500" min="1">
+            <button class="btn btn-outline-success" type="button" onclick="calcTerrainCustom(${pRef},${sRef},${alpha.a},${FLOOR})">Calculer</button>
+          </div>
+          <div id="terrainCustomOut" class="small"></div>
+          <div class="text-muted mt-2" style="font-size:.68rem;">
+            <i class="bi bi-info-circle me-1"></i>En zone U dense, un très grand terrain peut au contraire se valoriser par « compte à rebours promoteur » (lotissement) — analyse spécifique recommandée au-delà de 10 000 m² constructibles.
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+function calcTerrainCustom(pRef, sRef, a, floor){
+  const S = parseFloat(document.getElementById('terrainCustomSurf').value);
+  const out = document.getElementById('terrainCustomOut');
+  if(!isFinite(S) || S<=0){ out.innerHTML = '<span class="text-danger">Surface invalide.</span>'; return; }
+  const p = Math.max(floor, pRef * Math.pow(sRef/S, a));
+  const dec = Math.round((1-p/pRef)*100);
+  out.innerHTML = '<div class="p-2 border rounded" style="background:#eafaf0;">'+
+    '<div><b>'+p.toFixed(2)+' €/m²</b> <span class="text-muted">('+(dec>0?'-':'+')+Math.abs(dec)+' % vs réf.)</span></div>'+
+    '<div class="fw-bold" style="font-size:1.05rem;color:var(--fidi-blue);">'+fmtEur(Math.round(p*S))+'</div>'+
+    '<div class="text-muted" style="font-size:.7rem;">'+fmt(S)+' m² × '+p.toFixed(2)+' €/m²</div>'+
+  '</div>';
 }
 
 // ═══ P2 — Partage de l'étude ═════════════════════════════════════════════════
