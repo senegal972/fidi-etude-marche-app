@@ -3582,8 +3582,22 @@ function renderPromoteurBox(e){
   }).join('');
   box.innerHTML = `
     <div class="border rounded p-2 mt-2" style="border-left:3px solid #1a4b8e!important;background:#f6f9fd;">
-      <div class="fw-semibold small mb-1" style="color:#1a4b8e;">
-        <i class="bi bi-buildings me-1"></i>Décote surfacique promoteur — tarification professionnelle
+      <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
+        <div class="fw-semibold small" style="color:#1a4b8e;">
+          <i class="bi bi-buildings me-1"></i>Décote surfacique promoteur — tarification professionnelle
+        </div>
+        <div class="dropdown">
+          <a href="#" class="small text-decoration-none" style="color:#1a4b8e;" data-bs-toggle="dropdown" onclick="return false;" title="Sources et barèmes de référence">
+            <i class="bi bi-info-circle me-1"></i>Méthodologie
+          </a>
+          <div class="dropdown-menu p-2 small" style="max-width:340px;">
+            <div class="fw-semibold mb-1">Barèmes de référence</div>
+            <div class="text-muted mb-2" style="font-size:.72rem;">Méthode de la charge foncière (« compte à rebours »), reconnue en expertise immobilière. Charge foncière province 15-25 % du CA · abattement de superficie 10-30 %.</div>
+            <a class="dropdown-item px-1 py-1 rounded" href="https://charteexpertiseimmo.org/" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right me-1"></i>Charte de l'Expertise en Évaluation Immobilière (6ᵉ éd. 2025)</a>
+            <a class="dropdown-item px-1 py-1 rounded" href="https://www.impots.gouv.fr/lien-fichedescriptive3035pdf" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right me-1"></i>Fiche DGFiP 3035 — évaluation des biens</a>
+            <div class="text-muted mt-2" style="font-size:.66rem;">Sources périodiquement mises à jour. Les coefficients de l'app sont calibrés sur ces fourchettes et ajustables selon les ventes locales.</div>
+          </div>
+        </div>
       </div>
       <div class="small text-muted mb-2">
         Grandes surfaces destinées aux opérateurs (promoteurs, aménageurs, développeurs fonciers).
