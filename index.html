@@ -3497,8 +3497,117 @@ function renderTerrainDecote(e){
           </div>
           <div id="terrainCustomOut" class="small"></div>
           <div class="text-muted mt-2" style="font-size:.68rem;">
-            <i class="bi bi-info-circle me-1"></i>En zone U dense, un très grand terrain peut au contraire se valoriser par « compte à rebours promoteur » (lotissement) — analyse spécifique recommandée au-delà de 10 000 m² constructibles.
+            <i class="bi bi-info-circle me-1"></i>Grille ci-contre = marché <b>particuliers</b>. Pour les professionnels, voir l'approche promoteur ci-dessous.
           </div>
+        </div>
+      </div>
+    </div>
+    ${renderTerrainPromoteurHTML(pRef, sRef, alpha)}`;
+}
+
+// ═══ Approche PROMOTEUR : compte à rebours (bilan promoteur inversé) ═════════
+// Charge foncière admissible = CA − coûts construction − frais − marge.
+// Standard profession : charge foncière ≈ 12-18 % du CA en DOM.
+// Le promoteur paie typiquement -30 à -50 % du prix public sur grands terrains.
+function terrainPromoteurDefaults(){
+  const z = String(((window.__fidiGpu||{}).zone||{}).typezone || '').toUpperCase();
+  const cp = ((window.__fidiData||{}).localisation||{}).postcode || '';
+  const isDom = /^97/.test(cp);
+  // Densité constructible (m² SDP par m² terrain) + ratio charge foncière selon zone
+  let densite, ratioCF, zoneLbl, faisable = true;
+  if(z.startsWith('AU')){ densite = 0.35; ratioCF = 12; zoneLbl = 'zone AU (à urbaniser)'; }
+  else if(z.startsWith('U')){
+    const centre = /^(97200|97110|97300|97400)/.test(cp);
+    if(centre){ densite = 0.9; ratioCF = 18; zoneLbl = 'zone U centre dense'; }
+    else { densite = 0.5; ratioCF = 15; zoneLbl = 'zone U standard'; }
+  }
+  else if(z.startsWith('A') || z.startsWith('N')){ densite = 0; ratioCF = 0; zoneLbl = 'zone ' + z + ' — promotion non réalisable'; faisable = false; }
+  else { densite = 0.5; ratioCF = 14; zoneLbl = 'zonage non déterminé'; }
+  // Prix de vente neuf local : appart marché × 1.35 (premium neuf), sinon défaut DOM
+  const est = (window.__fidiData||{}).estimations || {};
+  const apptM2 = est.appartement && est.appartement.prix_m2;
+  const prixNeuf = apptM2 ? Math.round(apptM2 * 1.35) : (isDom ? 4200 : 4500);
+  const coutConstruction = isDom ? 2400 : 2000; // €/m² SDP
+  return { densite, ratioCF, zoneLbl, faisable, prixNeuf, coutConstruction };
+}
+function renderTerrainPromoteurHTML(pRef, sRef, alpha){
+  const d = terrainPromoteurDefaults();
+  if(!d.faisable){
+    return `<div class="border rounded p-2 mt-2" style="border-left:3px solid #b87333!important;background:#fdf8f2;">
+      <div class="fw-semibold small" style="color:#b87333;"><i class="bi bi-buildings me-1"></i>Approche promoteur (compte à rebours)</div>
+      <div class="small text-muted mt-1">${d.zoneLbl} : un programme immobilier n'est pas réalisable sur ce zonage. La valeur professionnelle du foncier tend vers la valeur agricole/naturelle (1–5 €/m² DOM), hors espoir de reclassement PLU.</div>
+    </div>`;
+  }
+  return `<div class="border rounded p-2 mt-2" style="border-left:3px solid #b87333!important;background:#fdf8f2;">
+    <div class="fw-semibold small mb-1" style="color:#b87333;">
+      <i class="bi bi-buildings me-1"></i>Approche promoteur — compte à rebours (tarification professionnelle)
+    </div>
+    <div class="small text-muted mb-2">
+      Charge foncière = CA prévisionnel − construction − frais − marge. Un promoteur n'achète jamais au prix public :
+      il paie ce que son bilan d'opération lui permet. Paramètres pré-calibrés (${d.zoneLbl}), tous modifiables.
+    </div>
+    <div class="row g-2 align-items-end mb-2">
+      <div class="col-6 col-md-2"><label class="form-label small mb-0" title="Surface du terrain visé">Surface (m²)</label>
+        <input type="number" id="promSurf" class="form-control form-control-sm" placeholder="10 000"></div>
+      <div class="col-6 col-md-2"><label class="form-label small mb-0" title="m² de surface de plancher constructible par m² de terrain (PLU : emprise × hauteurs)">Densité SDP</label>
+        <input type="number" step="0.05" id="promDens" class="form-control form-control-sm" value="${d.densite}"></div>
+      <div class="col-6 col-md-2"><label class="form-label small mb-0" title="Prix de vente du neuf local €/m² habitable (défaut : appart marché × 1,35)">Prix neuf €/m²</label>
+        <input type="number" id="promNeuf" class="form-control form-control-sm" value="${d.prixNeuf}"></div>
+      <div class="col-6 col-md-2"><label class="form-label small mb-0" title="Coût de construction tous corps d'état €/m² SDP (DOM ≈ 2 400)">Coût constr. €/m²</label>
+        <input type="number" id="promCout" class="form-control form-control-sm" value="${d.coutConstruction}"></div>
+      <div class="col-6 col-md-2"><label class="form-label small mb-0" title="Part du CA que le promoteur peut consacrer au foncier (DOM : 12-18 %)">Charge fonc. % CA</label>
+        <input type="number" step="0.5" id="promRatio" class="form-control form-control-sm" value="${d.ratioCF}"></div>
+      <div class="col-6 col-md-2">
+        <button class="btn btn-sm w-100 text-white" style="background:#b87333;" onclick="calcTerrainPromoteur(${pRef},${sRef},${alpha.a})"><i class="bi bi-calculator me-1"></i>Calculer</button>
+      </div>
+    </div>
+    <div id="promOut"></div>
+  </div>`;
+}
+function calcTerrainPromoteur(pRef, sRef, a){
+  const S = parseFloat(document.getElementById('promSurf').value);
+  const dens = parseFloat(document.getElementById('promDens').value);
+  const neuf = parseFloat(document.getElementById('promNeuf').value);
+  const cout = parseFloat(document.getElementById('promCout').value);
+  const ratio = parseFloat(document.getElementById('promRatio').value);
+  const out = document.getElementById('promOut');
+  if(![S,dens,neuf,cout,ratio].every(v=>isFinite(v)&&v>0)){ out.innerHTML='<span class="text-danger small">Tous les paramètres sont requis (&gt;0).</span>'; return; }
+  const sdp = S * dens;                        // surface de plancher constructible
+  const ca = sdp * neuf;                       // chiffre d'affaires prévisionnel
+  const chargeF = ca * ratio / 100;            // charge foncière admissible
+  const prixM2Promoteur = chargeF / S;         // €/m² terrain côté promoteur
+  // Comparaison au prix particulier décoté (formule de contenance)
+  const prixM2Particulier = Math.max(2, pRef * Math.pow(sRef/S, a));
+  const ecart = Math.round((prixM2Promoteur/prixM2Particulier - 1) * 100);
+  // Bilan simplifié pour transparence
+  const coutTotal = sdp * cout;
+  const fraisDivers = coutTotal * 0.18;        // études, VRD, honoraires, assurances
+  const fraisFiCom = ca * 0.09;                // financier + commercialisation
+  const marge = ca * 0.10;                     // marge promoteur cible
+  const cfVerif = ca - coutTotal - fraisDivers - fraisFiCom - marge;
+  out.innerHTML = `
+    <div class="row g-2">
+      <div class="col-md-4">
+        <div class="p-2 border rounded text-center" style="background:#fff;">
+          <div class="small text-muted">Prix promoteur</div>
+          <div class="fw-bold" style="font-size:1.15rem;color:#b87333;">${prixM2Promoteur.toFixed(2)} €/m²</div>
+          <div class="fw-bold" style="color:var(--fidi-blue);">${fmtEur(Math.round(chargeF))}</div>
+          <div class="small ${ecart<0?'text-danger':'text-success'}">${ecart>0?'+':''}${ecart} % vs particulier décoté (${prixM2Particulier.toFixed(2)} €/m²)</div>
+        </div>
+      </div>
+      <div class="col-md-8">
+        <div class="p-2 border rounded small" style="background:#fff;">
+          <div class="fw-semibold mb-1">Bilan d'opération simplifié (méthode ratio ${ratio} % CA)</div>
+          <table class="table table-sm mb-0" style="font-size:.75rem;">
+            <tr><td>SDP constructible</td><td class="text-end">${fmt(Math.round(sdp))} m²</td></tr>
+            <tr><td>CA prévisionnel (${fmt(Math.round(sdp))} × ${fmt(neuf)} €)</td><td class="text-end fw-semibold">${fmtEur(Math.round(ca))}</td></tr>
+            <tr class="text-muted"><td>− Construction (${fmt(cout)} €/m² SDP)</td><td class="text-end">−${fmtEur(Math.round(coutTotal))}</td></tr>
+            <tr class="text-muted"><td>− Frais annexes (18 % constr.)</td><td class="text-end">−${fmtEur(Math.round(fraisDivers))}</td></tr>
+            <tr class="text-muted"><td>− Financier + commercialisation (9 % CA)</td><td class="text-end">−${fmtEur(Math.round(fraisFiCom))}</td></tr>
+            <tr class="text-muted"><td>− Marge promoteur (10 % CA)</td><td class="text-end">−${fmtEur(Math.round(marge))}</td></tr>
+            <tr style="border-top:2px solid #b87333;"><td class="fw-semibold">Charge foncière résiduelle (bilan détaillé)</td><td class="text-end fw-bold" style="color:#b87333;">${fmtEur(Math.round(cfVerif))}</td></tr>
+          </table>
+          <div class="text-muted mt-1" style="font-size:.68rem;">Les deux approches (ratio % CA vs bilan détaillé) doivent converger — l'écart mesure la sensibilité de vos hypothèses. Négociation promoteur typique : partir du bilan détaillé, sécuriser par le ratio.</div>
         </div>
       </div>
     </div>`;
