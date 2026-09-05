@@ -1595,13 +1595,71 @@ document.addEventListener('DOMContentLoaded', etudeRefreshDatalist);
 
 // ── PDF haute qualité serveur (Puppeteer /api/pdf-render) ──────────────────
 async function exportPdfServeur(){
-  var wrap = document.getElementById('rapport-a4-wrap') || document.querySelector('.rapport-a4-container') || document.body;
+  var panel = document.getElementById('results-panel');
+  if(!panel || panel.classList.contains('d-none')){ alert('Lancez une analyse avant de générer le PDF.'); return; }
+
+  // 0. Capture les graphiques Chart.js (canvas) en images AVANT clonage
+  //    (cloneNode ne copie pas le bitmap d'un canvas → sinon graphiques vides)
+  var canvasMap = [];
+  panel.querySelectorAll('canvas').forEach(function(cv, i){
+    try {
+      var dataUrl = cv.toDataURL('image/png');
+      cv.setAttribute('data-pdf-idx', i);
+      canvasMap.push({ idx:i, dataUrl:dataUrl, w:cv.width, h:cv.height });
+    } catch(e){}
+  });
+  // 1. Clone le contenu étude (pas toute la page → sinon 11 pages de dashboard écran)
+  var clone = panel.cloneNode(true);
+  clone.classList.remove('d-none');
+  // Remplace chaque canvas cloné par son image capturée
+  clone.querySelectorAll('canvas').forEach(function(cv){
+    var idx = cv.getAttribute('data-pdf-idx');
+    var m = canvasMap.find(function(x){ return String(x.idx) === String(idx); });
+    if(m){
+      var img = document.createElement('img');
+      img.src = m.dataUrl;
+      img.style.cssText = 'max-width:100%;height:auto;';
+      cv.parentNode.replaceChild(img, cv);
+    }
+  });
+  // 2. Retire les éléments interactifs / non imprimables qui gonflent le rendu
+  clone.querySelectorAll(
+    '.btn, button, .dropdown, .dropdown-menu, input, select, textarea, ' +
+    '#map, .leaflet-container, #enrichLocalWrap, [data-action], .no-print, ' +
+    '#terrainCustomOut, #promoCustomOut, .input-group'
+  ).forEach(function(el){ el.remove(); });
+  // 3. Remplace la carte Leaflet interactive (ne se rend pas côté serveur) par la carte statique IGN si dispo
+  var mapCard = clone.querySelector('.map-card');
+  if(mapCard){
+    var L = (window.__fidiData||{}).localisation || {};
+    if(L.lat && L.lon && typeof ignStaticMapUrl === 'function'){
+      var mapDiv = mapCard.querySelector('#map');
+      if(mapDiv){ mapDiv.outerHTML = '<img src="'+ignStaticMapUrl(L.lat, L.lon)+'" alt="Carte IGN" style="width:100%;height:auto;border:1px solid #ccc;"/>'; }
+    }
+  }
+
   var css = Array.from(document.styleSheets).map(function(s){
     try { return Array.from(s.cssRules).map(function(r){return r.cssText;}).join('\n'); }
     catch(e){ return ''; }
   }).join('\n');
   var origin = (location && location.origin) || 'https://fidi-etude-marche-app.netlify.app';
-  var html = '<!doctype html><html><head><meta charset="utf-8"><base href="'+origin+'/"><title>FIDI</title><style>'+css+'</style></head><body>'+wrap.outerHTML+'</body></html>';
+  // 4. Styles forcés pour un rendu A4 propre (largeur, coupures, tailles)
+  var printCss =
+    '@page{size:A4;margin:11mm;}' +
+    'html,body{background:#fff!important;margin:0;padding:0;width:100%;}' +
+    '#results-panel{width:100%!important;max-width:100%!important;zoom:1!important;padding:0!important;margin:0!important;}' +
+    '.btn,button,.dropdown,input,select,#map,.leaflet-container{display:none!important;}' +
+    '.card,.chart-card,.score-card,.kpi-card,.map-card,.row,.chart-wrap,table,tr,thead,.stat-box,.kpi,.border{break-inside:avoid;page-break-inside:avoid;}' +
+    '.card,.chart-card,.score-card,.kpi-card,.map-card{box-shadow:none!important;border:1px solid #dee2e6!important;}' +
+    'h1,h2,h3,h4,h5,h6{break-after:avoid;page-break-after:avoid;}' +
+    '.chart-wrap{height:170px!important;}' +
+    'canvas{max-width:100%!important;}' +
+    'table{font-size:.72rem;}' +
+    '.container,.container-fluid{max-width:100%!important;padding:0!important;}';
+  var html = '<!doctype html><html><head><meta charset="utf-8"><base href="'+origin+'/">' +
+    '<title>FIDI Étude de marché</title><style>'+css+'\n'+printCss+'</style></head>' +
+    '<body>'+clone.outerHTML+'</body></html>';
+
   var btn = event && event.target ? event.target.closest('a,button') : null;
   var orig = btn ? btn.innerHTML : '';
   if(btn){ btn.style.pointerEvents='none'; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Génération…'; }
