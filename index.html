@@ -3627,15 +3627,32 @@ function calcTerrainCustom(pRef, sRef, a, floor){
   '</div>';
 }
 
-// ═══ Approche promoteur — compte à rebours opérateur ═════════════════════════
-// Prix max terrain = CA prévisionnel × % charge foncière − VRD.
-// CA = surface terrain × densité (SDP/terrain) × 0,88 (vendable/SDP) × prix vente m² habitable.
-// Ratios DOM (construction +15-20 % vs métropole — normes cyclone/séisme, imports) :
-//   charge foncière collectif ~15 %, individuel groupé ~20 % · VRD 30-60 €/m² terrain.
+// ═══ Décote surfacique PROMOTEUR — tarification professionnelle ══════════════
+// Même logique que la décote particulier, mais appliquée au niveau d'un opérateur
+// (promoteur, aménageur, développeur foncier). Un professionnel achète toujours
+// sous le prix particulier : portage, viabilisation, aléas et marge sont à sa charge.
+// Prix promoteur(S) = prix particulier décoté(S) × K opérateur
+//   K selon zonage : U centre 0,70 · U 0,65 · AU 0,60 · A/N 0,55 · inconnu 0,62
+// (abattement opérateur 30-45 % — fourchette observée dans les négociations foncières)
+function promoteurK(){
+  const z = String(((window.__fidiGpu||{}).zone||{}).typezone || '').toUpperCase();
+  const cp = ((window.__fidiData||{}).localisation||{}).postcode || '';
+  if(z.startsWith('AU')) return { k:0.60, lbl:'zone AU — portage & incertitude d\'aménagement' };
+  if(z.startsWith('U')){
+    const centre = /^(97200|97110|97300|97400)/.test(cp);
+    return centre ? { k:0.70, lbl:'zone U centre — concurrence entre opérateurs' }
+                  : { k:0.65, lbl:'zone U — marché opérateur standard' };
+  }
+  if(z.startsWith('A') || z.startsWith('N')) return { k:0.55, lbl:'zone A/N — risque réglementaire fort' };
+  return { k:0.62, lbl:'zonage non déterminé (moyenne opérateur)' };
+}
 function renderPromoteurBox(){
   let box = document.getElementById('promoteurBox');
   const anchor = document.getElementById('terrainDecoteBox');
   if(!anchor || anchor.style.display==='none'){ if(box) box.style.display='none'; return; }
+  const est = (window.__fidiData||{}).estimations || {};
+  const e = est.terrain;
+  if(!e || e.prix_m2==null){ if(box) box.style.display='none'; return; }
   if(!box){
     box = document.createElement('div');
     box.id = 'promoteurBox';
@@ -3643,107 +3660,71 @@ function renderPromoteurBox(){
     anchor.parentNode.appendChild(box);
   }
   box.style.display = '';
-  // Prix de vente m² habitable auto : appartement prioritaire (collectif), sinon maison
-  const est = (window.__fidiData||{}).estimations || {};
-  const pxVenteAuto = (est.appartement && est.appartement.prix_m2) || (est.maison && est.maison.prix_m2) || '';
+  const alpha = terrainAlpha();
+  const K = promoteurK();
+  const sRef = e.surface || 1000;
+  const pRef = e.prix_m2;
+  const FLOOR = 1; // plancher opérateur plus bas (1 €/m² — négociation agricole)
+  const calcPart = (S) => Math.max(2, pRef * Math.pow(sRef / S, alpha.a));   // prix particulier décoté
+  const calcPro  = (S) => Math.max(FLOOR, calcPart(S) * K.k);               // prix promoteur
+  const sizes = [2500, 5000, 10000, 30000, 50000, 100000];
+  const rows = sizes.map(S => {
+    const pPart = calcPart(S);
+    const pPro = calcPro(S);
+    const decTotale = Math.round((1 - pPro / pRef) * 100);
+    return `<tr>
+      <td class="text-end fw-semibold">${fmt(S)} m²</td>
+      <td class="text-end text-muted">${pPart.toFixed(2)} €/m²</td>
+      <td class="text-end fw-semibold" style="color:#1a4b8e;">${pPro.toFixed(2)} €/m²</td>
+      <td class="text-end">-${decTotale} %</td>
+      <td class="text-end fw-bold" style="color:#1a4b8e;">${fmtEur(Math.round(pPro*S))}</td>
+    </tr>`;
+  }).join('');
   box.innerHTML = `
     <div class="border rounded p-2 mt-2" style="border-left:3px solid #1a4b8e!important;background:#f6f9fd;">
       <div class="fw-semibold small mb-1" style="color:#1a4b8e;">
-        <i class="bi bi-buildings me-1"></i>Approche promoteur / aménageur — compte à rebours opérateur
+        <i class="bi bi-buildings me-1"></i>Décote surfacique promoteur — tarification professionnelle
       </div>
       <div class="small text-muted mb-2">
-        Un opérateur n'achète jamais au prix particulier : il part du chiffre d'affaires du programme projeté et remonte au
-        <b>prix foncier maximal admissible</b>. Formule : Prix terrain = CA × % charge foncière − VRD.
-        Ratios DOM intégrés (construction +15-20 % vs métropole).
+        Grandes surfaces destinées aux opérateurs (promoteurs, aménageurs, développeurs fonciers).
+        Prix opérateur = prix particulier décoté × <b>K = ${K.k}</b> (${K.lbl}).
+        Abattement opérateur : portage foncier, viabilisation, aléas réglementaires et marge — à la charge de l'acquéreur professionnel.
       </div>
-      <div class="row g-2 align-items-end">
-        <div class="col-6 col-md-2">
-          <label class="form-label small mb-0">Surface terrain (m²)</label>
-          <input type="number" id="pmSurf" class="form-control form-control-sm" placeholder="10 000">
+      <div class="d-flex flex-wrap gap-3">
+        <div class="table-responsive" style="flex:1;min-width:340px;">
+          <table class="table table-sm mb-1" style="font-size:.8rem;">
+            <thead><tr class="text-muted" style="font-size:.68rem;text-transform:uppercase;">
+              <th class="text-end">Surface</th><th class="text-end">Prix particulier</th><th class="text-end">Prix promoteur</th><th class="text-end">Décote totale</th><th class="text-end">Valeur opérateur</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
         </div>
-        <div class="col-6 col-md-3">
-          <label class="form-label small mb-0" title="Surface de plancher constructible ÷ surface terrain (densité réglementaire effective)">Type de programme (densité)</label>
-          <select id="pmDens" class="form-select form-select-sm">
-            <option value="0.35" data-cf="20">Maisons groupées (d≈0,35 · CF 20 %)</option>
-            <option value="0.70" data-cf="16" selected>Petit collectif R+2 (d≈0,70 · CF 16 %)</option>
-            <option value="1.00" data-cf="15">Collectif R+3/4 (d≈1,00 · CF 15 %)</option>
-            <option value="1.40" data-cf="14">Collectif dense R+5+ (d≈1,40 · CF 14 %)</option>
-          </select>
+        <div style="min-width:220px;">
+          <label class="form-label small mb-1 fw-semibold">Votre surface (m²) :</label>
+          <div class="input-group input-group-sm mb-1">
+            <input type="number" id="promoCustomSurf" class="form-control" placeholder="ex : 25 000" min="1">
+            <button class="btn btn-outline-primary" type="button" onclick="calcPromoteurCustom(${pRef},${sRef},${alpha.a},${K.k})">Calculer</button>
+          </div>
+          <div id="promoCustomOut" class="small"></div>
+          <div class="text-muted mt-2" style="font-size:.68rem;">
+            <i class="bi bi-info-circle me-1"></i>Le prix opérateur constitue une base de négociation : l'offre d'ouverture d'un promoteur se situe souvent 10-15 % encore en dessous, avec conditions suspensives (permis, pré-commercialisation).
+          </div>
         </div>
-        <div class="col-6 col-md-2">
-          <label class="form-label small mb-0" title="Prix de vente au m² habitable des logements neufs sur ce secteur">Prix vente (€/m² hab.)</label>
-          <input type="number" id="pmPxVente" class="form-control form-control-sm" value="${pxVenteAuto ? Math.round(pxVenteAuto*1.25) : ''}" placeholder="3500">
-        </div>
-        <div class="col-6 col-md-2">
-          <label class="form-label small mb-0" title="Charge foncière : part du CA consacrée au terrain. Auto selon programme, modifiable">Charge foncière (%)</label>
-          <input type="number" id="pmCF" class="form-control form-control-sm" value="16" min="5" max="35" step="0.5">
-        </div>
-        <div class="col-6 col-md-2">
-          <label class="form-label small mb-0" title="Viabilisation, voirie, réseaux — coût par m² de terrain">VRD (€/m² terrain)</label>
-          <input type="number" id="pmVRD" class="form-control form-control-sm" value="45">
-        </div>
-        <div class="col-6 col-md-1">
-          <button class="btn btn-sm btn-primary w-100" onclick="calcPromoteur()" title="Calculer le prix foncier maximal admissible">Calc</button>
-        </div>
-      </div>
-      <div id="pmOut" class="mt-2"></div>
-      <div class="text-muted mt-1" style="font-size:.68rem;">
-        <i class="bi bi-info-circle me-1"></i>Le prix de vente neuf est pré-rempli à +25 % du prix m² ancien observé (écart neuf/ancien courant). Densité = SDP ÷ terrain, vendable = SDP × 0,88. Négociation réelle : le promoteur offre souvent 10-15 % sous son max admissible (marge de négociation + conditions suspensives).
       </div>
     </div>`;
-  // Sync CF quand type de programme change
-  const dens = document.getElementById('pmDens');
-  if(dens) dens.addEventListener('change', function(){
-    const cf = this.options[this.selectedIndex].dataset.cf;
-    const el = document.getElementById('pmCF'); if(el && cf) el.value = cf;
-  });
 }
-function calcPromoteur(){
-  const S = parseFloat(document.getElementById('pmSurf').value);
-  const d = parseFloat(document.getElementById('pmDens').value);
-  const pv = parseFloat(document.getElementById('pmPxVente').value);
-  const cf = parseFloat(document.getElementById('pmCF').value);
-  const vrd = parseFloat(document.getElementById('pmVRD').value) || 0;
-  const out = document.getElementById('pmOut');
-  if(!isFinite(S)||S<=0||!isFinite(d)||!isFinite(pv)||pv<=0||!isFinite(cf)){
-    out.innerHTML = '<span class="text-danger small">Renseignez surface, prix de vente et charge foncière.</span>'; return;
-  }
-  const sdp = S * d;                      // surface de plancher constructible
-  const vendable = sdp * 0.88;            // surface habitable vendable
-  const ca = vendable * pv;               // chiffre d'affaires prévisionnel
-  const chargeFonciere = ca * cf / 100;   // enveloppe foncière brute
-  const coutVRD = S * vrd;
-  const prixMax = Math.max(0, chargeFonciere - coutVRD);
-  const prixM2 = prixMax / S;
-  const offreBasse = prixMax * 0.85;      // négociation courante -15 %
-  // Comparaison avec prix particulier (décote surfacique déjà affichée)
-  const estT = (window.__fidiData||{}).estimations || {};
-  const pRefPart = estT.terrain && estT.terrain.prix_m2;
-  const ecart = pRefPart ? Math.round((1 - prixM2/pRefPart)*100) : null;
-  out.innerHTML = `
-    <div class="row g-2">
-      <div class="col-md-7">
-        <table class="table table-sm mb-0" style="font-size:.78rem;">
-          <tbody>
-            <tr><td class="text-muted">Surface de plancher (SDP = ${fmt(S)} × ${d})</td><td class="text-end fw-semibold">${fmt(Math.round(sdp))} m²</td></tr>
-            <tr><td class="text-muted">Surface vendable (× 0,88)</td><td class="text-end">${fmt(Math.round(vendable))} m²</td></tr>
-            <tr><td class="text-muted">CA prévisionnel (× ${fmt(pv)} €/m²)</td><td class="text-end fw-semibold">${fmtEur(Math.round(ca))}</td></tr>
-            <tr><td class="text-muted">Charge foncière admissible (${cf} % CA)</td><td class="text-end">${fmtEur(Math.round(chargeFonciere))}</td></tr>
-            <tr><td class="text-muted">− VRD / viabilisation (${fmt(S)} × ${vrd} €)</td><td class="text-end text-danger">− ${fmtEur(Math.round(coutVRD))}</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="col-md-5">
-        <div class="p-2 border rounded h-100" style="background:#eaf1fb;">
-          <div class="small text-muted">Prix foncier MAXIMAL admissible</div>
-          <div class="fw-bold" style="font-size:1.3rem;color:#1a4b8e;">${fmtEur(Math.round(prixMax))}</div>
-          <div class="small">soit <b>${prixM2.toFixed(2)} €/m²</b> de terrain${ecart!=null ? ' <span class="text-muted">('+(ecart>0?'-':'+')+Math.abs(ecart)+' % vs prix particulier réf.)</span>' : ''}</div>
-          <hr class="my-1">
-          <div class="small text-muted">Offre d'ouverture probable (−15 %)</div>
-          <div class="fw-semibold" style="color:#b87333;">${fmtEur(Math.round(offreBasse))} <span class="text-muted small">(${(prixM2*0.85).toFixed(2)} €/m²)</span></div>
-        </div>
-      </div>
-    </div>`;
+function calcPromoteurCustom(pRef, sRef, a, k){
+  const S = parseFloat(document.getElementById('promoCustomSurf').value);
+  const out = document.getElementById('promoCustomOut');
+  if(!isFinite(S) || S<=0){ out.innerHTML = '<span class="text-danger">Surface invalide.</span>'; return; }
+  const pPart = Math.max(2, pRef * Math.pow(sRef/S, a));
+  const pPro = Math.max(1, pPart * k);
+  const dec = Math.round((1-pPro/pRef)*100);
+  out.innerHTML = '<div class="p-2 border rounded" style="background:#eaf1fb;">'+
+    '<div><b>'+pPro.toFixed(2)+' €/m²</b> <span class="text-muted">(-'+dec+' % vs réf. particulier)</span></div>'+
+    '<div class="fw-bold" style="font-size:1.05rem;color:#1a4b8e;">'+fmtEur(Math.round(pPro*S))+'</div>'+
+    '<div class="text-muted" style="font-size:.7rem;">'+fmt(S)+' m² × '+pPro.toFixed(2)+' €/m² · particulier : '+pPart.toFixed(2)+' €/m²</div>'+
+  '</div>';
 }
 
 // ═══ P2 — Partage de l'étude ═════════════════════════════════════════════════
