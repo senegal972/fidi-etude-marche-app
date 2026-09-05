@@ -3489,26 +3489,26 @@ function renderTerrainDecote(e){
         — coefficient α = <b>${alpha.a}</b> (${alpha.lbl}).
         Plancher ${FLOOR} €/m² (valeur agricole). Un grand terrain vaut moins au m² qu'un petit : c'est l'abattement de contenance, pratiqué en expertise foncière.
       </div>
-      <div class="d-flex flex-wrap gap-3">
-        <div class="table-responsive" style="flex:1;min-width:300px;">
-          <table class="table table-sm mb-1" style="font-size:.8rem;">
-            <thead><tr class="text-muted" style="font-size:.68rem;text-transform:uppercase;">
-              <th class="text-end">Surface</th><th class="text-end">Prix/m² ajusté</th><th class="text-end">Décote</th><th class="text-end">Valeur estimée</th>
-            </tr></thead>
-            <tbody>${rows}</tbody>
-          </table>
-        </div>
-        <div style="min-width:220px;">
-          <label class="form-label small mb-1 fw-semibold">Votre surface (m²) :</label>
-          <div class="input-group input-group-sm mb-1">
+      <div class="table-responsive">
+        <table class="table table-sm mb-1" style="font-size:.8rem;">
+          <thead><tr class="text-muted" style="font-size:.68rem;text-transform:uppercase;">
+            <th class="text-end">Surface</th><th class="text-end">Prix/m² ajusté</th><th class="text-end">Décote</th><th class="text-end">Valeur estimée</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div class="row g-2 align-items-end mt-1 pt-2 border-top">
+        <div class="col-12 col-md-5">
+          <label class="form-label small mb-1 fw-semibold">Calculer votre surface exacte (m²) :</label>
+          <div class="input-group input-group-sm">
             <input type="number" id="terrainCustomSurf" class="form-control" placeholder="ex : 12 500" min="1">
-            <button class="btn btn-outline-success" type="button" onclick="calcTerrainCustom(${pRef},${sRef},${alpha.a},${FLOOR})">Calculer</button>
-          </div>
-          <div id="terrainCustomOut" class="small"></div>
-          <div class="text-muted mt-2" style="font-size:.68rem;">
-            <i class="bi bi-info-circle me-1"></i>Grille ci-contre = marché <b>particuliers</b>. Pour les professionnels, voir la décote promoteur ci-dessous.
+            <button class="btn btn-success" type="button" onclick="calcTerrainCustom(${pRef},${sRef},${alpha.a},${FLOOR})">Calculer</button>
           </div>
         </div>
+        <div class="col-12 col-md-7"><div id="terrainCustomOut" class="small"></div></div>
+      </div>
+      <div class="text-muted mt-2" style="font-size:.68rem;">
+        <i class="bi bi-info-circle me-1"></i>Grille ci-dessus = marché <b>particuliers</b>. Pour les professionnels, voir la décote promoteur ci-dessous.
       </div>
     </div>`;
 }
@@ -3590,29 +3590,29 @@ function renderPromoteurBox(e){
         Prix opérateur = prix particulier décoté × <b>K = ${K.k}</b> (${K.lbl}).
         Abattement opérateur : portage foncier, viabilisation, aléas réglementaires et marge — à la charge de l'acquéreur professionnel.
       </div>
-      <div class="d-flex flex-wrap gap-3">
-        <div class="table-responsive" style="flex:1;min-width:340px;">
-          <table class="table table-sm mb-1" style="font-size:.8rem;">
-            <thead><tr class="text-muted" style="font-size:.68rem;text-transform:uppercase;">
-              <th class="text-end">Surface</th><th class="text-end">Prix particulier</th><th class="text-end">Prix promoteur</th><th class="text-end">Décote totale</th><th class="text-end">Valeur opérateur</th>
-            </tr></thead>
-            <tbody>${rows}</tbody>
-          </table>
-        </div>
-        <div style="min-width:220px;">
-          <label class="form-label small mb-1 fw-semibold">Votre surface (m²) :</label>
-          <div class="input-group input-group-sm mb-1">
+      <div class="table-responsive">
+        <table class="table table-sm mb-1" style="font-size:.8rem;">
+          <thead><tr class="text-muted" style="font-size:.68rem;text-transform:uppercase;">
+            <th class="text-end">Surface</th><th class="text-end">Prix particulier</th><th class="text-end">Prix promoteur</th><th class="text-end">Décote totale</th><th class="text-end">Valeur opérateur</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div class="row g-2 align-items-end mt-1 pt-2 border-top">
+        <div class="col-12 col-md-5">
+          <label class="form-label small mb-1 fw-semibold">Calculer votre surface exacte (m²) :</label>
+          <div class="input-group input-group-sm">
             <input type="number" id="promoCustomSurf" class="form-control" placeholder="ex : 25 000" min="1">
-            <button class="btn btn-outline-primary" type="button" onclick="calcPromoteurCustom(${pRef},${sRef},${alpha.a},${K.k})">Calculer</button>
-          </div>
-          <div id="promoCustomOut" class="small"></div>
-          <div class="text-muted mt-2" style="font-size:.68rem;">
-            <i class="bi bi-info-circle me-1"></i>Le prix opérateur constitue une base de négociation : l'offre d'ouverture d'un promoteur se situe souvent 10-15 % encore en dessous, avec conditions suspensives (permis, pré-commercialisation).
-          </div>
-          <div class="text-muted mt-1" style="font-size:.64rem;font-style:italic;">
-            Rappel méthodologique : ce prix reflète ce qu'un bilan d'opération (CA neuf − construction − frais − marge) permet de consacrer au foncier. Le détail du bilan relève de l'analyse interne du promoteur — l'étude retient le prix d'acquisition, pas le compte d'exploitation.
+            <button class="btn btn-primary" type="button" onclick="calcPromoteurCustom(${pRef},${sRef},${alpha.a},${K.k})">Calculer</button>
           </div>
         </div>
+        <div class="col-12 col-md-7"><div id="promoCustomOut" class="small"></div></div>
+      </div>
+      <div class="text-muted mt-2" style="font-size:.68rem;">
+        <i class="bi bi-info-circle me-1"></i>Le prix opérateur constitue une base de négociation : l'offre d'ouverture d'un promoteur se situe souvent 10-15 % encore en dessous, avec conditions suspensives (permis, pré-commercialisation).
+      </div>
+      <div class="text-muted mt-1" style="font-size:.64rem;font-style:italic;">
+        Rappel méthodologique : ce prix reflète ce qu'un bilan d'opération (CA neuf − construction − frais − marge) permet de consacrer au foncier. Le détail du bilan relève de l'analyse interne du promoteur — l'étude retient le prix d'acquisition, pas le compte d'exploitation.
       </div>
     </div>`;
 }
