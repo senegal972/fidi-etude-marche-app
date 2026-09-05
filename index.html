@@ -1614,72 +1614,49 @@ async function exportPdfServeur(){
   var panel = document.getElementById('results-panel');
   if(!panel || panel.classList.contains('d-none')){ alert('Lancez une analyse avant de générer le PDF.'); return; }
 
-  // 0. Capture les graphiques Chart.js (canvas) en images AVANT clonage
-  //    (cloneNode ne copie pas le bitmap d'un canvas → sinon graphiques vides)
-  var canvasMap = [];
-  panel.querySelectorAll('canvas').forEach(function(cv, i){
-    try {
-      var dataUrl = cv.toDataURL('image/png');
-      cv.setAttribute('data-pdf-idx', i);
-      canvasMap.push({ idx:i, dataUrl:dataUrl, w:cv.width, h:cv.height });
-    } catch(e){}
+  // STRATÉGIE : reproduire EXACTEMENT le rendu du PDF navigateur (@media print), qui
+  // satisfait l'utilisateur. On envoie TOUTE la page + le @media print du CSS fait le
+  // travail côté serveur (Chromium est en emulateMediaType('print')). Seuls ajustements :
+  // graphiques canvas → images, carte Leaflet → carte statique IGN (non rendus serveur).
+
+  // 0. Capture les graphiques Chart.js (canvas) en images sur la PAGE VIVE
+  document.querySelectorAll('#results-panel canvas').forEach(function(cv){
+    try { cv.setAttribute('data-pdf-src', cv.toDataURL('image/png')); } catch(e){}
   });
-  // 1. Clone le contenu étude (pas toute la page → sinon 11 pages de dashboard écran)
-  var clone = panel.cloneNode(true);
-  clone.classList.remove('d-none');
-  // Remplace chaque canvas cloné par son image capturée
-  clone.querySelectorAll('canvas').forEach(function(cv){
-    var idx = cv.getAttribute('data-pdf-idx');
-    var m = canvasMap.find(function(x){ return String(x.idx) === String(idx); });
-    if(m){
+  // 1. Clone la page entière (documentElement) → même contexte que window.print()
+  var clone = document.documentElement.cloneNode(true);
+  // 2. Remplace les canvas par leurs images capturées
+  clone.querySelectorAll('#results-panel canvas').forEach(function(cv){
+    var src = cv.getAttribute('data-pdf-src');
+    if(src){
       var img = document.createElement('img');
-      img.src = m.dataUrl;
-      img.style.cssText = 'max-width:100%;height:auto;';
+      img.src = src; img.style.cssText = 'max-width:100%;height:auto;';
       cv.parentNode.replaceChild(img, cv);
     }
   });
-  // 2. Retire les éléments interactifs / non imprimables qui gonflent le rendu
-  clone.querySelectorAll(
-    '.btn, button, .dropdown, .dropdown-menu, input, select, textarea, ' +
-    '#map, .leaflet-container, #enrichLocalWrap, [data-action], .no-print, ' +
-    '#terrainCustomOut, #promoCustomOut, .input-group'
-  ).forEach(function(el){ el.remove(); });
-  // 3. Remplace la carte Leaflet (ne se rend pas côté serveur) par la carte statique IGN
-  //    AVEC parcellaire cadastral + repère central sur la zone concernée.
-  var mapCard = clone.querySelector('.map-card');
+  // 3. Remplace la carte Leaflet (non rendue serveur) par la carte statique IGN cadastrale
   var L = (window.__fidiData||{}).localisation || {};
-  if(mapCard && L.lat && L.lon){
-    var mapDiv = mapCard.querySelector('#map');
-    if(mapDiv){
-      mapDiv.outerHTML =
-        '<div style="position:relative;width:100%;">' +
-          '<img src="'+etudeStaticMapUrl(L.lat, L.lon)+'" alt="Carte cadastrale IGN — zone concernée" style="width:100%;height:auto;display:block;"/>' +
-          '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-100%);font-size:26px;color:#e4241c;text-shadow:0 1px 2px rgba(0,0,0,.4);">\u{1F4CD}</div>' +
-        '</div>';
-    }
+  var mapDiv = clone.querySelector('#map');
+  if(mapDiv && L.lat && L.lon){
+    mapDiv.outerHTML =
+      '<div style="position:relative;width:100%;height:320px;overflow:hidden;">' +
+        '<img src="'+etudeStaticMapUrl(L.lat, L.lon)+'" alt="Carte cadastrale IGN — zone concernée" style="width:100%;height:100%;object-fit:cover;display:block;"/>' +
+        '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-100%);font-size:28px;color:#e4241c;text-shadow:0 1px 3px rgba(0,0,0,.5);">\u{1F4CD}</div>' +
+      '</div>';
   }
-  // Retire la note "carte interactive en ligne" (inutile en PDF)
-  var pdfNote = clone.querySelector('#pdfMapNote'); if(pdfNote) pdfNote.remove();
+  // 4. Nettoie le clone : scripts inutiles + force l'affichage de results-panel
+  clone.querySelectorAll('script').forEach(function(s){ s.remove(); });
+  var rp = clone.querySelector('#results-panel'); if(rp) rp.classList.remove('d-none');
+  // 5. Fixe l'échelle d'impression (par défaut 100 %, comme le PDF navigateur)
+  clone.style.setProperty('--print-scale', '1');
 
-  var css = Array.from(document.styleSheets).map(function(s){
-    try { return Array.from(s.cssRules).map(function(r){return r.cssText;}).join('\n'); }
-    catch(e){ return ''; }
-  }).join('\n');
   var origin = (location && location.origin) || 'https://fidi-etude-marche-app.netlify.app';
-  // 4. Overrides A4 MINIMAUX : on PRÉSERVE le style écran (cards colorées, ombres,
-  //    couleurs) pour garder le niveau UX. On force juste le format page + coupures.
-  var printCss =
-    '@page{size:A4;margin:10mm;}' +
-    'html,body{background:#fff!important;margin:0;padding:0;}' +
-    '#results-panel{width:100%!important;max-width:100%!important;zoom:1!important;}' +
-    '.card,.chart-card,.score-card,.kpi-card,.map-card,.chart-wrap,table,tr,thead,.stat-box,.kpi{break-inside:avoid;page-break-inside:avoid;}' +
-    'h1,h2,h3,h4,h5,h6,.section-title{break-after:avoid;page-break-after:avoid;}' +
-    '.chart-wrap{height:180px!important;}' +
-    'img{max-width:100%!important;height:auto;}' +
-    '.container,.container-fluid{max-width:100%!important;}';
-  var html = '<!doctype html><html><head><meta charset="utf-8"><base href="'+origin+'/">' +
-    '<title>FIDI Étude de marché</title><style>'+css+'\n'+printCss+'</style></head>' +
-    '<body>'+clone.outerHTML+'</body></html>';
+  // Injecte <base> pour résoudre les URLs relatives (img-proxy, favicon…)
+  var head = clone.querySelector('head');
+  if(head && !head.querySelector('base')){
+    var b = document.createElement('base'); b.href = origin + '/'; head.insertBefore(b, head.firstChild);
+  }
+  var html = '<!doctype html>' + clone.outerHTML;
 
   var btn = event && event.target ? event.target.closest('a,button') : null;
   var orig = btn ? btn.innerHTML : '';
