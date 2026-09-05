@@ -1594,20 +1594,72 @@ function etudeSaveClient(){
 document.addEventListener('DOMContentLoaded', etudeRefreshDatalist);
 
 // ── PDF haute qualité serveur (Puppeteer /api/pdf-render) ──────────────────
-// Carte statique IGN pour le PDF : fond plan IGN + parcellaire cadastral + repère central.
-// Servie via /api/img-proxy (same-origin → rendue par Chromium côté serveur).
-function etudeStaticMapUrl(lat, lon, zoomMetres){
-  var dLat = (zoomMetres || 300) / 111000;
-  var dLon = dLat / Math.cos(lat * Math.PI / 180);
-  var bbox = (lat - dLat) + ',' + (lon - dLon) + ',' + (lat + dLat) + ',' + (lon + dLon);
+// Calcule un BBOX [minLon,minLat,maxLon,maxLat] englobant la parcelle (+ marge),
+// ou à défaut une fenêtre autour du point. Sert au fond WMS ET à la projection SVG.
+function _parcelleBBox(lat, lon, geometry){
+  if(geometry && geometry.coordinates){
+    var minLon=Infinity, minLat=Infinity, maxLon=-Infinity, maxLat=-Infinity;
+    var scan = function(arr){
+      if(typeof arr[0] === 'number'){ // [lon,lat]
+        minLon=Math.min(minLon,arr[0]); maxLon=Math.max(maxLon,arr[0]);
+        minLat=Math.min(minLat,arr[1]); maxLat=Math.max(maxLat,arr[1]);
+      } else arr.forEach(scan);
+    };
+    scan(geometry.coordinates);
+    if(isFinite(minLon)){
+      var padLon=(maxLon-minLon)*0.45 || 0.001, padLat=(maxLat-minLat)*0.45 || 0.001;
+      return [minLon-padLon, minLat-padLat, maxLon+padLon, maxLat+padLat];
+    }
+  }
+  var dLat=300/111000, dLon=dLat/Math.cos(lat*Math.PI/180);
+  return [lon-dLon, lat-dLat, lon+dLon, lat+dLat];
+}
+// URL carte WMS IGN (fond + cadastre) pour un bbox donné, via img-proxy (same-origin).
+function _wmsUrl(bbox, W, H){
   var p = {
     SERVICE:'WMS', VERSION:'1.3.0', REQUEST:'GetMap',
-    // Superpose parcellaire cadastral sur le fond plan IGN
     LAYERS:'GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2,CADASTRALPARCELS.PARCELLAIRE_EXPRESS',
-    STYLES:',', CRS:'EPSG:4326', BBOX:bbox, WIDTH:760, HEIGHT:500, FORMAT:'image/png'
+    STYLES:',', CRS:'EPSG:4326',
+    // CRS 4326 en WMS 1.3.0 = ordre lat,lon → bbox = minLat,minLon,maxLat,maxLon
+    BBOX: bbox[1]+','+bbox[0]+','+bbox[3]+','+bbox[2],
+    WIDTH:W, HEIGHT:H, FORMAT:'image/png'
   };
   var ign = 'https://data.geopf.fr/wms-r/wms?' + Object.keys(p).map(function(k){ return k+'='+encodeURIComponent(p[k]); }).join('&');
   return '/api/img-proxy?url=' + encodeURIComponent(ign);
+}
+// Génère le HTML d'une carte statique impression : fond cadastral + contour parcelle
+// détouré en rouge (SVG), centré sur la parcelle. Fallback repère si pas de géométrie.
+function buildPrintMapHTML(lat, lon, geometry, W, H){
+  W = W || 760; H = H || 500;
+  var bbox = _parcelleBBox(lat, lon, geometry);
+  var url = _wmsUrl(bbox, W, H);
+  var proj = function(lonV, latV){
+    return [
+      (lonV - bbox[0]) / (bbox[2] - bbox[0]) * W,
+      (bbox[3] - latV) / (bbox[3] - bbox[1]) * H
+    ];
+  };
+  var svgPolys = '';
+  if(geometry && geometry.coordinates){
+    var rings = geometry.type === 'MultiPolygon'
+      ? geometry.coordinates.reduce(function(a,poly){ return a.concat(poly); }, [])
+      : geometry.coordinates; // Polygon : liste de rings
+    rings.forEach(function(ring){
+      var pts = ring.map(function(c){ var xy=proj(c[0],c[1]); return xy[0].toFixed(1)+','+xy[1].toFixed(1); }).join(' ');
+      svgPolys += '<polygon points="'+pts+'" fill="rgba(214,51,108,.18)" stroke="#d6336c" stroke-width="3"/>';
+    });
+  }
+  var marker = geometry ? '' :
+    '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-100%);font-size:28px;color:#e4241c;text-shadow:0 1px 3px rgba(0,0,0,.5);">\u{1F4CD}</div>';
+  return '<div style="position:relative;width:100%;max-width:'+W+'px;margin:0 auto;">' +
+    '<img src="'+url+'" alt="Carte cadastrale IGN — parcelle détourée" style="width:100%;height:auto;display:block;border:1px solid #ccc;"/>' +
+    (svgPolys ? '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;">'+svgPolys+'</svg>' : '') +
+    marker +
+    '</div>';
+}
+// Rétrocompat : ancienne signature (URL seule)
+function etudeStaticMapUrl(lat, lon){
+  return _wmsUrl(_parcelleBBox(lat, lon, (window.__fidiGpu||{}).parcelleGeom), 760, 500);
 }
 
 async function exportPdfServeur(){
@@ -1635,14 +1687,12 @@ async function exportPdfServeur(){
     }
   });
   // 3. Remplace la carte Leaflet (non rendue serveur) par la carte statique IGN cadastrale
+  //    AVEC la parcelle détourée en rouge (SVG).
   var L = (window.__fidiData||{}).localisation || {};
+  var geom = (window.__fidiGpu||{}).parcelleGeom || null;
   var mapDiv = clone.querySelector('#map');
   if(mapDiv && L.lat && L.lon){
-    mapDiv.outerHTML =
-      '<div style="position:relative;width:100%;height:320px;overflow:hidden;">' +
-        '<img src="'+etudeStaticMapUrl(L.lat, L.lon)+'" alt="Carte cadastrale IGN — zone concernée" style="width:100%;height:100%;object-fit:cover;display:block;"/>' +
-        '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-100%);font-size:28px;color:#e4241c;text-shadow:0 1px 3px rgba(0,0,0,.5);">\u{1F4CD}</div>' +
-      '</div>';
+    mapDiv.outerHTML = buildPrintMapHTML(L.lat, L.lon, geom, 760, 500);
   }
   // 4. Nettoie le clone : scripts inutiles + force l'affichage de results-panel
   clone.querySelectorAll('script').forEach(function(s){ s.remove(); });
@@ -2431,7 +2481,7 @@ async function loadGpuInfo(lat, lon){
       const f = j && j.features && j.features[0];
       if(f){
         const p = f.properties;
-        if(window.__fidiGpu) window.__fidiGpu.parcelle = p;
+        if(window.__fidiGpu){ window.__fidiGpu.parcelle = p; window.__fidiGpu.parcelleGeom = f.geometry; }
         const ref = `${p.section||''} ${p.numero||''}`.trim();
         elParc.innerHTML = `<span class="fw-bold">${escHtml(ref||'—')}</span>`
           + (p.contenance?` · ${Number(p.contenance).toLocaleString('fr-FR')} m²`:'')

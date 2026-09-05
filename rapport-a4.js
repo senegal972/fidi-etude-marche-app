@@ -29,14 +29,55 @@
     } catch (e) { return ''; }
   }
 
-  // Carte statique IGN (plan) via le proxy same-origin (imprime sans CORS)
+  // Carte statique IGN (plan + cadastre) via le proxy same-origin (imprime sans CORS).
+  // Vue large pour la page de garde.
   function staticMapUrl(lat, lon) {
     const dLat = 0.005, dLon = 0.007;
+    // WMS 1.3.0 + CRS:4326 → ordre lat,lon
     const bbox = [(lat - dLat), (lon - dLon), (lat + dLat), (lon + dLon)].map(v => v.toFixed(6)).join(',');
     const wms = 'https://data.geopf.fr/wms-r/wms?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap'
-      + '&LAYERS=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLES=&CRS=EPSG:4326'
+      + '&LAYERS=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2,CADASTRALPARCELS.PARCELLAIRE_EXPRESS&STYLES=,&CRS=EPSG:4326'
       + '&BBOX=' + bbox + '&WIDTH=1100&HEIGHT=640&FORMAT=image/png';
     return '/api/img-proxy?url=' + encodeURIComponent(wms);
+  }
+
+  // BBOX [minLon,minLat,maxLon,maxLat] englobant la parcelle (+ marge) ou autour du point.
+  function parcelleBBox(lat, lon, geometry) {
+    if (geometry && geometry.coordinates) {
+      let mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity;
+      const scan = (a) => { if (typeof a[0] === 'number') { mnx = Math.min(mnx, a[0]); mxx = Math.max(mxx, a[0]); mny = Math.min(mny, a[1]); mxy = Math.max(mxy, a[1]); } else a.forEach(scan); };
+      scan(geometry.coordinates);
+      if (isFinite(mnx)) { const px = (mxx - mnx) * 0.5 || 0.001, py = (mxy - mny) * 0.5 || 0.001; return [mnx - px, mny - py, mxx + px, mxy + py]; }
+    }
+    const dLat = 0.0035, dLon = dLat / Math.cos(lat * Math.PI / 180);
+    return [lon - dLon, lat - dLat, lon + dLon, lat + dLat];
+  }
+  // Carte statique cadastrale AVEC contour parcelle détouré en rouge (SVG). Pour la
+  // page localisation : la parcelle du bien apparaît nettement détourée à l'impression.
+  function staticMapHTML(lat, lon, geometry, maxH) {
+    const W = 1100, H = 640;
+    const bb = parcelleBBox(lat, lon, geometry);
+    const wms = 'https://data.geopf.fr/wms-r/wms?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap'
+      + '&LAYERS=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2,CADASTRALPARCELS.PARCELLAIRE_EXPRESS&STYLES=,&CRS=EPSG:4326'
+      + '&BBOX=' + [bb[1], bb[0], bb[3], bb[2]].map(v => v.toFixed(6)).join(',')
+      + '&WIDTH=' + W + '&HEIGHT=' + H + '&FORMAT=image/png';
+    const url = '/api/img-proxy?url=' + encodeURIComponent(wms);
+    const proj = (lo, la) => [(lo - bb[0]) / (bb[2] - bb[0]) * W, (bb[3] - la) / (bb[3] - bb[1]) * H];
+    let polys = '';
+    if (geometry && geometry.coordinates) {
+      const rings = geometry.type === 'MultiPolygon'
+        ? geometry.coordinates.reduce((a, p) => a.concat(p), [])
+        : geometry.coordinates;
+      rings.forEach(ring => {
+        const pts = ring.map(c => { const p = proj(c[0], c[1]); return p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' ');
+        polys += '<polygon points="' + pts + '" fill="rgba(214,51,108,.18)" stroke="#d6336c" stroke-width="4"/>';
+      });
+    }
+    const style = 'width:100%;max-height:' + (maxH || '95mm') + ';object-fit:cover;border:1pt solid #d8dee8;border-radius:2mm;display:block;';
+    return '<div style="position:relative;">'
+      + '<img class="rpt-chart" style="' + style + '" src="' + url + '" alt="Plan cadastral — parcelle détourée">'
+      + (polys ? '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;">' + polys + '</svg>' : '')
+      + '</div>';
   }
 
   // ── Styles du document (portés par le gabarit lui-même) ───────────────────
@@ -302,7 +343,8 @@
     const loc = d.localisation || {};
     const gpu = window.__fidiGpu || {};
     const z = gpu.zone, p = gpu.parcelle;
-    const mapImg = (loc.lat && loc.lon) ? '<img class="rpt-chart" style="max-height:95mm;object-fit:cover;border:1pt solid #d8dee8;border-radius:2mm;" src="' + staticMapUrl(loc.lat, loc.lon) + '" alt="Plan de situation">' : '';
+    // Carte cadastrale AVEC parcelle détourée en rouge (SVG) — centrée sur la parcelle
+    const mapImg = (loc.lat && loc.lon) ? staticMapHTML(loc.lat, loc.lon, gpu.parcelleGeom, '95mm') : '';
     return '<div class="rpt-page">'
       + '<h2>5 · Localisation, cadastre & urbanisme</h2>'
       + '<div class="rpt-block rpt-sec">' + mapImg + '</div>'
