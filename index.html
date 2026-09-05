@@ -1594,6 +1594,22 @@ function etudeSaveClient(){
 document.addEventListener('DOMContentLoaded', etudeRefreshDatalist);
 
 // ── PDF haute qualité serveur (Puppeteer /api/pdf-render) ──────────────────
+// Carte statique IGN pour le PDF : fond plan IGN + parcellaire cadastral + repère central.
+// Servie via /api/img-proxy (same-origin → rendue par Chromium côté serveur).
+function etudeStaticMapUrl(lat, lon, zoomMetres){
+  var dLat = (zoomMetres || 300) / 111000;
+  var dLon = dLat / Math.cos(lat * Math.PI / 180);
+  var bbox = (lat - dLat) + ',' + (lon - dLon) + ',' + (lat + dLat) + ',' + (lon + dLon);
+  var p = {
+    SERVICE:'WMS', VERSION:'1.3.0', REQUEST:'GetMap',
+    // Superpose parcellaire cadastral sur le fond plan IGN
+    LAYERS:'GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2,CADASTRALPARCELS.PARCELLAIRE_EXPRESS',
+    STYLES:',', CRS:'EPSG:4326', BBOX:bbox, WIDTH:760, HEIGHT:500, FORMAT:'image/png'
+  };
+  var ign = 'https://data.geopf.fr/wms-r/wms?' + Object.keys(p).map(function(k){ return k+'='+encodeURIComponent(p[k]); }).join('&');
+  return '/api/img-proxy?url=' + encodeURIComponent(ign);
+}
+
 async function exportPdfServeur(){
   var panel = document.getElementById('results-panel');
   if(!panel || panel.classList.contains('d-none')){ alert('Lancez une analyse avant de générer le PDF.'); return; }
@@ -1628,34 +1644,39 @@ async function exportPdfServeur(){
     '#map, .leaflet-container, #enrichLocalWrap, [data-action], .no-print, ' +
     '#terrainCustomOut, #promoCustomOut, .input-group'
   ).forEach(function(el){ el.remove(); });
-  // 3. Remplace la carte Leaflet interactive (ne se rend pas côté serveur) par la carte statique IGN si dispo
+  // 3. Remplace la carte Leaflet (ne se rend pas côté serveur) par la carte statique IGN
+  //    AVEC parcellaire cadastral + repère central sur la zone concernée.
   var mapCard = clone.querySelector('.map-card');
-  if(mapCard){
-    var L = (window.__fidiData||{}).localisation || {};
-    if(L.lat && L.lon && typeof ignStaticMapUrl === 'function'){
-      var mapDiv = mapCard.querySelector('#map');
-      if(mapDiv){ mapDiv.outerHTML = '<img src="'+ignStaticMapUrl(L.lat, L.lon)+'" alt="Carte IGN" style="width:100%;height:auto;border:1px solid #ccc;"/>'; }
+  var L = (window.__fidiData||{}).localisation || {};
+  if(mapCard && L.lat && L.lon){
+    var mapDiv = mapCard.querySelector('#map');
+    if(mapDiv){
+      mapDiv.outerHTML =
+        '<div style="position:relative;width:100%;">' +
+          '<img src="'+etudeStaticMapUrl(L.lat, L.lon)+'" alt="Carte cadastrale IGN — zone concernée" style="width:100%;height:auto;display:block;"/>' +
+          '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-100%);font-size:26px;color:#e4241c;text-shadow:0 1px 2px rgba(0,0,0,.4);">\u{1F4CD}</div>' +
+        '</div>';
     }
   }
+  // Retire la note "carte interactive en ligne" (inutile en PDF)
+  var pdfNote = clone.querySelector('#pdfMapNote'); if(pdfNote) pdfNote.remove();
 
   var css = Array.from(document.styleSheets).map(function(s){
     try { return Array.from(s.cssRules).map(function(r){return r.cssText;}).join('\n'); }
     catch(e){ return ''; }
   }).join('\n');
   var origin = (location && location.origin) || 'https://fidi-etude-marche-app.netlify.app';
-  // 4. Styles forcés pour un rendu A4 propre (largeur, coupures, tailles)
+  // 4. Overrides A4 MINIMAUX : on PRÉSERVE le style écran (cards colorées, ombres,
+  //    couleurs) pour garder le niveau UX. On force juste le format page + coupures.
   var printCss =
-    '@page{size:A4;margin:11mm;}' +
-    'html,body{background:#fff!important;margin:0;padding:0;width:100%;}' +
-    '#results-panel{width:100%!important;max-width:100%!important;zoom:1!important;padding:0!important;margin:0!important;}' +
-    '.btn,button,.dropdown,input,select,#map,.leaflet-container{display:none!important;}' +
-    '.card,.chart-card,.score-card,.kpi-card,.map-card,.row,.chart-wrap,table,tr,thead,.stat-box,.kpi,.border{break-inside:avoid;page-break-inside:avoid;}' +
-    '.card,.chart-card,.score-card,.kpi-card,.map-card{box-shadow:none!important;border:1px solid #dee2e6!important;}' +
-    'h1,h2,h3,h4,h5,h6{break-after:avoid;page-break-after:avoid;}' +
-    '.chart-wrap{height:170px!important;}' +
-    'canvas{max-width:100%!important;}' +
-    'table{font-size:.72rem;}' +
-    '.container,.container-fluid{max-width:100%!important;padding:0!important;}';
+    '@page{size:A4;margin:10mm;}' +
+    'html,body{background:#fff!important;margin:0;padding:0;}' +
+    '#results-panel{width:100%!important;max-width:100%!important;zoom:1!important;}' +
+    '.card,.chart-card,.score-card,.kpi-card,.map-card,.chart-wrap,table,tr,thead,.stat-box,.kpi{break-inside:avoid;page-break-inside:avoid;}' +
+    'h1,h2,h3,h4,h5,h6,.section-title{break-after:avoid;page-break-after:avoid;}' +
+    '.chart-wrap{height:180px!important;}' +
+    'img{max-width:100%!important;height:auto;}' +
+    '.container,.container-fluid{max-width:100%!important;}';
   var html = '<!doctype html><html><head><meta charset="utf-8"><base href="'+origin+'/">' +
     '<title>FIDI Étude de marché</title><style>'+css+'\n'+printCss+'</style></head>' +
     '<body>'+clone.outerHTML+'</body></html>';
