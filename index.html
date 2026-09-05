@@ -3422,7 +3422,7 @@ function renderEstTypes(estimations, typeBien){
   // Décote surfacique terrain (abattement de contenance) sous les cartes
   renderTerrainDecote(estimations.terrain);
   // Décote surfacique promoteur — prix du terrain côté opérateur (bloc pro)
-  renderPromoteurBox();
+  renderPromoteurBox(estimations.terrain);
 }
 
 // ═══ Décote surfacique terrain (abattement de contenance) ════════════════════
@@ -3457,8 +3457,11 @@ function renderTerrainDecote(e){
   }
   box.style.display = '';
   const alpha = terrainAlpha();
-  const sRef = e.surface || 1000;      // surface de référence du marché local
-  const pRef = e.prix_m2;              // €/m² observé à la surface de référence
+  // Surface de RÉFÉRENCE du marché = 1 000 m² (taille courante des ventes de terrain à
+  // bâtir dont dérive le prix médian DVF). NE PAS utiliser e.surface (surface du bien
+  // analysé) : un terrain de 30 000 m² comme référence ferait exploser les petits (+183 %).
+  const sRef = 1000;
+  const pRef = e.prix_m2;              // €/m² médian marché à la surface de référence
   const FLOOR = 2;                      // plancher agricole €/m²
   const sizes = [500, 1000, 2500, 5000, 10000, 30000, 50000];
   const calc = (S) => Math.max(FLOOR, pRef * Math.pow(sRef / S, alpha.a));
@@ -3542,13 +3545,14 @@ function promoteurK(){
   if(z.startsWith('A') || z.startsWith('N')) return { k:0.55, lbl:'zone A/N — risque réglementaire fort' };
   return { k:0.62, lbl:'zonage non déterminé (moyenne opérateur)' };
 }
-function renderPromoteurBox(){
+function renderPromoteurBox(e){
   let box = document.getElementById('promoteurBox');
-  const anchor = document.getElementById('terrainDecoteBox');
-  if(!anchor || anchor.style.display==='none'){ if(box) box.style.display='none'; return; }
-  const est = (window.__fidiData||{}).estimations || {};
-  const e = est.terrain;
+  // Fallback : si appelé sans argument, tente le cache global
+  if(!e){ e = ((window.__fidiData||{}).estimations||{}).terrain; }
   if(!e || e.prix_m2==null){ if(box) box.style.display='none'; return; }
+  // Ancre : sous le tableau décote particulier si présent, sinon sous estTypesBody
+  const anchor = document.getElementById('terrainDecoteBox') || document.getElementById('estTypesBody');
+  if(!anchor) return;
   if(!box){
     box = document.createElement('div');
     box.id = 'promoteurBox';
@@ -3558,7 +3562,7 @@ function renderPromoteurBox(){
   box.style.display = '';
   const alpha = terrainAlpha();
   const K = promoteurK();
-  const sRef = e.surface || 1000;
+  const sRef = 1000;              // référence marché (idem tableau particulier)
   const pRef = e.prix_m2;
   const FLOOR = 1; // plancher opérateur plus bas (1 €/m² — négociation agricole)
   const calcPart = (S) => Math.max(2, pRef * Math.pow(sRef / S, alpha.a));   // prix particulier décoté
