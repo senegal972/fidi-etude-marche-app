@@ -2454,6 +2454,8 @@ async function loadGpuInfo(lat, lon){
       if(f){
         const p = f.properties;
         if(window.__fidiGpu){ window.__fidiGpu.parcelle = p; window.__fidiGpu.parcelleGeom = f.geometry; }
+        // Auto-remplit la surface (contenance) dans les tableaux de décote + calcule
+        try { if(typeof etudeAutoFillContenance === 'function') etudeAutoFillContenance(); } catch(e){}
         const ref = `${p.section||''} ${p.numero||''}`.trim();
         elParc.innerHTML = `<span class="fw-bold">${escHtml(ref||'—')}</span>`
           + (p.contenance?` · ${Number(p.contenance).toLocaleString('fr-FR')} m²`:'')
@@ -3501,6 +3503,8 @@ function renderEstTypes(estimations, typeBien){
   renderTerrainDecote(estimations.terrain);
   // Décote surfacique promoteur — prix du terrain côté opérateur (bloc pro)
   renderPromoteurBox(estimations.terrain);
+  // Si la parcelle est déjà connue (recherche par réf. cadastre), auto-remplit la surface
+  try { if(typeof etudeAutoFillContenance === 'function') etudeAutoFillContenance(); } catch(e){}
 }
 
 // ═══ Décote surfacique terrain (abattement de contenance) ════════════════════
@@ -3720,6 +3724,27 @@ function calcPromoteurCustom(pRef, sRef, a, k){
     '<div class="fw-bold" style="font-size:1.05rem;color:#1a4b8e;">'+fmtEur(Math.round(pPro*S))+'</div>'+
     '<div class="text-muted" style="font-size:.7rem;">'+fmt(S)+' m² × '+pPro.toFixed(2)+' €/m² · particulier : '+pPart.toFixed(2)+' €/m²</div>'+
   '</div>';
+}
+
+// ═══ Auto-remplissage surface depuis la contenance cadastrale ════════════════
+// Dès que la parcelle est identifiée (recherche réf. cadastre → loadGpuInfo), sa
+// contenance (m²) remplit les 2 champs « Calculer votre surface exacte » et lance
+// les calculs. Recalcule les paramètres depuis les données globales (autonome).
+function etudeAutoFillContenance(){
+  var gpu = window.__fidiGpu || {};
+  var contenance = gpu.parcelle && Number(gpu.parcelle.contenance);
+  if(!contenance || contenance <= 0) return;
+  var ests = (window.__fidiData||{}).estimations || {};
+  var e = ests.terrain;
+  if(!e || e.prix_m2 == null) return;
+  var pRef = e.prix_m2, sRef = 1000;
+  var alpha = terrainAlpha(), K = promoteurK();
+  // Tableau vert (particulier)
+  var inT = document.getElementById('terrainCustomSurf');
+  if(inT){ inT.value = Math.round(contenance); calcTerrainCustom(pRef, sRef, alpha.a, 2); }
+  // Tableau bleu (promoteur)
+  var inP = document.getElementById('promoCustomSurf');
+  if(inP){ inP.value = Math.round(contenance); calcPromoteurCustom(pRef, sRef, alpha.a, K.k); }
 }
 
 // ═══ P2 — Partage de l'étude ═════════════════════════════════════════════════
