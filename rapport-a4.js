@@ -10,6 +10,16 @@
 (function () {
   'use strict';
 
+  // ── Identité société (étude de marché : OPTIMMO DOM) ─────────────────────────
+  // Surchargeable via localStorage fidi:avis:signataire (societe) si présent.
+  function societe() {
+    try {
+      const s = JSON.parse(localStorage.getItem('fidi:avis:signataire') || 'null');
+      if (s && s.societe) return { nom: s.societe, email: s.email || 'contact@fidiconseil.com' };
+    } catch (e) {}
+    return { nom: 'OPTIMMO DOM', email: 'contact@fidiconseil.com' };
+  }
+
   // ── Helpers ────────────────────────────────────────────────────────────────
   const esc = (s) => String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -132,8 +142,57 @@
 
   // ── Sections ───────────────────────────────────────────────────────────────
   function footer(page, total, ref) {
-    return '<div class="rpt-foot"><span>FIDI Conseil · contact@fidiconseil.com</span>'
+    const soc = societe();
+    return '<div class="rpt-foot"><span>' + esc(soc.nom) + ' · ' + esc(soc.email) + '</span>'
       + '<span>' + esc(ref || '') + '</span><span>Page ' + page + ' / ' + total + '</span></div>';
+  }
+
+  // ── Décotes surfaciques terrain (particulier + promoteur) ────────────────────
+  // Reproduit la logique de l'écran. Formule puissance : prix/m²(S)=pRef×(sRef/S)^α.
+  function terrainAlphaR(cp, typezone) {
+    const z = String(typezone || '').toUpperCase();
+    if (z.startsWith('AU')) return { a: 0.28, lbl: 'zone AU' };
+    if (z.startsWith('U')) return /^(97200|97110|97300|97400)/.test(cp) ? { a: 0.15, lbl: 'zone U centre' } : { a: 0.22, lbl: 'zone U' };
+    if (z.startsWith('A') || z.startsWith('N')) return { a: 0.35, lbl: 'zone A/N' };
+    return { a: 0.25, lbl: 'zonage indéterminé' };
+  }
+  function promoteurKR(cp, typezone) {
+    const z = String(typezone || '').toUpperCase();
+    if (z.startsWith('AU')) return { k: 0.60, lbl: 'zone AU' };
+    if (z.startsWith('U')) return /^(97200|97110|97300|97400)/.test(cp) ? { k: 0.70, lbl: 'zone U centre' } : { k: 0.65, lbl: 'zone U' };
+    if (z.startsWith('A') || z.startsWith('N')) return { k: 0.55, lbl: 'zone A/N' };
+    return { k: 0.62, lbl: 'zonage indéterminé' };
+  }
+  function decotesPage(d, ref) {
+    const ests = d.estimations || {};
+    const e = ests.terrain;
+    if (!e || e.prix_m2 == null) return ''; // uniquement si estimation terrain
+    const cp = (d.localisation || {}).postcode || '';
+    const tz = ((window.__fidiGpu || {}).zone || {}).typezone || '';
+    const alpha = terrainAlphaR(cp, tz), K = promoteurKR(cp, tz);
+    const sRef = 1000, pRef = e.prix_m2;
+    const calcPart = (S) => Math.max(2, pRef * Math.pow(sRef / S, alpha.a));
+    const calcPro = (S) => Math.max(1, calcPart(S) * K.k);
+    const sizes = [500, 1000, 2500, 5000, 10000, 30000, 50000];
+    const rowsPart = sizes.map(S => {
+      const p = calcPart(S), dc = Math.round((1 - p / pRef) * 100);
+      const lbl = dc === 0 ? 'réf.' : (dc > 0 ? '-' + dc + ' %' : '+' + Math.abs(dc) + ' %');
+      return '<tr><td class="txt-r">' + num(S) + ' m²</td><td class="txt-r">' + dec2(p) + ' €/m²</td><td class="txt-r">' + lbl + '</td><td class="txt-r"><strong>' + eur(p * S) + '</strong></td></tr>';
+    }).join('');
+    const rowsPro = sizes.filter(S => S >= 2500).map(S => {
+      const pp = calcPart(S), pr = calcPro(S), dc = Math.round((1 - pr / pRef) * 100);
+      return '<tr><td class="txt-r">' + num(S) + ' m²</td><td class="txt-r" style="color:#6a7385;">' + dec2(pp) + ' €/m²</td><td class="txt-r"><strong style="color:#1a3a6e;">' + dec2(pr) + ' €/m²</strong></td><td class="txt-r">-' + dc + ' %</td><td class="txt-r"><strong>' + eur(pr * S) + '</strong></td></tr>';
+    }).join('');
+    return '<div class="rpt-page">'
+      + '<h2>3 · Décote surfacique du terrain</h2>'
+      + '<div class="rpt-block rpt-sec"><h3>Marché particuliers — abattement de contenance</h3>'
+      + '<p style="font-size:8pt;color:#6a7385;">Formule : prix/m² = ' + eur(pRef) + ' × (1 000 ÷ surface)<sup>' + alpha.a + '</sup> — coefficient α = ' + alpha.a + ' (' + alpha.lbl + '). Un grand terrain vaut moins au m² qu\'un petit (abattement de contenance, usage expertise foncière).</p>'
+      + '<table><thead><tr><th class="txt-r">Surface</th><th class="txt-r">Prix/m² ajusté</th><th class="txt-r">Décote</th><th class="txt-r">Valeur estimée</th></tr></thead><tbody>' + rowsPart + '</tbody></table></div>'
+      + '<div class="rpt-block rpt-sec"><h3>Marché professionnels — décote promoteur / aménageur</h3>'
+      + '<p style="font-size:8pt;color:#6a7385;">Prix opérateur = prix particulier décoté × K = ' + K.k + ' (' + K.lbl + '). Abattement opérateur (portage, viabilisation, aléas, marge) à la charge de l\'acquéreur professionnel.</p>'
+      + '<table><thead><tr><th class="txt-r">Surface</th><th class="txt-r">Prix particulier</th><th class="txt-r">Prix promoteur</th><th class="txt-r">Décote totale</th><th class="txt-r">Valeur opérateur</th></tr></thead><tbody>' + rowsPro + '</tbody></table>'
+      + '<div class="rpt-note">Base de négociation : l\'offre d\'ouverture d\'un promoteur se situe souvent 10-15 % sous ces valeurs. Méthodologie : Charte de l\'Expertise en Évaluation Immobilière · Fiche DGFiP 3035.</div></div>'
+      + footer(3, 8, ref) + '</div>';
   }
 
   function coverPage(d, inputs, ref) {
@@ -226,7 +285,7 @@
       + '<div style="flex:1;"><div style="font-size:12pt;font-weight:800;color:' + (sc.couleur || '#1a3a6e') + ';">Potentiel : ' + esc(sc.verdict || '—') + '</div>'
       + '<table class="axes"><tbody>' + axes + '</tbody></table></div></div>'
       + kpis + estHtml + estTypes + narratif
-      + footer(2, 7, ref) + '</div>';
+      + footer(2, 8, ref) + '</div>';
   }
 
   function marchePage(d, ref) {
@@ -246,7 +305,7 @@
       + '<th class="txt-r">Apparts</th><th class="txt-r">€/m² appart</th><th class="txt-r">Terrains</th><th class="txt-r">€/m² terrain</th></tr></thead>'
       + '<tbody>' + rows + '</tbody></table>'
       + '<div class="rpt-note">Source : Demandes de valeurs foncières (DVF), mutations regroupées, prix médians sur ventes mono-bien.</div></div>'
-      + footer(3, 7, ref) + '</div>';
+      + footer(4, 8, ref) + '</div>';
   }
 
   function transactionsPage(d, ref) {
@@ -270,7 +329,7 @@
       + '<tbody>' + rows + '</tbody></table>'
       + (all.length > MAXROWS ? '<div class="rpt-note">' + num(all.length - MAXROWS) + ' transactions supplémentaires disponibles dans l\'application.</div>' : '')
       + '<div class="rpt-note">* vente portant sur plusieurs biens : prix global, €/m² non significatif. Source DVF Etalab.</div>'
-      + footer(4, 7, ref) + '</div>';
+      + footer(5, 8, ref) + '</div>';
   }
 
   function contextePage(d, ref) {
@@ -336,7 +395,7 @@
     return '<div class="rpt-page">'
       + '<h2>4 · Contexte local</h2>'
       + cols + loyHtml + dpeBar + risquesHtml
-      + footer(5, 7, ref) + '</div>';
+      + footer(6, 8, ref) + '</div>';
   }
 
   function localisationPage(d, ref) {
@@ -357,7 +416,7 @@
         : '<tr><td>Zonage PLU</td><td>Document d\'urbanisme non numérisé sur le GPU pour cette commune.</td></tr>')
       + '</tbody></table>'
       + '<div class="rpt-note">Sources : IGN Géoplateforme, Géoportail de l\'Urbanisme, cadastre Etalab.</div></div>'
-      + footer(6, 7, ref) + '</div>';
+      + footer(7, 8, ref) + '</div>';
   }
 
   function mentionsPage(ref) {
@@ -376,9 +435,9 @@
       + '<tr><td>Fiscalité, vacance, sécurité</td><td>data.economie.gouv.fr · opendatasoft · SSMSI</td></tr>'
       + '</tbody></table></div>'
       + '<div class="rpt-block rpt-sec"><h3>Mentions</h3>'
-      + '<p style="font-size:8pt;color:#6a7385;">Ce document est une étude indicative établie à partir de données publiques. Il ne constitue ni une expertise immobilière au sens de la charte de l\'expertise, ni un avis de valeur opposable. FIDI Conseil ne saurait être tenu responsable des décisions prises sur la seule base de ce document.</p>'
-      + '<p style="margin-top:6mm;"><strong>FIDI Conseil</strong> · Martinique · contact@fidiconseil.com</p></div>'
-      + footer(7, 7, ref) + '</div>';
+      + '<p style="font-size:8pt;color:#6a7385;">Ce document est une étude indicative établie à partir de données publiques. Il ne constitue ni une expertise immobilière au sens de la charte de l\'expertise, ni un avis de valeur opposable. ' + esc(societe().nom) + ' ne saurait être tenu responsable des décisions prises sur la seule base de ce document.</p>'
+      + '<p style="margin-top:6mm;"><strong>' + esc(societe().nom) + '</strong> · Martinique · ' + esc(societe().email) + '</p></div>'
+      + footer(8, 8, ref) + '</div>';
   }
 
   // ── Assemblage & impression ────────────────────────────────────────────────
@@ -391,6 +450,7 @@
     return '<style>' + RPT_CSS + '</style>'
       + coverPage(d, inputs, ref)
       + synthesePage(d, inputs, ref)
+      + decotesPage(d, ref)          // décotes terrain (particulier + promoteur) si terrain
       + marchePage(d, ref)
       + transactionsPage(d, ref)
       + contextePage(d, ref)

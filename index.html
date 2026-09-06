@@ -1663,50 +1663,22 @@ function etudeStaticMapUrl(lat, lon){
 }
 
 async function exportPdfServeur(){
-  var panel = document.getElementById('results-panel');
-  if(!panel || panel.classList.contains('d-none')){ alert('Lancez une analyse avant de générer le PDF.'); return; }
-
-  // STRATÉGIE : reproduire EXACTEMENT le rendu du PDF navigateur (@media print), qui
-  // satisfait l'utilisateur. On envoie TOUTE la page + le @media print du CSS fait le
-  // travail côté serveur (Chromium est en emulateMediaType('print')). Seuls ajustements :
-  // graphiques canvas → images, carte Leaflet → carte statique IGN (non rendus serveur).
-
-  // 0. Capture les graphiques Chart.js (canvas) en images sur la PAGE VIVE
-  document.querySelectorAll('#results-panel canvas').forEach(function(cv){
-    try { cv.setAttribute('data-pdf-src', cv.toDataURL('image/png')); } catch(e){}
-  });
-  // 1. Clone la page entière (documentElement) → même contexte que window.print()
-  var clone = document.documentElement.cloneNode(true);
-  // 2. Remplace les canvas par leurs images capturées
-  clone.querySelectorAll('#results-panel canvas').forEach(function(cv){
-    var src = cv.getAttribute('data-pdf-src');
-    if(src){
-      var img = document.createElement('img');
-      img.src = src; img.style.cssText = 'max-width:100%;height:auto;';
-      cv.parentNode.replaceChild(img, cv);
-    }
-  });
-  // 3. Remplace la carte Leaflet (non rendue serveur) par la carte statique IGN cadastrale
-  //    AVEC la parcelle détourée en rouge (SVG).
-  var L = (window.__fidiData||{}).localisation || {};
-  var geom = (window.__fidiGpu||{}).parcelleGeom || null;
-  var mapDiv = clone.querySelector('#map');
-  if(mapDiv && L.lat && L.lon){
-    mapDiv.outerHTML = buildPrintMapHTML(L.lat, L.lon, geom, 760, 500);
+  if(!window.__fidiData){ alert('Lancez une analyse avant de générer le PDF.'); return; }
+  // STRATÉGIE : utiliser LE MÊME moteur que le PDF navigateur (FidiRapport = rapport A4
+  // paginé, propre, condensé). On récupère son HTML et on l'envoie à /api/pdf-render.
+  if(!window.FidiRapport || typeof FidiRapport.buildHTML !== 'function'){
+    alert('Moteur de rapport indisponible — fallback impression navigateur.');
+    if(typeof exportPdf==='function') exportPdf(); return;
   }
-  // 4. Nettoie le clone : scripts inutiles + force l'affichage de results-panel
-  clone.querySelectorAll('script').forEach(function(s){ s.remove(); });
-  var rp = clone.querySelector('#results-panel'); if(rp) rp.classList.remove('d-none');
-  // 5. Fixe l'échelle d'impression (par défaut 100 %, comme le PDF navigateur)
-  clone.style.setProperty('--print-scale', '1');
+  var rapportHtml = FidiRapport.buildHTML();
+  if(!rapportHtml){ alert('Lancez une analyse avant de générer le PDF.'); return; }
 
   var origin = (location && location.origin) || 'https://fidi-etude-marche-app.netlify.app';
-  // Injecte <base> pour résoudre les URLs relatives (img-proxy, favicon…)
-  var head = clone.querySelector('head');
-  if(head && !head.querySelector('base')){
-    var b = document.createElement('base'); b.href = origin + '/'; head.insertBefore(b, head.firstChild);
-  }
-  var html = '<!doctype html>' + clone.outerHTML;
+  // Le HTML FidiRapport cible #rapportRoot dans son CSS → on enveloppe dans cet id.
+  var html = '<!doctype html><html><head><meta charset="utf-8"><base href="'+origin+'/">' +
+    '<title>Étude de marché — OPTIMMO DOM</title>' +
+    '<style>@page{size:A4;margin:12mm;} html,body{margin:0;padding:0;background:#fff;}</style>' +
+    '</head><body><div id="rapportRoot">'+rapportHtml+'</div></body></html>';
 
   var btn = event && event.target ? event.target.closest('a,button') : null;
   var orig = btn ? btn.innerHTML : '';
