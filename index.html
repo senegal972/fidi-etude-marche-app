@@ -5231,14 +5231,56 @@ window.Compte = (function(){
       body.innerHTML = '<tr><td colspan="10" class="text-danger p-3">Erreur réseau : '+esc(e.message)+'</td></tr>';
     }
   }
-  async function factRelance(ref){
-    const email = confirm('Relancer le client pour la facture '+ref+' ?\n\nOK = enregistrer la relance + envoyer un e-mail de rappel au client.\nAnnuler la boîte suivante = enregistrer la relance SANS e-mail.');
-    const {ok,data} = await (async ()=>{
-      const r = await fetch('/api/facture/relance', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({ref, envoyer_email: email})});
-      return { ok:r.ok, data: await r.json().catch(()=>({})) };
-    })();
-    if(!ok){ alert(data.error||'Erreur relance'); return; }
-    alert('Relance enregistrée ('+data.relances+' au total)'+(data.email_envoye?' · e-mail envoyé':(email?' · e-mail NON envoyé (Resend non configuré ?)':'')));
+  function factRelance(ref){
+    const f = (window._factCache||[]).find(x=>x.ref===ref) || {};
+    const origin = location.origin;
+    const lien = f.jeton ? origin+'/l/'+f.jeton : (f.delivery_url||'');
+    const msg = 'Bonjour,\n\nSauf erreur de notre part, la facture '+ref+' d\'un montant de '+(f.montant||'').toLocaleString('fr-FR')+' € TTC reste à régler.'
+      + (lien ? '\n\nVous pouvez la consulter et la régler ici : '+lien : '')
+      + '\n\nNous vous remercions.\nOPTIMMO DOM';
+    // Nettoie le téléphone pour WhatsApp (chiffres uniquement, format international)
+    let tel = String(f.telephone||'').replace(/[^0-9+]/g,'');
+    if(tel.startsWith('0')) tel = '596'+tel.slice(1); // 0696… → 596696 (Martinique) — indicatif à ajuster si besoin
+    tel = tel.replace(/^\+/,'');
+    // Dialogue de choix de canal
+    const dlg = document.createElement('div');
+    dlg.id='relanceDlg';
+    dlg.style.cssText='position:fixed;inset:0;z-index:20000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;';
+    dlg.innerHTML =
+      '<div style="background:#fff;border-radius:12px;max-width:440px;width:92%;padding:22px 24px;box-shadow:0 12px 40px rgba(0,0,0,.3);">'+
+        '<h5 class="fw-bold mb-1"><i class="bi bi-bell me-1" style="color:#b03a2e;"></i>Relancer '+esc(f.client||ref)+'</h5>'+
+        '<p class="small text-muted mb-3">Facture '+esc(ref)+' · '+(f.montant||0).toLocaleString('fr-FR')+' € · '+(f.relances||0)+' relance(s) déjà envoyée(s)</p>'+
+        '<div class="d-grid gap-2">'+
+          (tel ? '<button class="btn btn-success" onclick="Compte.relanceVia(\''+esc(ref)+'\',\'whatsapp\')"><i class="bi bi-whatsapp me-1"></i>WhatsApp ('+esc(f.telephone||tel)+')</button>' : '<button class="btn btn-outline-secondary" disabled title="Aucun téléphone sur la facture"><i class="bi bi-whatsapp me-1"></i>WhatsApp (pas de numéro)</button>')+
+          (f.email ? '<button class="btn btn-primary" onclick="Compte.relanceVia(\''+esc(ref)+'\',\'email\')"><i class="bi bi-envelope me-1"></i>E-mail ('+esc(f.email)+')</button>' : '<button class="btn btn-outline-secondary" disabled title="Aucun e-mail sur la facture"><i class="bi bi-envelope me-1"></i>E-mail (pas d\'adresse)</button>')+
+          '<button class="btn btn-outline-danger" onclick="Compte.relanceVia(\''+esc(ref)+'\',\'log\')"><i class="bi bi-journal-check me-1"></i>Enregistrer la relance seulement</button>'+
+        '</div>'+
+        '<div class="text-end mt-3"><button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'relanceDlg\').remove()">Fermer</button></div>'+
+      '</div>';
+    document.body.appendChild(dlg);
+    dlg.addEventListener('click', e=>{ if(e.target===dlg) dlg.remove(); });
+    // Mémorise le contexte pour relanceVia
+    window._relanceCtx = { ref, msg, tel, email:f.email||'' };
+  }
+  async function relanceVia(ref, canal){
+    const ctx = window._relanceCtx || {};
+    const dlg = document.getElementById('relanceDlg'); if(dlg) dlg.remove();
+    // Ouvre le canal choisi (le mail/WhatsApp s'ouvre dans l'app installée de la machine)
+    if(canal === 'whatsapp' && ctx.tel){
+      window.open('https://wa.me/'+ctx.tel+'?text='+encodeURIComponent(ctx.msg), '_blank');
+    } else if(canal === 'email' && ctx.email){
+      // mailto: → ouvre Gmail/Outlook/Mail selon le gestionnaire par défaut du poste
+      window.location.href = 'mailto:'+encodeURIComponent(ctx.email)
+        + '?subject='+encodeURIComponent('Rappel — Facture '+ref+' en attente de règlement')
+        + '&body='+encodeURIComponent(ctx.msg);
+    }
+    // Enregistre la relance dans Notion (compteur) — sans envoi serveur
+    try {
+      const r = await fetch('/api/facture/relance', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({ref, envoyer_email:false})});
+      const d = await r.json().catch(()=>({}));
+      if(r.ok){ if(typeof toast==='function') toast('Relance enregistrée ('+d.relances+' au total)'); }
+      else alert(d.error||'Relance non enregistrée (colonnes Notion Relances / Dernière relance manquantes ?)');
+    } catch(e){ alert('Erreur réseau : '+e.message); }
     loadFactAdmin();
   }
   // ── Rapport comptable (mensuel / annuel / période libre) ────────────────────
@@ -5343,7 +5385,7 @@ window.Compte = (function(){
 
   return { open, doLogin, logout, refresh, setCredits, setRecherches, consume, adminCreate, adminCredit, adminToggle,
            adminIllimite, adminQuota, adminDelete, adminReseau, adminTarifGroup, adminRefresh,
-           adminEditNom, adminCommission, loadFactAdmin, factRelance,
+           adminEditNom, adminCommission, loadFactAdmin, factRelance, relanceVia,
            openRapportCompta, rcSetMonth, rcSetYear, genRapportCompta,
            openCreateForm, closeCreateForm, openTarifForm, closeTarifForm, copySignupLink,
            loadOffres, chooseOffer, payOffer, offerToggle, offerPrice, bulkRecalc,

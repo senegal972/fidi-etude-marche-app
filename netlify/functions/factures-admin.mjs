@@ -54,7 +54,7 @@ export const handler = async (event) => {
       const commissionEUR = fidiEncaisse && commissionPct ? Math.round(f.montant * commissionPct) / 100 : 0;
       const reverserEUR = fidiEncaisse ? Math.round((f.montant - commissionEUR) * 100) / 100 : 0;
       return {
-        ref: f.numero, date: f.date, client: f.client, email: f.email,
+        ref: f.numero, date: f.date, client: f.client, email: f.email, telephone: f.telephone,
         type: f.type, libelle: f.libelle, montant: f.montant, statut: f.statut,
         paye: f.paye, jeton: f.jeton,
         delivery_url: f.jeton ? `${origin}/l/${f.jeton}` : "",
