@@ -3934,6 +3934,51 @@ async function factGenerer(){
   }
 }
 
+// ─── Relance facture — multi-canal (WhatsApp / e-mail / enregistrer) ─────────
+// Fonction GLOBALE réutilisable : modale facturation (avis) + onglet Facturation FIDI.
+// f = { ref, client, montant, email, telephone, jeton, delivery_url, relances }
+// onDone : callback de rafraîchissement après enregistrement.
+window.relancerFacture = function(f, onDone){
+  var origin = location.origin;
+  var lien = f.delivery_url || (f.jeton ? origin+'/l/'+f.jeton : '');
+  var montant = Number(f.montant||0).toLocaleString('fr-FR');
+  var msg = 'Bonjour,\n\nSauf erreur de notre part, la facture '+f.ref+' d\'un montant de '+montant+' € TTC reste à régler.'
+    + (lien ? '\n\nVous pouvez la consulter et la régler en ligne (carte / PayPal) ici :\n'+lien : '')
+    + '\n\nNous vous remercions de votre règlement.\nOPTIMMO DOM';
+  var tel = String(f.telephone||'').replace(/[^0-9+]/g,'');
+  if(tel.indexOf('+')<0 && tel.charAt(0)==='0') tel = '596'+tel.slice(1); // Martinique par défaut
+  tel = tel.replace(/^\+/,'');
+  var esc2 = function(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/'/g,'&#39;'); };
+  var dlg = document.createElement('div');
+  dlg.id='relanceDlgGlobal';
+  dlg.style.cssText='position:fixed;inset:0;z-index:30000;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;';
+  dlg.innerHTML =
+    '<div style="background:#fff;border-radius:12px;max-width:440px;width:92%;padding:22px 24px;box-shadow:0 12px 40px rgba(0,0,0,.35);font-family:inherit;">'+
+      '<h5 style="font-weight:700;margin:0 0 4px;"><i class="bi bi-bell me-1" style="color:#b03a2e;"></i>Relancer '+esc2(f.client||f.ref)+'</h5>'+
+      '<p style="font-size:.82rem;color:#667;margin:0 0 14px;">Facture '+esc2(f.ref)+' · '+montant+' € · '+(f.relances||0)+' relance(s) déjà envoyée(s)'+(lien?' · <span style="color:#198754;">paiement en ligne inclus</span>':'')+'</p>'+
+      '<div style="display:grid;gap:8px;">'+
+        (tel ? '<button class="btn btn-success" onclick="__relanceSend(\'whatsapp\')"><i class="bi bi-whatsapp me-1"></i>WhatsApp ('+esc2(f.telephone||('+'+tel))+')</button>' : '<button class="btn btn-outline-secondary" disabled><i class="bi bi-whatsapp me-1"></i>WhatsApp (pas de numéro)</button>')+
+        (f.email ? '<button class="btn btn-primary" onclick="__relanceSend(\'email\')"><i class="bi bi-envelope me-1"></i>E-mail ('+esc2(f.email)+')</button>' : '<button class="btn btn-outline-secondary" disabled><i class="bi bi-envelope me-1"></i>E-mail (pas d\'adresse)</button>')+
+        '<button class="btn btn-outline-danger" onclick="__relanceSend(\'log\')"><i class="bi bi-journal-check me-1"></i>Enregistrer la relance seulement</button>'+
+      '</div>'+
+      '<div style="text-align:right;margin-top:14px;"><button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'relanceDlgGlobal\').remove()">Fermer</button></div>'+
+    '</div>';
+  document.body.appendChild(dlg);
+  dlg.addEventListener('click', function(e){ if(e.target===dlg) dlg.remove(); });
+  window.__relanceSend = async function(canal){
+    var d = document.getElementById('relanceDlgGlobal'); if(d) d.remove();
+    if(canal==='whatsapp' && tel){ window.open('https://wa.me/'+tel+'?text='+encodeURIComponent(msg), '_blank'); }
+    else if(canal==='email' && f.email){ window.location.href = 'mailto:'+encodeURIComponent(f.email)+'?subject='+encodeURIComponent('Rappel — Facture '+f.ref+' en attente de règlement')+'&body='+encodeURIComponent(msg); }
+    try {
+      var r = await fetch('/api/facture/relance', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({ref:f.ref, envoyer_email:false})});
+      var jj = await r.json().catch(function(){return{};});
+      if(!r.ok) alert(jj.error||'Relance non enregistrée (colonnes Notion Relances / Dernière relance manquantes ?)');
+      else if(typeof toast==='function') toast('Relance enregistrée ('+jj.relances+')');
+    } catch(e){ alert('Erreur réseau : '+e.message); }
+    if(typeof onDone==='function') onDone();
+  };
+};
+
 // ─── Historique factures du client + annulation ─────────────────────────────
 async function factHistoriqueClient(){
   var email = (document.getElementById('factEmail')||{}).value || '';
@@ -3967,18 +4012,22 @@ async function factHistoriqueClient(){
     };
     var eur = function(n){ return n!=null ? Number(n).toLocaleString('fr-FR')+' €' : '—'; };
 
-    var rows = j.items.map(function(f){
+    window.__factHistoItems = j.items; // pour la relance
+    var rows = j.items.map(function(f, idx){
       var canCancel = (f.statut !== 'Payée' && f.statut !== 'Annulée');
+      var canRelance = (f.statut === 'À payer');
+      var relBadge = (f.relances||0) > 0 ? ' <span class="badge bg-danger" title="'+f.relances+' relance(s)">'+f.relances+'</span>' : '';
       return '<tr>'+
-        '<td><strong>'+escHtml(f.ref)+'</strong></td>'+
+        '<td><strong>'+escHtml(f.ref)+'</strong>'+relBadge+'</td>'+
         '<td>'+escHtml(f.date||'')+'</td>'+
         '<td class="small">'+escHtml((f.libelle||f.type||'').slice(0,40))+'</td>'+
         '<td class="text-end fw-semibold">'+eur(f.montant)+'</td>'+
         '<td><span class="badge '+badgeCls(f.statut)+'">'+escHtml(f.statut||'—')+'</span></td>'+
-        '<td>'+
-          (f.delivery_url ? '<a href="'+escHtml(f.delivery_url)+'" target="_blank" rel="noopener" title="Page de remise" class="text-decoration-none me-2"><i class="bi bi-box-arrow-up-right"></i></a>' : '')+
+        '<td style="white-space:nowrap;">'+
+          (f.delivery_url ? '<a href="'+escHtml(f.delivery_url)+'" target="_blank" rel="noopener" title="Page de remise / paiement en ligne" class="text-decoration-none me-2"><i class="bi bi-box-arrow-up-right"></i></a>' : '')+
           (f.facture_url ? '<a href="'+escHtml(f.facture_url)+'" target="_blank" rel="noopener" title="Facture PDF" class="text-decoration-none me-2"><i class="bi bi-file-earmark-pdf"></i></a>' : '')+
-          (canCancel ? '<button class="btn btn-sm btn-outline-danger py-0 px-1" title="Annuler cette facture" onclick="factAnnuler(\''+escHtml(f.ref)+'\')"><i class="bi bi-x-circle"></i></button>' : '')+
+          (canRelance ? '<button class="btn btn-sm btn-outline-danger py-0 px-1 me-1" title="Relancer (WhatsApp / e-mail + lien de paiement)" onclick="relancerFacture(window.__factHistoItems['+idx+'], factHistoriqueClient)"><i class="bi bi-bell"></i></button>' : '')+
+          (canCancel ? '<button class="btn btn-sm btn-outline-secondary py-0 px-1" title="Annuler cette facture" onclick="factAnnuler(\''+escHtml(f.ref)+'\')"><i class="bi bi-x-circle"></i></button>' : '')+
         '</td>'+
       '</tr>';
     }).join('');

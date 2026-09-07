@@ -44,11 +44,13 @@ export const handler = async (event) => {
     const origin = reqOrigin(event);
     const items = pages.map((p) => {
       const f = factureFromPage(p);
+      const props = p.properties || {};
       return {
         ref: f.numero,
         date: f.date,
         client: f.client,
         email: f.email,
+        telephone: f.telephone,
         adresse: f.adresse,
         type: f.type,
         libelle: f.libelle,
@@ -56,6 +58,8 @@ export const handler = async (event) => {
         statut: f.statut,
         paye: f.paye,
         jeton: f.jeton,
+        relances: props["Relances"]?.number || 0,
+        derniere_relance: props["Dernière relance"]?.date?.start || "",
         delivery_url: f.jeton ? `${origin}/l/${f.jeton}` : "",
         facture_url: factureHtmlUrl(f, origin),
       };
