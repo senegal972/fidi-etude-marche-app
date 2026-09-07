@@ -67,11 +67,11 @@ export const handler = async (event) => {
         filter: { property: "Email", title: { equals: email } }, page_size: 1,
       });
       if (existing.results?.length) return authResp(409, { error: "Un compte existe déjà pour cet e-mail." });
-      // Rôle Administrateur : réservé super-admin
+      // Rôle Administrateur : réservé super-admin. Rôle Test : compte jetable.
       const wantsAdmin = b.role === "Administrateur";
       if (wantsAdmin && !isSuperAdmin(me.user.email)) return authResp(403, { error: "Seul le super-admin peut créer un compte Administrateur." });
       const password = b.password ? String(b.password) : genPassword();
-      const role = wantsAdmin ? "Administrateur" : "Collaborateur";
+      const role = wantsAdmin ? "Administrateur" : (b.role === "Test" ? "Test" : "Collaborateur");
       const credits = Number.isFinite(+b.credits) ? +b.credits : undefined;
       const quota = Number.isFinite(+b.quota) ? +b.quota : undefined;
       const createdPage = await createUser({ email, nom: b.nom || "", password, role,
@@ -173,10 +173,23 @@ export const handler = async (event) => {
       if (!isSuperAdmin(me.user.email)) return authResp(403, { error: "Suppression réservée au super-admin." });
       if (email === me.user.email) return authResp(400, { error: "Vous ne pouvez pas supprimer votre propre compte." });
       if (isSuperAdmin(email)) return authResp(400, { error: "Le compte super-admin ne peut pas être supprimé." });
+      const roleCible = userFromPage(page).role;
+      let facturesPurgees = 0;
+      // Compte de rôle « Test » : purge aussi TOUTES ses factures (email client = email compte)
+      if (roleCible === "Test") {
+        try {
+          const qf = await queryDatabase(DB.facture, {
+            filter: { property: "Email client", email: { equals: email } }, page_size: 100,
+          });
+          for (const pf of (qf.results || [])) {
+            try { await archivePage(pf.id); facturesPurgees++; } catch {}
+          }
+        } catch {}
+      }
       // Notion : pas de vraie suppression, on archive (mise en corbeille)
       try { await archivePage(page.id); }
       catch { await updatePage(page.id, { "Statut": P.select("Désactivé") }); }
-      return authResp(200, { ok: true, deleted: email });
+      return authResp(200, { ok: true, deleted: email, role: roleCible, factures_purgees: facturesPurgees });
     }
 
     return authResp(400, { error: "Action inconnue : " + action });

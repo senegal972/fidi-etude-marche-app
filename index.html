@@ -4792,7 +4792,7 @@ window.Compte = (function(){
                 '<datalist id="adReseauList"><option value="Sextant France"><option value="Optimmo Dom"><option value="Indépendant"></datalist>'+
               '</div>'+
               '<div class="col-md-3"><label class="form-label small mb-0">Rôle</label>'+
-                '<select class="form-select form-select-sm" id="adRole"><option value="Collaborateur">Collaborateur</option><option value="Administrateur">Administrateur</option></select>'+
+                '<select class="form-select form-select-sm" id="adRole"><option value="Collaborateur">Collaborateur</option><option value="Administrateur">Administrateur</option><option value="Test">Test (supprimable avec ses factures)</option></select>'+
               '</div>'+
               '<div class="col-md-3"><label class="form-label small mb-0">Crédits initiaux</label><input type="number" class="form-control form-control-sm" id="adCredits" placeholder="0"></div>'+
               '<div class="col-md-3"><label class="form-label small mb-0">Essais recherches</label><input type="number" class="form-control form-control-sm" id="adQuota" placeholder="5"></div>'+
@@ -4940,7 +4940,7 @@ window.Compte = (function(){
       const statutBg = u.statut==='Actif' ? 'success' : 'secondary';
       const reseauBadge = u.reseau ? '<span class="badge" style="background:#eaefeb;color:#1f4a3f;font-weight:500;">'+esc(u.reseau)+'</span>' : '<span class="text-muted small">—</span>';
       const tarifBadge = u.tarifGroup ? '<span class="badge" style="background:#f5f1e8;color:#b87333;font-weight:500;">'+esc(u.tarifGroup)+'</span>' : '<span class="text-muted small">Standard</span>';
-      const roleBadge = isAdm ? '<span class="badge bg-dark">Admin</span>' : '<span class="badge" style="background:#efe9d9;color:#4a4238;">Collab.</span>';
+      const roleBadge = isAdm ? '<span class="badge bg-dark">Admin</span>' : (u.role==='Test' ? '<span class="badge bg-warning text-dark">Test</span>' : '<span class="badge" style="background:#efe9d9;color:#4a4238;">Collab.</span>');
       const selfTag = self ? ' <span class="badge bg-info text-dark">vous</span>' : '';
       const illimBadge = u.illimite && !isAdm ? ' <i class="bi bi-infinity" title="Accès illimité" style="color:#b87333;"></i>' : '';
       // Actions contextuelles
@@ -4981,9 +4981,16 @@ window.Compte = (function(){
     else prompt('Lien inscription :', url);
   }
   async function adminDelete(email){
-    if(!confirm('SUPPRIMER définitivement le compte « '+email+' » ?\n\nLa page Notion sera archivée (mise en corbeille).')) return;
+    const u=(_adminUsersCache||[]).find(x=>x.email===email)||{};
+    const isTest = u.role==='Test';
+    const warn = isTest
+      ? 'SUPPRIMER le compte de TEST « '+email+' » ?\n\n⚠ TOUTES ses factures seront aussi supprimées (purge complète).'
+      : 'SUPPRIMER définitivement le compte « '+email+' » ?\n\nLa page Notion sera archivée (mise en corbeille).';
+    if(!confirm(warn)) return;
     const {ok,data}=await admin('delete',{email});
-    if(!ok){ alert(data.error||'Erreur suppression'); return; } adminList();
+    if(!ok){ alert(data.error||'Erreur suppression'); return; }
+    if(data.factures_purgees) alert('Compte test supprimé + '+data.factures_purgees+' facture(s) purgée(s).');
+    adminList();
   }
   async function adminEditNom(email, cur){
     const n = prompt('Nom / Prénom du collaborateur :', cur||'');
@@ -5063,7 +5070,7 @@ window.Compte = (function(){
   }
 
   // ─── Offres & crédits ───────────────────────────────────────────────────────
-  const MODLABEL = { 'Cumulatif':'Offre Cumulative (crédits universels)', 'Études de marché':'Module Études de marché', 'Avis de valeur':'Module Avis de valeur' };
+  const MODLABEL = { 'Cumulatif':'Module cumulatif (crédits universels)', 'Études de marché':'Module Études de marché', 'Avis de valeur':'Module Avis de valeur' };
   async function loadOffres(){
     const box = document.getElementById('offresBox'); if(!box || box.dataset.loaded==='1') return;
     try{
@@ -5315,14 +5322,22 @@ window.Compte = (function(){
         const relBadge = (f.relances||0) > 0
           ? '<span class="badge bg-danger" title="'+f.relances+' relance(s)'+(f.derniere_relance?' · dernière le '+esc(f.derniere_relance):'')+'">'+f.relances+'</span>'
           : '<span class="text-muted small">—</span>';
+        const refEsc = esc(f.ref).replace(/'/g,"\\'");
         // Bouton relancer : uniquement pour les factures À payer
         const relanceBtn = f.statut === 'À payer'
-          ? ' <button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="relancerFacture((window._factCache||[]).find(x=>x.ref===\''+esc(f.ref).replace(/'/g,"\\'")+'\'), ()=>Compte.loadFactAdmin())" title="Relancer (WhatsApp / e-mail au choix + lien paiement)"><i class="bi bi-bell"></i> Relancer</button>'
+          ? ' <button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="relancerFacture((window._factCache||[]).find(x=>x.ref===\''+refEsc+'\'), ()=>Compte.loadFactAdmin())" title="Relancer (WhatsApp / e-mail au choix + lien paiement)"><i class="bi bi-bell"></i> Relancer</button>'
           : '';
+        // Bouton supprimer : uniquement pour les factures Annulée (protège Payée / À payer)
+        const delBtn = f.statut === 'Annulée'
+          ? ' <button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="Compte.factDelete(\''+refEsc+'\')" title="Supprimer définitivement cette facture annulée (archive Notion)"><i class="bi bi-trash"></i></button>'
+          : '';
+        const clientCell = f.client
+          ? '<a href="#" onclick="Compte.factFicheClient(\''+esc(f.client).replace(/'/g,"\\'")+'\',\''+esc(f.email||'').replace(/'/g,"\\'")+'\');return false;" style="text-decoration:none;font-weight:600;color:#1a4b8e;">'+esc(f.client)+'</a>'
+          : '<span class="text-muted">—</span>';
         return '<tr>'+
           '<td><span class="fw-semibold">'+esc(f.ref||'—')+'</span>'+fidiChip+'</td>'+
           '<td class="small">'+esc(f.date||'—')+'</td>'+
-          '<td><div>'+esc(f.client||'—')+'</div><div class="text-muted small">'+esc(f.email||'')+'</div></td>'+
+          '<td>'+clientCell+'<div class="text-muted small">'+esc(f.email||'')+'</div></td>'+
           '<td class="small">'+esc(f.type||'—')+'</td>'+
           '<td class="text-end fw-semibold">'+(f.montant||0).toFixed(2)+' €</td>'+
           '<td class="text-center">'+relBadge+'</td>'+
@@ -5332,13 +5347,68 @@ window.Compte = (function(){
           '<td class="text-end" style="white-space:nowrap;">'+
             (f.facture_url ? '<a class="btn btn-sm btn-outline-secondary py-0 px-1" href="'+f.facture_url+'" target="_blank" title="Voir la facture HTML"><i class="bi bi-eye"></i></a>' : '')+
             (f.delivery_url ? ' <a class="btn btn-sm btn-outline-secondary py-0 px-1" href="'+f.delivery_url+'" target="_blank" title="Page de remise / paiement"><i class="bi bi-link-45deg"></i></a>' : '')+
-            relanceBtn+
+            relanceBtn+ delBtn+
           '</td>'+
         '</tr>';
       }).join('');
     } catch (e) {
       body.innerHTML = '<tr><td colspan="10" class="text-danger p-3">Erreur réseau : '+esc(e.message)+'</td></tr>';
     }
+  }
+  async function factDelete(ref){
+    const f = (window._factCache||[]).find(x=>x.ref===ref) || {};
+    if(f.statut && f.statut !== 'Annulée'){
+      alert('Suppression interdite : la facture « '+ref+' » est au statut « '+f.statut+' ».\n\nSeules les factures ANNULÉES peuvent être supprimées. Annulez-la d\'abord depuis la fiche client (bouton ✕ dans l\'historique client).');
+      return;
+    }
+    if(!confirm('Supprimer définitivement la facture annulée « '+ref+' » ?\n\n(Archivée dans Notion — récupérable 30 jours dans la corbeille Notion.)')) return;
+    try {
+      const r = await fetch('/api/facture/delete', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({ref})});
+      const d = await r.json().catch(()=>({}));
+      if(!r.ok){ alert(d.error||'Suppression refusée.'); return; }
+      if(typeof toast==='function') toast('Facture supprimée : '+ref);
+      loadFactAdmin();
+    } catch(e){ alert('Erreur réseau : '+e.message); }
+  }
+  // Fiche client = historique de toutes ses factures (réutilise l'endpoint client)
+  async function factFicheClient(client, email){
+    const holder = document.getElementById('factListBody');
+    // Ouvre un modal léger avec l'historique du client
+    let dlg = document.getElementById('ficheClientDlg');
+    if(dlg) dlg.remove();
+    dlg = document.createElement('div');
+    dlg.id='ficheClientDlg';
+    dlg.style.cssText='position:fixed;inset:0;z-index:30000;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;';
+    dlg.innerHTML='<div style="background:#fff;border-radius:12px;max-width:720px;width:94%;max-height:82vh;overflow:auto;padding:20px 22px;box-shadow:0 12px 40px rgba(0,0,0,.35);">'+
+      '<div class="d-flex align-items-center mb-2"><h5 class="fw-bold mb-0"><i class="bi bi-person-vcard me-1" style="color:#1a4b8e;"></i>Fiche client — '+esc(client)+'</h5>'+
+      '<button class="btn btn-sm btn-outline-secondary ms-auto" onclick="document.getElementById(\'ficheClientDlg\').remove()"><i class="bi bi-x"></i></button></div>'+
+      '<div class="small text-muted mb-2">'+esc(email||'')+'</div>'+
+      '<div id="ficheClientBody" class="small text-muted">Chargement…</div></div>';
+    document.body.appendChild(dlg);
+    dlg.addEventListener('click',e=>{ if(e.target===dlg) dlg.remove(); });
+    try {
+      const qp = email ? 'email='+encodeURIComponent(email) : 'client='+encodeURIComponent(client);
+      const r = await fetch('/api/factures/client?'+qp, {credentials:'same-origin'});
+      const j = await r.json();
+      const box = document.getElementById('ficheClientBody');
+      if(!r.ok){ box.innerHTML='<span class="text-danger">'+esc(j.error||'Erreur')+'</span>'; return; }
+      const eur=n=>n!=null?Number(n).toLocaleString('fr-FR')+' €':'—';
+      const rows=(j.items||[]).map(f=>{
+        const canCancel=(f.statut!=='Payée'&&f.statut!=='Annulée');
+        const canDel=(f.statut==='Annulée');
+        return '<tr><td><b>'+esc(f.ref)+'</b></td><td>'+esc(f.date||'')+'</td><td>'+esc((f.libelle||f.type||'').slice(0,30))+'</td><td class="text-end">'+eur(f.montant)+'</td>'+
+          '<td><span class="badge bg-'+(f.statut==='Payée'?'success':f.statut==='Annulée'?'secondary':'warning text-dark')+'">'+esc(f.statut)+'</span></td>'+
+          '<td class="text-end" style="white-space:nowrap;">'+
+            (canCancel?'<button class="btn btn-sm btn-outline-warning py-0 px-1" onclick="factAnnuler(\''+esc(f.ref).replace(/'/g,"\\'")+'\')" title="Annuler cette facture"><i class="bi bi-x-circle"></i></button> ':'')+
+            (canDel?'<button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="Compte.factDelete(\''+esc(f.ref).replace(/'/g,"\\'")+'\');document.getElementById(\'ficheClientDlg\').remove();" title="Supprimer (facture annulée)"><i class="bi bi-trash"></i></button>':'')+
+          '</td></tr>';
+      }).join('');
+      box.innerHTML='<div class="mb-2">'+
+        '<span class="badge bg-success me-1">'+j.stats.paid+' payées ('+eur(j.stats.total_paid_eur)+')</span>'+
+        '<span class="badge bg-warning text-dark me-1">'+j.stats.pending+' à payer ('+eur(j.stats.total_pending_eur)+')</span>'+
+        (j.stats.cancelled?'<span class="badge bg-secondary">'+j.stats.cancelled+' annulées</span>':'')+'</div>'+
+        '<table class="table table-sm"><thead class="table-light"><tr><th>N°</th><th>Date</th><th>Prestation</th><th class="text-end">Montant</th><th>Statut</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="6" class="text-muted">Aucune facture</td></tr>')+'</tbody></table>';
+    } catch(e){ document.getElementById('ficheClientBody').innerHTML='<span class="text-danger">Erreur : '+esc(e.message)+'</span>'; }
   }
   function factRelance(ref){
     const f = (window._factCache||[]).find(x=>x.ref===ref) || {};
@@ -5494,7 +5564,7 @@ window.Compte = (function(){
 
   return { open, doLogin, logout, refresh, setCredits, setRecherches, consume, adminCreate, adminCredit, adminToggle,
            adminIllimite, adminQuota, adminDelete, adminReseau, adminTarifGroup, adminRefresh,
-           adminEditNom, adminCommission, loadFactAdmin, factRelance, relanceVia,
+           adminEditNom, adminCommission, loadFactAdmin, factRelance, relanceVia, factDelete, factFicheClient,
            openRapportCompta, rcSetMonth, rcSetYear, genRapportCompta,
            openCreateForm, closeCreateForm, openTarifForm, closeTarifForm, copySignupLink,
            loadOffres, chooseOffer, payOffer, offerToggle, offerPrice, bulkRecalc,
