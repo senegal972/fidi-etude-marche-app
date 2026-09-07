@@ -133,6 +133,32 @@ export async function queryDatabase(databaseId, body = {}) {
   return notionFetch(`/databases/${databaseId}/query`, "POST", body);
 }
 
+// Récupère le schéma d'une database.
+export async function getDatabase(databaseId) {
+  return notionFetch(`/databases/${databaseId}`, "GET");
+}
+
+// Garantit qu'une propriété existe dans la database ; la crée sinon.
+// schema ex : { rich_text: {} } · { number: {} } · { checkbox: {} } · { date: {} } · { select: {} }
+// Cache en mémoire (par instance de fonction) pour éviter les GET répétés.
+const _propCache = {};
+export async function ensureProperty(databaseId, propName, schema) {
+  const key = databaseId + "::" + propName;
+  if (_propCache[key]) return true;
+  try {
+    const db = await getDatabase(databaseId);
+    if (db.properties && db.properties[propName]) { _propCache[key] = true; return true; }
+    await notionFetch(`/databases/${databaseId}`, "PATCH", {
+      properties: { [propName]: schema },
+    });
+    _propCache[key] = true;
+    return true;
+  } catch (e) {
+    // Échec (droits d'intégration insuffisants…) — on laisse l'appelant tenter quand même
+    return false;
+  }
+}
+
 // Cherche une page par valeur de titre (Référence) ; renvoie l'id ou null.
 export async function findByRef(databaseId, titleProp, ref) {
   const data = await queryDatabase(databaseId, {

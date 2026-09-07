@@ -100,6 +100,9 @@
 [functions."facture-delete"]
   timeout = 12
 
+[functions."signup-link"]
+  timeout = 10
+
 [functions."georisques-adresse"]
   timeout = 20
 
@@ -323,6 +326,11 @@
 [[redirects]]
   from   = "/api/facture/delete"
   to     = "/.netlify/functions/facture-delete"
+  status = 200
+
+[[redirects]]
+  from   = "/api/signup-link"
+  to     = "/.netlify/functions/signup-link"
   status = 200
 
 [[redirects]]

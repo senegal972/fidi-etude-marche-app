@@ -4975,10 +4975,17 @@ window.Compte = (function(){
   function closeCreateForm(){ document.getElementById('adCreateForm').classList.add('d-none'); document.getElementById('adMsg').innerHTML=''; }
   function openTarifForm(){ document.getElementById('tfCreateForm').classList.remove('d-none'); document.getElementById('tfNom').focus(); }
   function closeTarifForm(){ document.getElementById('tfCreateForm').classList.add('d-none'); document.getElementById('tfMsg').innerHTML=''; }
-  function copySignupLink(){
-    const url = location.origin + '/#signup';
-    if(navigator.clipboard){ navigator.clipboard.writeText(url); alert('Lien inscription copié :\n'+url+'\n\n(La page publique d\'auto-inscription sera activée en Phase 2. Envoyez ce lien pour rester à jour.)'); }
-    else prompt('Lien inscription :', url);
+  async function copySignupLink(){
+    // Réseau optionnel à pré-affecter (sinon l'invité choisit/crée le sien)
+    const reseau = prompt('Réseau à pré-affecter à l\'invité (facultatif) :\n(Laisser vide = l\'invité choisira ou créera son propre réseau)', '') || '';
+    try {
+      const r = await fetch('/api/signup-link', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({reseau:reseau.trim()})});
+      const d = await r.json();
+      if(!r.ok){ alert(d.error||'Erreur génération lien'); return; }
+      const url = d.url;
+      if(navigator.clipboard){ navigator.clipboard.writeText(url); }
+      alert('Lien d\'inscription copié (valable 24 h) :\n\n'+url+'\n\n'+(d.note||'')+'\n\nEnvoyez-le par e-mail ou WhatsApp. Passé 24 h, il ne fonctionnera plus.');
+    } catch(e){ alert('Erreur réseau : '+e.message); }
   }
   async function adminDelete(email){
     const u=(_adminUsersCache||[]).find(x=>x.email===email)||{};

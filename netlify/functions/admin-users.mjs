@@ -1,6 +1,15 @@
 // Netlify Function — Console admin (comptes). POST /api/admin/users { action, ... }
 // Réservé au rôle Administrateur.
-import { DB, queryDatabase, updatePage, archivePage, P, hasToken } from "./_notion.mjs";
+import { DB, queryDatabase, updatePage, archivePage, ensureProperty, P, hasToken } from "./_notion.mjs";
+
+// Lit un champ Réseau qu'il soit stocké en rich_text (nouveau) ou select (ancien).
+function readReseau(props) {
+  const p = props["Réseau"];
+  if (!p) return "";
+  if (Array.isArray(p.rich_text)) return p.rich_text.map((t) => t.plain_text || "").join("");
+  if (p.select) return p.select.name || "";
+  return "";
+}
 import { authResp, currentUser, createUser, setCredits, userFromPage } from "./_auth.mjs";
 
 // Mot de passe fort auto-généré : 16 chars mixed (majuscules + minuscules + chiffres + symboles)
@@ -47,7 +56,7 @@ export const handler = async (event) => {
         const u = userFromPage(pg);
         const props = pg.properties || {};
         // Champs additionnels : Réseau, Grille tarifaire, facturation FIDI (facultatifs)
-        const reseau = props["Réseau"]?.select?.name || "";
+        const reseau = readReseau(props);
         const tarifGroup = props["Grille tarifaire"]?.select?.name || "";
         const fidiEncaisse = !!(props["FIDI encaisse"]?.checkbox);
         const commission = props["Commission FIDI %"]?.number ?? 25;
@@ -78,7 +87,7 @@ export const handler = async (event) => {
         ...(credits != null ? { credits } : {}), ...(quota != null ? { quota } : {}), illimite: !!b.illimite });
       // Champs additionnels post-création (Réseau, Grille tarifaire) si fournis
       const extra = {};
-      if (b.reseau) extra["Réseau"] = P.select(String(b.reseau).slice(0, 100));
+      if (b.reseau) { await ensureProperty(DB.users, "Réseau", { rich_text: {} }); extra["Réseau"] = P.text(String(b.reseau).slice(0, 100)); }
       if (b.tarifGroup) extra["Grille tarifaire"] = P.select(String(b.tarifGroup).slice(0, 100));
       if (Object.keys(extra).length && createdPage?.id) {
         try { await updatePage(createdPage.id, extra); } catch {}
@@ -130,7 +139,10 @@ export const handler = async (event) => {
     if (action === "set_reseau") {
       if (!isSuperAdmin(me.user.email)) return authResp(403, { error: "Réservé au super-admin." });
       const nm = String(b.reseau || "").slice(0, 100);
-      await updatePage(page.id, nm ? { "Réseau": P.select(nm) } : { "Réseau": { select: null } });
+      // Auto-crée la propriété « Réseau » (rich_text = texte libre) si absente.
+      const okProp = await ensureProperty(DB.users, "Réseau", { rich_text: {} });
+      if (!okProp) return authResp(500, { error: "Impossible de créer la propriété « Réseau » dans Notion (droits d'intégration ?). Ajoutez-la manuellement (type Texte)." });
+      await updatePage(page.id, { "Réseau": P.text(nm) });
       return authResp(200, { ok: true, email, reseau: nm });
     }
     if (action === "set_tarif_group") {
