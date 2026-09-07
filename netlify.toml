@@ -94,6 +94,9 @@
 [functions."factures-admin"]
   timeout = 20
 
+[functions."facture-relance"]
+  timeout = 15
+
 [functions."georisques-adresse"]
   timeout = 20
 
@@ -307,6 +310,11 @@
 [[redirects]]
   from   = "/api/factures-admin"
   to     = "/.netlify/functions/factures-admin"
+  status = 200
+
+[[redirects]]
+  from   = "/api/facture/relance"
+  to     = "/.netlify/functions/facture-relance"
   status = 200
 
 [[redirects]]

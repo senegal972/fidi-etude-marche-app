@@ -4756,13 +4756,14 @@ window.Compte = (function(){
               '<button class="btn btn-outline-success" data-fact-filter="paid" onclick="Compte.loadFactAdmin(\'paid\')">Payées</button>'+
               '<button class="btn btn-outline-warning" data-fact-filter="pending" onclick="Compte.loadFactAdmin(\'pending\')">À payer</button>'+
             '</div>'+
-            '<button class="btn btn-sm btn-outline-info ms-auto" onclick="Compte.loadFactAdmin()" title="Recharger la liste depuis Notion"><i class="bi bi-arrow-clockwise"></i></button>'+
+            '<button class="btn btn-sm btn-outline-primary" onclick="Compte.openRapportCompta()" title="Générer un rapport comptable mensuel / annuel imprimable"><i class="bi bi-file-earmark-bar-graph me-1"></i>Rapport comptable</button>'+
+            '<button class="btn btn-sm btn-outline-info" onclick="Compte.loadFactAdmin()" title="Recharger la liste depuis Notion"><i class="bi bi-arrow-clockwise"></i></button>'+
           '</div>'+
           '<div id="factStatsBox" class="row g-2 mb-2"></div>'+
           '<div class="table-responsive"><table class="table table-sm align-middle" style="font-size:.85rem;">'+
             '<thead style="background:#efe9d9;color:#4a4238;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;">'+
-              '<tr><th>Réf</th><th>Date</th><th>Client</th><th>Type</th><th class="text-end">TTC</th><th class="text-end" title="Commission FIDI si mode encaissement">Comm.</th><th class="text-end" title="À reverser au collaborateur">À reverser</th><th>Statut</th><th class="text-end">Actions</th></tr>'+
-            '</thead><tbody id="factListBody"><tr><td colspan="9" class="text-muted small p-3">Cliquez sur un filtre pour charger.</td></tr></tbody>'+
+              '<tr><th>Réf</th><th>Date</th><th>Client</th><th>Type</th><th class="text-end">TTC</th><th class="text-center" title="Nombre de relances envoyées">Relances</th><th class="text-end" title="Commission FIDI si mode encaissement">Comm.</th><th class="text-end" title="À reverser au collaborateur">À reverser</th><th>Statut</th><th class="text-end">Actions</th></tr>'+
+            '</thead><tbody id="factListBody"><tr><td colspan="10" class="text-muted small p-3">Cliquez sur un filtre pour charger.</td></tr></tbody>'+
           '</table></div>'+
         '</div>' : '')+
       '</div>';
@@ -5185,7 +5186,8 @@ window.Compte = (function(){
     try {
       const r = await fetch(url, {credentials:'same-origin'});
       const d = await r.json();
-      if(!r.ok){ body.innerHTML = '<tr><td colspan="9" class="text-danger p-3">'+esc(d.error||'Erreur')+'</td></tr>'; return; }
+      if(!r.ok){ body.innerHTML = '<tr><td colspan="10" class="text-danger p-3">'+esc(d.error||'Erreur')+'</td></tr>'; return; }
+      window._factCache = d.items || []; // pour le rapport comptable
       // Stats top
       const s = d.stats || {};
       const statsBox = document.getElementById('factStatsBox');
@@ -5194,31 +5196,134 @@ window.Compte = (function(){
           '<div class="col-md-3"><div class="p-2 border rounded text-center" style="background:#f5f1e8;"><div class="fw-bold text-warning" style="font-size:1.2rem;">'+(s.total_ttc_paye||0).toFixed(2)+' €</div><div class="small text-muted">Total encaissé</div></div></div>'+
           '<div class="col-md-3"><div class="p-2 border rounded text-center" style="background:#efe9d9;"><div class="fw-bold text-secondary" style="font-size:1.2rem;">'+(s.total_ttc_attente||0).toFixed(2)+' €</div><div class="small text-muted">En attente</div></div></div>'+
           '<div class="col-md-3"><div class="p-2 border rounded text-center" style="background:#eaefeb;"><div class="fw-bold text-success" style="font-size:1.2rem;">'+(s.commissions_fidi_paye||0).toFixed(2)+' €</div><div class="small text-muted">Commission FIDI payée</div></div></div>'+
-          '<div class="col-md-3"><div class="p-2 border rounded text-center" style="background:#f5f1e8;border-left:3px solid #b87333!important;"><div class="fw-bold" style="font-size:1.2rem;color:#b87333;">'+(s.a_reverser||0).toFixed(2)+' €</div><div class="small text-muted">À reverser aux collaborateurs</div></div></div>';
+          '<div class="col-md-3"><div class="p-2 border rounded text-center" style="background:#fdeeee;border-left:3px solid #b03a2e!important;"><div class="fw-bold" style="font-size:1.2rem;color:#b03a2e;">'+(s.clients_relances||0)+'</div><div class="small text-muted">Clients relancés · '+(s.total_relances||0)+' relance(s)</div></div></div>';
       }
       const items = d.items || [];
-      if(!items.length){ body.innerHTML = '<tr><td colspan="9" class="text-muted small p-3">Aucune facture trouvée avec ce filtre.</td></tr>'; return; }
+      if(!items.length){ body.innerHTML = '<tr><td colspan="10" class="text-muted small p-3">Aucune facture trouvée avec ce filtre.</td></tr>'; return; }
       body.innerHTML = items.map(f => {
         const statutBg = f.statut === 'Payée' ? 'success' : (f.statut === 'Annulée' ? 'secondary' : 'warning text-dark');
         const fidiChip = f.fidi_encaisse ? ' <span class="badge bg-info text-dark" title="FIDI encaisse cette facture ('+f.commission_pct+' %)"><i class="bi bi-bank"></i></span>' : '';
+        const relBadge = (f.relances||0) > 0
+          ? '<span class="badge bg-danger" title="'+f.relances+' relance(s)'+(f.derniere_relance?' · dernière le '+esc(f.derniere_relance):'')+'">'+f.relances+'</span>'
+          : '<span class="text-muted small">—</span>';
+        // Bouton relancer : uniquement pour les factures À payer
+        const relanceBtn = f.statut === 'À payer'
+          ? ' <button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="Compte.factRelance(\''+esc(f.ref).replace(/'/g,"\\'")+'\')" title="Relancer ce client (compteur + e-mail optionnel)"><i class="bi bi-bell"></i> Relancer</button>'
+          : '';
         return '<tr>'+
           '<td><span class="fw-semibold">'+esc(f.ref||'—')+'</span>'+fidiChip+'</td>'+
           '<td class="small">'+esc(f.date||'—')+'</td>'+
           '<td><div>'+esc(f.client||'—')+'</div><div class="text-muted small">'+esc(f.email||'')+'</div></td>'+
           '<td class="small">'+esc(f.type||'—')+'</td>'+
           '<td class="text-end fw-semibold">'+(f.montant||0).toFixed(2)+' €</td>'+
+          '<td class="text-center">'+relBadge+'</td>'+
           '<td class="text-end small text-warning">'+(f.commission_eur ? f.commission_eur.toFixed(2)+' €' : '—')+'</td>'+
           '<td class="text-end small" style="color:#b87333;">'+(f.reverser_eur ? f.reverser_eur.toFixed(2)+' €' : '—')+'</td>'+
           '<td><span class="badge bg-'+statutBg+'">'+esc(f.statut||'?')+'</span></td>'+
-          '<td class="text-end">'+
+          '<td class="text-end" style="white-space:nowrap;">'+
             (f.facture_url ? '<a class="btn btn-sm btn-outline-secondary py-0 px-1" href="'+f.facture_url+'" target="_blank" title="Voir la facture HTML"><i class="bi bi-eye"></i></a>' : '')+
             (f.delivery_url ? ' <a class="btn btn-sm btn-outline-secondary py-0 px-1" href="'+f.delivery_url+'" target="_blank" title="Page de remise / paiement"><i class="bi bi-link-45deg"></i></a>' : '')+
+            relanceBtn+
           '</td>'+
         '</tr>';
       }).join('');
     } catch (e) {
-      body.innerHTML = '<tr><td colspan="9" class="text-danger p-3">Erreur réseau : '+esc(e.message)+'</td></tr>';
+      body.innerHTML = '<tr><td colspan="10" class="text-danger p-3">Erreur réseau : '+esc(e.message)+'</td></tr>';
     }
+  }
+  async function factRelance(ref){
+    const email = confirm('Relancer le client pour la facture '+ref+' ?\n\nOK = enregistrer la relance + envoyer un e-mail de rappel au client.\nAnnuler la boîte suivante = enregistrer la relance SANS e-mail.');
+    const {ok,data} = await (async ()=>{
+      const r = await fetch('/api/facture/relance', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({ref, envoyer_email: email})});
+      return { ok:r.ok, data: await r.json().catch(()=>({})) };
+    })();
+    if(!ok){ alert(data.error||'Erreur relance'); return; }
+    alert('Relance enregistrée ('+data.relances+' au total)'+(data.email_envoye?' · e-mail envoyé':(email?' · e-mail NON envoyé (Resend non configuré ?)':'')));
+    loadFactAdmin();
+  }
+  // ── Rapport comptable (mensuel / annuel / période libre) ────────────────────
+  function openRapportCompta(){
+    const now = new Date();
+    const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0');
+    const d = document.createElement('div');
+    d.id = 'rapportComptaDlg';
+    d.style.cssText = 'position:fixed;inset:0;z-index:20000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;';
+    d.innerHTML =
+      '<div style="background:#fff;border-radius:12px;max-width:460px;width:92%;padding:22px 24px;box-shadow:0 12px 40px rgba(0,0,0,.3);">'+
+        '<h5 class="fw-bold mb-3"><i class="bi bi-file-earmark-bar-graph me-1" style="color:#b87333;"></i>Rapport comptable</h5>'+
+        '<div class="mb-2"><label class="form-label small mb-1">Période</label>'+
+          '<div class="btn-group btn-group-sm d-flex mb-2">'+
+            '<button class="btn btn-outline-secondary" onclick="Compte.rcSetMonth()">Ce mois</button>'+
+            '<button class="btn btn-outline-secondary" onclick="Compte.rcSetYear()">Cette année</button>'+
+          '</div>'+
+        '</div>'+
+        '<div class="row g-2 mb-3">'+
+          '<div class="col-6"><label class="form-label small mb-0">Du</label><input type="date" id="rcFrom" class="form-control form-control-sm" value="'+y+'-'+m+'-01"></div>'+
+          '<div class="col-6"><label class="form-label small mb-0">Au</label><input type="date" id="rcTo" class="form-control form-control-sm" value="'+y+'-'+m+'-31"></div>'+
+        '</div>'+
+        '<div class="d-flex justify-content-end gap-2">'+
+          '<button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'rapportComptaDlg\').remove()">Annuler</button>'+
+          '<button class="btn btn-sm btn-primary" onclick="Compte.genRapportCompta()"><i class="bi bi-printer me-1"></i>Générer & imprimer</button>'+
+        '</div>'+
+      '</div>';
+    document.body.appendChild(d);
+    d.addEventListener('click', e=>{ if(e.target===d) d.remove(); });
+  }
+  function rcSetMonth(){
+    const n=new Date(), y=n.getFullYear(), m=n.getMonth();
+    const last=new Date(y,m+1,0).getDate();
+    document.getElementById('rcFrom').value = y+'-'+String(m+1).padStart(2,'0')+'-01';
+    document.getElementById('rcTo').value = y+'-'+String(m+1).padStart(2,'0')+'-'+String(last).padStart(2,'0');
+  }
+  function rcSetYear(){
+    const y=new Date().getFullYear();
+    document.getElementById('rcFrom').value = y+'-01-01';
+    document.getElementById('rcTo').value = y+'-12-31';
+  }
+  async function genRapportCompta(){
+    const from = document.getElementById('rcFrom').value, to = document.getElementById('rcTo').value;
+    if(!from || !to){ alert('Renseignez la période.'); return; }
+    document.getElementById('rapportComptaDlg').remove();
+    const r = await fetch('/api/factures-admin?from='+from+'&to='+to, {credentials:'same-origin'});
+    const d = await r.json();
+    if(!r.ok){ alert(d.error||'Erreur'); return; }
+    const s = d.stats || {}, items = d.items || [];
+    const paid = items.filter(x=>x.statut==='Payée');
+    const pend = items.filter(x=>x.statut==='À payer');
+    const eur = v => (v||0).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
+    const parType = s.par_type || {};
+    const typeRows = Object.keys(parType).map(t=>'<tr><td>'+esc(t)+'</td><td style="text-align:right">'+eur(parType[t])+'</td></tr>').join('') || '<tr><td colspan="2" style="color:#888">Aucune vente encaissée</td></tr>';
+    const paidRows = paid.map(x=>'<tr><td>'+esc(x.ref)+'</td><td>'+esc(x.date)+'</td><td>'+esc(x.client)+'</td><td>'+esc(x.type)+'</td><td style="text-align:right">'+eur(x.montant)+'</td></tr>').join('');
+    const pendRows = pend.map(x=>'<tr><td>'+esc(x.ref)+'</td><td>'+esc(x.date)+'</td><td>'+esc(x.client)+'</td><td style="text-align:right">'+eur(x.montant)+'</td><td style="text-align:center">'+(x.relances||0)+'</td></tr>').join('');
+    const w = window.open('', '_blank');
+    w.document.write(
+      '<!doctype html><html><head><meta charset="utf-8"><title>Rapport comptable '+from+' au '+to+'</title>'+
+      '<style>body{font-family:Segoe UI,Arial,sans-serif;color:#1a2233;max-width:800px;margin:20px auto;padding:0 16px;font-size:12px;}'+
+      'h1{color:#1a3a6e;font-size:20px;margin:0 0 4px;} h2{color:#1a3a6e;font-size:14px;border-bottom:2px solid #1a3a6e;padding-bottom:3px;margin:22px 0 8px;}'+
+      'table{width:100%;border-collapse:collapse;margin:6px 0;} th{background:#1a3a6e;color:#fff;padding:5px 7px;text-align:left;font-size:11px;}'+
+      'td{padding:4px 7px;border-bottom:1px solid #ddd;} tr:nth-child(even) td{background:#f4f6fa;}'+
+      '.kpis{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0;} .kpi{flex:1;min-width:120px;border:1px solid #ddd;border-top:3px solid #1a3a6e;border-radius:4px;padding:8px 10px;}'+
+      '.kpi .v{font-size:17px;font-weight:800;color:#1a3a6e;} .kpi .l{font-size:10px;color:#666;text-transform:uppercase;}'+
+      '@media print{button{display:none;}}</style></head><body>'+
+      '<h1>Rapport comptable — OPTIMMO DOM</h1>'+
+      '<div style="color:#666;">Période du <b>'+from+'</b> au <b>'+to+'</b> · édité le '+new Date().toLocaleDateString('fr-FR')+'</div>'+
+      '<div class="kpis">'+
+        '<div class="kpi"><div class="v">'+eur(s.total_ttc_paye)+'</div><div class="l">CA encaissé TTC</div></div>'+
+        '<div class="kpi"><div class="v">'+eur(s.total_ttc_attente)+'</div><div class="l">En attente</div></div>'+
+        '<div class="kpi"><div class="v">'+paid.length+'</div><div class="l">Factures payées</div></div>'+
+        '<div class="kpi"><div class="v">'+eur(s.commissions_fidi_paye)+'</div><div class="l">Commissions FIDI</div></div>'+
+      '</div>'+
+      '<h2>Ventilation du chiffre d\'affaires encaissé (par prestation)</h2>'+
+      '<table><thead><tr><th>Type de prestation</th><th style="text-align:right">Montant TTC</th></tr></thead><tbody>'+typeRows+
+      '<tr style="font-weight:800;background:#eaf0f8;"><td>TOTAL ENCAISSÉ</td><td style="text-align:right">'+eur(s.total_ttc_paye)+'</td></tr></tbody></table>'+
+      '<h2>Détail des factures payées ('+paid.length+')</h2>'+
+      '<table><thead><tr><th>Réf</th><th>Date</th><th>Client</th><th>Type</th><th style="text-align:right">TTC</th></tr></thead><tbody>'+(paidRows||'<tr><td colspan="5" style="color:#888">Aucune</td></tr>')+'</tbody></table>'+
+      '<h2>Factures en attente de règlement ('+pend.length+')</h2>'+
+      '<table><thead><tr><th>Réf</th><th>Date</th><th>Client</th><th style="text-align:right">TTC</th><th style="text-align:center">Relances</th></tr></thead><tbody>'+(pendRows||'<tr><td colspan="5" style="color:#888">Aucune</td></tr>')+'</tbody></table>'+
+      '<p style="margin-top:20px;color:#888;font-size:10px;">Document indicatif pour la comptabilité et les déclarations. Les montants sont TTC. À rapprocher des justificatifs de paiement. OPTIMMO DOM · contact@fidiconseil.com</p>'+
+      '<button onclick="window.print()" style="margin:16px 0;padding:8px 16px;background:#1a3a6e;color:#fff;border:none;border-radius:5px;cursor:pointer;">Imprimer / PDF</button>'+
+      '</body></html>');
+    w.document.close();
   }
 
   async function bulkRecalc(dryRun){
@@ -5238,7 +5343,8 @@ window.Compte = (function(){
 
   return { open, doLogin, logout, refresh, setCredits, setRecherches, consume, adminCreate, adminCredit, adminToggle,
            adminIllimite, adminQuota, adminDelete, adminReseau, adminTarifGroup, adminRefresh,
-           adminEditNom, adminCommission, loadFactAdmin,
+           adminEditNom, adminCommission, loadFactAdmin, factRelance,
+           openRapportCompta, rcSetMonth, rcSetYear, genRapportCompta,
            openCreateForm, closeCreateForm, openTarifForm, closeTarifForm, copySignupLink,
            loadOffres, chooseOffer, payOffer, offerToggle, offerPrice, bulkRecalc,
            loadTarifsAdmin, tarifCreate, tarifPrice, tarifToggle, tarifDelete, tarifEditNom, tarifEditCat, tarifEditDesc,

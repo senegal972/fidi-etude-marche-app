@@ -21,6 +21,9 @@ export const handler = async (event) => {
   const statutFilter = String(q.statut || "").trim();
   const typeFilter = String(q.type || "").trim();
   const collabFilter = String(q.collab || "").trim().toLowerCase();
+  // Période pour rapport comptable : from/to (YYYY-MM-DD)
+  const from = String(q.from || "").trim();
+  const to = String(q.to || "").trim();
 
   try {
     // Récupère jusqu'à 500 factures récentes (5 pages × 100), triées par date desc.
@@ -44,6 +47,8 @@ export const handler = async (event) => {
       // Champs facultatifs FIDI (facturation split)
       const fidiEncaisse = !!(props["FIDI encaisse"]?.checkbox);
       const commissionPct = props["Commission FIDI %"]?.number ?? 0;
+      const relances = props["Relances"]?.number || 0;
+      const derniereRelance = props["Dernière relance"]?.date?.start || "";
       const collabEmail = (props["Collaborateur"] && props["Collaborateur"].email) ||
                           (props["Collaborateur email"] && props["Collaborateur email"].email) || "";
       const commissionEUR = fidiEncaisse && commissionPct ? Math.round(f.montant * commissionPct) / 100 : 0;
@@ -59,12 +64,16 @@ export const handler = async (event) => {
         commission_eur: commissionEUR,
         reverser_eur: reverserEUR,
         collab: collabEmail,
+        relances: relances,
+        derniere_relance: derniereRelance,
       };
     }).filter((f) => {
       if (fidiOnly && !f.fidi_encaisse) return false;
       if (statutFilter && f.statut !== statutFilter) return false;
       if (typeFilter && (f.type || "").toLowerCase().indexOf(typeFilter.toLowerCase()) < 0) return false;
       if (collabFilter && (f.collab || "").toLowerCase() !== collabFilter) return false;
+      if (from && (!f.date || f.date < from)) return false;
+      if (to && (!f.date || f.date > to)) return false;
       return true;
     });
 
@@ -72,6 +81,13 @@ export const handler = async (event) => {
     const paid = items.filter((x) => x.statut === "Payée");
     const pending = items.filter((x) => x.statut === "À payer");
     const cancelled = items.filter((x) => x.statut === "Annulée");
+    const relances = items.filter((x) => (x.relances || 0) > 0);
+    // Ventilation par type de prestation (pour la compta)
+    const parType = {};
+    for (const x of paid) {
+      const t = x.type || "Autre";
+      parType[t] = (parType[t] || 0) + (x.montant || 0);
+    }
     const stats = {
       total: items.length,
       paid: paid.length, pending: pending.length, cancelled: cancelled.length,
@@ -79,11 +95,16 @@ export const handler = async (event) => {
       total_ttc_attente: pending.reduce((a, x) => a + (x.montant || 0), 0),
       commissions_fidi_paye: paid.reduce((a, x) => a + (x.commission_eur || 0), 0),
       a_reverser: paid.filter((x) => x.fidi_encaisse).reduce((a, x) => a + (x.reverser_eur || 0), 0),
+      // Relances
+      clients_relances: relances.length,
+      total_relances: items.reduce((a, x) => a + (x.relances || 0), 0),
+      // Ventilation compta
+      par_type: parType,
     };
 
     return authResp(200, {
       ok: true,
-      filters: { fidi_only: fidiOnly, statut: statutFilter, type: typeFilter, collab: collabFilter },
+      filters: { fidi_only: fidiOnly, statut: statutFilter, type: typeFilter, collab: collabFilter, from, to },
       count: items.length,
       items,
       stats,
