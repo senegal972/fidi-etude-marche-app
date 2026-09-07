@@ -3957,39 +3957,62 @@ window.relancerFacture = function(f, onDone){
   var msg = 'Bonjour,\n\nSauf erreur de notre part, la facture '+f.ref+' d\'un montant de '+montant+' € TTC reste à régler.'
     + (lien ? '\n\nVous pouvez la consulter et la régler en ligne (carte / PayPal) ici :\n'+lien : '')
     + '\n\nNous vous remercions de votre règlement.\nOPTIMMO DOM';
-  var tel = String(f.telephone||'').replace(/[^0-9+]/g,'');
-  if(tel.indexOf('+')<0 && tel.charAt(0)==='0') tel = '596'+tel.slice(1); // Martinique par défaut
-  tel = tel.replace(/^\+/,'');
-  var esc2 = function(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/'/g,'&#39;'); };
+  var esc2 = function(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;'); };
   var savedMail = ''; try { savedMail = localStorage.getItem('fidi:mail:service')||''; } catch(e){}
+  // Indicatif par défaut mémorisé (ou 596 Martinique)
+  var savedIndic = ''; try { savedIndic = localStorage.getItem('fidi:whatsapp:indic')||'596'; } catch(e){ savedIndic='596'; }
+  var telBrut = String(f.telephone||'').trim();
 
   var dlg = document.createElement('div');
   dlg.id='relanceDlgGlobal';
   dlg.style.cssText='position:fixed;inset:0;z-index:30000;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;';
   dlg.innerHTML =
-    '<div style="background:#fff;border-radius:12px;max-width:460px;width:92%;padding:22px 24px;box-shadow:0 12px 40px rgba(0,0,0,.35);font-family:inherit;">'+
+    '<div style="background:#fff;border-radius:12px;max-width:470px;width:92%;padding:22px 24px;box-shadow:0 12px 40px rgba(0,0,0,.35);font-family:inherit;">'+
       '<h5 style="font-weight:700;margin:0 0 4px;"><i class="bi bi-bell me-1" style="color:#b03a2e;"></i>Relancer '+esc2(f.client||f.ref)+'</h5>'+
       '<p style="font-size:.82rem;color:#667;margin:0 0 14px;">Facture '+esc2(f.ref)+' · '+montant+' € · '+(f.relances||0)+' relance(s) déjà envoyée(s)'+(lien?' · <span style="color:#198754;">paiement en ligne inclus</span>':'')+'</p>'+
-      '<div style="display:grid;gap:8px;">'+
-        (tel ? '<button class="btn btn-success" onclick="__relanceSend(\'whatsapp\')"><i class="bi bi-whatsapp me-1"></i>WhatsApp ('+esc2(f.telephone||('+'+tel))+')</button>' : '<button class="btn btn-outline-secondary" disabled><i class="bi bi-whatsapp me-1"></i>WhatsApp (pas de numéro)</button>')+
-        (f.email
-          ? '<div style="border:1px solid #dee2e6;border-radius:8px;padding:10px;">'+
-              '<div style="font-size:.8rem;font-weight:600;margin-bottom:6px;"><i class="bi bi-envelope me-1"></i>E-mail à '+esc2(f.email)+' — choisir la messagerie :</div>'+
-              '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">'+
-                '<button class="btn btn-sm '+(savedMail==='gmail'?'btn-danger':'btn-outline-danger')+'" onclick="__relanceEmail(\'gmail\')"><i class="bi bi-google me-1"></i>Gmail</button>'+
-                '<button class="btn btn-sm '+(savedMail==='outlook'?'btn-primary':'btn-outline-primary')+'" onclick="__relanceEmail(\'outlook\')"><i class="bi bi-microsoft me-1"></i>Outlook</button>'+
-                '<button class="btn btn-sm '+(savedMail==='yahoo'?'btn-secondary':'btn-outline-secondary')+'" onclick="__relanceEmail(\'yahoo\')">Yahoo</button>'+
-                '<button class="btn btn-sm '+(savedMail==='default'?'btn-dark':'btn-outline-dark')+'" onclick="__relanceEmail(\'default\')" title="Ouvre l\'application mail par défaut du poste">App par défaut</button>'+
-              '</div>'+
-              (savedMail?'<div style="font-size:.68rem;color:#888;margin-top:5px;">Messagerie mémorisée : <b>'+esc2(savedMail)+'</b> — cliquez une autre pour changer.</div>':'')+
-            '</div>'
-          : '<button class="btn btn-outline-secondary" disabled><i class="bi bi-envelope me-1"></i>E-mail (pas d\'adresse)</button>')+
-        '<button class="btn btn-outline-danger" onclick="__relanceSend(\'log\')"><i class="bi bi-journal-check me-1"></i>Enregistrer la relance seulement</button>'+
+      // ── WhatsApp : indicatif + numéro éditables ───
+      '<div style="border:1px solid #dee2e6;border-radius:8px;padding:10px;margin-bottom:8px;">'+
+        '<div style="font-size:.8rem;font-weight:600;margin-bottom:6px;"><i class="bi bi-whatsapp me-1" style="color:#25D366;"></i>WhatsApp — numéro du client :</div>'+
+        '<div style="display:flex;gap:6px;">'+
+          '<select id="rlIndic" class="form-select form-select-sm" style="max-width:130px;">'+
+            ['596|🇲🇶 +596 Martinique','590|🇬🇵 +590 Guadeloupe','594|🇬🇫 +594 Guyane','262|🇷🇪 +262 Réunion','33|🇫🇷 +33 Métropole'].map(function(o){var v=o.split('|');return '<option value="'+v[0]+'"'+(v[0]===savedIndic?' selected':'')+'>'+v[1]+'</option>';}).join('')+
+          '</select>'+
+          '<input id="rlTel" type="tel" class="form-control form-control-sm" placeholder="6 96 12 34 56" value="'+esc2(telBrut)+'" oninput="__rlToggleWa()">'+
+        '</div>'+
+        '<button id="rlWaBtn" class="btn btn-success btn-sm w-100 mt-2" onclick="__relanceSend(\'whatsapp\')"'+(telBrut?'':' disabled')+'><i class="bi bi-whatsapp me-1"></i>Envoyer sur WhatsApp</button>'+
       '</div>'+
-      '<div style="text-align:right;margin-top:14px;"><button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'relanceDlgGlobal\').remove()">Fermer</button></div>'+
+      // ── E-mail : choix messagerie ───
+      (f.email
+        ? '<div style="border:1px solid #dee2e6;border-radius:8px;padding:10px;margin-bottom:8px;">'+
+            '<div style="font-size:.8rem;font-weight:600;margin-bottom:6px;"><i class="bi bi-envelope me-1"></i>E-mail à '+esc2(f.email)+' — messagerie :</div>'+
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">'+
+              '<button class="btn btn-sm '+(savedMail==='gmail'?'btn-danger':'btn-outline-danger')+'" onclick="__relanceEmail(\'gmail\')"><i class="bi bi-google me-1"></i>Gmail</button>'+
+              '<button class="btn btn-sm '+(savedMail==='outlook'?'btn-primary':'btn-outline-primary')+'" onclick="__relanceEmail(\'outlook\')"><i class="bi bi-microsoft me-1"></i>Outlook</button>'+
+              '<button class="btn btn-sm '+(savedMail==='yahoo'?'btn-secondary':'btn-outline-secondary')+'" onclick="__relanceEmail(\'yahoo\')">Yahoo</button>'+
+              '<button class="btn btn-sm '+(savedMail==='default'?'btn-dark':'btn-outline-dark')+'" onclick="__relanceEmail(\'default\')" title="Application mail par défaut du poste">App par défaut</button>'+
+            '</div>'+
+          '</div>'
+        : '<button class="btn btn-outline-secondary w-100 mb-2" disabled><i class="bi bi-envelope me-1"></i>E-mail (pas d\'adresse sur la facture)</button>')+
+      '<button class="btn btn-outline-danger w-100" onclick="__relanceSend(\'log\')"><i class="bi bi-journal-check me-1"></i>Enregistrer la relance seulement</button>'+
+      '<div style="text-align:right;margin-top:12px;"><button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'relanceDlgGlobal\').remove()">Fermer</button></div>'+
     '</div>';
   document.body.appendChild(dlg);
   dlg.addEventListener('click', function(e){ if(e.target===dlg) dlg.remove(); });
+  // Active/désactive le bouton WhatsApp selon la saisie
+  window.__rlToggleWa = function(){
+    var v = (document.getElementById('rlTel')||{}).value||'';
+    var btn = document.getElementById('rlWaBtn');
+    if(btn) btn.disabled = v.replace(/[^0-9]/g,'').length < 6;
+  };
+  // Construit le numéro WhatsApp international depuis indicatif + saisie
+  function waNumber(){
+    var indic = (document.getElementById('rlIndic')||{}).value || savedIndic || '596';
+    try { localStorage.setItem('fidi:whatsapp:indic', indic); } catch(e){}
+    var raw = String((document.getElementById('rlTel')||{}).value||'').replace(/[^0-9+]/g,'');
+    if(raw.charAt(0)==='+') return raw.slice(1); // déjà international
+    if(raw.charAt(0)==='0') raw = raw.slice(1);  // retire le 0 national
+    return indic + raw;
+  }
 
   function logRelance(){
     return fetch('/api/facture/relance', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({ref:f.ref, envoyer_email:false})})
@@ -4009,8 +4032,9 @@ window.relancerFacture = function(f, onDone){
     await logRelance();
   };
   window.__relanceSend = async function(canal){
+    var wa = canal==='whatsapp' ? waNumber() : ''; // calcule AVANT de retirer le dialogue
     var d = document.getElementById('relanceDlgGlobal'); if(d) d.remove();
-    if(canal==='whatsapp' && tel){ window.open('https://wa.me/'+tel+'?text='+encodeURIComponent(msg), '_blank'); }
+    if(canal==='whatsapp' && wa){ window.open('https://wa.me/'+wa+'?text='+encodeURIComponent(msg), '_blank'); }
     await logRelance();
   };
 };
