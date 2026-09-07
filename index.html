@@ -3938,10 +3938,22 @@ async function factGenerer(){
 // Fonction GLOBALE réutilisable : modale facturation (avis) + onglet Facturation FIDI.
 // f = { ref, client, montant, email, telephone, jeton, delivery_url, relances }
 // onDone : callback de rafraîchissement après enregistrement.
+// Construit l'URL de composition selon le service e-mail choisi (webmail ou app locale).
+function emailComposeUrl(service, to, subject, body){
+  var s = encodeURIComponent(subject), b = encodeURIComponent(body), t = encodeURIComponent(to);
+  switch(service){
+    case 'gmail':   return 'https://mail.google.com/mail/?view=cm&fs=1&to='+t+'&su='+s+'&body='+b;
+    case 'outlook': return 'https://outlook.live.com/mail/0/deeplink/compose?to='+t+'&subject='+s+'&body='+b;
+    case 'yahoo':   return 'https://compose.mail.yahoo.com/?to='+t+'&subject='+s+'&body='+b;
+    case 'orange':  return 'https://webmail.orange.fr/'; // Orange n'a pas de compose deep-link fiable
+    default:        return 'mailto:'+t+'?subject='+s+'&body='+b; // app par défaut du poste
+  }
+}
 window.relancerFacture = function(f, onDone){
   var origin = location.origin;
   var lien = f.delivery_url || (f.jeton ? origin+'/l/'+f.jeton : '');
   var montant = Number(f.montant||0).toLocaleString('fr-FR');
+  var subject = 'Rappel — Facture '+f.ref+' en attente de règlement';
   var msg = 'Bonjour,\n\nSauf erreur de notre part, la facture '+f.ref+' d\'un montant de '+montant+' € TTC reste à régler.'
     + (lien ? '\n\nVous pouvez la consulter et la régler en ligne (carte / PayPal) ici :\n'+lien : '')
     + '\n\nNous vous remercions de votre règlement.\nOPTIMMO DOM';
@@ -3949,33 +3961,57 @@ window.relancerFacture = function(f, onDone){
   if(tel.indexOf('+')<0 && tel.charAt(0)==='0') tel = '596'+tel.slice(1); // Martinique par défaut
   tel = tel.replace(/^\+/,'');
   var esc2 = function(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/'/g,'&#39;'); };
+  var savedMail = ''; try { savedMail = localStorage.getItem('fidi:mail:service')||''; } catch(e){}
+
   var dlg = document.createElement('div');
   dlg.id='relanceDlgGlobal';
   dlg.style.cssText='position:fixed;inset:0;z-index:30000;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;';
   dlg.innerHTML =
-    '<div style="background:#fff;border-radius:12px;max-width:440px;width:92%;padding:22px 24px;box-shadow:0 12px 40px rgba(0,0,0,.35);font-family:inherit;">'+
+    '<div style="background:#fff;border-radius:12px;max-width:460px;width:92%;padding:22px 24px;box-shadow:0 12px 40px rgba(0,0,0,.35);font-family:inherit;">'+
       '<h5 style="font-weight:700;margin:0 0 4px;"><i class="bi bi-bell me-1" style="color:#b03a2e;"></i>Relancer '+esc2(f.client||f.ref)+'</h5>'+
       '<p style="font-size:.82rem;color:#667;margin:0 0 14px;">Facture '+esc2(f.ref)+' · '+montant+' € · '+(f.relances||0)+' relance(s) déjà envoyée(s)'+(lien?' · <span style="color:#198754;">paiement en ligne inclus</span>':'')+'</p>'+
       '<div style="display:grid;gap:8px;">'+
         (tel ? '<button class="btn btn-success" onclick="__relanceSend(\'whatsapp\')"><i class="bi bi-whatsapp me-1"></i>WhatsApp ('+esc2(f.telephone||('+'+tel))+')</button>' : '<button class="btn btn-outline-secondary" disabled><i class="bi bi-whatsapp me-1"></i>WhatsApp (pas de numéro)</button>')+
-        (f.email ? '<button class="btn btn-primary" onclick="__relanceSend(\'email\')"><i class="bi bi-envelope me-1"></i>E-mail ('+esc2(f.email)+')</button>' : '<button class="btn btn-outline-secondary" disabled><i class="bi bi-envelope me-1"></i>E-mail (pas d\'adresse)</button>')+
+        (f.email
+          ? '<div style="border:1px solid #dee2e6;border-radius:8px;padding:10px;">'+
+              '<div style="font-size:.8rem;font-weight:600;margin-bottom:6px;"><i class="bi bi-envelope me-1"></i>E-mail à '+esc2(f.email)+' — choisir la messagerie :</div>'+
+              '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">'+
+                '<button class="btn btn-sm '+(savedMail==='gmail'?'btn-danger':'btn-outline-danger')+'" onclick="__relanceEmail(\'gmail\')"><i class="bi bi-google me-1"></i>Gmail</button>'+
+                '<button class="btn btn-sm '+(savedMail==='outlook'?'btn-primary':'btn-outline-primary')+'" onclick="__relanceEmail(\'outlook\')"><i class="bi bi-microsoft me-1"></i>Outlook</button>'+
+                '<button class="btn btn-sm '+(savedMail==='yahoo'?'btn-secondary':'btn-outline-secondary')+'" onclick="__relanceEmail(\'yahoo\')">Yahoo</button>'+
+                '<button class="btn btn-sm '+(savedMail==='default'?'btn-dark':'btn-outline-dark')+'" onclick="__relanceEmail(\'default\')" title="Ouvre l\'application mail par défaut du poste">App par défaut</button>'+
+              '</div>'+
+              (savedMail?'<div style="font-size:.68rem;color:#888;margin-top:5px;">Messagerie mémorisée : <b>'+esc2(savedMail)+'</b> — cliquez une autre pour changer.</div>':'')+
+            '</div>'
+          : '<button class="btn btn-outline-secondary" disabled><i class="bi bi-envelope me-1"></i>E-mail (pas d\'adresse)</button>')+
         '<button class="btn btn-outline-danger" onclick="__relanceSend(\'log\')"><i class="bi bi-journal-check me-1"></i>Enregistrer la relance seulement</button>'+
       '</div>'+
       '<div style="text-align:right;margin-top:14px;"><button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'relanceDlgGlobal\').remove()">Fermer</button></div>'+
     '</div>';
   document.body.appendChild(dlg);
   dlg.addEventListener('click', function(e){ if(e.target===dlg) dlg.remove(); });
+
+  function logRelance(){
+    return fetch('/api/facture/relance', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({ref:f.ref, envoyer_email:false})})
+      .then(function(r){ return r.json().catch(function(){return{};}).then(function(jj){ return {ok:r.ok, jj:jj}; }); })
+      .then(function(res){
+        if(!res.ok) alert(res.jj.error||'Relance non enregistrée (colonnes Notion Relances / Dernière relance manquantes ?)');
+        else if(typeof toast==='function') toast('Relance enregistrée ('+res.jj.relances+')');
+      }).catch(function(e){ alert('Erreur réseau : '+e.message); })
+      .then(function(){ if(typeof onDone==='function') onDone(); });
+  }
+  window.__relanceEmail = async function(service){
+    try { localStorage.setItem('fidi:mail:service', service); } catch(e){}
+    var d = document.getElementById('relanceDlgGlobal'); if(d) d.remove();
+    var url = emailComposeUrl(service, f.email, subject, msg);
+    if(service==='default'){ window.location.href = url; }
+    else { window.open(url, '_blank'); }
+    await logRelance();
+  };
   window.__relanceSend = async function(canal){
     var d = document.getElementById('relanceDlgGlobal'); if(d) d.remove();
     if(canal==='whatsapp' && tel){ window.open('https://wa.me/'+tel+'?text='+encodeURIComponent(msg), '_blank'); }
-    else if(canal==='email' && f.email){ window.location.href = 'mailto:'+encodeURIComponent(f.email)+'?subject='+encodeURIComponent('Rappel — Facture '+f.ref+' en attente de règlement')+'&body='+encodeURIComponent(msg); }
-    try {
-      var r = await fetch('/api/facture/relance', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({ref:f.ref, envoyer_email:false})});
-      var jj = await r.json().catch(function(){return{};});
-      if(!r.ok) alert(jj.error||'Relance non enregistrée (colonnes Notion Relances / Dernière relance manquantes ?)');
-      else if(typeof toast==='function') toast('Relance enregistrée ('+jj.relances+')');
-    } catch(e){ alert('Erreur réseau : '+e.message); }
-    if(typeof onDone==='function') onDone();
+    await logRelance();
   };
 };
 
@@ -5257,7 +5293,7 @@ window.Compte = (function(){
           : '<span class="text-muted small">—</span>';
         // Bouton relancer : uniquement pour les factures À payer
         const relanceBtn = f.statut === 'À payer'
-          ? ' <button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="Compte.factRelance(\''+esc(f.ref).replace(/'/g,"\\'")+'\')" title="Relancer ce client (compteur + e-mail optionnel)"><i class="bi bi-bell"></i> Relancer</button>'
+          ? ' <button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="relancerFacture((window._factCache||[]).find(x=>x.ref===\''+esc(f.ref).replace(/'/g,"\\'")+'\'), ()=>Compte.loadFactAdmin())" title="Relancer (WhatsApp / e-mail au choix + lien paiement)"><i class="bi bi-bell"></i> Relancer</button>'
           : '';
         return '<tr>'+
           '<td><span class="fw-semibold">'+esc(f.ref||'—')+'</span>'+fidiChip+'</td>'+
