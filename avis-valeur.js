@@ -429,6 +429,11 @@
         .catch(function (e) { cb({ ok: false, error: 'Réseau: ' + (e && e.message || 'inconnu'), items: [], configured: false }); });
     } catch (e) { cb({ ok: false, error: e.message, items: [], configured: false }); }
   }
+  // Normalise un nom pour le rapprochement local ↔ CRM (minuscule, sans accents/espaces multiples)
+  function normNom(s) {
+    return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9]+/g, ' ').trim();
+  }
   function listClientsMerged() {
     var local = listClients();
     var crm = [];
@@ -439,12 +444,36 @@
         if (!Array.isArray(crm)) crm = [];
       } catch (e) {}
     }
-    // Dédup par email (priorité locale, plus récent)
+    // Index CRM par email, téléphone ET nom normalisé (pour compléter les locaux incomplets)
+    var crmByEmail = {}, crmByTel = {}, crmByNom = {};
+    crm.forEach(function (c) {
+      if (c.email) crmByEmail[String(c.email).toLowerCase()] = c;
+      if (c.telephone) crmByTel[String(c.telephone).replace(/[^0-9]/g, '')] = c;
+      var n = normNom(c.nom || c.label);
+      if (n) crmByNom[n] = c;
+    });
+    // Enrichit chaque client (local ou CRM) : complète les champs vides depuis un homonyme CRM
+    function enrich(c) {
+      var match = null;
+      if (c.email && crmByEmail[String(c.email).toLowerCase()]) match = crmByEmail[String(c.email).toLowerCase()];
+      else if (c.telephone && crmByTel[String(c.telephone).replace(/[^0-9]/g, '')]) match = crmByTel[String(c.telephone).replace(/[^0-9]/g, '')];
+      else { var n = normNom(c.nom || c.label); if (n && crmByNom[n]) match = crmByNom[n]; }
+      if (match) {
+        return Object.assign({}, c, {
+          email: c.email || match.email || '',
+          telephone: c.telephone || match.telephone || '',
+          adresse: c.adresse || match.adresse || '',
+          ville: c.ville || match.ville || '',
+          cp: c.cp || match.cp || '',
+        });
+      }
+      return c;
+    }
     var seen = {};
     var out = [];
     local.forEach(function (c) {
       var k = (c.email || c.telephone || c.id || '').toLowerCase();
-      seen[k] = true; out.push(c);
+      seen[k] = true; out.push(enrich(c));
     });
     crm.forEach(function (c) {
       var k = (c.email || c.telephone || c.id || '').toLowerCase();
@@ -1734,6 +1763,16 @@
     if (c) c.innerHTML = renderSection(id);
     document.querySelectorAll('.av-tab').forEach(function (t) { t.classList.toggle('active', t.dataset.sec === id); });
     refreshOutputs();
+    // Section Référence + CRM activé : rafraîchit le cache CRM en arrière-plan (une fois
+    // par ouverture de modale) pour éviter d'afficher un cache obsolète (nom seul).
+    if (id === 'metadata' && crmEnabled() && !state._crmRefreshed) {
+      state._crmRefreshed = true;
+      fetchCrmClients(function (res) {
+        if (res && res.ok && res.items && res.items.length && state.section === 'metadata') {
+          showSection('metadata'); // re-render avec le cache frais
+        }
+      });
+    }
   }
 
   // ── Construction de la modale ───────────────────────────────
@@ -3624,6 +3663,7 @@
       applyDefaultsForNature(natureDemande);
     }
     refreshSavedSelect();
+    state._crmRefreshed = false; // ré-autorise un refresh CRM à chaque ouverture de modale
     // Refresh header (toggle vente/loc) : rebuild rapide de la modale si nature a changé
     if (natureDemande) buildModal();
     showSection(state.section);
