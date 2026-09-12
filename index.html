@@ -586,6 +586,8 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
             <a id="gpuLink" href="#" target="_blank" rel="noopener" class="small d-inline-block mt-1">
               <i class="bi bi-box-arrow-up-right me-1"></i>Ouvrir dans le Géoportail de l'Urbanisme
             </a>
+            <!-- Règles de constructibilité (déduites du zonage PLU + gabarit type) -->
+            <div id="constructInfo" class="mt-2 pt-2 border-top d-none"></div>
             <div class="d-flex flex-wrap gap-2 mt-2" id="gpsLinks" style="display:none!important;">
               <a id="gpsGmaps" href="#" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary" title="Ouvrir le point GPS dans Google Maps">
                 <i class="bi bi-geo-alt-fill me-1"></i>Google Maps
@@ -2403,6 +2405,65 @@ function zoneColor(typezone){
 }
 
 // Zone PLU + parcelle cadastrale au point (API Carto GPU, sans clé)
+// Gabarit de règles de constructibilité par type de zone PLU (valeurs INDICATIVES,
+// à confirmer dans le règlement écrit du PLU — l'API GPU ne fournit pas ces valeurs).
+function constructRules(typezone, cp){
+  const z = String(typezone||'').toUpperCase();
+  const dom = /^97/.test(String(cp||''));
+  // centre = chefs-lieux DOM
+  const centre = /^(97200|97110|97300|97400|97600)/.test(String(cp||''));
+  if(z.startsWith('AU')) return { label:'Zone à urbaniser (AU)', emprise:'30–50 %', hauteur:'R+2 à R+3 (9–12 m)', recul:'3–5 m des limites', constructible:'Ouverte à l\'urbanisation — soumise à OAP / modification PLU', color:'#fd7e14' };
+  if(z.startsWith('U')){
+    if(centre) return { label:'Zone urbaine dense (centre)', emprise:'60–80 %', hauteur:'R+3 à R+5 (12–18 m)', recul:'0–3 m (implantation à l\'alignement possible)', constructible:'Constructible — densité forte', color:'#2e7d32' };
+    return { label:'Zone urbaine (U)', emprise:'40–60 %', hauteur:'R+2 à R+3 (9–12 m)'+(dom?' — normes cyclone/séisme':''), recul:'3–5 m des limites séparatives', constructible:'Constructible', color:'#2e7d32' };
+  }
+  if(z.startsWith('A')) return { label:'Zone agricole (A)', emprise:'≤ 10 % (bâti agricole)', hauteur:'variable (usage agricole)', recul:'selon règlement', constructible:'Constructions agricoles uniquement — habitat très restreint', color:'#8d6e63' };
+  if(z.startsWith('N')) return { label:'Zone naturelle (N)', emprise:'quasi nulle', hauteur:'—', recul:'—', constructible:'Inconstructible sauf exceptions (STECAL, extensions limitées)', color:'#455a64' };
+  return { label:'Zonage non déterminé', emprise:'à vérifier', hauteur:'à vérifier', recul:'à vérifier', constructible:'Consultez le règlement PLU de la commune', color:'#6a7385' };
+}
+function renderConstructibilite(lat, lon){
+  const box = document.getElementById('constructInfo'); if(!box) return;
+  const gpu = window.__fidiGpu || {};
+  const z = gpu.zone || {};
+  const cp = ((window.__fidiData||{}).localisation||{}).postcode || '';
+  const contenance = gpu.parcelle && Number(gpu.parcelle.contenance);
+  const R = constructRules(z.typezone, cp);
+  // Surface constructible estimée = contenance × emprise médiane
+  let surfCons = '';
+  if(contenance){
+    const m = String(R.emprise).match(/(\d+)\D+(\d+)/);
+    if(m){ const moy=(+m[1]+ +m[2])/2/100; surfCons = Math.round(contenance*moy).toLocaleString('fr-FR')+' m² (emprise ~'+Math.round(moy*100)+' %)'; }
+  }
+  const gpuReglt = (lat&&lon) ? 'https://www.geoportail-urbanisme.gouv.fr/map/#tile=1&lon='+lon+'&lat='+lat+'&zoom=18' : '#';
+  box.classList.remove('d-none');
+  box.innerHTML =
+    '<div class="fw-semibold small mb-1" style="color:'+R.color+';"><i class="bi bi-rulers me-1"></i>Règles de constructibilité — '+escHtml(R.label)+'</div>'+
+    '<div class="table-responsive"><table class="table table-sm mb-1" style="font-size:.78rem;"><tbody>'+
+      '<tr><td style="width:44%;color:#667;">Constructibilité</td><td class="fw-semibold">'+escHtml(R.constructible)+'</td></tr>'+
+      (contenance?'<tr><td style="color:#667;">Surface du terrain (cadastre)</td><td>'+contenance.toLocaleString('fr-FR')+' m²</td></tr>':'')+
+      '<tr><td style="color:#667;">Emprise au sol (indicatif)</td><td>'+escHtml(R.emprise)+'</td></tr>'+
+      (surfCons?'<tr><td style="color:#667;">Surface constructible estimée</td><td class="fw-semibold" style="color:#1a4b8e;">'+surfCons+'</td></tr>':'')+
+      '<tr><td style="color:#667;">Hauteur / étages (indicatif)</td><td>'+escHtml(R.hauteur)+'</td></tr>'+
+      '<tr><td style="color:#667;">Limites séparatives / recul</td><td>'+escHtml(R.recul)+'</td></tr>'+
+    '</tbody></table></div>'+
+    '<div id="constructServit" class="small text-muted"></div>'+
+    '<div class="text-muted mt-1" style="font-size:.68rem;">'+
+      '<i class="bi bi-exclamation-triangle me-1" style="color:#fd7e14;"></i><b>Valeurs indicatives</b> par type de zone. Les règles exactes (emprise, hauteur, reculs, CES, stationnement) figurent dans le <b>règlement écrit du PLU</b>. '+
+      '<a href="'+gpuReglt+'" target="_blank" rel="noopener">Consulter le règlement PLU (GPU) →</a>'+
+    '</div>';
+  // Servitudes / prescriptions réelles (API urbanisme) — enrichit si dispo
+  if(lat && lon){
+    fetch('/api/urbanisme?lat='+lat+'&lon='+lon).then(r=>r.ok?r.json():null).then(u=>{
+      if(!u) return;
+      const el = document.getElementById('constructServit'); if(!el) return;
+      const chips=[];
+      (u.servitudes_utilite_publique||[]).slice(0,4).forEach(s=>chips.push('<span class="badge bg-warning text-dark me-1" title="Servitude d\'utilité publique">SUP: '+escHtml(s.libelle||s.categorie||'—').slice(0,40)+'</span>'));
+      (u.prescriptions||[]).slice(0,4).forEach(p=>chips.push('<span class="badge bg-info text-dark me-1" title="Prescription PLU">'+escHtml(p.libelle||p.type_prescription||'—').slice(0,40)+'</span>'));
+      if(chips.length) el.innerHTML = '<div class="mt-1"><b>Servitudes / prescriptions au point :</b><br>'+chips.join(' ')+'</div>';
+    }).catch(()=>{});
+  }
+}
+
 async function loadGpuInfo(lat, lon){
   const box = document.getElementById('gpuInfo');
   const elZone = document.getElementById('gpuZone');
@@ -2438,8 +2499,10 @@ async function loadGpuInfo(lat, lon){
         elZone.innerHTML = `<span class="fw-bold" style="color:${col}">${escHtml(p.libelle||p.typezone||'?')}</span>`
           + (p.libelong?` — ${escHtml(p.libelong)}`:'')
           + (p.typezone?` <span class="text-muted">(type ${escHtml(p.typezone)})</span>`:'');
+        renderConstructibilite(lat, lon); // rubrique règles de construction
       } else {
         elZone.innerHTML = '<span class="text-muted">Aucun document d\'urbanisme numérisé à ce point (commune non couverte par le GPU).</span>';
+        renderConstructibilite(lat, lon); // affiche quand même le cadre indicatif
       }
     })
     .catch(()=>{ if(elZone) elZone.innerHTML='<span class="text-muted">Zonage indisponible.</span>'; });
@@ -2456,6 +2519,8 @@ async function loadGpuInfo(lat, lon){
         if(window.__fidiGpu){ window.__fidiGpu.parcelle = p; window.__fidiGpu.parcelleGeom = f.geometry; }
         // Auto-remplit la surface (contenance) dans les tableaux de décote + calcule
         try { if(typeof etudeAutoFillContenance === 'function') etudeAutoFillContenance(); } catch(e){}
+        // Recalcule la rubrique constructibilité (surface constructible = contenance × emprise)
+        try { renderConstructibilite(lat, lon); } catch(e){}
         const ref = `${p.section||''} ${p.numero||''}`.trim();
         elParc.innerHTML = `<span class="fw-bold">${escHtml(ref||'—')}</span>`
           + (p.contenance?` · ${Number(p.contenance).toLocaleString('fr-FR')} m²`:'')
