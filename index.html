@@ -3591,6 +3591,57 @@ function terrainAlpha(){
   if(z.startsWith('N')) return { a:0.35, lbl:'zone naturelle (N)' };
   return { a:0.25, lbl:'zonage non déterminé (moyenne)' };
 }
+// Génère le HTML du tableau de décote (réutilisé : cas constructible + hypothèse mutation).
+function _decoteTableHTML(pRef, sRef, a, FLOOR){
+  const sizes = [500, 1000, 2500, 5000, 10000, 30000, 50000];
+  const calc = (S) => Math.max(FLOOR, pRef * Math.pow(sRef / S, a));
+  const rows = sizes.map(S => {
+    const p = calc(S);
+    const dec = Math.round((1 - p / pRef) * 100);
+    const decLbl = dec === 0 ? '<span class="text-muted">réf.</span>'
+      : (dec > 0 ? '<span style="color:#198754;">-' + dec + ' %</span>'
+                 : '<span style="color:#b87333;">+' + Math.abs(dec) + ' %</span>');
+    return '<tr'+(S===Math.round(sRef)?' style="background:#fff8e6;"':'')+'>'+
+      '<td class="text-end fw-semibold">'+fmt(S)+' m²</td>'+
+      '<td class="text-end">'+p.toFixed(2)+' €/m²</td>'+
+      '<td class="text-end">'+decLbl+'</td>'+
+      '<td class="text-end fw-bold" style="color:var(--fidi-blue);">'+fmtEur(Math.round(p*S))+'</td></tr>';
+  }).join('');
+  return '<div class="small text-muted mb-2">Formule : prix/m² = '+pRef.toFixed(0)+' € × (1 000 ÷ Surface)<sup>'+a+'</sup> — coefficient α = <b>'+a+'</b>. Plancher '+FLOOR+' €/m².</div>'+
+    '<div class="table-responsive"><table class="table table-sm mb-1" style="font-size:.8rem;">'+
+      '<thead><tr class="text-muted" style="font-size:.68rem;text-transform:uppercase;"><th class="text-end">Surface</th><th class="text-end">Prix/m² ajusté</th><th class="text-end">Décote</th><th class="text-end">Valeur estimée</th></tr></thead>'+
+      '<tbody>'+rows+'</tbody></table></div>'+
+    '<div class="row g-2 align-items-end mt-1 pt-2 border-top">'+
+      '<div class="col-12 col-md-5"><label class="form-label small mb-1 fw-semibold">Calculer votre surface exacte (m²) :</label>'+
+        '<div class="input-group input-group-sm"><input type="number" id="terrainCustomSurf" class="form-control" placeholder="ex : 3 500" min="1">'+
+        '<button class="btn btn-success" type="button" onclick="calcTerrainCustom('+pRef+','+sRef+','+a+','+FLOOR+')">Calculer</button></div></div>'+
+      '<div class="col-12 col-md-7"><div id="terrainCustomOut" class="small"></div></div>'+
+    '</div>';
+}
+// Recalcule la valeur du terrain agricole quand on modifie le barème €/m²
+function recalcAgricole(){
+  const m2 = parseFloat(document.getElementById('agriM2').value);
+  const contenance = (window.__fidiGpu||{}).parcelle && Number((window.__fidiGpu||{}).parcelle.contenance);
+  const out = document.getElementById('agriVal');
+  if(out && contenance && isFinite(m2)) out.textContent = fmtEur(Math.round(contenance*m2));
+}
+// Nature du terrain déduite du zonage PLU (référence cadastrale) :
+// constructible (U/AU), agricole (A), naturel/ONF (N).
+function terrainNature(){
+  const z = String(((window.__fidiGpu||{}).zone||{}).typezone || '').toUpperCase();
+  if(z.startsWith('AU') || z.startsWith('U')) return 'constructible';
+  if(z.startsWith('A')) return 'agricole';
+  if(z.startsWith('N')) return 'naturel';
+  return 'inconnu';
+}
+// Barème €/m² fixe pour terrains agricoles / naturels (indicatif SAFER DOM, éditable).
+// Pas de décote de surface : le marché agricole se cote au /ha, prix unitaire ~constant.
+function valeurAgricoleM2(nature, cp){
+  const dom = /^97/.test(String(cp||''));
+  if(nature==='agricole') return dom ? 2.5 : 1.0;   // terre cultivable
+  if(nature==='naturel')  return dom ? 0.8 : 0.4;   // forêt/ONF/naturel
+  return 0;
+}
 function renderTerrainDecote(e){
   let box = document.getElementById('terrainDecoteBox');
   if(!e || e.prix_m2==null){ if(box) box.style.display='none'; return; }
@@ -3603,6 +3654,52 @@ function renderTerrainDecote(e){
     anchor.parentNode.appendChild(box);
   }
   box.style.display = '';
+  const nature = terrainNature();
+  const cp = ((window.__fidiData||{}).localisation||{}).postcode || '';
+  const contenance = (window.__fidiGpu||{}).parcelle && Number((window.__fidiGpu||{}).parcelle.contenance);
+
+  // ── Cas TERRAIN AGRICOLE / NATUREL (ONF) : valeur fixe par zone = valeur retenue ──
+  if(nature==='agricole' || nature==='naturel'){
+    const vM2 = valeurAgricoleM2(nature, cp);
+    const label = nature==='agricole' ? 'Terrain agricole (zone A)' : 'Terrain naturel / forestier (zone N, ONF)';
+    const grande = contenance && contenance >= 5000;
+    // Bloc valeur agricole (retenue pour l'évaluation)
+    let html = ''+
+      '<div class="border rounded p-2 mt-2" style="border-left:3px solid #8d6e63!important;background:#f9f6f3;">'+
+        '<div class="fw-semibold small mb-1" style="color:#8d6e63;"><i class="bi bi-tree me-1"></i>Valeur du '+label+' — <span style="color:#1a4b8e;">évaluation retenue</span></div>'+
+        '<div class="small text-muted mb-2">Terrain non constructible : la valeur est fixée au barème de la zone (marché agricole/forestier), sans décote de surface. Valeur indicative — à confirmer selon les <b>barèmes SAFER</b> et l\'usage réel (culture, prairie, friche, boisement).</div>'+
+        '<div class="table-responsive"><table class="table table-sm mb-1" style="font-size:.8rem;"><tbody>'+
+          (contenance?'<tr><td style="width:50%;color:#667;">Surface (cadastre)</td><td class="text-end fw-semibold">'+fmt(contenance)+' m²</td></tr>':'')+
+          '<tr><td style="color:#667;">Barème '+label.toLowerCase()+'</td><td class="text-end"><input type="number" step="0.1" id="agriM2" value="'+vM2+'" style="width:80px;text-align:right;border:1px solid #ccc;border-radius:4px;padding:1px 4px;" onchange="recalcAgricole()"> €/m²</td></tr>'+
+          (contenance?'<tr style="background:#eaf0f8;"><td class="fw-bold">VALEUR VÉNALE RETENUE</td><td class="text-end fw-bold" style="font-size:1.05rem;color:#1a4b8e;" id="agriVal">'+fmtEur(Math.round(contenance*vM2))+'</td></tr>':'')+
+        '</tbody></table></div>'+
+      '</div>';
+    // Bloc décote constructible = HYPOTHÈSE mutation (non retenu dans le calcul)
+    const alpha = terrainAlpha();
+    const sRef=1000, pRef=e.prix_m2, FLOOR=2;
+    if(grande){
+      // Grande surface : simple mention (pas de tableau)
+      const p10k = Math.max(FLOOR, pRef*Math.pow(sRef/10000, alpha.a));
+      const p30k = Math.max(FLOOR, pRef*Math.pow(sRef/30000, alpha.a));
+      html += '<div class="border rounded p-2 mt-2" style="border-left:3px solid #198754!important;background:#f8fcf9;">'+
+        '<div class="fw-semibold small mb-1" style="color:#198754;"><i class="bi bi-arrow-repeat me-1"></i>Hypothèse — mutation en terrain constructible <span class="text-muted">(non retenu dans l\'évaluation)</span></div>'+
+        '<div class="small text-muted">Si ce terrain devenait constructible (reclassement PLU), sa valeur au m² grimperait fortement. Vu sa <b>grande surface ('+fmt(contenance)+' m²)</b>, une décote de contenance s\'appliquerait : de l\'ordre de <b>'+p10k.toFixed(0)+' €/m² à 10 000 m²</b> et <b>'+p30k.toFixed(0)+' €/m² à 30 000 m²</b> (base marché constructible '+pRef.toFixed(0)+' €/m²). À titre purement indicatif — la valeur retenue reste celle du terrain agricole ci-dessus.</div>'+
+      '</div>';
+      box.innerHTML = html;
+      return;
+    } else {
+      // Petite surface (<5000) : tableaux de décote complets, mais en préambule "hypothèse"
+      html += '<div class="border rounded p-2 mt-2" style="border-left:3px solid #198754!important;background:#f8fcf9;">'+
+        '<div class="fw-semibold small mb-1" style="color:#198754;"><i class="bi bi-arrow-repeat me-1"></i>Hypothèse — mutation en terrain constructible <span class="text-muted">(non retenu dans l\'évaluation)</span></div>'+
+        '<div class="small text-muted mb-2">Valeur potentielle SI reclassement en constructible. Ces montants ne sont <b>pas retenus</b> dans l\'évaluation (le terrain reste agricole/naturel), mais éclairent le potentiel foncier.</div>'+
+        _decoteTableHTML(pRef, sRef, alpha, FLOOR)+
+      '</div>';
+      box.innerHTML = html;
+      return;
+    }
+  }
+
+  // ── Cas TERRAIN CONSTRUCTIBLE (U/AU) ou inconnu : décote normale ──
   const alpha = terrainAlpha();
   // Surface de RÉFÉRENCE du marché = 1 000 m² (taille courante des ventes de terrain à
   // bâtir dont dérive le prix médian DVF). NE PAS utiliser e.surface (surface du bien
@@ -3697,6 +3794,9 @@ function renderPromoteurBox(e){
   // Fallback : si appelé sans argument, tente le cache global
   if(!e){ e = ((window.__fidiData||{}).estimations||{}).terrain; }
   if(!e || e.prix_m2==null){ if(box) box.style.display='none'; return; }
+  // Terrain agricole / naturel : pas de décote promoteur (marché non constructible)
+  const nat = terrainNature();
+  if(nat==='agricole' || nat==='naturel'){ if(box) box.style.display='none'; return; }
   // Ancre : sous le tableau décote particulier si présent, sinon sous estTypesBody
   const anchor = document.getElementById('terrainDecoteBox') || document.getElementById('estTypesBody');
   if(!anchor) return;
