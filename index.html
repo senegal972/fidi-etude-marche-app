@@ -1748,17 +1748,36 @@ async function etudeEnrichirLocal(){
         : '<span class="text-muted small">Hors forêt publique</span>';
     }
     else if(r.key === 'idg'){
+      // Libellés lisibles des couches IDG régionales + interprétation
+      var IDG_LBL = {
+        ppr_cyclone:'PPR cyclonique', ppr_seisme:'PPR sismique', ppr_mouvement_terrain:'PPR mouvement de terrain',
+        zonage_sismique:'Zonage sismique', plu_972:'PLU', ppri:'PPR inondation',
+        ocs2d_2017:'Occupation du sol (KaruCover)', karucover_2017:'Occupation du sol', ocsge_derniere:'Occupation du sol',
+        ppr_gp:'PPR', parc_amazonien_zonage:'Parc Amazonien', reserves_naturelles:'Réserve naturelle',
+        carte_communale:'Carte communale', plu_pos:'PLU/POS'
+      };
       var groups = r.data.groups || {};
       var ks = Object.keys(groups);
       if(ks.length){
-        body = ks.map(k => '<span class="badge bg-primary">'+k+' '+groups[k].count+'</span>').join(' ');
+        var chips = ks.map(k => {
+          var g = groups[k];
+          var lib = IDG_LBL[k] || k.replace(/_/g,' ');
+          var detail = (g.items && g.items[0] && (g.items[0].libelle || g.items[0].libelong)) ? ' — '+String(g.items[0].libelle||g.items[0].libelong).slice(0,40) : '';
+          return '<div class="mb-1"><span class="badge bg-primary">'+lib+'</span> <span class="small">'+g.count+' zone(s)'+detail+'</span></div>';
+        }).join('');
+        body = chips + '<div class="text-muted mt-1" style="font-size:.66rem;">Couches réglementaires ('+(r.data.source||'IDG régionale')+') applicables au point : plans de prévention des risques, zonages d\'urbanisme et occupation du sol de la collectivité.</div>';
       } else if(r.data.count > 0) body = '<span class="badge bg-primary">'+r.data.count+' couche(s)</span>';
-      else body = '<span class="text-muted small">'+(r.data.note || 'Aucune couche')+'</span>';
+      else body = '<span class="text-muted small"><i class="bi bi-info-circle me-1"></i>'+(r.data.note || 'Aucune couche réglementaire spécifique de la collectivité à ce point (les données nationales GPU/Géorisques restent applicables).')+'</span>';
     }
+    // Interprétation courte par bloc
+    var interp = '';
+    if(r.key==='georisques') interp = 'Risques naturels et technologiques recensés à l\'adresse (PPR = plan de prévention obligatoire ; SSP = sol pollué ; ICPE = installation classée). Impacte assurance, constructibilité et diagnostics.';
+    else if(r.key==='onf') interp = (r.data && r.data.count>0) ? 'Le terrain touche une forêt publique gérée par l\'ONF : constructibilité très restreinte, régime forestier applicable.' : 'Le terrain n\'est pas en forêt publique ONF.';
     html += '<div class="col-12 col-md-6 col-lg-4">'+
-      '<div class="p-2 border rounded small" style="background:#fafbfc;">'+
+      '<div class="p-2 border rounded small h-100" style="background:#fafbfc;">'+
         '<div class="fw-bold mb-1 text-'+r.color+'"><i class="bi bi-circle-fill me-1"></i>'+r.label+'</div>'+
         '<div>'+body+'</div>'+
+        (interp?'<div class="text-muted mt-2" style="font-size:.66rem;border-top:1px dashed #ddd;padding-top:4px;">'+interp+'</div>':'')+
       '</div>'+
     '</div>';
   });
@@ -2434,7 +2453,12 @@ function renderConstructibilite(lat, lon){
     const m = String(R.emprise).match(/(\d+)\D+(\d+)/);
     if(m){ const moy=(+m[1]+ +m[2])/2/100; surfCons = Math.round(contenance*moy).toLocaleString('fr-FR')+' m² (emprise ~'+Math.round(moy*100)+' %)'; }
   }
-  const gpuReglt = (lat&&lon) ? 'https://www.geoportail-urbanisme.gouv.fr/map/#tile=1&lon='+lon+'&lat='+lat+'&zoom=18' : '#';
+  // Lien règlement PLU : fiche document GPU de la commune (liste des pièces PDF téléchargeables)
+  // via la partition (idurba, ex "DU_97209") retournée par l'API zone-urba, sinon carte.
+  const insee = z.insee || ((window.__fidiData||{}).localisation||{}).citycode || '';
+  const partition = z.partition || (insee ? 'DU_'+insee : '');
+  const gpuCarte = (lat&&lon) ? 'https://www.geoportail-urbanisme.gouv.fr/map/#tile=1&lon='+lon+'&lat='+lat+'&zoom=18' : '#';
+  const gpuDoc = partition ? 'https://www.geoportail-urbanisme.gouv.fr/document/'+encodeURIComponent(partition) : gpuCarte;
   box.classList.remove('d-none');
   box.innerHTML =
     '<div class="fw-semibold small mb-1" style="color:'+R.color+';"><i class="bi bi-rulers me-1"></i>Règles de constructibilité — '+escHtml(R.label)+'</div>'+
@@ -2448,8 +2472,9 @@ function renderConstructibilite(lat, lon){
     '</tbody></table></div>'+
     '<div id="constructServit" class="small text-muted"></div>'+
     '<div class="text-muted mt-1" style="font-size:.68rem;">'+
-      '<i class="bi bi-exclamation-triangle me-1" style="color:#fd7e14;"></i><b>Valeurs indicatives</b> par type de zone. Les règles exactes (emprise, hauteur, reculs, CES, stationnement) figurent dans le <b>règlement écrit du PLU</b>. '+
-      '<a href="'+gpuReglt+'" target="_blank" rel="noopener">Consulter le règlement PLU (GPU) →</a>'+
+      '<i class="bi bi-exclamation-triangle me-1" style="color:#fd7e14;"></i><b>Valeurs indicatives</b> par type de zone. Les règles exactes (emprise, hauteur, reculs, CES, stationnement) figurent dans le <b>règlement écrit du PLU</b>.<br>'+
+      '<a href="'+gpuDoc+'" target="_blank" rel="noopener"><i class="bi bi-file-earmark-pdf me-1"></i>Règlement PLU de la commune (pièces PDF) →</a>'+
+      ' &nbsp;·&nbsp; <a href="'+gpuCarte+'" target="_blank" rel="noopener">Voir le zonage sur la carte GPU →</a>'+
     '</div>';
   // Servitudes / prescriptions réelles (API urbanisme) — enrichit si dispo
   if(lat && lon){
