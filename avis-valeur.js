@@ -160,7 +160,8 @@
       conclusion: { texte: '', potentielBas: '', potentielHaut: '' },
       reserves: "Le présent avis a été établi sur la base des informations communiquées par le mandant et des données publiques de marché. Il n'engage le rédacteur qu'à hauteur d'un avis indicatif. Il ne se substitue ni à une expertise judiciaire, ni à un rapport d'évaluation au sens de la Charte de l'Expertise en Évaluation Immobilière.\n\nLa valeur retenue est susceptible d'évoluer en fonction : (i) d'éventuels diagnostics techniques défavorables (amiante, termites, électricité, DPE, ERP – risques cycloniques et sismiques en Martinique) non encore portés à notre connaissance ; (ii) de l'état réel du locataire en place (régularité des paiements, durée de bail résiduelle, indexation IRL) ; (iii) de l'évolution du marché immobilier local sur les 12 prochains mois.\n\nAucune visite physique du bien n'a été matérialisée par procès-verbal contradictoire ; l'avis repose sur les éléments documentaires transmis.",
       signataire: {
-        nom: 'Franck FIDI',
+        nom: 'FIDI',                 // nom de famille
+        prenom: 'Franck',            // prénom
         fonction: 'Mandataire en immobilier',
         email: 'franck.fidi@sextantfrance.fr',
         telephone: '',
@@ -833,6 +834,15 @@
     if (d.signataire) {
       var sdef = def.signataire;
       Object.keys(sdef).forEach(function (k) { if (d.signataire[k] == null) d.signataire[k] = sdef[k]; });
+      // Rétrocompat nom/prénom : ancien champ "nom" contenait "Prénom Nom" en un seul bloc.
+      if (d.signataire.prenom == null || d.signataire.prenom === '') {
+        var full = String(d.signataire.nom || '').trim();
+        if (full.indexOf(' ') > 0) {
+          var parts = full.split(/\s+/);
+          d.signataire.prenom = parts.shift();      // 1er mot = prénom
+          d.signataire.nom = parts.join(' ');       // reste = nom
+        }
+      }
     }
     return d;
   }
@@ -1256,19 +1266,21 @@
         '</div>' +
         '<div class="av-sec-head" style="margin-top:.5rem;"><h5 style="font-size:.95rem;">Identité personnelle</h5></div>' +
         '<div class="av-grid-2">' +
-          fld('Nom / prénom', 'signataire.nom') +
-          fld('Fonction', 'signataire.fonction', { ph: 'Ex : Mandataire en immobilier / Agent commercial' }) +
+          fld('Nom', 'signataire.nom', { ph: 'Nom de famille' }) +
+          fld('Prénom', 'signataire.prenom', { ph: 'Prénom' }) +
         '</div>' +
         '<div class="av-grid-2">' +
-          fld('Email professionnel', 'signataire.email', { type: 'email' }) +
+          fld('Fonction', 'signataire.fonction', { ph: 'Ex : Mandataire en immobilier / Agent commercial' }) +
           fld('Téléphone', 'signataire.telephone', { type: 'tel', ph: '+596 6 96 12 34 56' }) +
         '</div>' +
+        fld('Email professionnel', 'signataire.email', { type: 'email' }) +
 
         '<div class="av-sec-head" style="margin-top:1rem;"><h5 style="font-size:.95rem;">Société / réseau</h5></div>' +
-        '<div class="av-grid-2">' +
-          fld('Nom société', 'signataire.societe') +
-          fld('SIRET', 'signataire.siret', { ph: '123 456 789 00012' }) +
+        '<div class="d-flex flex-wrap gap-2 align-items-end mb-2">' +
+          '<div style="flex:1;min-width:200px;">' + fld('SIRET (9 ou 14 chiffres)', 'signataire.siret', { ph: '123 456 789 00012' }) + '</div>' +
+          '<button class="btn btn-sm btn-outline-primary" type="button" onclick="avisSyncSociete()" title="Récupérer automatiquement les infos de la société depuis le registre national des entreprises (INSEE/Sirene)"><i class="bi bi-building-check me-1"></i>Synchroniser registre</button>' +
         '</div>' +
+        fld('Nom société', 'signataire.societe') +
         fld('Adresse de la société', 'signataire.adresseSociete') +
         '<div class="av-grid-3">' +
           fld('Code postal', 'signataire.codePostal') +
@@ -2786,6 +2798,33 @@
   // BDNB officielle CSTB nécessite un abonnement. On combine à la place les
   // sources publiques ouvertes : ADEME DPE V2 (perf énergétique + année de
   // construction + surface) + RNB (identifiant national bâtiment + adresses).
+  // Synchronise les infos société depuis le registre national des entreprises (Sirene)
+  // via /api/entreprise. Recherche par SIRET (ou nom société si pas de SIRET).
+  window.avisSyncSociete = async function () {
+    var s = state.data.signataire || {};
+    var q = String(s.siret || '').replace(/\s/g, '') || String(s.societe || '').trim();
+    if (!q) { toast('Renseignez un SIRET (ou un nom de société) d\'abord', true); return; }
+    toast('Recherche registre entreprises…');
+    try {
+      var r = await fetch('/api/entreprise', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ q: q })
+      });
+      var j = await r.json();
+      if (!r.ok || !j.results || !j.results.length) { toast('Société introuvable au registre', true); return; }
+      var e = j.results[0];
+      // Remplit les champs société (n'écrase que si le registre a la donnée)
+      if (e.nom) state.data.signataire.societe = e.nom;
+      if (e.siret_siege) state.data.signataire.siret = e.siret_siege;
+      if (e.siege_adresse && e.siege_adresse !== '—') state.data.signataire.adresseSociete = e.siege_adresse;
+      if (e.siege_code_postal) state.data.signataire.codePostal = e.siege_code_postal;
+      if (e.siege_commune) state.data.signataire.ville = e.siege_commune;
+      if (e.siren) state.data.signataire.rcs = 'RCS ' + (e.siege_commune || '') + ' ' + e.siren;
+      showSection('signature');
+      toast('Société synchronisée : ' + (e.nom || q));
+    } catch (err) { toast('Erreur registre : ' + err.message, true); }
+  };
+
   window.avisEnrichirRisques = async function () {
     try {
       var L = state.data.loc || {};
@@ -3215,7 +3254,7 @@
       '<div style="color:#5c6470;font-size:9px;font-style:italic;">' + _natureHeader + '</div>' +
       '<div style="color:#5c6470;font-size:9px;">' + esc(_lieuHeader) + (sig.headerLibre ? ' — ' + esc(sig.headerLibre) : '') + '</div></td>' +
       '<td style="border:none;padding:0;text-align:right;vertical-align:top;">' +
-        '<div style="color:#1a3a6e;font-weight:bold;">' + esc(sig.nom) + '</div>' +
+        '<div style="color:#1a3a6e;font-weight:bold;">' + esc([sig.prenom, sig.nom].filter(Boolean).join(' ')) + '</div>' +
         '<div>' + esc(sig.fonction) + '</div>' +
         '<div>' + esc(sig.email) + (sig.telephone ? ' · ' + esc(sig.telephone) : '') + '</div>' +
       '</td></tr></table></div>';
@@ -3280,7 +3319,7 @@
     }
 
     html += '<h1>1. Préambule et cadre de l\'avis</h1>' +
-      '<p>Le présent document constitue un <b>avis de valeur</b> établi par <b>' + esc(sig.societe) + '</b>, ' + (data.metadata.lieuEtablissement ? 'à ' + esc(data.metadata.lieuEtablissement) : 'en Martinique') + ', par ' + esc(sig.nom) + ', ' + esc(sig.fonction) + '. Il porte sur ' + (b.type ? 'un ' + esc(b.type.toLowerCase()) : 'le bien') + ' situé ' + (adresseComplete || '[adresse]') + '.</p>' +
+      '<p>Le présent document constitue un <b>avis de valeur</b> établi par <b>' + esc(sig.societe) + '</b>, ' + (data.metadata.lieuEtablissement ? 'à ' + esc(data.metadata.lieuEtablissement) : 'en Martinique') + ', par ' + esc([sig.prenom, sig.nom].filter(Boolean).join(' ')) + ', ' + esc(sig.fonction) + '. Il porte sur ' + (b.type ? 'un ' + esc(b.type.toLowerCase()) : 'le bien') + ' situé ' + (adresseComplete || '[adresse]') + '.</p>' +
       '<p>Conformément aux usages de la profession et à la Charte de l\'Expertise en Évaluation Immobilière, le présent avis <b>ne constitue pas une expertise judiciaire ou réglementée</b>. Il est délivré à titre indicatif et matérialise une opinion motivée sur la valeur vénale du bien au jour de son établissement, sur la base des éléments communiqués et des données de marché disponibles.</p>' +
       (b.prixVente ? '<p style="font-style:italic;color:#5c6470;">Le bien faisant l\'objet du présent avis ' + (occ ? 'a été cédé' : 'est proposé') + ' pour un prix de ' + fmtE(b.prixVente) + ' net vendeur.</p>' : '');
 
@@ -3594,7 +3633,7 @@
     ].filter(Boolean).join(' · ');
     html += '<div class="signature">' +
       '<p style="font-style:italic;">Fait à ' + esc(data.metadata.lieuEtablissement || sig.ville || '') + ', le ' + formatDateFR(data.metadata.date) + '</p>' +
-      '<p class="name">' + esc(sig.nom) + '</p>' +
+      '<p class="name">' + esc([sig.prenom, sig.nom].filter(Boolean).join(' ')) + '</p>' +
       '<p>' + esc(sig.fonction) + '</p>' +
       '<p style="color:#5c6470;">' + esc(sig.societe) + (_adrSoc ? ' – ' + esc(_adrSoc) : '') + '</p>' +
       (_contact ? '<p style="color:#5c6470;">' + esc(_contact) + '</p>' : '') +
