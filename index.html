@@ -349,6 +349,7 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
             <optgroup label="Terrain">
               <option value="terrain">Terrain à bâtir</option>
               <option value="terrain">Terrain agricole</option>
+              <option value="terrain">Terrain naturel (ONF)</option>
               <option value="terrain">Terrain de loisirs</option>
             </optgroup>
             <optgroup label="Professionnel">
@@ -1722,7 +1723,7 @@ async function etudeEnrichirLocal(){
     { key:'georisques', label:'Géorisques', url:'/api/georisques-adresse?lat='+lat+'&lon='+lon+(insee?'&insee='+insee:''), color:'danger' },
     { key:'onf', label:'ONF forêts', url:'/api/onf?lat='+lat+'&lon='+lon+'&radius=1', color:'success' },
   ];
-  if(idgUrl) urls.push({ key:'idg', label:'IDG régionale', url:idgUrl, color:'primary' });
+  if(idgUrl) urls.push({ key:'idg', label:'IDG régionale (Infrastructure de Données Géographiques)', url:idgUrl, color:'primary' });
   var results = await Promise.all(urls.map(u =>
     fetch(u.url).then(r => r.ok ? r.json() : null).catch(() => null).then(data => ({...u, data}))
   ));
@@ -1767,7 +1768,12 @@ async function etudeEnrichirLocal(){
         }).join('');
         body = chips + '<div class="text-muted mt-1" style="font-size:.66rem;">Couches réglementaires ('+(r.data.source||'IDG régionale')+') applicables au point : plans de prévention des risques, zonages d\'urbanisme et occupation du sol de la collectivité.</div>';
       } else if(r.data.count > 0) body = '<span class="badge bg-primary">'+r.data.count+' couche(s)</span>';
-      else body = '<span class="text-muted small"><i class="bi bi-info-circle me-1"></i>'+(r.data.note || 'Aucune couche réglementaire spécifique de la collectivité à ce point (les données nationales GPU/Géorisques restent applicables).')+'</span>';
+      else {
+        // Rend cliquables les URLs présentes dans la note (portail régional GéoMartinique/KaruGéo/GéoGuyane)
+        var note = r.data.note || 'Aucune couche réglementaire spécifique de la collectivité à ce point (les données nationales GPU/Géorisques restent applicables).';
+        note = note.replace(/(https?:\/\/[^\s)]+)/g, '<a href="$1" target="_blank" rel="noopener">consulter le portail régional ↗</a>');
+        body = '<span class="text-muted small"><i class="bi bi-info-circle me-1"></i>'+note+'</span>';
+      }
     }
     // Interprétation courte par bloc
     var interp = '';
@@ -2453,12 +2459,10 @@ function renderConstructibilite(lat, lon){
     const m = String(R.emprise).match(/(\d+)\D+(\d+)/);
     if(m){ const moy=(+m[1]+ +m[2])/2/100; surfCons = Math.round(contenance*moy).toLocaleString('fr-FR')+' m² (emprise ~'+Math.round(moy*100)+' %)'; }
   }
-  // Lien règlement PLU : fiche document GPU de la commune (liste des pièces PDF téléchargeables)
-  // via la partition (idurba, ex "DU_97209") retournée par l'API zone-urba, sinon carte.
-  const insee = z.insee || ((window.__fidiData||{}).localisation||{}).citycode || '';
-  const partition = z.partition || (insee ? 'DU_'+insee : '');
+  // Lien règlement PLU : carte GPU centrée sur la parcelle (URL vérifiée). L'utilisateur
+  // clique la parcelle → le panneau latéral affiche le règlement de zone téléchargeable (PDF).
+  // (Le GPU n'expose pas d'URL directe fiable vers le PDF sans passer par la carte.)
   const gpuCarte = (lat&&lon) ? 'https://www.geoportail-urbanisme.gouv.fr/map/#tile=1&lon='+lon+'&lat='+lat+'&zoom=18' : '#';
-  const gpuDoc = partition ? 'https://www.geoportail-urbanisme.gouv.fr/document/'+encodeURIComponent(partition) : gpuCarte;
   box.classList.remove('d-none');
   box.innerHTML =
     '<div class="fw-semibold small mb-1" style="color:'+R.color+';"><i class="bi bi-rulers me-1"></i>Règles de constructibilité — '+escHtml(R.label)+'</div>'+
@@ -2473,8 +2477,7 @@ function renderConstructibilite(lat, lon){
     '<div id="constructServit" class="small text-muted"></div>'+
     '<div class="text-muted mt-1" style="font-size:.68rem;">'+
       '<i class="bi bi-exclamation-triangle me-1" style="color:#fd7e14;"></i><b>Valeurs indicatives</b> par type de zone. Les règles exactes (emprise, hauteur, reculs, CES, stationnement) figurent dans le <b>règlement écrit du PLU</b>.<br>'+
-      '<a href="'+gpuDoc+'" target="_blank" rel="noopener"><i class="bi bi-file-earmark-pdf me-1"></i>Règlement PLU de la commune (pièces PDF) →</a>'+
-      ' &nbsp;·&nbsp; <a href="'+gpuCarte+'" target="_blank" rel="noopener">Voir le zonage sur la carte GPU →</a>'+
+      '<a href="'+gpuCarte+'" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right me-1"></i>Ouvrir le PLU sur le Géoportail → cliquer la parcelle → télécharger le règlement (PDF)</a>'+
     '</div>';
   // Servitudes / prescriptions réelles (API urbanisme) — enrichit si dispo
   if(lat && lon){
@@ -2542,7 +2545,13 @@ async function loadGpuInfo(lat, lon){
       if(f){
         const p = f.properties;
         if(window.__fidiGpu){ window.__fidiGpu.parcelle = p; window.__fidiGpu.parcelleGeom = f.geometry; }
-        // Auto-remplit la surface (contenance) dans les tableaux de décote + calcule
+        // La contenance est maintenant connue → RE-GÉNÈRE les tableaux de décote avec la
+        // bonne surface (réduction ≤ 2 500 m² incluse) puis auto-remplit les champs.
+        try {
+          const estT = (window.__fidiData||{}).estimations || {};
+          if(typeof renderTerrainDecote==='function') renderTerrainDecote(estT.terrain);
+          if(typeof renderPromoteurBox==='function') renderPromoteurBox(estT.terrain);
+        } catch(e){}
         try { if(typeof etudeAutoFillContenance === 'function') etudeAutoFillContenance(); } catch(e){}
         // Recalcule la rubrique constructibilité (surface constructible = contenance × emprise)
         try { renderConstructibilite(lat, lon); } catch(e){}
@@ -5753,20 +5762,22 @@ window.Compte = (function(){
 <div id="presModalRoot"></div>
 <script>
 window.Presentation = (function(){
+  // Base tarifaire unique : 45 € / crédit (2 crédits = 90 €). Dégressivité par volume.
+  // Prix TTC = crédits × 45 × (1 − économie%). Identique pour Études, Avis et Cumulatif.
   const GRIDS = {
-    'Études de Marché': { entree:'dès 2 crédits à 45 € TTC', rows:[
-      ['Starter',2,'45 €','22,50 €','—'],['Essentiel ★',5,'99 €','19,80 €','-12 %'],
-      ['Pro',10,'179 €','17,90 €','-20 %'],['Business',20,'329 €','16,45 €','-27 %'],
-      ['Premium',50,'749 €','14,98 €','-33 %'],['Enterprise',100,'1 299 €','12,99 €','-42 %']]},
-    'Avis de Valeur': { entree:'dès 2 crédits à 69 € TTC', rows:[
-      ['Starter',2,'69 €','34,50 €','—'],['Essentiel ★',5,'149 €','29,80 €','-14 %'],
-      ['Pro',10,'269 €','26,90 €','-22 %'],['Business',20,'499 €','24,95 €','-28 %'],
-      ['Premium',50,'1 149 €','22,98 €','-33 %'],['Enterprise',100,'1 999 €','19,99 €','-42 %']]},
-    'Cumulatif (offre phare)': { entree:'crédits universels — études OU avis', rows:[
-      ['Starter',2,'59 €','29,50 €','—'],['Essentiel',5,'129 €','25,80 €','-13 %'],
-      ['Pro ★',10,'229 €','22,90 €','-22 %'],['Business',20,'429 €','21,45 €','-27 %'],
-      ['Premium',50,'979 €','19,58 €','-34 %'],['Enterprise',100,'1 699 €','16,99 €','-42 %'],
-      ['Platinum',200,'2 999 €','14,99 €','-49 %']]},
+    'Études de Marché': { entree:'dès 2 crédits à 90 € TTC (45 € / crédit)', rows:[
+      ['Starter',2,'90 €','45,00 €','—'],['Essentiel ★',5,'198 €','39,60 €','-12 %'],
+      ['Pro',10,'360 €','36,00 €','-20 %'],['Business',20,'657 €','32,85 €','-27 %'],
+      ['Premium',50,'1 508 €','30,15 €','-33 %'],['Enterprise',100,'2 610 €','26,10 €','-42 %']]},
+    'Avis de Valeur': { entree:'dès 2 crédits à 90 € TTC (45 € / crédit)', rows:[
+      ['Starter',2,'90 €','45,00 €','—'],['Essentiel ★',5,'198 €','39,60 €','-12 %'],
+      ['Pro',10,'360 €','36,00 €','-20 %'],['Business',20,'657 €','32,85 €','-27 %'],
+      ['Premium',50,'1 508 €','30,15 €','-33 %'],['Enterprise',100,'2 610 €','26,10 €','-42 %']]},
+    'Cumulatif (offre phare)': { entree:'crédits universels — études OU avis — 45 € / crédit', rows:[
+      ['Starter',2,'90 €','45,00 €','—'],['Essentiel',5,'198 €','39,60 €','-12 %'],
+      ['Pro ★',10,'360 €','36,00 €','-20 %'],['Business',20,'657 €','32,85 €','-27 %'],
+      ['Premium',50,'1 508 €','30,15 €','-33 %'],['Enterprise',100,'2 610 €','26,10 €','-42 %'],
+      ['Platinum',200,'4 590 €','22,95 €','-49 %']]},
   };
   const DOM = [['Martinique (972)','3 154 €/m²','Marché en croissance constante'],
     ['Guadeloupe (971)','3 612 €/m²','Forte demande résidentielle'],
