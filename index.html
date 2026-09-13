@@ -3591,31 +3591,48 @@ function terrainAlpha(){
   if(z.startsWith('N')) return { a:0.35, lbl:'zone naturelle (N)' };
   return { a:0.25, lbl:'zonage non déterminé (moyenne)' };
 }
-// Génère le HTML du tableau de décote (réutilisé : cas constructible + hypothèse mutation).
-function _decoteTableHTML(pRef, sRef, a, FLOOR){
-  const sizes = [500, 1000, 2500, 5000, 10000, 30000, 50000];
-  const calc = (S) => Math.max(FLOOR, pRef * Math.pow(sRef / S, a));
+// Tableau de décote MULTI-TYPES (terrain à bâtir / agricole / ONF-naturel).
+// - À bâtir : décote de contenance (prix/m² × (1000/S)^α).
+// - Agricole / ONF : prix/m² FIXE par zone (pas de décote surfacique).
+// Surfaces affichées adaptées : si surfaceTrouvee ≤ 2500 m², on borne le tableau à 2 500.
+function _decoteTableHTML(pRef, sRef, a, FLOOR, opts){
+  opts = opts || {};
+  const cp = ((window.__fidiData||{}).localisation||{}).postcode || '';
+  const surfTrouvee = opts.surface || ((window.__fidiGpu||{}).parcelle && Number((window.__fidiGpu||{}).parcelle.contenance)) || 0;
+  const vAgri = valeurAgricoleM2('agricole', cp);   // €/m² fixe
+  const vOnf  = valeurAgricoleM2('naturel', cp);    // €/m² fixe
+  // Surfaces : bornées à 2 500 si le terrain est petit (≤ 2500 m²)
+  let sizes = [500, 1000, 2500, 5000, 10000, 30000, 50000];
+  if(surfTrouvee && surfTrouvee <= 2500) sizes = [500, 1000, 2500];
+  const pBatir = (S) => Math.max(FLOOR, pRef * Math.pow(sRef / S, a));
   const rows = sizes.map(S => {
-    const p = calc(S);
-    const dec = Math.round((1 - p / pRef) * 100);
-    const decLbl = dec === 0 ? '<span class="text-muted">réf.</span>'
-      : (dec > 0 ? '<span style="color:#198754;">-' + dec + ' %</span>'
-                 : '<span style="color:#b87333;">+' + Math.abs(dec) + ' %</span>');
-    return '<tr'+(S===Math.round(sRef)?' style="background:#fff8e6;"':'')+'>'+
+    const pb = pBatir(S);
+    const isRef = S === Math.round(sRef);
+    return '<tr'+(isRef?' style="background:#fff8e6;"':'')+'>'+
       '<td class="text-end fw-semibold">'+fmt(S)+' m²</td>'+
-      '<td class="text-end">'+p.toFixed(2)+' €/m²</td>'+
-      '<td class="text-end">'+decLbl+'</td>'+
-      '<td class="text-end fw-bold" style="color:var(--fidi-blue);">'+fmtEur(Math.round(p*S))+'</td></tr>';
+      // Terrain à bâtir
+      '<td class="text-end"><div class="fw-bold" style="color:#198754;">'+fmtEur(Math.round(pb*S))+'</div><div class="text-muted" style="font-size:.66rem;">'+pb.toFixed(2)+' €/m²</div></td>'+
+      // Terrain agricole (prix fixe)
+      '<td class="text-end"><div class="fw-bold" style="color:#8d6e63;">'+fmtEur(Math.round(vAgri*S))+'</div><div class="text-muted" style="font-size:.66rem;">'+vAgri.toFixed(2)+' €/m²</div></td>'+
+      // Terrain ONF / naturel (prix fixe)
+      '<td class="text-end"><div class="fw-bold" style="color:#455a64;">'+fmtEur(Math.round(vOnf*S))+'</div><div class="text-muted" style="font-size:.66rem;">'+vOnf.toFixed(2)+' €/m²</div></td>'+
+      '</tr>';
   }).join('');
-  return '<div class="small text-muted mb-2">Formule : prix/m² = '+pRef.toFixed(0)+' € × (1 000 ÷ Surface)<sup>'+a+'</sup> — coefficient α = <b>'+a+'</b>. Plancher '+FLOOR+' €/m².</div>'+
+  const surfInit = surfTrouvee ? Math.round(surfTrouvee) : '';
+  return '<div class="small text-muted mb-2">À bâtir : décote de contenance (α = <b>'+a+'</b>, base '+pRef.toFixed(0)+' €/m²). Agricole '+vAgri.toFixed(2)+' €/m² · ONF/naturel '+vOnf.toFixed(2)+' €/m² (prix fixes par zone, sans décote).</div>'+
     '<div class="table-responsive"><table class="table table-sm mb-1" style="font-size:.8rem;">'+
-      '<thead><tr class="text-muted" style="font-size:.68rem;text-transform:uppercase;"><th class="text-end">Surface</th><th class="text-end">Prix/m² ajusté</th><th class="text-end">Décote</th><th class="text-end">Valeur estimée</th></tr></thead>'+
+      '<thead><tr class="text-muted" style="font-size:.66rem;text-transform:uppercase;">'+
+        '<th class="text-end">Surface</th>'+
+        '<th class="text-end" style="color:#198754;">Terrain à bâtir</th>'+
+        '<th class="text-end" style="color:#8d6e63;">Terrain agricole</th>'+
+        '<th class="text-end" style="color:#455a64;">Terrain ONF</th></tr></thead>'+
       '<tbody>'+rows+'</tbody></table></div>'+
     '<div class="row g-2 align-items-end mt-1 pt-2 border-top">'+
-      '<div class="col-12 col-md-5"><label class="form-label small mb-1 fw-semibold">Calculer votre surface exacte (m²) :</label>'+
-        '<div class="input-group input-group-sm"><input type="number" id="terrainCustomSurf" class="form-control" placeholder="ex : 3 500" min="1">'+
-        '<button class="btn btn-success" type="button" onclick="calcTerrainCustom('+pRef+','+sRef+','+a+','+FLOOR+')">Calculer</button></div></div>'+
-      '<div class="col-12 col-md-7"><div id="terrainCustomOut" class="small"></div></div>'+
+      '<div class="col-12 col-md-6"><label class="form-label small mb-1 fw-semibold">Surface exacte du terrain (m²) :</label>'+
+        '<div class="input-group input-group-sm"><input type="number" id="terrainCustomSurf" class="form-control" value="'+surfInit+'" placeholder="surface trouvée" min="1">'+
+        '<button class="btn btn-success" type="button" onclick="calcTerrainCustom('+pRef+','+sRef+','+a+','+FLOOR+')">Calculer les 3 types</button></div>'+
+        '<div class="text-muted mt-1" style="font-size:.66rem;">Pré-rempli avec la surface cadastrale trouvée. Modifiable.</div></div>'+
+      '<div class="col-12 col-md-6"><div id="terrainCustomOut" class="small"></div></div>'+
     '</div>';
 }
 // Recalcule la valeur du terrain agricole quand on modifie le barème €/m²
@@ -3692,7 +3709,7 @@ function renderTerrainDecote(e){
       html += '<div class="border rounded p-2 mt-2" style="border-left:3px solid #198754!important;background:#f8fcf9;">'+
         '<div class="fw-semibold small mb-1" style="color:#198754;"><i class="bi bi-arrow-repeat me-1"></i>Hypothèse — mutation en terrain constructible <span class="text-muted">(non retenu dans l\'évaluation)</span></div>'+
         '<div class="small text-muted mb-2">Valeur potentielle SI reclassement en constructible. Ces montants ne sont <b>pas retenus</b> dans l\'évaluation (le terrain reste agricole/naturel), mais éclairent le potentiel foncier.</div>'+
-        _decoteTableHTML(pRef, sRef, alpha, FLOOR)+
+        _decoteTableHTML(pRef, sRef, alpha.a, FLOOR, {surface: contenance})+
       '</div>';
       box.innerHTML = html;
       return;
@@ -3702,71 +3719,33 @@ function renderTerrainDecote(e){
   // ── Cas TERRAIN CONSTRUCTIBLE (U/AU) ou inconnu : décote normale ──
   const alpha = terrainAlpha();
   // Surface de RÉFÉRENCE du marché = 1 000 m² (taille courante des ventes de terrain à
-  // bâtir dont dérive le prix médian DVF). NE PAS utiliser e.surface (surface du bien
-  // analysé) : un terrain de 30 000 m² comme référence ferait exploser les petits (+183 %).
+  // bâtir dont dérive le prix médian DVF). NE PAS utiliser e.surface (surface du bien).
   const sRef = 1000;
   const pRef = e.prix_m2;              // €/m² médian marché à la surface de référence
   const FLOOR = 2;                      // plancher agricole €/m²
-  const sizes = [500, 1000, 2500, 5000, 10000, 30000, 50000];
-  const calc = (S) => Math.max(FLOOR, pRef * Math.pow(sRef / S, alpha.a));
-  const rows = sizes.map(S => {
-    const p = calc(S);
-    // dec > 0 = décote (grands terrains) → "-X %" · dec < 0 = surcote (petits terrains) → "+X %"
-    const dec = Math.round((1 - p / pRef) * 100);
-    const decLbl = dec === 0 ? '<span class="text-muted">réf.</span>'
-      : (dec > 0 ? '<span style="color:#198754;">-' + dec + ' %</span>'
-                 : '<span style="color:#b87333;">+' + Math.abs(dec) + ' %</span>');
-    return `<tr${S===Math.round(sRef)?' style="background:#fff8e6;"':''}>
-      <td class="text-end fw-semibold">${fmt(S)} m²</td>
-      <td class="text-end">${p.toFixed(2)} €/m²</td>
-      <td class="text-end">${decLbl}</td>
-      <td class="text-end fw-bold" style="color:var(--fidi-blue);">${fmtEur(Math.round(p*S))}</td>
-    </tr>`;
-  }).join('');
-  box.innerHTML = `
-    <div class="border rounded p-2 mt-2" style="border-left:3px solid #198754!important;background:#f8fcf9;">
-      <div class="fw-semibold small mb-1" style="color:#198754;">
-        <i class="bi bi-rulers me-1"></i>Décote surfacique terrain (abattement de contenance)
-      </div>
-      <div class="small text-muted mb-2">
-        Formule : prix/m² = ${pRef.toFixed(0)} € × (${fmt(Math.round(sRef))} ÷ Surface)<sup>${alpha.a}</sup>
-        — coefficient α = <b>${alpha.a}</b> (${alpha.lbl}).
-        Plancher ${FLOOR} €/m² (valeur agricole). Un grand terrain vaut moins au m² qu'un petit : c'est l'abattement de contenance, pratiqué en expertise foncière.
-      </div>
-      <div class="table-responsive">
-        <table class="table table-sm mb-1" style="font-size:.8rem;">
-          <thead><tr class="text-muted" style="font-size:.68rem;text-transform:uppercase;">
-            <th class="text-end">Surface</th><th class="text-end">Prix/m² ajusté</th><th class="text-end">Décote</th><th class="text-end">Valeur estimée</th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-      <div class="row g-2 align-items-end mt-1 pt-2 border-top">
-        <div class="col-12 col-md-5">
-          <label class="form-label small mb-1 fw-semibold">Calculer votre surface exacte (m²) :</label>
-          <div class="input-group input-group-sm">
-            <input type="number" id="terrainCustomSurf" class="form-control" placeholder="ex : 12 500" min="1">
-            <button class="btn btn-success" type="button" onclick="calcTerrainCustom(${pRef},${sRef},${alpha.a},${FLOOR})">Calculer</button>
-          </div>
-        </div>
-        <div class="col-12 col-md-7"><div id="terrainCustomOut" class="small"></div></div>
-      </div>
-      <div class="text-muted mt-2" style="font-size:.68rem;">
-        <i class="bi bi-info-circle me-1"></i>Grille ci-dessus = marché <b>particuliers</b>. Pour les professionnels, voir la décote promoteur ci-dessous.
-      </div>
-    </div>`;
+  const contenanceC = (window.__fidiGpu||{}).parcelle && Number((window.__fidiGpu||{}).parcelle.contenance);
+  box.innerHTML =
+    '<div class="border rounded p-2 mt-2" style="border-left:3px solid #198754!important;background:#f8fcf9;">'+
+      '<div class="fw-semibold small mb-1" style="color:#198754;"><i class="bi bi-rulers me-1"></i>Décote surfacique terrain (abattement de contenance) — par type</div>'+
+      _decoteTableHTML(pRef, sRef, alpha.a, FLOOR, {surface: contenanceC})+
+      '<div class="text-muted mt-2" style="font-size:.68rem;"><i class="bi bi-info-circle me-1"></i>Grille = marché <b>particuliers</b>. Pour les professionnels, voir la décote promoteur ci-dessous.</div>'+
+    '</div>';
 }
 
 function calcTerrainCustom(pRef, sRef, a, floor){
   const S = parseFloat(document.getElementById('terrainCustomSurf').value);
   const out = document.getElementById('terrainCustomOut');
   if(!isFinite(S) || S<=0){ out.innerHTML = '<span class="text-danger">Surface invalide.</span>'; return; }
-  const p = Math.max(floor, pRef * Math.pow(sRef/S, a));
-  const dec = Math.round((1-p/pRef)*100);
-  out.innerHTML = '<div class="p-2 border rounded" style="background:#eafaf0;">'+
-    '<div><b>'+p.toFixed(2)+' €/m²</b> <span class="text-muted">('+(dec>0?'-':'+')+Math.abs(dec)+' % vs réf.)</span></div>'+
-    '<div class="fw-bold" style="font-size:1.05rem;color:var(--fidi-blue);">'+fmtEur(Math.round(p*S))+'</div>'+
-    '<div class="text-muted" style="font-size:.7rem;">'+fmt(S)+' m² × '+p.toFixed(2)+' €/m²</div>'+
+  const cp = ((window.__fidiData||{}).localisation||{}).postcode || '';
+  const pBatir = Math.max(floor, pRef * Math.pow(sRef/S, a));
+  const vAgri = valeurAgricoleM2('agricole', cp);
+  const vOnf = valeurAgricoleM2('naturel', cp);
+  const dec = Math.round((1-pBatir/pRef)*100);
+  out.innerHTML = '<div class="p-2 border rounded" style="background:#f6f9f6;">'+
+    '<div class="fw-semibold mb-1">'+fmt(S)+' m² — valeur selon nature :</div>'+
+    '<div class="d-flex justify-content-between"><span style="color:#198754;">🏗 À bâtir <span class="text-muted small">('+pBatir.toFixed(2)+' €/m², '+(dec>0?'-':'+')+Math.abs(dec)+'%)</span></span><b style="color:#198754;">'+fmtEur(Math.round(pBatir*S))+'</b></div>'+
+    '<div class="d-flex justify-content-between"><span style="color:#8d6e63;">🌾 Agricole <span class="text-muted small">('+vAgri.toFixed(2)+' €/m²)</span></span><b style="color:#8d6e63;">'+fmtEur(Math.round(vAgri*S))+'</b></div>'+
+    '<div class="d-flex justify-content-between"><span style="color:#455a64;">🌳 ONF/naturel <span class="text-muted small">('+vOnf.toFixed(2)+' €/m²)</span></span><b style="color:#455a64;">'+fmtEur(Math.round(vOnf*S))+'</b></div>'+
   '</div>';
 }
 
