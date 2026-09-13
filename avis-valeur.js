@@ -1167,6 +1167,7 @@
       return head('Loyers comparables', b.statut === 'occupe' ? 'Démontre la cohérence du loyer du bien occupé' : 'Optionnel si le bien est libre') +
         '<div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.6rem;">' +
           '<button class="av-add" data-listadd="loyers">+ Ajouter un comparable</button>' +
+          '<button class="btn btn-sm btn-outline-success" type="button" onclick="avisImportLoyersEtude()" title="Génère des loyers de référence par typologie depuis la Carte des loyers DHUP de la commune"><i class="bi bi-download me-1"></i>Importer depuis l\'étude (DHUP)</button>' +
           '<button class="btn btn-sm btn-outline-primary" data-action="import-extension-loyers"><i class="bi bi-download me-1"></i>Importer depuis l\'extension</button>' +
         '</div>' +
         '<div id="avExtImportLoyers" style="display:none;margin-bottom:.6rem;padding:.6rem;background:#f4f6fa;border:1px solid #dee2e6;border-radius:6px;"></div>' +
@@ -2798,6 +2799,43 @@
   // BDNB officielle CSTB nécessite un abonnement. On combine à la place les
   // sources publiques ouvertes : ADEME DPE V2 (perf énergétique + année de
   // construction + surface) + RNB (identifiant national bâtiment + adresses).
+  // Importe des loyers de référence par typologie depuis la Carte des loyers DHUP.
+  // Applique le loyer médian €/m²/mois de la commune à des surfaces types (studio→T4).
+  window.avisImportLoyersEtude = async function () {
+    var b = state.data.bien || {};
+    var citycode = (window.__fidiData && window.__fidiData.localisation && window.__fidiData.localisation.citycode) || '';
+    if (!citycode && (b.commune || b.cp)) {
+      var q = encodeURIComponent(((b.commune || '') + ' ' + (b.cp || '')).trim());
+      try {
+        var g = await fetch('https://api-adresse.data.gouv.fr/search/?q=' + q + '&limit=1').then(function (r) { return r.json(); });
+        citycode = (((g || {}).features || [])[0] || {}).properties && g.features[0].properties.citycode || '';
+      } catch (e) {}
+    }
+    if (!citycode) { toast('Commune inconnue (renseignez commune + CP dans « Le bien »)', true); return; }
+    toast('Carte des loyers DHUP…');
+    try {
+      var r = await fetch('/api/loyers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code_insee: citycode }) });
+      var j = await r.json();
+      if (!j || j.disponible === false) { toast('Carte des loyers indisponible pour cette commune', true); return; }
+      var lApp = j.loyer_m2_appartement, lMai = j.loyer_m2_maison;
+      var secteur = (b.commune || '') + (j.annee ? ' · DHUP ' + j.annee : '');
+      // Typologies standard avec surfaces représentatives
+      var typos = [
+        { type: 'Studio / T1', surf: 28, m2: lApp },
+        { type: 'T2', surf: 45, m2: lApp },
+        { type: 'T3', surf: 65, m2: lApp },
+        { type: 'T4', surf: 85, m2: lApp },
+        { type: 'Maison', surf: 100, m2: lMai },
+      ].filter(function (t) { return t.m2; });
+      if (!typos.length) { toast('Aucun loyer médian retourné', true); return; }
+      state.data.loyers = typos.map(function (t) {
+        return { type: t.type, surface: String(t.surf), loyer: String(Math.round(t.surf * t.m2)), secteur: secteur };
+      });
+      showSection('loyers');
+      toast(typos.length + ' loyers de référence importés (DHUP)');
+    } catch (e) { toast('Erreur DHUP : ' + e.message, true); }
+  };
+
   // Synchronise les infos société depuis le registre national des entreprises (Sirene)
   // via /api/entreprise. Recherche par SIRET (ou nom société si pas de SIRET).
   window.avisSyncSociete = async function () {
