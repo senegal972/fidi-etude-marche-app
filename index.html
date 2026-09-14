@@ -1112,6 +1112,20 @@ const fmt = (n, dec=0) => n != null ? Number(n).toLocaleString('fr-FR',{minimumF
 const fmtEur = n => n != null ? fmt(n) + ' €' : '—';
 const fmtM2  = n => n != null ? fmt(n) + ' €/m²' : '—';
 
+// ─── Champs de recherche vides à chaque ouverture ───────────────────────────────
+// Le navigateur restaure parfois les dernières valeurs saisies (form history / bfcache),
+// qui finissaient imprimées comme des « exemples ». On force donc des champs vides à
+// l'ouverture et au retour arrière (pageshow couvre le bfcache).
+function fidiResetSearchFields(){
+  ['inputAdresse','inputCommune','inputSection','inputParcelle','inputSurface','inputDestinataire','inputEntrepriseQ','inputFinanceSiren']
+    .forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+  var meta=document.getElementById('communeMeta'); if(meta) meta.textContent='';
+  var st=document.getElementById('selectType'); if(st) st.selectedIndex=0;               // défaut : Maison
+  var sp=document.getElementById('selectPerimetre'); if(sp){ var d=sp.querySelector('option[selected]'); sp.value = d ? d.value : sp.value; }
+}
+document.addEventListener('DOMContentLoaded', fidiResetSearchFields);
+window.addEventListener('pageshow', fidiResetSearchFields);
+
 // ─── Autocomplete ─────────────────────────────────────────────────────────────
 document.getElementById('inputAdresse').addEventListener('input', function(){
   clearTimeout(autocompleteTimer);
