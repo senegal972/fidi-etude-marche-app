@@ -63,7 +63,7 @@
   function defaultData() {
     var y = new Date().getFullYear();
     return {
-      metadata: { ref: nextAvisRef(), date: new Date().toISOString().slice(0, 10), lieuEtablissement: 'Fort-de-France',
+      metadata: { ref: nextAvisRef(), date: new Date().toISOString().slice(0, 10), lieuEtablissement: 'Fort-de-France', lieuDit: '',
         nature: 'vente' // 'vente' (défaut) | 'location' — pilote UI et rendu doc
       },
       bien: {
@@ -640,7 +640,15 @@
                   : tnat === 'naturel'  ? 'Terrain naturel (ONF)'
                   : 'Terrain à bâtir';
     }
-    if (typeBien === 'maison') d.bien.regime = 'Monopropriété';
+    // Sécurité métier : une parcelle en zone AGRICOLE (A) ou NATURELLE (N) avec une
+    // contenance cadastrale ne peut pas être une maison/appartement (valeur foncière
+    // au barème de zone). Le zonage prime alors sur le type saisi dans l'étude.
+    var _gnat = terrainNatureFromGpu();
+    var _cont = Number((((window.__fidiGpu || {}).parcelle) || {}).contenance) || 0;
+    if (_cont > 0 && (_gnat === 'agricole' || _gnat === 'naturel') && !isTerrain(d.bien.type)) {
+      d.bien.type = _gnat === 'agricole' ? 'Terrain agricole' : 'Terrain naturel (ONF)';
+    }
+    if (typeBien === 'maison' && !isTerrain(d.bien.type)) d.bien.regime = 'Monopropriété';
     // Adresse : on tente de séparer la voie du code postal/commune
     d.bien.adresse = (inputs && inputs.adresse) || loc.label || '';
     d.bien.cp = loc.postcode || '';
@@ -733,6 +741,8 @@
     // Destinataire : reporte le nom saisi dans l'étude (les coordonnées complètes se
     // chargent depuis la base clients si le destinataire y est mémorisé).
     d.metadata = d.metadata || {};
+    // Lieu d'établissement = commune du bien évalué (souhait métier).
+    if (loc.city) d.metadata.lieuEtablissement = loc.city;
     var dest = (inputs && inputs.destinataire) ? String(inputs.destinataire).trim() : '';
     if (dest && !d.metadata.client) {
       d.metadata.client = dest;
@@ -1041,8 +1051,9 @@
         }).join('');
       return head('Référence et destinataire', "Identifiants administratifs de l'avis + coordonnées client. Les destinataires peuvent être mémorisés pour réutilisation.") +
         fld('Référence interne', 'metadata.ref', { tip: 'Format conseillé : FIDI-AV-AAAA-NNN' }) +
-        '<div class="av-grid-2">' + fld("Date d'établissement", 'metadata.date', { type: 'date' }) +
-        fld("Lieu d'établissement", 'metadata.lieuEtablissement') + '</div>' +
+        '<div class="av-grid-3">' + fld("Date d'établissement", 'metadata.date', { type: 'date' }) +
+        fld("Lieu d'établissement (ville du bien)", 'metadata.lieuEtablissement', { flag: true, tip: 'Doit correspondre à la commune du bien évalué' }) +
+        fld('Lieu-dit', 'metadata.lieuDit', { flag: true, ph: 'ex : Quartier Morne Vert' }) + '</div>' +
 
         '<div class="av-sec-head" style="margin-top:1rem;"><h5 style="font-size:1rem;">Base de destinataires (clients)</h5></div>' +
         '<div class="d-flex flex-wrap gap-2 align-items-end mb-2">' +
@@ -1117,7 +1128,7 @@
           '<span class="text-muted small align-self-center">Récupère année approximative + DPE dominant + surface via ADEME et RNB (BDNB CSTB complète nécessite abonnement CSTB, non intégrée).</span>' +
         '</div>' +
         fld('Description immeuble', 'bien.immeuble', { tip: 'Année de livraison, niveaux, ascenseur…', ph: 'Résidence 2009 – R+3 – 16 lots' }) +
-        '<div class="av-grid-4">' + fld(isLoc ? 'Surface habitable (m²)' : 'Surface Carrez (m²)', 'bien.surfaceCarrez', { type: 'number', flag: true, tip: isLoc ? 'Loi Boutin en location, Carrez en copro à la vente' : 'Loi Carrez (obligatoire vente copro)' }) + fld('Surface SHOB (m²)', 'bien.surfaceShob', { type: 'number' }) + fld('Séjour (m²)', 'bien.sejour', { type: 'number' }) + fld('Terrasse/Balcon (m²)', 'bien.terrasse', { type: 'number', step: '0.01' }) + '</div>' +
+        '<div class="av-grid-4">' + fld(isTerrain(b.type) ? 'Surface du terrain (m²)' : (isLoc ? 'Surface habitable (m²)' : 'Surface Carrez (m²)'), 'bien.surfaceCarrez', { type: 'number', flag: true, tip: isTerrain(b.type) ? 'Contenance cadastrale (m²)' : (isLoc ? 'Loi Boutin en location, Carrez en copro à la vente' : 'Loi Carrez (obligatoire vente copro)') }) + fld('Surface SHOB (m²)', 'bien.surfaceShob', { type: 'number' }) + fld('Séjour (m²)', 'bien.sejour', { type: 'number' }) + fld('Terrasse/Balcon (m²)', 'bien.terrasse', { type: 'number', step: '0.01' }) + '</div>' +
         '<div class="av-grid-4">' + fld('Nombre de pièces', 'bien.nbPieces', { type: 'number', ph: 'ex : 4' }) + fld('Stationnement', 'bien.parking', { ph: '1 place couverte' }) + fld('Nb. lots (copro)', 'bien.nbLots', { type: 'number' }) + fld('Taxe foncière (€/an)', 'bien.taxeFonciere', { type: 'number' }) + '</div>' +
         // En location : uniquement mention "bien libre à louer / actuellement occupé" (info)
         (isLoc ?
@@ -2034,8 +2045,10 @@
   function onInput(e) {
     var el = e.target;
     // Upload photo (input file avec data-action="photo-add")
+    // NB : la délégation écoute 'input' ET 'change' ; un input file déclenche les
+    // deux → on ne traite que 'change' pour éviter d'ajouter 2 fois la même photo.
     if (el.type === 'file' && el.dataset.action === 'photo-add') {
-      handlePhotoAdd(el.files && el.files[0]);
+      if (e.type === 'change') handlePhotoAdd(el.files && el.files[0]);
       return;
     }
     // Sélecteur client (destinataire)
@@ -3515,7 +3528,7 @@
       row('Zonage PLU', b.zonagePlu ? esc(b.zonagePlu) : '') +
       row('Immeuble', b.immeuble ? esc(b.immeuble) : '') +
       row('Étage', b.etage ? esc(b.etage) : '') +
-      row('Surface habitable (loi Carrez)', b.surfaceCarrez ? '≈ ' + esc(b.surfaceCarrez) + ' m²' + (b.sejour ? ' – séjour de ' + esc(b.sejour) + ' m²' : '') : '') +
+      row(isTerrain(b.type) ? 'Surface du terrain (cadastre)' : 'Surface habitable (loi Carrez)', b.surfaceCarrez ? '≈ ' + esc(b.surfaceCarrez) + ' m²' + (!isTerrain(b.type) && b.sejour ? ' – séjour de ' + esc(b.sejour) + ' m²' : '') : '') +
       row('Surface SHOB annoncée', b.surfaceShob ? '≈ ' + esc(b.surfaceShob) + ' m²' : '') +
       row('Terrasse / Balcon', b.terrasse ? esc(b.terrasse) + ' m²' : '') +
       row('Stationnement', b.parking ? esc(b.parking) : '') +
@@ -3808,7 +3821,7 @@
       sig.carteProHoguet ? 'Carte pro : ' + sig.carteProHoguet : '',
     ].filter(Boolean).join(' · ');
     html += '<div class="signature">' +
-      '<p style="font-style:italic;">Fait à ' + esc(data.metadata.lieuEtablissement || sig.ville || '') + ', le ' + formatDateFR(data.metadata.date) + '</p>' +
+      '<p style="font-style:italic;">Fait à ' + esc(data.metadata.lieuEtablissement || sig.ville || '') + (data.metadata.lieuDit ? ' (' + esc(data.metadata.lieuDit) + ')' : '') + ', le ' + formatDateFR(data.metadata.date) + '</p>' +
       '<p class="name">' + esc([sig.prenom, sig.nom].filter(Boolean).join(' ')) + '</p>' +
       '<p>' + esc(sig.fonction) + '</p>' +
       '<p style="color:#5c6470;">' + esc(sig.societe) + (_adrSoc ? ' – ' + esc(_adrSoc) : '') + '</p>' +
