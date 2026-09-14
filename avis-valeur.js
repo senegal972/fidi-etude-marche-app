@@ -2574,8 +2574,9 @@
       }).then(function (r) { return r.json().catch(function () { return {}; }); })
         .then(function (j) {
           if (j && j.ok) toast('☁️ Sauvegardé dans Notion');
-          else if (j && j.configured === false) { /* Notion non configuré : silencieux */ }
-          else toast('Notion : ' + ((j && j.error) || 'échec'), true);
+          // Échec cloud = best-effort : la sauvegarde locale (localStorage) fait foi.
+          // On NE montre PAS d'erreur (évite un message anxiogène après « Avis sauvegardé »).
+          else if (j && j.error) { try { console.warn('[avis] cloud non synchronisé :', j.error); } catch (e) {} }
         })
         .catch(function () { /* hors-ligne : localStorage suffit */ });
     } catch (e) { /* non bloquant */ }

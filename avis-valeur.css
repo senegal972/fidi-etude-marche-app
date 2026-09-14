@@ -161,3 +161,22 @@
   body.avis-print .avis-doc .title-block,
   body.avis-print .avis-doc .sig-block{break-inside:avoid;page-break-inside:avoid;}
 }
+
+/* ── Correctif ergonomie barre d'outils (footer) ─────────────────────────────
+   En modal plein écran + scrollable, header + onglets (2 lignes) + footer
+   pouvaient dépasser la hauteur réservée et rogner le bas des boutons : seul
+   le haut restait cliquable. On garantit ici que le footer reste entièrement
+   visible et cliquable sur toute sa surface. */
+#avisModal .modal-footer{
+  flex-shrink:0;               /* jamais compressé */
+  position:sticky; bottom:0;   /* toujours collé en bas, entièrement visible */
+  z-index:5;
+  background:#fff;
+  border-top:1px solid var(--av-grey-light);
+}
+/* Bouton = cible de clic sur toute sa surface (les icônes ne captent pas le clic) */
+#avisModal .modal-footer .btn{ min-height:32px; position:relative; z-index:1; }
+#avisModal .modal-footer .btn > i,
+#avisModal .modal-footer .btn > span{ pointer-events:none; }
+/* Le sélecteur d'avis ne s'étire pas au point d'écraser les boutons */
+#avisModal .modal-footer #avSavedSelect{ flex:0 1 auto; }
