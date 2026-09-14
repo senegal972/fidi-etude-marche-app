@@ -1723,6 +1723,7 @@ async function etudeEnrichirLocal(){
     { key:'georisques', label:'Géorisques', url:'/api/georisques-adresse?lat='+lat+'&lon='+lon+(insee?'&insee='+insee:''), color:'danger' },
     { key:'onf', label:'ONF forêts', url:'/api/onf?lat='+lat+'&lon='+lon+'&radius=1', color:'success' },
     { key:'rpg', label:'RPG — parcelles agricoles (PAC / DAAF)', url:'/api/rpg?lat='+lat+'&lon='+lon+'&radius=0.2', color:'warning' },
+    { key:'inpn', label:'INPN — Natura 2000 / ZNIEFF', url:'/api/inpn?lat='+lat+'&lon='+lon+'&radius=0.15', color:'info' },
   ];
   if(idgUrl) urls.push({ key:'idg', label:'IDG régionale (Infrastructure de Données Géographiques)', url:idgUrl, color:'primary' });
   var results = await Promise.all(urls.map(u =>
@@ -1757,6 +1758,15 @@ async function etudeEnrichirLocal(){
         body = '<span class="text-muted small">Aucune parcelle RPG déclarée à proximité</span>';
       }
     }
+    else if(r.key === 'inpn'){
+      if(r.data.protege && r.data.zones && r.data.zones.length){
+        var critColor = { forte:'danger', moyenne:'warning', faible:'secondary' };
+        var zz = r.data.zones.slice(0,4).map(function(z){ var c=critColor[z.criticite]||'secondary'; return '<div class="mb-1"><span class="badge bg-'+c+(c==='warning'?' text-dark':'')+'">'+escHtml(z.type)+'</span>'+(z.nom?' <span class="small">'+escHtml(String(z.nom).slice(0,40))+'</span>':'')+'</div>'; }).join('');
+        body = zz + '<div class="text-muted mt-1" style="font-size:.66rem;">Criticité max : <b>'+escHtml(r.data.criticite_max)+'</b>.</div>';
+      } else {
+        body = '<span class="text-muted small">Aucune zone Natura 2000 / ZNIEFF à proximité</span>';
+      }
+    }
     else if(r.key === 'idg'){
       // Libellés lisibles des couches IDG régionales + interprétation
       var IDG_LBL = {
@@ -1789,6 +1799,7 @@ async function etudeEnrichirLocal(){
     if(r.key==='georisques') interp = 'Risques naturels et technologiques recensés à l\'adresse (PPR = plan de prévention obligatoire ; SSP = sol pollué ; ICPE = installation classée). Impacte assurance, constructibilité et diagnostics.';
     else if(r.key==='onf') interp = (r.data && r.data.count>0) ? 'Le terrain touche une forêt publique gérée par l\'ONF : constructibilité très restreinte, régime forestier applicable.' : 'Le terrain n\'est pas en forêt publique ONF.';
     else if(r.key==='rpg') interp = (r.data && r.data.agricole_declare) ? 'Parcelle déclarée à la PAC (Politique Agricole Commune) au Registre Parcellaire Graphique de la DAAF : usage agricole réel, appuie une valorisation en terrain agricole.' : 'Pas de déclaration PAC connue à ce point (n\'exclut pas un usage agricole non déclaré).';
+    else if(r.key==='inpn') interp = (r.data && r.data.protege) ? 'Zone naturelle protégée (Natura 2000 = évaluation d\'incidences obligatoire ; ZNIEFF = inventaire écologique) : contrainte forte sur la constructibilité, à vérifier au PLU.' : 'Aucune zone Natura 2000 / ZNIEFF détectée : pas de contrainte environnementale majeure recensée à ce point.';
     html += '<div class="col-12 col-md-6 col-lg-4">'+
       '<div class="p-2 border rounded small h-100" style="background:#fafbfc;">'+
         '<div class="fw-bold mb-1 text-'+r.color+'"><i class="bi bi-circle-fill me-1"></i>'+r.label+'</div>'+
@@ -1799,6 +1810,8 @@ async function etudeEnrichirLocal(){
   });
   // Portails cartographiques de référence (consultation manuelle) — région-aware
   var isMq = (lat >= 14 && lat <= 15 && lon <= -60.5 && lon >= -61.5);
+  var isGp = (lat >= 15.7 && lat <= 16.6 && lon <= -60.7 && lon >= -61.9);
+  var isGy = (lat >= 2 && lat <= 6 && lon <= -51 && lon >= -55);
   var refs = [
     ['Géofoncier (données foncières & cadastrales)','https://www.geofoncier.fr'],
     ['Cadastre — plan officiel','https://www.cadastre.gouv.fr'],
@@ -1809,6 +1822,14 @@ async function etudeEnrichirLocal(){
     refs.unshift(['DAAF Martinique — géoportail agricole/forestier/foncier','https://daaf.martinique.agriculture.gouv.fr']);
     refs.push(['DEAL Martinique — urbanisme & environnement','https://www.martinique.developpement-durable.gouv.fr']);
     refs.push(['GéoMartinique — SIG territorial','https://www.geo.martinique.fr']);
+  } else if(isGp){
+    refs.unshift(['DAAF Guadeloupe — agricole/forestier/foncier','https://daaf.guadeloupe.agriculture.gouv.fr']);
+    refs.push(['DEAL Guadeloupe — urbanisme & environnement','https://www.guadeloupe.developpement-durable.gouv.fr']);
+    refs.push(['KaruGéo — SIG territorial Guadeloupe','https://www.karugeo.fr']);
+  } else if(isGy){
+    refs.unshift(['DGTM/DAAF Guyane — agricole/forestier/foncier','https://daaf.guyane.agriculture.gouv.fr']);
+    refs.push(['DGTM Guyane — urbanisme & environnement','https://www.guyane.developpement-durable.gouv.fr']);
+    refs.push(['GéoGuyane — SIG territorial','https://www.geoguyane.fr']);
   }
   html += '<div class="col-12"><div class="p-2 border rounded small" style="background:#f7f9fc;">'+
     '<div class="fw-bold mb-1"><i class="bi bi-link-45deg me-1"></i>Portails cartographiques de référence</div>'+

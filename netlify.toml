@@ -112,6 +112,9 @@
 [functions."rpg"]
   timeout = 15
 
+[functions."inpn"]
+  timeout = 20
+
 [functions."karugeo"]
   timeout = 20
 
@@ -369,6 +372,11 @@
 [[redirects]]
   from   = "/api/rpg"
   to     = "/.netlify/functions/rpg"
+  status = 200
+
+[[redirects]]
+  from   = "/api/inpn"
+  to     = "/.netlify/functions/inpn"
   status = 200
 
 [[redirects]]
