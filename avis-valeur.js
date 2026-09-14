@@ -2486,6 +2486,7 @@
       return {
         ref: ref,
         date: (d.metadata && d.metadata.date) || '',
+        client: (d.metadata && d.metadata.client) || '',
         commune: (d.bien && d.bien.commune) || (d.loc && d.loc.adresse) || '',
         type: (d.bien && d.bien.type) || '',
         valeur: (c.voccBas && c.voccHaut) ? (fmt(c.voccBas) + ' – ' + fmt(c.voccHaut) + ' €') : ''
@@ -2500,7 +2501,7 @@
     var metas = avisList();
     sel.innerHTML = '<option value="">— Avis sauvegardés (' + metas.length + ') —</option>' +
       metas.map(function (m) {
-        var lbl = m.ref + (m.commune ? ' · ' + m.commune : '') + (m.valeur ? ' · ' + m.valeur : '');
+        var lbl = m.ref + (m.client ? ' — ' + m.client : '') + (m.commune ? ' · ' + m.commune : '') + (m.valeur ? ' · ' + m.valeur : '');
         return '<option value="' + esc(m.ref) + '">' + esc(lbl) + '</option>';
       }).join('');
   }
@@ -2612,6 +2613,7 @@
       window.__factureAvisCtx = {
         client: meta.client || '',
         email:  meta.emailClient || '',
+        telephone: meta.telephoneClient || '',
         adresse: bien.adresse || '',
         commune: bien.commune || '',
         ref:    (meta.ref || '').trim(),

@@ -4036,19 +4036,19 @@ window.__factRemise = null;   // résultat (facture créée + lien de remise)
 function proposerFacture(kind){
   const label = kind==='avis' ? 'Avis de valeur' : 'Étude de marché';
   let d = window.__fidiData, inputs = window.__fidiInputs || {};
-  let adresse='', ref='', client='', email='', htmlString='';
+  let adresse='', ref='', client='', email='', telephone='', htmlString='';
   if(kind==='etude' && d){
     const loc = d.localisation||{};
     adresse = loc.label || inputs.adresse || loc.city || '';
     ref     = etudeRef(d, inputs);
   } else if(kind==='avis' && window.__factureAvisCtx){
     const ctx = window.__factureAvisCtx;
-    client = ctx.client||''; email = ctx.email||'';
+    client = ctx.client||''; email = ctx.email||''; telephone = ctx.telephone||'';
     adresse = ctx.adresse || ctx.commune || '';
     ref = ctx.ref||''; htmlString = ctx.htmlString || '';
     window.__factureAvisCtx = null;
   }
-  window.__factCtx = { kind, label, ref, client, email, adresse, htmlString };
+  window.__factCtx = { kind, label, ref, client, email, telephone, adresse, htmlString };
   window.__factRemise = null;
   if(typeof bootstrap === 'undefined'){ alert('Bootstrap non chargé.'); return; }
 
@@ -4066,7 +4066,7 @@ function proposerFacture(kind){
         '<div class="col-md-6"><label class="form-label small mb-1">E-mail client</label>'+
         '<input class="form-control form-control-sm" id="factEmail" value="'+escHtml(email)+'" placeholder="client@exemple.com" type="email"></div>'+
         '<div class="col-md-6"><label class="form-label small mb-1">Téléphone (WhatsApp)</label>'+
-        '<input class="form-control form-control-sm" id="factTel" placeholder="+596 6 96 …" type="tel"></div>'+
+        '<input class="form-control form-control-sm" id="factTel" value="'+escHtml(telephone)+'" placeholder="+596 6 96 …" type="tel"></div>'+
         '<div class="col-12"><label class="form-label small mb-1">Bien / adresse</label>'+
         '<input class="form-control form-control-sm" id="factAdresse" value="'+escHtml(adresse)+'" placeholder="Commune ou adresse du bien"></div>'+
       '</div>'+
