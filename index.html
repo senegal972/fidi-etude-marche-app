@@ -3775,8 +3775,11 @@ function calcTerrainCustom(pRef, sRef, a, floor){
   const vAgri = valeurAgricoleM2('agricole', cp);
   const vOnf = valeurAgricoleM2('naturel', cp);
   const dec = Math.round((1-pBatir/pRef)*100);
-  out.innerHTML = '<div class="p-2 border rounded" style="background:#f6f9f6;">'+
-    '<div class="fw-semibold mb-1">'+fmt(S)+' m² — valeur selon nature :</div>'+
+  const contenance = (window.__fidiGpu||{}).parcelle && Number((window.__fidiGpu||{}).parcelle.contenance);
+  const estCadastre = contenance && Math.abs(Math.round(contenance) - Math.round(S)) <= 1;
+  const badge = estCadastre ? ' <span class="badge bg-success" style="font-size:.6rem;">surface cadastrale trouvée</span>' : '';
+  out.innerHTML = '<div class="p-2 border rounded" style="background:#f6f9f6;'+(estCadastre?'border-color:#198754!important;':'')+'">'+
+    '<div class="fw-semibold mb-1">'+(estCadastre?'VALEUR VÉNALE RETENUE — ':'')+fmt(S)+' m²'+badge+' — valeur selon nature :</div>'+
     '<div class="d-flex justify-content-between"><span style="color:#198754;">🏗 À bâtir <span class="text-muted small">('+pBatir.toFixed(2)+' €/m², '+(dec>0?'-':'+')+Math.abs(dec)+'%)</span></span><b style="color:#198754;">'+fmtEur(Math.round(pBatir*S))+'</b></div>'+
     '<div class="d-flex justify-content-between"><span style="color:#8d6e63;">🌾 Agricole <span class="text-muted small">('+vAgri.toFixed(2)+' €/m²)</span></span><b style="color:#8d6e63;">'+fmtEur(Math.round(vAgri*S))+'</b></div>'+
     '<div class="d-flex justify-content-between"><span style="color:#455a64;">🌳 ONF/naturel <span class="text-muted small">('+vOnf.toFixed(2)+' €/m²)</span></span><b style="color:#455a64;">'+fmtEur(Math.round(vOnf*S))+'</b></div>'+
@@ -5272,13 +5275,16 @@ window.Compte = (function(){
     offres.forEach(o => { (groups[o.module] = groups[o.module]||[]).push(o); });
     let html = '<p class="text-muted">1 crédit = 1 étude de marché OU 1 avis de valeur. Crédits valables 12 mois, sans engagement.</p>';
     if(admin){
-      html += '<div class="border rounded p-2 mb-3 d-flex flex-wrap gap-2 align-items-center" style="background:#f5f1e8;border-left:3px solid #b87333!important;">'+
-        '<i class="bi bi-magic" style="color:#b87333;font-size:1.2rem;"></i>'+
-        '<label class="mb-0 fw-semibold small">Recalcul global depuis prix par crédit :</label>'+
-        '<input type="number" step="0.01" id="bulkBase" class="form-control form-control-sm" value="45" style="max-width:100px;"> €/crédit'+
-        '<button class="btn btn-sm btn-outline-secondary" onclick="Compte.bulkRecalc(true)"><i class="bi bi-eye me-1"></i>Simuler</button>'+
-        '<button class="btn btn-sm btn-primary" onclick="Compte.bulkRecalc(false)"><i class="bi bi-check-lg me-1"></i>Appliquer à toutes les offres</button>'+
-        '<div class="small text-muted w-100">Formule : Prix TTC = Crédits × prix_base × (1 − Économie %). Base actuelle : <b>2 crédits = 90 €</b>. Économies (%) déjà définies par palier conservées.</div>'+
+      html += '<div class="border rounded p-2 mb-3" style="background:#f5f1e8;border-left:3px solid #b87333!important;">'+
+        '<div class="fw-semibold small mb-2"><i class="bi bi-magic me-1" style="color:#b87333;"></i>Recalcul global — prix par crédit de base, par module :</div>'+
+        '<div class="d-flex flex-wrap gap-3 align-items-end mb-2">'+
+          '<div><label class="small text-muted d-block">Avis de valeur</label><input type="number" step="0.01" id="bulkBaseAvis" class="form-control form-control-sm" value="50" style="max-width:110px;" oninput="Compte.bulkSyncCumul()"> €/cr</div>'+
+          '<div><label class="small text-muted d-block">Études de marché</label><input type="number" step="0.01" id="bulkBaseEtude" class="form-control form-control-sm" value="37.5" style="max-width:110px;" oninput="Compte.bulkSyncCumul()"> €/cr</div>'+
+          '<div><label class="small text-muted d-block">Cumulatif <span style="font-size:.65rem;">(moyenne, éditable)</span></label><input type="number" step="0.01" id="bulkBaseCumul" class="form-control form-control-sm" value="43.75" style="max-width:110px;"> €/cr</div>'+
+          '<button class="btn btn-sm btn-outline-secondary" onclick="Compte.bulkRecalc(true)"><i class="bi bi-eye me-1"></i>Simuler</button>'+
+          '<button class="btn btn-sm btn-primary" onclick="Compte.bulkRecalc(false)"><i class="bi bi-check-lg me-1"></i>Appliquer à toutes les offres</button>'+
+        '</div>'+
+        '<div class="small text-muted">Formule : Prix TTC = round(Crédits × prix_base × (1 − Économie %)). Starter (2 cr) : Avis <b>100 €</b> · Études <b>75 €</b> · Cumul <b>88 €</b>. Économies (%) par palier conservées.</div>'+
       '</div>';
     }
     ['Cumulatif','Études de marché','Avis de valeur'].forEach(mod => {
@@ -5732,11 +5738,22 @@ window.Compte = (function(){
     w.document.close();
   }
 
+  // Cumulatif = moyenne des 2 modules (recalculée tant que l'admin ne l'édite pas à la main)
+  function bulkSyncCumul(){
+    const a = parseFloat(document.getElementById('bulkBaseAvis').value);
+    const e = parseFloat(document.getElementById('bulkBaseEtude').value);
+    const c = document.getElementById('bulkBaseCumul');
+    if(c && isFinite(a) && isFinite(e)) c.value = String(Math.round(((a+e)/2)*100)/100);
+  }
   async function bulkRecalc(dryRun){
-    const base = parseFloat(document.getElementById('bulkBase').value);
-    if(!isFinite(base) || base <= 0){ alert('Prix par crédit invalide.'); return; }
-    if(!dryRun && !confirm('Appliquer le recalcul à TOUTES les offres avec prix par crédit = '+base+' € ?\n\nÉconomies (%) actuelles conservées.')) return;
-    const r = await fetch('/api/offres', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'bulk_recalc', prix_credit_base:base, dry_run:!!dryRun})});
+    const avis  = parseFloat(document.getElementById('bulkBaseAvis').value);
+    const etude = parseFloat(document.getElementById('bulkBaseEtude').value);
+    const cumul = parseFloat(document.getElementById('bulkBaseCumul').value);
+    if(![avis,etude,cumul].every(x => isFinite(x) && x > 0)){ alert('Prix par crédit invalides (les 3 champs > 0).'); return; }
+    // Clés = noms exacts des modules côté Notion (offres.mjs)
+    const bases = { 'Avis de valeur':avis, 'Études de marché':etude, 'Cumulatif':cumul };
+    if(!dryRun && !confirm('Appliquer le recalcul à TOUTES les offres ?\n\nAvis '+avis+' €/cr · Études '+etude+' €/cr · Cumul '+cumul+' €/cr\nÉconomies (%) actuelles conservées.')) return;
+    const r = await fetch('/api/offres', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'bulk_recalc', bases:bases, prix_credit_base:avis, dry_run:!!dryRun})});
     const d = await r.json();
     if(!r.ok){ alert(d.error || 'Erreur.'); return; }
     // Résumé compact des changements
@@ -5752,7 +5769,7 @@ window.Compte = (function(){
            adminEditNom, adminCommission, loadFactAdmin, factRelance, relanceVia, factDelete, factFicheClient,
            openRapportCompta, rcSetMonth, rcSetYear, genRapportCompta,
            openCreateForm, closeCreateForm, openTarifForm, closeTarifForm, copySignupLink,
-           loadOffres, chooseOffer, payOffer, offerToggle, offerPrice, bulkRecalc,
+           loadOffres, chooseOffer, payOffer, offerToggle, offerPrice, bulkRecalc, bulkSyncCumul,
            loadTarifsAdmin, tarifCreate, tarifPrice, tarifToggle, tarifDelete, tarifEditNom, tarifEditCat, tarifEditDesc,
            get state(){ return state; } };
 })();
@@ -5762,22 +5779,26 @@ window.Compte = (function(){
 <div id="presModalRoot"></div>
 <script>
 window.Presentation = (function(){
-  // Base tarifaire unique : 45 € / crédit (2 crédits = 90 €). Dégressivité par volume.
-  // Prix TTC = crédits × 45 × (1 − économie%). Identique pour Études, Avis et Cumulatif.
+  // Bases tarifaires par module (2 crédits = prix Starter, souhait métier FIDI) :
+  //   Avis de Valeur    : 50,00 € / crédit  → Starter 2 cr = 100 €
+  //   Études de Marché  : 37,50 € / crédit  → Starter 2 cr =  75 €
+  //   Cumulatif         : 43,75 € / crédit  (moyenne des 2 modules) → Starter 2 cr = 88 €
+  // Prix TTC = round(crédits × prix_crédit) ; prix_crédit = round(base × (1 − économie%) × 100)/100.
+  // Courbe d'économie par palier conservée : 0 / 12 / 20 / 27 / 33 / 42 / 49 %.
   const GRIDS = {
-    'Études de Marché': { entree:'dès 2 crédits à 90 € TTC (45 € / crédit)', rows:[
-      ['Starter',2,'90 €','45,00 €','—'],['Essentiel ★',5,'198 €','39,60 €','-12 %'],
-      ['Pro',10,'360 €','36,00 €','-20 %'],['Business',20,'657 €','32,85 €','-27 %'],
-      ['Premium',50,'1 508 €','30,15 €','-33 %'],['Enterprise',100,'2 610 €','26,10 €','-42 %']]},
-    'Avis de Valeur': { entree:'dès 2 crédits à 90 € TTC (45 € / crédit)', rows:[
-      ['Starter',2,'90 €','45,00 €','—'],['Essentiel ★',5,'198 €','39,60 €','-12 %'],
-      ['Pro',10,'360 €','36,00 €','-20 %'],['Business',20,'657 €','32,85 €','-27 %'],
-      ['Premium',50,'1 508 €','30,15 €','-33 %'],['Enterprise',100,'2 610 €','26,10 €','-42 %']]},
-    'Cumulatif (offre phare)': { entree:'crédits universels — études OU avis — 45 € / crédit', rows:[
-      ['Starter',2,'90 €','45,00 €','—'],['Essentiel',5,'198 €','39,60 €','-12 %'],
-      ['Pro ★',10,'360 €','36,00 €','-20 %'],['Business',20,'657 €','32,85 €','-27 %'],
-      ['Premium',50,'1 508 €','30,15 €','-33 %'],['Enterprise',100,'2 610 €','26,10 €','-42 %'],
-      ['Platinum',200,'4 590 €','22,95 €','-49 %']]},
+    'Études de Marché': { entree:'dès 2 crédits à 75 € TTC (37,50 € / crédit)', rows:[
+      ['Starter',2,'75 €','37,50 €','—'],['Essentiel ★',5,'165 €','33,00 €','-12 %'],
+      ['Pro',10,'300 €','30,00 €','-20 %'],['Business',20,'548 €','27,38 €','-27 %'],
+      ['Premium',50,'1 257 €','25,13 €','-33 %'],['Enterprise',100,'2 175 €','21,75 €','-42 %']]},
+    'Avis de Valeur': { entree:'dès 2 crédits à 100 € TTC (50 € / crédit)', rows:[
+      ['Starter',2,'100 €','50,00 €','—'],['Essentiel ★',5,'220 €','44,00 €','-12 %'],
+      ['Pro',10,'400 €','40,00 €','-20 %'],['Business',20,'730 €','36,50 €','-27 %'],
+      ['Premium',50,'1 675 €','33,50 €','-33 %'],['Enterprise',100,'2 900 €','29,00 €','-42 %']]},
+    'Cumulatif (offre phare)': { entree:'crédits universels — études OU avis — 43,75 € / crédit (moyenne des 2 modules)', rows:[
+      ['Starter',2,'88 €','43,75 €','—'],['Essentiel',5,'193 €','38,50 €','-12 %'],
+      ['Pro ★',10,'350 €','35,00 €','-20 %'],['Business',20,'639 €','31,94 €','-27 %'],
+      ['Premium',50,'1 466 €','29,31 €','-33 %'],['Enterprise',100,'2 538 €','25,38 €','-42 %'],
+      ['Platinum',200,'4 462 €','22,31 €','-49 %']]},
   };
   const DOM = [['Martinique (972)','3 154 €/m²','Marché en croissance constante'],
     ['Guadeloupe (971)','3 612 €/m²','Forte demande résidentielle'],

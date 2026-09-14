@@ -64,16 +64,39 @@ export const handler = async (event) => {
       const action = String(b.action || "").toLowerCase();
 
       // ── Action bulk : recalcul global depuis un prix par crédit de base ───
-      // Prix = Crédits × prix_credit_base × (1 - Économie/100)
-      // Défaut : 45 €/crédit (base 2 crédits = 90 €, souhait métier FIDI)
+      // Prix = round(Crédits × base_module × (1 - Économie/100))
+      // Bases métier FIDI par module :
+      //   Avis de valeur   50,00 €/cr (Starter 2cr = 100 €)
+      //   Études de marché 37,50 €/cr (Starter 2cr =  75 €)
+      //   Cumulatif        43,75 €/cr (moyenne, Starter 2cr = 88 €)
+      // `bases` = { "<module>": <€/cr> } ; fallback `prix_credit_base` (base uniforme, rétrocompat).
       if (action === "bulk_recalc") {
-        const base = parseFloat(b.prix_credit_base);
-        if (!Number.isFinite(base) || base <= 0) return authResp(400, { error: "prix_credit_base requis (>0)" });
+        const uniform = parseFloat(b.prix_credit_base);
+        const bases = (b.bases && typeof b.bases === "object") ? b.bases : null;
+        if (!bases && (!Number.isFinite(uniform) || uniform <= 0)) {
+          return authResp(400, { error: "bases (par module) ou prix_credit_base (uniforme, >0) requis" });
+        }
+        // Normalise les clés module en minuscules pour un appariement tolérant aux accents/casse.
+        const norm = (s) => String(s || "").trim().toLowerCase();
+        const basesNorm = {};
+        if (bases) for (const k of Object.keys(bases)) {
+          const v = parseFloat(bases[k]);
+          if (Number.isFinite(v) && v > 0) basesNorm[norm(k)] = v;
+        }
+        const baseFor = (mod) => {
+          if (bases) {
+            const v = basesNorm[norm(mod)];
+            if (Number.isFinite(v)) return v;
+          }
+          return Number.isFinite(uniform) && uniform > 0 ? uniform : null;
+        };
         const dryRun = !!b.dry_run;
         const offers = await allOffers();
         const results = [];
         for (const o of offers) {
           if (!o.credits || o.credits <= 0) { results.push({ id: o.id, nom: o.nom, skipped: "credits<=0" }); continue; }
+          const base = baseFor(o.module);
+          if (!Number.isFinite(base)) { results.push({ id: o.id, nom: o.nom, module: o.module, skipped: "pas de base pour ce module" }); continue; }
           const econ = Number.isFinite(o.economie) ? o.economie : 0;
           const prixCr = Math.round(base * (1 - econ / 100) * 100) / 100;
           const prixTTC = Math.round(o.credits * prixCr);
@@ -83,9 +106,9 @@ export const handler = async (event) => {
               "Prix par crédit": P.number(prixCr),
             });
           }
-          results.push({ id: o.id, nom: o.nom, module: o.module, credits: o.credits, economie: econ, avant: o.prix, apres: prixTTC, prix_credit: prixCr });
+          results.push({ id: o.id, nom: o.nom, module: o.module, credits: o.credits, economie: econ, base_credit: base, avant: o.prix, apres: prixTTC, prix_credit: prixCr });
         }
-        return authResp(200, { ok: true, dry_run: dryRun, base_par_credit: base, count: results.length, results });
+        return authResp(200, { ok: true, dry_run: dryRun, bases: bases || { uniforme: uniform }, count: results.length, results });
       }
 
       const id = b.id;

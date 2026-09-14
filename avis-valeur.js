@@ -71,6 +71,7 @@
         surfaceCarrez: '', surfaceShob: '', sejour: '', terrasse: '', parking: '',
         regime: 'Copropriété', nbLots: '', taxeFonciere: '', statut: 'occupe',
         loyer: '', bailDateDebut: '', bailDuree: '36', prixVente: '',
+        refCadastrale: '', zonagePlu: '', // réinjectés depuis l'étude (cadastre + PLU/GPU)
         photos: [] // [{ dataUrl, name, w, h }] max 2 photos compressees
       },
       marche: {
@@ -495,9 +496,21 @@
 
   // ── Pré-remplissage depuis l'étude de marché ────────────────
   function typeFromInput(t) {
+    t = String(t || '').toLowerCase();
     if (t === 'maison') return 'Maison';
     if (t === 'appartement') return 'Appartement';
+    if (t === 'terrain') return 'Terrain';
+    if (t === 'local') return 'Local commercial';
+    if (t === 'tous' || t === 'immeuble') return 'Immeuble';
     return 'Appartement';
+  }
+  // Nature fine du terrain d'après le zonage PLU (GPU) : à bâtir / agricole / naturel-ONF.
+  function terrainNatureFromGpu() {
+    var z = String((((window.__fidiGpu || {}).zone) || {}).typezone || '').toUpperCase();
+    if (z.charAt(0) === 'A') return 'agricole';
+    if (z.charAt(0) === 'N') return 'naturel';
+    if (z.charAt(0) === 'U' || z.indexOf('AU') === 0) return 'a-batir';
+    return '';
   }
   function evolutionFromDvf(dvfAnnees, typeBien) {
     var field = (typeBien || '').indexOf('maison') >= 0 ? 'prix_m2_maison' : 'prix_m2_appart';
@@ -652,6 +665,48 @@
     if (vig.length) d.vigilances = vig;
     var at = atoutsFromScore(score);
     if (at.length) d.atouts = at;
+
+    // ── Réinjection cadastre / urbanisme (GPU) — tous types ─────
+    // Le cadastre + le zonage PLU proviennent de window.__fidiGpu (rempli par l'étude).
+    var gpu = window.__fidiGpu || {};
+    var parc = gpu.parcelle || {};
+    var zoneG = gpu.zone || {};
+    var contenance = Number(parc.contenance) || 0;
+    if (parc.numero || parc.section) {
+      d.bien.refCadastrale = [parc.section, parc.numero].filter(Boolean).join(' ');
+    }
+    if (zoneG.typezone || zoneG.libelle) {
+      d.bien.zonagePlu = [zoneG.typezone, zoneG.libelle].filter(Boolean).join(' — ');
+    }
+
+    // ── Réinjection spécifique TERRAIN (à bâtir / agricole / naturel-ONF) ──
+    if (d.bien.type === 'Terrain') {
+      d.bien.regime = 'Monopropriété';
+      var nature = terrainNatureFromGpu();
+      // Surface : la contenance cadastrale prime sur toute saisie (souhait métier).
+      if (contenance > 0) d.bien.surfaceCarrez = String(Math.round(contenance));
+      // Estimation terrain issue de l'étude (estimations.terrain si présent, sinon estimation générale)
+      var estT = (fidi.estimations && fidi.estimations.terrain) || est || {};
+      var pM2Terrain = Number(estT.prix_m2) || 0;
+      if (pM2Terrain > 0) {
+        d.marche.moyenneMoyen = String(Math.round(pM2Terrain));
+        d.marche.moyenneBas = String(Math.round(pM2Terrain * 0.85));
+        d.marche.moyenneHaut = String(Math.round(pM2Terrain * 1.15));
+        // Méthode « coût » : la valeur terrain devient la valeur vénale de référence
+        if (contenance > 0) {
+          d.methodes.cout = Object.assign({}, d.methodes.cout, { valeurTerrain: String(Math.round(pM2Terrain * contenance)) });
+        }
+      }
+      if (contenance > 0 && pM2Terrain > 0) {
+        d.bien.prixVente = String(Math.round(pM2Terrain * contenance));
+      }
+      // Trace la nature retenue en vigilance (le foncier n'est ni notaire ni expertisé)
+      var natLbl = nature === 'agricole' ? 'Terrain à vocation agricole (zone A) — valeur foncière agricole, pas de constructibilité.'
+                 : nature === 'naturel' ? 'Terrain en zone naturelle/forestière (zone N / ONF) — valeur foncière naturelle, inconstructible.'
+                 : nature === 'a-batir' ? 'Terrain en zone urbaine/à urbaniser — potentiel constructible (décote de contenance appliquée).'
+                 : '';
+      if (natLbl) { d.vigilances = (d.vigilances || []); d.vigilances.push(natLbl); }
+    }
 
     return d;
   }
@@ -1002,6 +1057,7 @@
         fld('Régime juridique', 'bien.regime', { type: 'select', options: ['Copropriété', 'Monopropriété', 'Indivision', 'Lotissement'] }) + '</div>' +
         fld('Adresse', 'bien.adresse', { flag: true, ph: 'ex : Chemin Galette' }) +
         '<div class="av-grid-3">' + fld('Code postal', 'bien.cp', { flag: true }) + fld('Commune', 'bien.commune', { flag: true }) + fld('Étage', 'bien.etage', { ph: '4e et dernier' }) + '</div>' +
+        '<div class="av-grid-2">' + fld('Réf. cadastrale', 'bien.refCadastrale', { flag: true, ph: 'ex : AH 0702' }) + fld('Zonage PLU', 'bien.zonagePlu', { flag: true, ph: 'ex : UGm1 — zone urbaine' }) + '</div>' +
         '<div class="d-flex gap-2 mb-2">' +
           '<button type="button" class="btn btn-sm btn-outline-primary" onclick="avisPrefillBati()" title="Pré-remplit description immeuble depuis les données publiques ADEME + RNB"><i class="bi bi-buildings me-1"></i>Pré-remplir bâti (ADEME/RNB)</button>' +
           '<span class="text-muted small align-self-center">Récupère année approximative + DPE dominant + surface via ADEME et RNB (BDNB CSTB complète nécessite abonnement CSTB, non intégrée).</span>' +
@@ -3376,6 +3432,8 @@
     html += '<h1>2. Identification et description du bien</h1><table>' +
       row('Type de bien', esc(b.type)) +
       row('Adresse', adresseComplete) +
+      row('Référence cadastrale', b.refCadastrale ? esc(b.refCadastrale) : '') +
+      row('Zonage PLU', b.zonagePlu ? esc(b.zonagePlu) : '') +
       row('Immeuble', b.immeuble ? esc(b.immeuble) : '') +
       row('Étage', b.etage ? esc(b.etage) : '') +
       row('Surface habitable (loi Carrez)', b.surfaceCarrez ? '≈ ' + esc(b.surfaceCarrez) + ' m²' + (b.sejour ? ' – séjour de ' + esc(b.sejour) + ' m²' : '') : '') +
