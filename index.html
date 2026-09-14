@@ -3724,7 +3724,14 @@ function recalcAgricole(){
   const m2 = parseFloat(document.getElementById('agriM2').value);
   const contenance = (window.__fidiGpu||{}).parcelle && Number((window.__fidiGpu||{}).parcelle.contenance);
   const out = document.getElementById('agriVal');
-  if(out && contenance && isFinite(m2)) out.textContent = fmtEur(Math.round(contenance*m2));
+  if(out && contenance && isFinite(m2)){
+    out.textContent = fmtEur(Math.round(contenance*m2));
+    // Répercute la valeur éditée dans la carte bleue « Estimation vénale »
+    const nat = terrainNature();
+    if(nat==='agricole' || nat==='naturel'){
+      syncEstimationBlue(nat, contenance, m2, String(((window.__fidiGpu||{}).zone||{}).typezone||''));
+    }
+  }
 }
 // Nature du terrain déduite du zonage PLU (référence cadastrale) :
 // constructible (U/AU), agricole (A), naturel/ONF (N).
@@ -3742,6 +3749,29 @@ function valeurAgricoleM2(nature, cp){
   if(nature==='agricole') return dom ? 2.5 : 1.0;   // terre cultivable
   if(nature==='naturel')  return dom ? 0.8 : 0.4;   // forêt/ONF/naturel
   return 0;
+}
+// ═══ Reporte la VALEUR VÉNALE RETENUE (zone agricole/naturelle) dans la carte
+// bleue « Estimation vénale du bien ». La carte marché reste vide/incohérente
+// pour ces zones : on la remplit avec contenance × barème de zone (même calcul
+// que le tableau marron/crème), bornes basse −15 % / haute +20 %, libellé de zone.
+function syncEstimationBlue(nature, contenance, vM2, typez){
+  if(!(contenance > 0) || !(vM2 > 0)) return;
+  const med = Math.round(contenance * vM2);
+  const min = Math.round(med * 0.85), max = Math.round(med * 1.20);
+  const setT = (id, val) => { const el = document.getElementById(id); if(el) el.textContent = val; };
+  setT('est-valeur', fmtEur(med));
+  setT('est-med', fmtEur(med));
+  setT('est-min', fmtEur(min));
+  setT('est-max', fmtEur(max));
+  const lbl = nature === 'agricole' ? 'Terrain agricole' : 'Terrain naturel / forestier';
+  const zt = typez ? ' (zone ' + typez + ')' : '';
+  const eb = document.getElementById('est-base');
+  if(eb) eb.innerHTML = lbl + zt + ' · ' + fmt(contenance) + ' m² · barème ' + vM2.toFixed(2)
+    + ' €/m² <span style="opacity:.8;">— valeur vénale retenue (non constructible, cf. tableau détaillé ci-dessous)</span>';
+  // Persiste la valeur corrigée pour la réinjection avis de valeur + rapport A4
+  const d = window.__fidiData || {}; d.estimation = d.estimation || {};
+  d.estimation.valeur_med = med; d.estimation.valeur_min = min; d.estimation.valeur_max = max;
+  d.estimation.prix_m2 = vM2; d.estimation.surface = contenance; d.estimation.zonage_nature = nature;
 }
 function renderTerrainDecote(e){
   let box = document.getElementById('terrainDecoteBox');
@@ -3787,6 +3817,7 @@ function renderTerrainDecote(e){
         '<div class="small text-muted">Si ce terrain devenait constructible (reclassement PLU), sa valeur au m² grimperait fortement. Vu sa <b>grande surface ('+fmt(contenance)+' m²)</b>, une décote de contenance s\'appliquerait : de l\'ordre de <b>'+p10k.toFixed(0)+' €/m² à 10 000 m²</b> et <b>'+p30k.toFixed(0)+' €/m² à 30 000 m²</b> (base marché constructible '+pRef.toFixed(0)+' €/m²). À titre purement indicatif — la valeur retenue reste celle du terrain agricole ci-dessus.</div>'+
       '</div>';
       box.innerHTML = html;
+      syncEstimationBlue(nature, contenance, vM2, String(((window.__fidiGpu||{}).zone||{}).typezone||''));
       return;
     } else {
       // Petite surface (<5000) : tableaux de décote complets, mais en préambule "hypothèse"
@@ -3796,6 +3827,7 @@ function renderTerrainDecote(e){
         _decoteTableHTML(pRef, sRef, alpha.a, FLOOR, {surface: contenance})+
       '</div>';
       box.innerHTML = html;
+      syncEstimationBlue(nature, contenance, vM2, String(((window.__fidiGpu||{}).zone||{}).typezone||''));
       return;
     }
   }
