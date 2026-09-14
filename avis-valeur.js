@@ -82,6 +82,7 @@
       calcul: { tauxCapi: 6.5, decoteOccupation: 10, decoteEtat: '', valeurOccupeeBasseManuel: '', valeurOccupeeHauteManuel: '' },
       etat: {
         composants: { structure: 0, toiture: 0, facades: 0, electricite: 0, plomberie: 0, cuisinesdb: 0, revetements: 0, chauffage: 0 },
+        entretienPct: 0, // terrain : décote d'entretien / remise en état (nettoyage, débroussaillage)
         vetusteManuel: '', commentaire: ''
       },
       loc: { adresse: '', lat: '', lon: '', sismicite: '', radon: '', ppr: '', icpe: '', risquesDetail: '', commentaire: '' },
@@ -606,6 +607,16 @@
       fld('Commentaire localisation / environnement', 'loc.commentaire', { type: 'textarea', rows: 2 });
   }
 
+  // Clé d'identité de l'étude source : sert à détecter qu'une NOUVELLE étude a été
+  // lancée (adresse / type / coordonnées différents) pour re-préremplir l'avis.
+  function etudeKeyOf(fidi, inputs) {
+    if (!fidi) return '';
+    var loc = fidi.localisation || {};
+    var addr = (inputs && inputs.adresse) || loc.label || '';
+    var type = fidi.type_bien || (inputs && inputs.typeBien) || '';
+    return [addr, type, loc.lat, loc.lon].join('|');
+  }
+
   function buildPrefillFromEtude(fidi, inputs) {
     var d = defaultData();
     var sig = loadSignataire();
@@ -707,6 +718,28 @@
                  : '';
       if (natLbl) { d.vigilances = (d.vigilances || []); d.vigilances.push(natLbl); }
     }
+
+    // Destinataire : reporte le nom saisi dans l'étude (les coordonnées complètes se
+    // chargent depuis la base clients si le destinataire y est mémorisé).
+    d.metadata = d.metadata || {};
+    var dest = (inputs && inputs.destinataire) ? String(inputs.destinataire).trim() : '';
+    if (dest && !d.metadata.client) {
+      d.metadata.client = dest;
+      // Tente d'apparier un client mémorisé (nom/label) pour compléter les coordonnées.
+      try {
+        var match = (listClientsMerged() || []).filter(function (c) {
+          var n = String(c.nom || c.label || '').toLowerCase().trim();
+          return n && n === dest.toLowerCase();
+        })[0];
+        if (match) {
+          d.metadata.adresseClient = match.adresse || '';
+          d.metadata.emailClient = match.email || '';
+          d.metadata.telephoneClient = match.telephone || '';
+        }
+      } catch (e) {}
+    }
+    // Empreinte de l'étude source (détection de changement → re-préremplissage)
+    d.__srcKey = etudeKeyOf(fidi, inputs);
 
     return d;
   }
@@ -933,9 +966,19 @@
     { label: 'Neuf', v: 0 }, { label: 'Bon', v: 10 }, { label: 'Moyen', v: 25 },
     { label: 'À rénover', v: 50 }, { label: 'Vétuste / HS', v: 80 }
   ];
+  // Terrain : la « décote d'état » n'est pas une vétusté de bâti mais un coût de
+  // remise en état (débroussaillage, évacuation, nettoyage) selon l'entretien.
+  var TERRAIN_ENTRETIEN = [
+    { label: 'Parcelle entretenue / propre', v: 0 },
+    { label: 'Enherbée — débroussaillage léger', v: 3 },
+    { label: 'Friche / encombrée — nettoyage à prévoir', v: 8 },
+    { label: 'Fortement encombrée / dépôt à évacuer', v: 15 }
+  ];
   function vetusteGlobale(data) {
-    var co = (data.etat && data.etat.composants) || {};
     if (data.etat && data.etat.vetusteManuel !== '' && data.etat.vetusteManuel != null) return num(data.etat.vetusteManuel);
+    // Terrain : décote = entretien de la parcelle (pas de grille de vétusté bâti)
+    if (data.bien && data.bien.type === 'Terrain') return num(data.etat && data.etat.entretienPct);
+    var co = (data.etat && data.etat.composants) || {};
     var s = 0; VET_COMPOSANTS.forEach(function (c) { s += c.poids * num(co[c.key]); });
     return Math.round(s / 100);
   }
@@ -1084,6 +1127,31 @@
         ) + photosHtml;
     }
     if (id === 'etat') {
+      // ── TERRAIN : état d'entretien de la parcelle (pas de vétusté de bâti) ──
+      if (d.bien && d.bien.type === 'Terrain') {
+        var curEnt = num(getPath(d, 'etat.entretienPct'));
+        var entSel = '<select data-p="etat.entretienPct">' + TERRAIN_ENTRETIEN.map(function (n) {
+          return '<option value="' + n.v + '"' + (n.v === curEnt ? ' selected' : '') + '>' + esc(n.label) + ' (−' + n.v + ' %)</option>';
+        }).join('') + '</select>';
+        var Lr = d.loc || {};
+        var risq = [
+          Lr.sismicite && ('Sismicité : ' + Lr.sismicite),
+          Lr.radon && ('Radon : ' + Lr.radon),
+          Lr.ppr && ('PPR / risques : ' + Lr.ppr),
+          Lr.risquesDetail
+        ].filter(Boolean).join(' · ') || 'Aucun risque particulier recensé dans l\'étude.';
+        return head('État de la parcelle & contraintes', 'Terrain : la décote reflète l\'entretien (nettoyage / débroussaillage / évacuation) et les contraintes — pas la vétusté d\'un bâti.') +
+          '<div class="av-box"><div class="av-box-title">État d\'entretien de la parcelle</div>' +
+          '<div class="av-field"><label>Niveau d\'entretien → décote de remise en état</label>' + entSel + '</div>' +
+          '<div class="av-tip small">La décote couvre le coût de remise en état avant valorisation (débroussaillage, évacuation de dépôts, nettoyage).</div></div>' +
+          '<div class="av-box"><div class="av-box-title">Risques &amp; contraintes (repris de l\'étude)</div><div class="small">' + esc(risq) + '</div></div>' +
+          '<div class="av-grid-2">' +
+          fld("Décote d'état appliquée (%)", 'calcul.decoteEtat', { type: 'number', tip: "Vide = égale à la décote d'entretien ci-dessus" }) +
+          fld('Décote manuelle (%)', 'etat.vetusteManuel', { type: 'number', tip: "Vide = décote d'entretien de la parcelle" }) +
+          '</div>' +
+          '<div class="av-result"><div class="av-r-row hl"><span>Décote d\'entretien retenue</span><span data-vet-global>—</span></div></div>' +
+          fld('Commentaire sur l\'état / contraintes', 'etat.commentaire', { type: 'textarea', rows: 2 });
+      }
       function nivSel(key) {
         var cur = num(getPath(d, 'etat.composants.' + key));
         return '<select data-p="etat.composants.' + key + '">' + VET_NIVEAUX.map(function (n) {
@@ -3775,7 +3843,7 @@
 
     // Ouverture d'un avis mémorisé
     if (refDemande) {
-      try { var raw = localStorage.getItem(AVIS_PREFIX + refDemande); if (raw) { state.data = ensureExpertBlock(JSON.parse(raw)); state.section = 'metadata'; } }
+      try { var raw = localStorage.getItem(AVIS_PREFIX + refDemande); if (raw) { state.data = ensureExpertBlock(JSON.parse(raw)); state.data.__saved = true; state.section = 'metadata'; } }
       catch (e) { toast('Erreur de chargement', true); }
       var lib = document.getElementById('avisLibModal');
       if (lib && bootstrap.Modal.getInstance(lib)) bootstrap.Modal.getInstance(lib).hide();
@@ -3787,9 +3855,14 @@
       if (!natureDemande) return; // annulé
     }
 
-    if (!state.data) {
+    // Re-préremplissage si une étude est chargée et que le brouillon courant provient
+    // d'une AUTRE étude (corrige type/surface/immeuble/destinataire périmés au réouverture).
+    var freshKey = window.__fidiData ? etudeKeyOf(window.__fidiData, window.__fidiInputs) : '';
+    var stale = state.data && !state.data.__saved && freshKey && state.data.__srcKey !== freshKey;
+    if (!state.data || (stale && !refDemande)) {
       state.data = window.__fidiData ? buildPrefillFromEtude(window.__fidiData, window.__fidiInputs) : buildPrefillFromEtude(null, null);
       state.data = ensureExpertBlock(state.data);
+      state.section = 'metadata';
     }
     // Applique la nature demandée sur avis nouveau ou existant (change de type)
     if (natureDemande) {
