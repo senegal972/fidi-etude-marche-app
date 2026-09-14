@@ -69,7 +69,7 @@
       bien: {
         type: 'Appartement', adresse: '', cp: '', commune: '', immeuble: '', etage: '',
         surfaceCarrez: '', surfaceShob: '', sejour: '', terrasse: '', parking: '',
-        regime: 'Copropriété', nbLots: '', taxeFonciere: '', statut: 'occupe',
+        regime: 'Copropriété', nbLots: '', nbPieces: '', taxeFonciere: '', statut: 'occupe',
         loyer: '', bailDateDebut: '', bailDuree: '36', prixVente: '',
         refCadastrale: '', zonagePlu: '', // réinjectés depuis l'étude (cadastre + PLU/GPU)
         photos: [] // [{ dataUrl, name, w, h }] max 2 photos compressees
@@ -505,12 +505,15 @@
     if (t === 'tous' || t === 'immeuble') return 'Immeuble';
     return 'Appartement';
   }
+  // Un type de bien « Terrain … » (à bâtir / agricole / naturel / loisirs).
+  function isTerrain(t) { return String(t || '').indexOf('Terrain') === 0; }
   // Nature fine du terrain d'après le zonage PLU (GPU) : à bâtir / agricole / naturel-ONF.
+  // NB : AU (à urbaniser) commence par 'A' mais reste constructible → testé AVANT 'A'.
   function terrainNatureFromGpu() {
     var z = String((((window.__fidiGpu || {}).zone) || {}).typezone || '').toUpperCase();
+    if (z.indexOf('AU') === 0 || z.charAt(0) === 'U') return 'a-batir';
     if (z.charAt(0) === 'A') return 'agricole';
     if (z.charAt(0) === 'N') return 'naturel';
-    if (z.charAt(0) === 'U' || z.indexOf('AU') === 0) return 'a-batir';
     return '';
   }
   function evolutionFromDvf(dvfAnnees, typeBien) {
@@ -629,6 +632,14 @@
     var typeBien = (fidi.type_bien || (inputs && inputs.typeBien) || '').toLowerCase();
 
     d.bien.type = typeFromInput(typeBien);
+    // Terrain : précise la nature d'après le zonage PLU (GPU) pour coller aux options
+    // harmonisées avec l'étude (à bâtir / agricole / naturel-ONF).
+    if (d.bien.type === 'Terrain') {
+      var tnat = terrainNatureFromGpu();
+      d.bien.type = tnat === 'agricole' ? 'Terrain agricole'
+                  : tnat === 'naturel'  ? 'Terrain naturel (ONF)'
+                  : 'Terrain à bâtir';
+    }
     if (typeBien === 'maison') d.bien.regime = 'Monopropriété';
     // Adresse : on tente de séparer la voie du code postal/commune
     d.bien.adresse = (inputs && inputs.adresse) || loc.label || '';
@@ -691,7 +702,7 @@
     }
 
     // ── Réinjection spécifique TERRAIN (à bâtir / agricole / naturel-ONF) ──
-    if (d.bien.type === 'Terrain') {
+    if (isTerrain(d.bien.type)) {
       d.bien.regime = 'Monopropriété';
       var nature = terrainNatureFromGpu();
       // Surface : la contenance cadastrale prime sur toute saisie (souhait métier).
@@ -977,7 +988,7 @@
   function vetusteGlobale(data) {
     if (data.etat && data.etat.vetusteManuel !== '' && data.etat.vetusteManuel != null) return num(data.etat.vetusteManuel);
     // Terrain : décote = entretien de la parcelle (pas de grille de vétusté bâti)
-    if (data.bien && data.bien.type === 'Terrain') return num(data.etat && data.etat.entretienPct);
+    if (data.bien && isTerrain(data.bien.type)) return num(data.etat && data.etat.entretienPct);
     var co = (data.etat && data.etat.composants) || {};
     var s = 0; VET_COMPOSANTS.forEach(function (c) { s += c.poids * num(co[c.key]); });
     return Math.round(s / 100);
@@ -1096,7 +1107,7 @@
       // En VENTE : bloc "loyer occupé" conservé (bien occupé = argument valorisation)
       return head('Identification du bien', descTop) +
         '<div class="av-grid-2">' +
-        fld('Type de bien', 'bien.type', { type: 'select', options: ['Studio', 'T1', 'T2', 'T3', 'T4', 'T5+', 'Appartement', 'Maison', 'Villa', 'Terrain', 'Local commercial', 'Immeuble'], flag: true }) +
+        fld('Type de bien', 'bien.type', { type: 'select', options: ['Maison', 'Appartement', 'Villa', 'Immeuble', 'Terrain à bâtir', 'Terrain agricole', 'Terrain naturel (ONF)', 'Terrain de loisirs', 'Local commercial'], flag: true }) +
         fld('Régime juridique', 'bien.regime', { type: 'select', options: ['Copropriété', 'Monopropriété', 'Indivision', 'Lotissement'] }) + '</div>' +
         fld('Adresse', 'bien.adresse', { flag: true, ph: 'ex : Chemin Galette' }) +
         '<div class="av-grid-3">' + fld('Code postal', 'bien.cp', { flag: true }) + fld('Commune', 'bien.commune', { flag: true }) + fld('Étage', 'bien.etage', { ph: '4e et dernier' }) + '</div>' +
@@ -1107,7 +1118,7 @@
         '</div>' +
         fld('Description immeuble', 'bien.immeuble', { tip: 'Année de livraison, niveaux, ascenseur…', ph: 'Résidence 2009 – R+3 – 16 lots' }) +
         '<div class="av-grid-4">' + fld(isLoc ? 'Surface habitable (m²)' : 'Surface Carrez (m²)', 'bien.surfaceCarrez', { type: 'number', flag: true, tip: isLoc ? 'Loi Boutin en location, Carrez en copro à la vente' : 'Loi Carrez (obligatoire vente copro)' }) + fld('Surface SHOB (m²)', 'bien.surfaceShob', { type: 'number' }) + fld('Séjour (m²)', 'bien.sejour', { type: 'number' }) + fld('Terrasse/Balcon (m²)', 'bien.terrasse', { type: 'number', step: '0.01' }) + '</div>' +
-        '<div class="av-grid-3">' + fld('Stationnement', 'bien.parking', { ph: '1 place couverte' }) + fld('Nb. lots (copro)', 'bien.nbLots', { type: 'number' }) + fld('Taxe foncière (€/an)', 'bien.taxeFonciere', { type: 'number' }) + '</div>' +
+        '<div class="av-grid-4">' + fld('Nombre de pièces', 'bien.nbPieces', { type: 'number', ph: 'ex : 4' }) + fld('Stationnement', 'bien.parking', { ph: '1 place couverte' }) + fld('Nb. lots (copro)', 'bien.nbLots', { type: 'number' }) + fld('Taxe foncière (€/an)', 'bien.taxeFonciere', { type: 'number' }) + '</div>' +
         // En location : uniquement mention "bien libre à louer / actuellement occupé" (info)
         (isLoc ?
           '<div class="av-box"><div style="display:flex;gap:1rem;margin-bottom:.6rem;">' +
@@ -1128,7 +1139,7 @@
     }
     if (id === 'etat') {
       // ── TERRAIN : état d'entretien de la parcelle (pas de vétusté de bâti) ──
-      if (d.bien && d.bien.type === 'Terrain') {
+      if (d.bien && isTerrain(d.bien.type)) {
         var curEnt = num(getPath(d, 'etat.entretienPct'));
         var entSel = '<select data-p="etat.entretienPct">' + TERRAIN_ENTRETIEN.map(function (n) {
           return '<option value="' + n.v + '"' + (n.v === curEnt ? ' selected' : '') + '>' + esc(n.label) + ' (−' + n.v + ' %)</option>';
@@ -3508,6 +3519,7 @@
       row('Surface SHOB annoncée', b.surfaceShob ? '≈ ' + esc(b.surfaceShob) + ' m²' : '') +
       row('Terrasse / Balcon', b.terrasse ? esc(b.terrasse) + ' m²' : '') +
       row('Stationnement', b.parking ? esc(b.parking) : '') +
+      row('Nombre de pièces', b.nbPieces ? esc(b.nbPieces) : '') +
       row('Régime juridique', esc(b.regime) + (b.nbLots ? ' – ' + esc(b.nbLots) + ' lots' : '')) +
       row('Taxe foncière', b.taxeFonciere ? fmtE(b.taxeFonciere) + ' / an' : '') +
       (occ ? row('Situation locative', 'Bien occupé – loyer ' + fmtE(b.loyer) + '/mois' + (b.bailDateDebut ? ' – bail du ' + formatDateFR(b.bailDateDebut) : '') + (b.bailDuree ? ' (durée ' + esc(b.bailDuree) + ' mois)' : '')) : row('Situation locative', 'Bien libre')) +
