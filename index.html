@@ -2578,7 +2578,6 @@ async function loadGpuInfo(lat, lon){
           + (p.libelong?` — ${escHtml(p.libelong)}`:'')
           + (p.typezone?` <span class="text-muted">(type ${escHtml(p.typezone)})</span>`:'');
         renderConstructibilite(lat, lon); // rubrique règles de construction
-        try { if(typeof applyZonageToEstimation === 'function') applyZonageToEstimation(); } catch(e){}
       } else {
         elZone.innerHTML = '<span class="text-muted">Aucun document d\'urbanisme numérisé à ce point (commune non couverte par le GPU).</span>';
         renderConstructibilite(lat, lon); // affiche quand même le cadre indicatif
@@ -2606,8 +2605,6 @@ async function loadGpuInfo(lat, lon){
         try { if(typeof etudeAutoFillContenance === 'function') etudeAutoFillContenance(); } catch(e){}
         // Recalcule la rubrique constructibilité (surface constructible = contenance × emprise)
         try { renderConstructibilite(lat, lon); } catch(e){}
-        // Bascule la carte bleue sur le barème de zone si agricole/naturel (contenance désormais connue)
-        try { if(typeof applyZonageToEstimation === 'function') applyZonageToEstimation(); } catch(e){}
         const ref = `${p.section||''} ${p.numero||''}`.trim();
         elParc.innerHTML = `<span class="fw-bold">${escHtml(ref||'—')}</span>`
           + (p.contenance?` · ${Number(p.contenance).toLocaleString('fr-FR')} m²`:'')
@@ -3657,48 +3654,6 @@ function renderEstTypes(estimations, typeBien){
   renderPromoteurBox(estimations.terrain);
   // Si la parcelle est déjà connue (recherche par réf. cadastre), auto-remplit la surface
   try { if(typeof etudeAutoFillContenance === 'function') etudeAutoFillContenance(); } catch(e){}
-  // Corrige la carte bleue « Estimation vénale » selon le zonage (agricole/naturel)
-  try { if(typeof applyZonageToEstimation === 'function') applyZonageToEstimation(); } catch(e){}
-}
-
-// ═══ Correction zonage de la carte « Estimation vénale du bien » ═════════════
-// La carte bleue est calculée au prix médian du MARCHÉ (constructible). Or une
-// parcelle en zone AGRICOLE (A) ou NATURELLE/forestière (N) ne peut pas valoir
-// ce prix : sa valeur vénale est fixée au barème de zone (contenance × €/m²),
-// exactement comme le tableau de décote agricole/ONF plus bas. Cette fonction
-// bascule donc la carte bleue sur le barème de zone dès que le zonage + la
-// contenance cadastrale sont connus. Zones U / AU (constructibles) : inchangé.
-function applyZonageToEstimation(){
-  var gpu = window.__fidiGpu || {};
-  var zone = gpu.zone || {}, parc = gpu.parcelle || {};
-  var typez = String(zone.typezone || '').toUpperCase();
-  var contenance = Number(parc.contenance) || 0;
-  var d = window.__fidiData || {};
-  var typeBien = String(d.type_bien || (window.__fidiInputs || {}).typeBien || '').toLowerCase();
-  if(typeBien !== 'terrain' || !contenance || !typez) return;
-  // Nature d'après le zonage (helper canonique) : agricole (A) / naturel (N) basculent
-  // sur le barème de zone ; constructible (U/AU) et inconnu → carte marché inchangée.
-  var nature = terrainNature();
-  if(nature !== 'agricole' && nature !== 'naturel') return;
-  var cp = ((d.localisation || {}).postcode) || '';
-  var vM2 = valeurAgricoleM2(nature, cp);
-  if(!(vM2 > 0)) return;
-  var med = Math.round(contenance * vM2);
-  var min = Math.round(med * 0.85), max = Math.round(med * 1.20);
-  var elV = document.getElementById('est-valeur'), elB = document.getElementById('est-base'),
-      elMin = document.getElementById('est-min'), elMed = document.getElementById('est-med'), elMax = document.getElementById('est-max');
-  if(elV) elV.textContent = fmtEur(med);
-  if(elMed) elMed.textContent = fmtEur(med);
-  if(elMin) elMin.textContent = fmtEur(min);
-  if(elMax) elMax.textContent = fmtEur(max);
-  var lbl = nature === 'agricole' ? 'Terrain agricole (zone ' + typez + ')'
-                                  : 'Terrain naturel / forestier (zone ' + typez + ')';
-  if(elB) elB.innerHTML = lbl + ' · ' + fmt(contenance) + ' m² · Base : ' + vM2.toFixed(2)
-    + ' €/m² <span style="opacity:.85;">(barème ' + nature + ' de zone — valeur non constructible)</span>';
-  // Persiste la valeur corrigée (réinjection avis de valeur + rapport A4)
-  d.estimation = d.estimation || {};
-  d.estimation.valeur_med = med; d.estimation.valeur_min = min; d.estimation.valeur_max = max;
-  d.estimation.prix_m2 = vM2; d.estimation.surface = contenance; d.estimation.zonage_nature = nature;
 }
 
 // ═══ Décote surfacique terrain (abattement de contenance) ════════════════════
