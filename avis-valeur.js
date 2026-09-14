@@ -715,20 +715,45 @@
       var nature = terrainNatureFromGpu();
       // Surface : la contenance cadastrale prime sur toute saisie (souhait métier).
       if (contenance > 0) d.bien.surfaceCarrez = String(Math.round(contenance));
-      // Estimation terrain issue de l'étude (estimations.terrain si présent, sinon estimation générale)
-      var estT = (fidi.estimations && fidi.estimations.terrain) || est || {};
-      var pM2Terrain = Number(estT.prix_m2) || 0;
-      if (pM2Terrain > 0) {
-        d.marche.moyenneMoyen = String(Math.round(pM2Terrain));
-        d.marche.moyenneBas = String(Math.round(pM2Terrain * 0.85));
-        d.marche.moyenneHaut = String(Math.round(pM2Terrain * 1.15));
-        // Méthode « coût » : la valeur terrain devient la valeur vénale de référence
+      if (nature === 'agricole' || nature === 'naturel') {
+        // ── AGRICOLE / NATUREL : le marché DVF (constructions) ne s'applique PAS. ──
+        // On récupère le €/m² de zone déjà calculé par l'étude (estimation corrigée),
+        // sinon on retombe sur le barème DOM/métropole. Les lignes DVF construction
+        // sont remplacées par une source unique « barème de zone ».
+        var cpT = loc.postcode || '';
+        var dom = /^97/.test(String(cpT));
+        var pAgri = 0;
+        if (fidi.estimation && fidi.estimation.zonage_nature === nature) pAgri = Number(fidi.estimation.prix_m2) || 0;
+        if (!(pAgri > 0)) pAgri = (nature === 'agricole') ? (dom ? 2.5 : 1.0) : (dom ? 0.8 : 0.4);
+        var r2 = function (x) { return Math.round(x * 100) / 100; };
+        d.marche.moyenneMoyen = String(pAgri);
+        d.marche.moyenneBas = String(r2(pAgri * 0.85));
+        d.marche.moyenneHaut = String(r2(pAgri * 1.20));
+        d.marche.sources = [{
+          nom: (nature === 'agricole' ? 'Barème terrain agricole (SAFER / marché DOM)' : 'Barème terrain naturel-forestier (ONF / DOM)'),
+          bas: '', moyen: String(pAgri), haut: ''
+        }];
+        d.marche.commentaire = 'Valeur foncière au barème de zone (' + nature + '), terrain non constructible. Les prix DVF au m² (constructions bâties) ne s\'appliquent pas à ce type de bien.';
+        d.marche.evol12m = ''; d.marche.evol3m = '';
         if (contenance > 0) {
-          d.methodes.cout = Object.assign({}, d.methodes.cout, { valeurTerrain: String(Math.round(pM2Terrain * contenance)) });
+          d.bien.prixVente = String(Math.round(pAgri * contenance));
+          d.methodes.cout = Object.assign({}, d.methodes.cout, { valeurTerrain: String(Math.round(pAgri * contenance)) });
         }
-      }
-      if (contenance > 0 && pM2Terrain > 0) {
-        d.bien.prixVente = String(Math.round(pM2Terrain * contenance));
+      } else {
+        // ── TERRAIN À BÂTIR : prix DVF construction (décote de contenance ailleurs). ──
+        var estT = (fidi.estimations && fidi.estimations.terrain) || est || {};
+        var pM2Terrain = Number(estT.prix_m2) || 0;
+        if (pM2Terrain > 0) {
+          d.marche.moyenneMoyen = String(Math.round(pM2Terrain));
+          d.marche.moyenneBas = String(Math.round(pM2Terrain * 0.85));
+          d.marche.moyenneHaut = String(Math.round(pM2Terrain * 1.15));
+          if (contenance > 0) {
+            d.methodes.cout = Object.assign({}, d.methodes.cout, { valeurTerrain: String(Math.round(pM2Terrain * contenance)) });
+          }
+        }
+        if (contenance > 0 && pM2Terrain > 0) {
+          d.bien.prixVente = String(Math.round(pM2Terrain * contenance));
+        }
       }
       // Trace la nature retenue en vigilance (le foncier n'est ni notaire ni expertisé)
       var natLbl = nature === 'agricole' ? 'Terrain à vocation agricole (zone A) — valeur foncière agricole, pas de constructibilité.'
@@ -1302,6 +1327,17 @@
         '<div class="av-box" id="avAcmSynth">' + renderAcmSynth() + '</div>';
     }
     if (id === 'loyers') {
+      // Terrain : les loyers de référence n'ont pas de sens (pas de bâti à louer).
+      // Onglet neutralisé mais débloquable à la demande.
+      if (isTerrain(b.type) && !d.__loyersUnlocked) {
+        return head('Loyers de référence', 'Sans objet pour un terrain') +
+          '<div class="av-box" style="text-align:center;padding:1.4rem;">' +
+            '<div class="mb-2" style="font-size:1.5rem;">🔒</div>' +
+            '<div class="fw-semibold mb-1">Onglet sans objet pour un terrain</div>' +
+            '<div class="small text-muted mb-3">Un terrain (agricole, naturel ou à bâtir) n\'a pas de loyer de référence. L\'onglet est neutralisé pour éviter des données incohérentes dans l\'avis.</div>' +
+            '<button class="btn btn-sm btn-outline-secondary" data-action="unlock-loyers"><i class="bi bi-unlock me-1"></i>Débloquer quand même</button>' +
+          '</div>';
+      }
       var lrows = d.loyers.map(function (l, i) {
         return '<div class="av-row" style="grid-template-columns:1fr 70px 70px 1fr 28px;">' +
           '<input type="text" placeholder="Studio T1" value="' + esc(l.type) + '" data-list="loyers" data-idx="' + i + '" data-key="type"/>' +
@@ -2342,6 +2378,7 @@
       state.data.etat.vetusteManuel = '';
       showSection('etat');
     }
+    else if (a === 'unlock-loyers') { state.data.__loyersUnlocked = true; showSection('loyers'); return; }
     else if (a === 'import-dvf') importDvf();
     else if (a === 'toggle-paste') { var w = document.getElementById('avPasteWrap'); if (w) w.style.display = w.style.display === 'none' ? 'block' : 'none'; }
     else if (a === 'parse-paste') parsePaste();
