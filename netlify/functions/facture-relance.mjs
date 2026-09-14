@@ -4,7 +4,7 @@
 // Optionnel : envoie un e-mail de rappel au client si envoyer_email=true et email présent.
 // Réservé aux administrateurs.
 
-import { DB, P, hasToken, updatePage, queryDatabase } from "./_notion.mjs";
+import { DB, P, hasToken, updatePage, queryDatabase, ensureProperty } from "./_notion.mjs";
 import { authResp, currentUser } from "./_auth.mjs";
 import { factureFromPage, reqOrigin } from "./_facture.mjs";
 
@@ -39,6 +39,10 @@ export const handler = async (event) => {
     const relancesActuelles = props["Relances"]?.number || 0;
     const nouvelleValeur = relancesActuelles + 1;
     const today = new Date().toISOString().slice(0, 10);
+
+    // Auto-crée les colonnes si absentes (évite le 400 Notion « property does not exist »).
+    await ensureProperty(DB.facture, "Relances", { number: {} });
+    await ensureProperty(DB.facture, "Dernière relance", { date: {} });
 
     await updatePage(page.id, {
       "Relances": P.number(nouvelleValeur),

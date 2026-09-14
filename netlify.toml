@@ -109,6 +109,9 @@
 [functions."onf"]
   timeout = 15
 
+[functions."rpg"]
+  timeout = 15
+
 [functions."karugeo"]
   timeout = 20
 
@@ -361,6 +364,11 @@
 [[redirects]]
   from   = "/api/onf"
   to     = "/.netlify/functions/onf"
+  status = 200
+
+[[redirects]]
+  from   = "/api/rpg"
+  to     = "/.netlify/functions/rpg"
   status = 200
 
 [[redirects]]
