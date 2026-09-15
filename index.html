@@ -776,6 +776,14 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
               </small>
             </div>
           </div>
+          <!-- Bâtiment en ruine / à détruire / très vétuste : moins-value ou plus-value à ajouter manuellement -->
+          <div class="mt-2" style="border-top:1px solid rgba(255,255,255,.18);padding-top:.6rem;">
+            <button type="button" class="btn btn-sm btn-light" style="font-weight:600;" onclick="ruineOpen()">
+              <i class="bi bi-bricks me-1"></i>Bâtiment en ruine / à détruire / vétuste…
+            </button>
+            <span id="ruineAppliedTag" class="ms-2 small fw-semibold" style="color:#ffd54f;"></span>
+            <div id="ruinePanel" class="mt-2 d-none"></div>
+          </div>
         </div>
       </div>
       <!-- Estimations par type : Maison / Appartement / Terrain -->
@@ -2359,6 +2367,7 @@ function renderResults(d){
   showTransSpinner();
 
   // Estimation
+  try { ruineReset(); } catch(e){}  // réinitialise le bâti-ruine à chaque nouvelle analyse
   if(est){
     renderEstimation(est, d.type_bien, d.estimations);
     document.getElementById('estimationRow').classList.remove('d-none');
@@ -3880,6 +3889,122 @@ function calcTerrainCustom(pRef, sRef, a, floor){
     '<div class="d-flex justify-content-between"><span style="color:#8d6e63;">🌾 Agricole <span class="text-muted small">('+vAgri.toFixed(2)+' €/m²)</span></span><b style="color:#8d6e63;">'+fmtEur(Math.round(vAgri*S))+'</b></div>'+
     '<div class="d-flex justify-content-between"><span style="color:#455a64;">🌳 ONF/naturel <span class="text-muted small">('+vOnf.toFixed(2)+' €/m²)</span></span><b style="color:#455a64;">'+fmtEur(Math.round(vOnf*S))+'</b></div>'+
   '</div>';
+
+  // ── Renseigne la carte bleue « Estimation vénale » quand aucune surface n'a été
+  // saisie (bien identifié par sa seule réf. cadastrale). On y reporte la VALEUR
+  // VÉNALE RETENUE du terrain à bâtir (contenance × prix décoté). Les zones
+  // agricole/naturel sont déjà couvertes par syncEstimationBlue ; ici on traite
+  // le constructible et le RNU (zonage non déterminé). N'écrase jamais une
+  // estimation déjà calculée (surface saisie, ou barème agricole déjà posé).
+  if(estCadastre){
+    var nat = terrainNature();
+    var blue = document.getElementById('est-valeur');
+    var blueEmpty = !blue || (blue.textContent || '').trim() === '' || (blue.textContent || '').trim() === '—';
+    if(blueEmpty && nat !== 'agricole' && nat !== 'naturel'){
+      var med = Math.round(pBatir * S);
+      var mn = Math.round(med * 0.85), mx = Math.round(med * 1.20);
+      var setB = function(id, v){ var el = document.getElementById(id); if(el) el.textContent = v; };
+      setB('est-valeur', fmtEur(med)); setB('est-med', fmtEur(med));
+      setB('est-min', fmtEur(mn)); setB('est-max', fmtEur(mx));
+      var zlbl = (nat === 'constructible') ? 'Terrain à bâtir' : 'Terrain (zonage non déterminé — RNU)';
+      var eb = document.getElementById('est-base');
+      if(eb) eb.innerHTML = zlbl + ' · ' + fmt(S) + ' m² · ' + pBatir.toFixed(2) + ' €/m² (décote surfacique '
+        + (dec > 0 ? '-' : '+') + Math.abs(dec) + ' %) <span style="opacity:.8;">— valeur vénale retenue du terrain (cf. tableau ci-dessous)</span>';
+      var dd = window.__fidiData || {}; dd.estimation = dd.estimation || {};
+      dd.estimation.valeur_med = med; dd.estimation.valeur_min = mn; dd.estimation.valeur_max = mx;
+      dd.estimation.prix_m2 = pBatir; dd.estimation.surface = S; dd.estimation.zonage_nature = nat || 'terrain';
+    }
+  }
+}
+
+// ═══ Bâtiment en ruine / à détruire / très vétuste ═══════════════════════════
+// Ajoute (ou retire) MANUELLEMENT une moins-value (démolition) ou une plus-value
+// (gros œuvre récupérable / bâti vétuste résiduel) à l'estimation vénale du bien.
+// Rien n'est appliqué automatiquement — l'utilisateur pilote via les boutons.
+// Barèmes indicatifs France (sources : lamaisonsaintgobain.fr, travaux.com 2024/2026) :
+//   Démolition maison courante 100–200 €/m² · pierre/ruine 150–250 €/m² (+amiante/plomb).
+//   DOM : surcoût ~×1,4 (transport, main d'œuvre, évacuation).
+//   Gros œuvre béton récupérable ≈ 40–50 % du coût de construction neuf.
+function ruineDom(){ return /^97/.test((((window.__fidiData||{}).localisation||{}).postcode)||''); }
+function ruineParse(id){ var el=document.getElementById(id); return el ? (Number((el.textContent||'').replace(/[^\d]/g,''))||0) : 0; }
+function ruineModeChange(){
+  var m = (document.getElementById('ruineMode')||{}).value;
+  var dom = ruineDom();
+  var taux = document.getElementById('ruineTaux'), lbl = document.getElementById('ruineTauxLbl');
+  var vet = document.getElementById('ruineVet'), vlbl = document.getElementById('ruineVetLbl');
+  var showVet = (m==='vetuste');
+  if(vet) vet.style.display = showVet ? '' : 'none';
+  if(vlbl) vlbl.style.display = showVet ? '' : 'none';
+  if(m==='demo'){ if(lbl) lbl.textContent='Coût démolition (€/m²)'; if(taux) taux.value = dom?210:150; }
+  else if(m==='recup'){ if(lbl) lbl.textContent='Valeur récup. (€/m²)'; if(taux) taux.value = dom?300:250; }
+  else { if(lbl) lbl.textContent='Prix bâti neuf (€/m²)'; if(taux) taux.value = dom?1600:1400; }
+}
+function ruineCalc(){
+  var surf = parseFloat((document.getElementById('ruineSurf')||{}).value);
+  var taux = parseFloat((document.getElementById('ruineTaux')||{}).value);
+  var mode = (document.getElementById('ruineMode')||{}).value;
+  var res = document.getElementById('ruineResult');
+  if(!isFinite(surf) || surf<=0 || !isFinite(taux) || taux<0){ if(res) res.innerHTML='<span class="text-danger">Surface / montant invalides.</span>'; window.__ruineDelta=0; return; }
+  var delta;
+  if(mode==='demo') delta = -Math.round(surf*taux);
+  else if(mode==='recup') delta = Math.round(surf*taux);
+  else { var vet=parseFloat((document.getElementById('ruineVet')||{}).value); if(!isFinite(vet)) vet=0; delta = Math.round(surf*taux*(1-vet/100)); }
+  window.__ruineDelta = delta;
+  if(res) res.innerHTML = (delta<0?'<span style="color:#b02a37;">Moins-value ':'<span style="color:#198754;">Plus-value +')
+    + fmt(Math.abs(delta)) + ' €</span> <span class="text-muted">('+fmt(surf)+' m² × '+fmt(taux)+' €/m²'+(mode==='vetuste'?' × (1−vétusté)':'')+')</span>';
+}
+function ruineApply(add){
+  var delta = Number(window.__ruineDelta||0);
+  if(add){ ruineCalc(); delta = Number(window.__ruineDelta||0); if(!delta) return; }
+  if(!window.__estBase){ window.__estBase = { med: ruineParse('est-med'), min: ruineParse('est-min'), max: ruineParse('est-max') }; }
+  if(!(window.__estBase.med>0)){ var r=document.getElementById('ruineResult'); if(r) r.innerHTML='<span class="text-danger">Estimation vénale non renseignée — impossible d\'ajouter.</span>'; return; }
+  var applied = add ? delta : 0;
+  window.__ruineAppliedDelta = applied;
+  var med = Math.max(0, window.__estBase.med + applied);
+  var mn  = Math.max(0, window.__estBase.min + applied);
+  var mx  = Math.max(0, window.__estBase.max + applied);
+  var setB=function(id,v){ var el=document.getElementById(id); if(el) el.textContent=fmtEur(v); };
+  setB('est-valeur', med); setB('est-med', med); setB('est-min', mn); setB('est-max', mx);
+  var tag=document.getElementById('ruineAppliedTag');
+  if(tag) tag.textContent = applied ? ('bâti '+(applied>0?'+':'−')+fmt(Math.abs(applied))+' € inclus') : '';
+  var dd=window.__fidiData||{}; dd.estimation=dd.estimation||{};
+  dd.estimation.ruine_delta=applied; dd.estimation.valeur_med=med; dd.estimation.valeur_min=mn; dd.estimation.valeur_max=mx;
+}
+function ruineReset(){ window.__estBase=null; window.__ruineDelta=0; window.__ruineAppliedDelta=0;
+  var t=document.getElementById('ruineAppliedTag'); if(t) t.textContent='';
+  var p=document.getElementById('ruinePanel'); if(p){ p.classList.add('d-none'); p.innerHTML=''; } }
+function ruineOpen(){
+  var p = document.getElementById('ruinePanel'); if(!p) return;
+  if(!p.classList.contains('d-none')){ p.classList.add('d-none'); return; }
+  var dom = ruineDom();
+  p.classList.remove('d-none');
+  p.innerHTML =
+    '<div class="p-2 rounded" style="background:#fff;color:#213547;">'+
+      '<div class="fw-semibold mb-1" style="font-size:.85rem;">Valeur du bâti existant (ruine / à détruire / vétuste)</div>'+
+      '<div class="row g-2 align-items-end">'+
+        '<div class="col-6 col-md-3"><label class="form-label small mb-0">Surface bâtie (m²)</label>'+
+          '<input type="number" id="ruineSurf" class="form-control form-control-sm" min="1" placeholder="ex : 90"></div>'+
+        '<div class="col-6 col-md-4"><label class="form-label small mb-0">Cas</label>'+
+          '<select id="ruineMode" class="form-select form-select-sm" onchange="ruineModeChange()">'+
+            '<option value="demo">À démolir — moins-value</option>'+
+            '<option value="recup">Gros œuvre récupérable — plus-value</option>'+
+            '<option value="vetuste">Bâti vétuste résiduel — plus-value</option>'+
+          '</select></div>'+
+        '<div class="col-6 col-md-3"><label class="form-label small mb-0" id="ruineTauxLbl">Coût démolition (€/m²)</label>'+
+          '<input type="number" id="ruineTaux" class="form-control form-control-sm" value="'+(dom?210:150)+'"></div>'+
+        '<div class="col-6 col-md-2"><label class="form-label small mb-0" id="ruineVetLbl" style="display:none;">Vétusté %</label>'+
+          '<input type="number" id="ruineVet" class="form-control form-control-sm" value="70" min="0" max="100" style="display:none;"></div>'+
+      '</div>'+
+      '<div class="d-flex flex-wrap gap-2 align-items-center mt-2">'+
+        '<button class="btn btn-sm btn-outline-secondary" onclick="ruineCalc()">Calculer</button>'+
+        '<span id="ruineResult" class="small fw-semibold"></span>'+
+      '</div>'+
+      '<div class="d-flex flex-wrap gap-2 mt-2">'+
+        '<button class="btn btn-sm btn-success" onclick="ruineApply(1)"><i class="bi bi-plus-lg"></i> Ajouter à l\'estimation</button>'+
+        '<button class="btn btn-sm btn-outline-danger" onclick="ruineApply(0)"><i class="bi bi-x-lg"></i> Retirer</button>'+
+      '</div>'+
+      '<div class="text-muted mt-1" style="font-size:.66rem;">Barèmes indicatifs France (démolition 100–250 €/m² selon matériau, +amiante/plomb ; gros œuvre récupérable ≈ 40–50 % du neuf). '+(dom?'Majoration DOM (~×1,4) appliquée par défaut. ':'')+'À ajuster librement. Ni notaire ni expert — valeur à dire d\'expert / devis.</div>'+
+    '</div>';
 }
 
 // ═══ Décote surfacique PROMOTEUR — tarification professionnelle ══════════════
