@@ -88,7 +88,16 @@ export function userFromPage(page) {
     quota:      readNumber(p["Quota recherches"]) ?? DEFAULT_QUOTA,
     recherches: readNumber(p["Recherches utilisées"]) ?? 0,
     derniereRef: readText(p["Dernière réf éditée"]),
+    expire:     (p["Expire le"] && p["Expire le"].date && p["Expire le"].date.start) || "",
   };
+}
+
+// Compte éphémère expiré : rôle « Éphémère » dont la date « Expire le » est dépassée
+// (fin de journée). Un tel compte est traité comme désactivé (accès coupé).
+export function isExpired(user) {
+  if (!user || user.role !== "Éphémère" || !user.expire) return false;
+  const end = new Date(String(user.expire) + "T23:59:59");
+  return isFinite(end.getTime()) && end.getTime() < Date.now();
 }
 
 // Accès illimité : administrateurs + comptes marqués « Illimité » (partenaires).
@@ -167,7 +176,7 @@ export async function currentUser(event) {
   const pl = authPayload(event);
   if (!pl || !pl.email) return null;
   const found = await findUserByEmail(pl.email);
-  if (!found || found.user.statut !== "Actif") return null;
+  if (!found || found.user.statut !== "Actif" || isExpired(found.user)) return null;
   return found;
 }
 

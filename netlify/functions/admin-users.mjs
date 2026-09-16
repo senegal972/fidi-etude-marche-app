@@ -60,9 +60,10 @@ export const handler = async (event) => {
         const tarifGroup = props["Grille tarifaire"]?.select?.name || "";
         const fidiEncaisse = !!(props["FIDI encaisse"]?.checkbox);
         const commission = props["Commission FIDI %"]?.number ?? 25;
+        const expire = props["Expire le"]?.date?.start || "";
         return { email: u.email, nom: u.nom, role: u.role, statut: u.statut, credits: u.credits,
                  illimite: u.illimite, quota: u.quota, recherches: u.recherches,
-                 reseau, tarifGroup, fidi_encaisse: fidiEncaisse, commission };
+                 reseau, tarifGroup, fidi_encaisse: fidiEncaisse, commission, expire };
       });
       return authResp(200, { ok: true, users, super_admin: SUPER_ADMIN_EMAIL, me: me.user.email });
     }
@@ -80,15 +81,17 @@ export const handler = async (event) => {
       const wantsAdmin = b.role === "Administrateur";
       if (wantsAdmin && !isSuperAdmin(me.user.email)) return authResp(403, { error: "Seul le super-admin peut créer un compte Administrateur." });
       const password = b.password ? String(b.password) : genPassword();
-      const role = wantsAdmin ? "Administrateur" : (b.role === "Test" ? "Test" : "Collaborateur");
+      const role = wantsAdmin ? "Administrateur"
+        : (b.role === "Test" ? "Test" : (b.role === "Éphémère" ? "Éphémère" : "Collaborateur"));
       const credits = Number.isFinite(+b.credits) ? +b.credits : undefined;
       const quota = Number.isFinite(+b.quota) ? +b.quota : undefined;
       const createdPage = await createUser({ email, nom: b.nom || "", password, role,
         ...(credits != null ? { credits } : {}), ...(quota != null ? { quota } : {}), illimite: !!b.illimite });
-      // Champs additionnels post-création (Réseau, Grille tarifaire) si fournis
+      // Champs additionnels post-création (Réseau, Grille tarifaire, Expiration) si fournis
       const extra = {};
       if (b.reseau) { await ensureProperty(DB.users, "Réseau", { rich_text: {} }); extra["Réseau"] = P.text(String(b.reseau).slice(0, 100)); }
       if (b.tarifGroup) extra["Grille tarifaire"] = P.select(String(b.tarifGroup).slice(0, 100));
+      if (b.expire) { await ensureProperty(DB.users, "Expire le", { date: {} }); extra["Expire le"] = P.date(String(b.expire)); }
       if (Object.keys(extra).length && createdPage?.id) {
         try { await updatePage(createdPage.id, extra); } catch {}
       }
@@ -101,6 +104,41 @@ export const handler = async (event) => {
     });
     const page = found.results?.[0];
     if (!page) return authResp(404, { error: "Utilisateur introuvable." });
+
+    // ── Mise à jour GLOBALE d'une fiche compte en un seul appel (bouton « Modifier ») ──
+    if (action === "update_account") {
+      const patch = {};
+      if (b.nom != null) patch["Nom"] = P.text(String(b.nom).slice(0, 200));
+      if (b.role != null) {
+        if (email === me.user.email) return authResp(400, { error: "Vous ne pouvez pas modifier votre propre rôle." });
+        var r = b.role;
+        if (r === "Administrateur" && !isSuperAdmin(me.user.email)) return authResp(403, { error: "Seul le super-admin peut promouvoir Administrateur." });
+        if (["Collaborateur", "Administrateur", "Test", "Éphémère"].indexOf(r) < 0) r = "Collaborateur";
+        patch["Rôle"] = P.select(r);
+      }
+      if (b.statut != null) {
+        if (email === me.user.email) return authResp(400, { error: "Vous ne pouvez pas modifier votre propre statut." });
+        patch["Statut"] = P.select(b.statut === "Désactivé" ? "Désactivé" : "Actif");
+      }
+      if (b.credits != null && b.credits !== "") { const v = parseInt(b.credits); if (Number.isFinite(v)) patch["Crédits"] = P.number(Math.max(0, v)); }
+      if (b.illimite != null) patch["Illimité"] = P.checkbox(!!b.illimite);
+      if (b.quota != null && b.quota !== "") { const q = parseInt(b.quota); if (Number.isFinite(q) && q >= 0) patch["Quota recherches"] = P.number(q); }
+      if (b.reseau != null) { await ensureProperty(DB.users, "Réseau", { rich_text: {} }); patch["Réseau"] = P.text(String(b.reseau).slice(0, 100)); }
+      if (b.tarifGroup != null) patch["Grille tarifaire"] = b.tarifGroup ? P.select(String(b.tarifGroup).slice(0, 100)) : { select: null };
+      if (b.fidi_encaisse != null || b.commission != null) {
+        await ensureProperty(DB.users, "FIDI encaisse", { checkbox: {} });
+        await ensureProperty(DB.users, "Commission FIDI %", { number: {} });
+        if (b.fidi_encaisse != null) patch["FIDI encaisse"] = P.checkbox(!!b.fidi_encaisse);
+        if (b.commission != null && b.commission !== "") { const pct = parseFloat(b.commission); if (Number.isFinite(pct) && pct >= 0 && pct <= 100) patch["Commission FIDI %"] = P.number(pct); }
+      }
+      if (b.expire !== undefined) {
+        await ensureProperty(DB.users, "Expire le", { date: {} });
+        patch["Expire le"] = b.expire ? P.date(String(b.expire)) : { date: null };
+      }
+      if (!Object.keys(patch).length) return authResp(400, { error: "Rien à mettre à jour." });
+      await updatePage(page.id, patch);
+      return authResp(200, { ok: true, email, updated: Object.keys(patch) });
+    }
 
     if (action === "set_credits") {
       const v = parseInt(b.credits);

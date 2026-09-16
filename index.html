@@ -5199,8 +5199,9 @@ window.Compte = (function(){
                 '<datalist id="adReseauList"><option value="Sextant France"><option value="Optimmo Dom"><option value="Indépendant"></datalist>'+
               '</div>'+
               '<div class="col-md-3"><label class="form-label small mb-0">Rôle</label>'+
-                '<select class="form-select form-select-sm" id="adRole"><option value="Collaborateur">Collaborateur</option><option value="Administrateur">Administrateur</option><option value="Test">Test (supprimable avec ses factures)</option></select>'+
+                '<select class="form-select form-select-sm" id="adRole" onchange="Compte.adCreateRoleChange()"><option value="Collaborateur">Collaborateur</option><option value="Administrateur">Administrateur</option><option value="Test">Test (supprimable avec ses factures)</option><option value="Éphémère">Éphémère (accès temporaire)</option></select>'+
               '</div>'+
+              '<div class="col-md-3" id="adExpireWrap" style="display:none;"><label class="form-label small mb-0">Expire le</label><input type="date" class="form-control form-control-sm" id="adExpire"></div>'+
               '<div class="col-md-3"><label class="form-label small mb-0">Crédits initiaux</label><input type="number" class="form-control form-control-sm" id="adCredits" placeholder="0"></div>'+
               '<div class="col-md-3"><label class="form-label small mb-0">Essais recherches</label><input type="number" class="form-control form-control-sm" id="adQuota" placeholder="5"></div>'+
               '<div class="col-md-3"><label class="form-label small mb-0">Grille tarifaire</label>'+
@@ -5347,22 +5348,21 @@ window.Compte = (function(){
       const statutBg = u.statut==='Actif' ? 'success' : 'secondary';
       const reseauBadge = u.reseau ? '<span class="badge" style="background:#eaefeb;color:#1f4a3f;font-weight:500;">'+esc(u.reseau)+'</span>' : '<span class="text-muted small">—</span>';
       const tarifBadge = u.tarifGroup ? '<span class="badge" style="background:#f5f1e8;color:#b87333;font-weight:500;">'+esc(u.tarifGroup)+'</span>' : '<span class="text-muted small">Standard</span>';
-      const roleBadge = isAdm ? '<span class="badge bg-dark">Admin</span>' : (u.role==='Test' ? '<span class="badge bg-warning text-dark">Test</span>' : '<span class="badge" style="background:#efe9d9;color:#4a4238;">Collab.</span>');
+      const ephExp = (u.role==='Éphémère' && u.expire) ? ((new Date(u.expire+'T23:59:59') < new Date()) ? ' expiré' : ' →'+esc(u.expire)) : '';
+      const roleBadge = isAdm ? '<span class="badge bg-dark">Admin</span>'
+        : (u.role==='Test' ? '<span class="badge bg-warning text-dark">Test</span>'
+        : (u.role==='Éphémère' ? '<span class="badge bg-info text-dark" title="Accès temporaire'+(u.expire?' — expire le '+esc(u.expire):'')+'">Éphémère'+ephExp+'</span>'
+        : '<span class="badge" style="background:#efe9d9;color:#4a4238;">Collab.</span>'));
       const selfTag = self ? ' <span class="badge bg-info text-dark">vous</span>' : '';
       const illimBadge = u.illimite && !isAdm ? ' <i class="bi bi-infinity" title="Accès illimité" style="color:#b87333;"></i>' : '';
       // Actions contextuelles
       const canDelete = isSA && !self && u.email !== state.superAdmin;
       const canReseau = isSA;
+      // Un seul bouton « Modifier » ouvre la fiche complète du compte (édition globale).
+      // Suppression conservée à part (destructif, super-admin).
       const actions = self ? '<span class="text-muted small">vous</span>' :
         '<div class="d-flex gap-1 justify-content-end flex-wrap">'+
-          (unlimited ? '' : '<button class="btn btn-sm btn-outline-secondary py-0 px-1" onclick="Compte.adminCredit(\''+esc(u.email)+'\')" title="Ajouter des crédits">+ cr.</button>') +
-          (unlimited ? '' : '<button class="btn btn-sm btn-outline-secondary py-0 px-1" onclick="Compte.adminQuota(\''+esc(u.email)+'\','+(u.quota!=null?u.quota:5)+')" title="Modifier essais">essais</button>') +
-          '<button class="btn btn-sm btn-outline-secondary py-0 px-1" onclick="Compte.adminEditNom(\''+esc(u.email)+'\',\''+esc(u.nom||'').replace(/'/g,"\\'")+'\')" title="Modifier le nom du collaborateur"><i class="bi bi-pencil"></i></button>' +
-          '<button class="btn btn-sm btn-outline-'+(u.illimite?'dark':'secondary')+' py-0 px-1" onclick="Compte.adminIllimite(\''+esc(u.email)+'\','+(!u.illimite)+')" title="Basculer « accès illimité » (aucun crédit consommé, ex : partenaires FIDI)">∞</button>' +
-          (canReseau ? '<button class="btn btn-sm btn-outline-secondary py-0 px-1" onclick="Compte.adminReseau(\''+esc(u.email)+'\',\''+esc(u.reseau||'')+'\')" title="Affecter à un réseau / groupe (Sextant, Optimmo Dom…)"><i class="bi bi-tags"></i></button>' : '') +
-          '<button class="btn btn-sm btn-outline-secondary py-0 px-1" onclick="Compte.adminTarifGroup(\''+esc(u.email)+'\',\''+esc(u.tarifGroup||'')+'\')" title="Assigner une grille tarifaire spécifique (Standard, Sextant, Partenaire…)"><i class="bi bi-currency-euro"></i></button>' +
-          '<button class="btn btn-sm btn-outline-'+(u.fidi_encaisse?'success':'secondary')+' py-0 px-1" onclick="Compte.adminCommission(\''+esc(u.email)+'\','+(u.fidi_encaisse||false)+','+(u.commission!=null?u.commission:25)+')" title="Encaissement FIDI + commission % (par défaut 25 %)"><i class="bi bi-bank"></i></button>' +
-          '<button class="btn btn-sm btn-outline-'+(u.statut==='Actif'?'warning':'success')+' py-0 px-1" onclick="Compte.adminToggle(\''+esc(u.email)+'\',\''+(u.statut==='Actif'?'Désactivé':'Actif')+'\')" title="'+(u.statut==='Actif'?'Désactiver l\'accès (empêche la connexion)':'Réactiver l\'accès')+'">'+(u.statut==='Actif'?'Désactiver':'Activer')+'</button>' +
+          '<button class="btn btn-sm btn-primary py-0 px-2" onclick="Compte.openFiche(\''+esc(u.email)+'\')" title="Modifier la fiche complète du compte"><i class="bi bi-pencil-square me-1"></i>Modifier</button>' +
           (canDelete ? '<button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="Compte.adminDelete(\''+esc(u.email)+'\')" title="Supprimer définitivement le compte (super-admin uniquement — archive Notion)"><i class="bi bi-trash"></i></button>' : '') +
         '</div>';
       return '<tr>'+
@@ -5379,6 +5379,7 @@ window.Compte = (function(){
     body.innerHTML = rows || '<tr><td colspan="8" class="text-muted small p-3">Aucun compte trouvé avec ces critères.</td></tr>';
   }
   function openCreateForm(){ document.getElementById('adCreateForm').classList.remove('d-none'); document.getElementById('adEmail').focus(); }
+  function adCreateRoleChange(){ const r=(document.getElementById('adRole')||{}).value; const w=document.getElementById('adExpireWrap'); if(w) w.style.display=(r==='Éphémère')?'':'none'; }
   function closeCreateForm(){ document.getElementById('adCreateForm').classList.add('d-none'); document.getElementById('adMsg').innerHTML=''; }
   function openTarifForm(){ document.getElementById('tfCreateForm').classList.remove('d-none'); document.getElementById('tfNom').focus(); }
   function closeTarifForm(){ document.getElementById('tfCreateForm').classList.add('d-none'); document.getElementById('tfMsg').innerHTML=''; }
@@ -5411,6 +5412,70 @@ window.Compte = (function(){
     if(n === null) return;
     const {ok,data} = await admin('set_nom',{email,nom:n.trim()});
     if(!ok){ alert(data.error||'Erreur'); return; } adminList();
+  }
+
+  // ── Fiche compte complète (bouton « Modifier ») : édition globale en une fois ──
+  function openFiche(email){
+    const u = (_adminUsersCache||[]).find(x=>x.email===email);
+    if(!u){ alert('Compte introuvable.'); return; }
+    const isSA = (state.user && state.user.email) === (state.superAdmin || 'contact@fidiconseil.com');
+    const roleOpts = [['Collaborateur','Collaborateur'],['Test','Test (jetable)'],['Éphémère','Éphémère (accès temporaire)']];
+    if(isSA) roleOpts.splice(1,0,['Administrateur','Administrateur']);
+    const roleSel = roleOpts.map(function(o){ return '<option value="'+o[0]+'"'+(u.role===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('');
+    const old = document.getElementById('ficheModalRoot'); if(old) old.remove();
+    const dlg = document.createElement('div');
+    dlg.id='ficheModalRoot';
+    dlg.style.cssText='position:fixed;inset:0;z-index:30050;background:rgba(0,0,0,.5);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:24px 12px;';
+    dlg.innerHTML =
+      '<div style="background:#fff;border-radius:14px;max-width:560px;width:96%;padding:22px 24px;box-shadow:0 12px 40px rgba(0,0,0,.35);">'+
+        '<div class="d-flex justify-content-between align-items-start mb-2">'+
+          '<h5 class="fw-bold mb-0"><i class="bi bi-person-gear me-1"></i>Fiche compte</h5>'+
+          '<button class="btn-close" onclick="document.getElementById(\'ficheModalRoot\').remove()"></button>'+
+        '</div>'+
+        '<div class="text-muted small mb-3">'+esc(u.email)+'</div>'+
+        '<div class="row g-2">'+
+          '<div class="col-md-7"><label class="form-label small mb-0">Nom / Prénom</label><input id="fcNom" class="form-control form-control-sm" value="'+esc(u.nom||'')+'"></div>'+
+          '<div class="col-md-5"><label class="form-label small mb-0">Rôle</label><select id="fcRole" class="form-select form-select-sm" onchange="Compte.ficheRoleChange()">'+roleSel+'</select></div>'+
+          '<div class="col-md-6" id="fcExpireWrap" style="'+(u.role==='Éphémère'?'':'display:none;')+'"><label class="form-label small mb-0">Expire le (accès temporaire)</label><input id="fcExpire" type="date" class="form-control form-control-sm" value="'+esc(u.expire||'')+'"></div>'+
+          '<div class="col-md-6"><label class="form-label small mb-0">Statut</label><select id="fcStatut" class="form-select form-select-sm"><option value="Actif"'+(u.statut!=='Désactivé'?' selected':'')+'>Actif</option><option value="Désactivé"'+(u.statut==='Désactivé'?' selected':'')+'>Désactivé</option></select></div>'+
+          '<div class="col-md-4"><label class="form-label small mb-0">Crédits</label><input id="fcCredits" type="number" min="0" class="form-control form-control-sm" value="'+(u.credits!=null?u.credits:0)+'"></div>'+
+          '<div class="col-md-4"><label class="form-label small mb-0">Quota essais</label><input id="fcQuota" type="number" min="0" class="form-control form-control-sm" value="'+(u.quota!=null?u.quota:5)+'"></div>'+
+          '<div class="col-md-4 d-flex align-items-end"><div class="form-check"><input id="fcIllimite" type="checkbox" class="form-check-input"'+(u.illimite?' checked':'')+'><label class="form-check-label small" for="fcIllimite">Accès illimité (∞)</label></div></div>'+
+          '<div class="col-md-6"><label class="form-label small mb-0">Réseau</label><input id="fcReseau" class="form-control form-control-sm" value="'+esc(u.reseau||'')+'" placeholder="Optimmo Dom, Sextant…"></div>'+
+          '<div class="col-md-6"><label class="form-label small mb-0">Grille tarifaire</label><input id="fcTarif" class="form-control form-control-sm" value="'+esc(u.tarifGroup||'')+'" placeholder="Standard, Partenaire…"></div>'+
+        '</div>'+
+        '<div class="border rounded p-2 mt-3" style="background:#f5f9f5;">'+
+          '<div class="form-check"><input id="fcEncaisse" type="checkbox" class="form-check-input"'+(u.fidi_encaisse?' checked':'')+'><label class="form-check-label small fw-semibold" for="fcEncaisse">FIDI encaisse pour ce collaborateur (solution de portage)</label></div>'+
+          '<div class="row g-2 align-items-end mt-1"><div class="col-6"><label class="form-label small mb-0">Commission FIDI (%)</label><input id="fcCommission" type="number" min="0" max="100" step="0.5" class="form-control form-control-sm" value="'+(u.commission!=null?u.commission:25)+'"></div>'+
+          '<div class="col-6 small text-muted">FIDI encaisse le règlement, garde la commission, reverse le reste au collaborateur.</div></div>'+
+        '</div>'+
+        '<div id="fcMsg" class="small mt-2"></div>'+
+        '<div class="d-flex justify-content-end gap-2 mt-3">'+
+          '<button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'ficheModalRoot\').remove()">Annuler</button>'+
+          '<button class="btn btn-sm btn-primary" onclick="Compte.ficheSave(\''+esc(email)+'\')"><i class="bi bi-check-lg me-1"></i>Enregistrer</button>'+
+        '</div>'+
+      '</div>';
+    document.body.appendChild(dlg);
+    dlg.addEventListener('click', function(e){ if(e.target===dlg) dlg.remove(); });
+  }
+  function ficheRoleChange(){
+    const r=(document.getElementById('fcRole')||{}).value;
+    const w=document.getElementById('fcExpireWrap'); if(w) w.style.display = (r==='Éphémère')?'':'none';
+  }
+  async function ficheSave(email){
+    const val=function(id){ const el=document.getElementById(id); return el?el.value:undefined; };
+    const chk=function(id){ const el=document.getElementById(id); return el?el.checked:undefined; };
+    const payload={ email:email,
+      nom: val('fcNom'), role: val('fcRole'), statut: val('fcStatut'),
+      credits: val('fcCredits'), quota: val('fcQuota'), illimite: chk('fcIllimite'),
+      reseau: val('fcReseau'), tarifGroup: val('fcTarif'),
+      fidi_encaisse: chk('fcEncaisse'), commission: val('fcCommission'),
+      expire: (val('fcRole')==='Éphémère') ? (val('fcExpire')||'') : '' };
+    const msg=document.getElementById('fcMsg'); if(msg) msg.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Enregistrement…';
+    const {ok,data}=await admin('update_account', payload);
+    if(!ok){ if(msg) msg.innerHTML='<span class="text-danger">'+esc(data.error||'Erreur')+'</span>'; return; }
+    const root=document.getElementById('ficheModalRoot'); if(root) root.remove();
+    adminList();
   }
   async function adminCommission(email, curEncaisse, curPct){
     const enc = confirm('FIDI encaisse-t-il les prestations pour '+email+' ?\n\nOui = FIDI reçoit les paiements et reverse au collaborateur après commission.\nNon = le collaborateur encaisse lui-même.');
@@ -5448,10 +5513,11 @@ window.Compte = (function(){
     const role=document.getElementById('adRole').value;
     const reseau=(document.getElementById('adReseau')||{}).value||'';
     const tarifGroup=(document.getElementById('adTarifGroup')||{}).value||'';
+    const expire=(role==='Éphémère') ? ((document.getElementById('adExpire')||{}).value||'') : '';
     const msg=document.getElementById('adMsg');
     if(!email){ msg.innerHTML='<span class="text-danger">E-mail requis.</span>'; return; }
     if(password && password.length < 8){ msg.innerHTML='<span class="text-danger">Mot de passe manuel : 8 caractères minimum.</span>'; return; }
-    const {ok,data}=await admin('create',Object.assign({email,nom,credits,quota,illimite,role,reseau,tarifGroup}, password?{password}:{}));
+    const {ok,data}=await admin('create',Object.assign({email,nom,credits,quota,illimite,role,reseau,tarifGroup,expire}, password?{password}:{}));
     if(!ok){ msg.innerHTML='<span class="text-danger">'+esc(data.error||'Erreur')+'</span>'; return; }
     if(data.temp_password){
       const pw = data.temp_password;
@@ -5993,9 +6059,9 @@ window.Compte = (function(){
 
   return { open, doLogin, logout, refresh, setCredits, setRecherches, consume, adminCreate, adminCredit, adminToggle,
            adminIllimite, adminQuota, adminDelete, adminReseau, adminTarifGroup, adminRefresh,
-           adminEditNom, adminCommission, loadFactAdmin, factRelance, relanceVia, factDelete, factFicheClient,
+           adminEditNom, adminCommission, openFiche, ficheRoleChange, ficheSave, loadFactAdmin, factRelance, relanceVia, factDelete, factFicheClient,
            openRapportCompta, rcSetMonth, rcSetYear, genRapportCompta,
-           openCreateForm, closeCreateForm, openTarifForm, closeTarifForm, copySignupLink,
+           openCreateForm, closeCreateForm, adCreateRoleChange, openTarifForm, closeTarifForm, copySignupLink,
            loadOffres, chooseOffer, payOffer, offerToggle, offerPrice, bulkRecalc, bulkSyncCumul,
            loadTarifsAdmin, tarifCreate, tarifPrice, tarifToggle, tarifDelete, tarifEditNom, tarifEditCat, tarifEditDesc,
            get state(){ return state; } };
