@@ -777,13 +777,16 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
             </div>
           </div>
           <!-- Bâtiment en ruine / à détruire / très vétuste : moins-value ou plus-value à ajouter manuellement -->
-          <div class="mt-2" style="border-top:1px solid rgba(255,255,255,.18);padding-top:.6rem;">
+          <div class="mt-2 d-flex flex-wrap gap-2 align-items-center" style="border-top:1px solid rgba(255,255,255,.18);padding-top:.6rem;">
             <button type="button" class="btn btn-sm btn-light" style="font-weight:600;" onclick="ruineOpen()">
               <i class="bi bi-bricks me-1"></i>Bâtiment en ruine / à détruire / vétuste…
             </button>
+            <button type="button" class="btn btn-sm btn-warning" style="font-weight:600;" onclick="recapEtudeOpen()" title="Générer un récapitulatif A4 (synthèse, estimation, transactions, constructibilité, carte) à envoyer / imprimer">
+              <i class="bi bi-file-earmark-text me-1"></i>Récapitulatif de l'étude (A4)
+            </button>
             <span id="ruineAppliedTag" class="ms-2 small fw-semibold" style="color:#ffd54f;"></span>
-            <div id="ruinePanel" class="mt-2 d-none"></div>
           </div>
+          <div id="ruinePanel" class="mt-2 d-none" style="clear:both;"></div>
         </div>
       </div>
       <!-- Estimations par type : Maison / Appartement / Terrain -->
@@ -4007,6 +4010,104 @@ function ruineOpen(){
     '</div>';
 }
 
+// ═══ Récapitulatif de l'étude — 1 page A4 (synthèse, estimation, transactions,
+// constructibilité, carte). Imprimable / PDF + partage WhatsApp / e-mail (texte). ═══
+function _rcTxt(id){ var el=document.getElementById(id); return el ? (el.textContent||'').trim() : ''; }
+function recapText(){
+  var d=window.__fidiData||{}, loc=d.localisation||{}, gpu=window.__fidiGpu||{}, zone=gpu.zone||{}, parc=gpu.parcelle||{};
+  var adr = loc.label || [loc.name, loc.postcode, loc.city].filter(Boolean).join(' ') || '';
+  var med=_rcTxt('est-med'), mn=_rcTxt('est-min'), mx=_rcTxt('est-max');
+  var zon = zone.libelle ? (zone.libelle+(zone.typezone?' ('+zone.typezone+')':'')) : (zone.typezone||'non déterminé');
+  var cont = parc.contenance ? Number(parc.contenance).toLocaleString('fr-FR')+' m²' : '';
+  var lignes = [
+    'FIDI · Étude de marché — Récapitulatif',
+    adr,
+    med ? 'Estimation vénale : '+med+' (fourchette '+mn+' – '+mx+')' : '',
+    zon ? 'Zonage : '+zon : '',
+    cont ? 'Surface cadastrale : '+cont : '',
+    'Document indicatif — ni notaire ni expert.'
+  ].filter(Boolean);
+  return lignes.join('\n');
+}
+function recapBuildHTML(){
+  var d=window.__fidiData||{}, loc=d.localisation||{}, gpu=window.__fidiGpu||{}, zone=gpu.zone||{}, parc=gpu.parcelle||{};
+  var esc=function(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+  var adr = loc.label || [loc.name, loc.postcode, loc.city].filter(Boolean).join(' ') || '[adresse]';
+  var med=_rcTxt('est-med'), mn=_rcTxt('est-min'), mx=_rcTxt('est-max'), base=_rcTxt('est-base');
+  var synth = _rcTxt('syntheseBody');
+  var zon = zone.libelle ? (esc(zone.libelle)+(zone.typezone?' <span style="color:#667">('+esc(zone.typezone)+')</span>':'')) : esc(zone.typezone||'Zonage non déterminé (RNU)');
+  var cont = parc.contenance ? Number(parc.contenance).toLocaleString('fr-FR')+' m²' : '—';
+  var refcad = [parc.section, parc.numero].filter(Boolean).join(' ') || '—';
+  // Transactions (échantillon)
+  var tx = (window.transData||[]).slice(0,6).map(function(t){
+    var a = t.adresse || t.commune || t.nom_commune || '';
+    var s = t.surface || t.surface_reelle_bati || t.surf || '';
+    var pm2 = t.prix_m2 || (t.valeur && s ? Math.round(t.valeur/s) : '');
+    var pr = t.valeur || t.prix || t.valeur_fonciere || '';
+    var an = t.annee || (t.date ? String(t.date).slice(0,4) : '');
+    return '<tr><td>'+esc(a)+'</td><td style="text-align:right">'+(s?esc(s)+' m²':'—')+'</td><td style="text-align:right">'+(pr?Number(pr).toLocaleString('fr-FR')+' €':'—')+'</td><td style="text-align:right">'+(pm2?Number(pm2).toLocaleString('fr-FR')+' €/m²':'—')+'</td><td style="text-align:right">'+esc(an)+'</td></tr>';
+  }).join('') || '<tr><td colspan="5" style="color:#888">Transactions non chargées</td></tr>';
+  var mapHtml = '';
+  try { if(typeof buildPrintMapHTML==='function' && loc.lat && loc.lon) mapHtml = buildPrintMapHTML(loc.lat, loc.lon, gpu.parcelleGeom, 720, 250); } catch(e){}
+  // Fenêtre print = about:blank : les URLs root-relatives ne se résolvent pas → on absolutise.
+  if(mapHtml) mapHtml = mapHtml.replace(/(src|href)="\/api\//g, '$1="'+location.origin+'/api/');
+  var today = new Date().toLocaleDateString('fr-FR');
+  return '<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Récapitulatif — '+esc(adr)+'</title>'+
+    '<style>'+
+      '@page{size:A4;margin:12mm}*{box-sizing:border-box}body{font-family:Segoe UI,Arial,sans-serif;color:#1a2233;margin:0;font-size:11px;line-height:1.4}'+
+      '.tb{display:flex;gap:8px;padding:8px 12px;background:#12294d;color:#fff;align-items:center;flex-wrap:wrap}'+
+      '.tb button,.tb a{font:inherit;font-size:12px;font-weight:600;border:none;border-radius:6px;padding:7px 12px;cursor:pointer;text-decoration:none}'+
+      '.tb .b1{background:#e6b53d;color:#12294d}.tb .b2{background:#25D366;color:#fff}.tb .b3{background:#fff;color:#12294d}'+
+      '@media print{.tb{display:none}}'+
+      '.pg{max-width:190mm;margin:0 auto;padding:6mm}'+
+      'h1{font-size:16px;margin:0}h2{font-size:12px;margin:10px 0 4px;color:#12294d;border-bottom:1px solid #dbe2ec;padding-bottom:2px}'+
+      '.hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #12294d;padding-bottom:6px}'+
+      '.logo{font-weight:800;color:#12294d;font-size:18px}.logo span{color:#e6b53d}'+
+      '.est{display:flex;gap:8px;margin:8px 0}.est .c{flex:1;border:1px solid #dbe2ec;border-radius:8px;padding:8px;text-align:center}'+
+      '.est .big{font-size:18px;font-weight:800;color:#12294d}.est .lbl{font-size:9px;color:#667;text-transform:uppercase;letter-spacing:.04em}'+
+      '.cols{display:flex;gap:10px}.cols>div{flex:1}'+
+      'table{width:100%;border-collapse:collapse;font-size:10px}th,td{padding:3px 5px;border-bottom:1px solid #eef1f5;text-align:left}th{color:#667;font-size:8.5px;text-transform:uppercase}'+
+      '.kv{display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px dashed #e6ebf2}.kv b{font-weight:600}'+
+      '.foot{margin-top:8px;font-size:8.5px;color:#8a94a3;border-top:1px solid #dbe2ec;padding-top:4px}'+
+      'img{max-width:100%}'+
+    '</style></head><body>'+
+    '<div class="tb">'+
+      '<button class="b1" onclick="window.print()">🖨 Imprimer / PDF</button>'+
+      '<a class="b2" id="rcWa" target="_blank">WhatsApp</a>'+
+      '<a class="b3" id="rcMail">E-mail</a>'+
+      '<span style="opacity:.8;font-size:11px;">Astuce : « Imprimer » → « Enregistrer en PDF » pour joindre le PDF.</span>'+
+    '</div>'+
+    '<div class="pg">'+
+      '<div class="hd"><div><h1>Étude de marché — Récapitulatif</h1><div style="color:#445">'+esc(adr)+'</div></div><div style="text-align:right"><div class="logo">FIDI<span>.</span></div><div style="font-size:9px;color:#667">OPTIMMO DOM · '+today+'</div></div></div>'+
+      '<h2>Estimation vénale du bien</h2>'+
+      '<div class="est"><div class="c"><div class="lbl">Borne basse</div><div class="big">'+(mn||'—')+'</div></div>'+
+        '<div class="c" style="background:#eef3fb"><div class="lbl">Valeur médiane</div><div class="big">'+(med||'—')+'</div></div>'+
+        '<div class="c"><div class="lbl">Borne haute</div><div class="big">'+(mx||'—')+'</div></div></div>'+
+      (base?'<div style="font-size:9.5px;color:#667">'+esc(base)+'</div>':'')+
+      (synth?'<h2>Synthèse de marché</h2><div style="font-size:10.5px">'+esc(synth)+'</div>':'')+
+      '<div class="cols">'+
+        '<div><h2>Transactions enregistrées (DVF)</h2><table><thead><tr><th>Bien</th><th style="text-align:right">Surf.</th><th style="text-align:right">Prix</th><th style="text-align:right">€/m²</th><th style="text-align:right">Année</th></tr></thead><tbody>'+tx+'</tbody></table></div>'+
+        '<div style="max-width:38%"><h2>Constructibilité / cadastre</h2>'+
+          '<div class="kv"><span>Zonage PLU</span><b>'+zon+'</b></div>'+
+          '<div class="kv"><span>Référence cadastrale</span><b>'+esc(refcad)+'</b></div>'+
+          '<div class="kv"><span>Surface (cadastre)</span><b>'+esc(cont)+'</b></div>'+
+          '<div style="font-size:8.5px;color:#8a94a3;margin-top:4px">Règles exactes au règlement écrit du PLU.</div>'+
+        '</div>'+
+      '</div>'+
+      (mapHtml?'<h2>Localisation · Cadastre &amp; Urbanisme</h2><div>'+mapHtml+'</div>':'')+
+      '<div class="foot">Document indicatif établi par OPTIMMO DOM (FIDI Conseil) à partir de données publiques (DVF, GPU/IGN, Géorisques). <b>Ni un avis notarié ni une expertise réglementée.</b> Valeurs à confirmer.</div>'+
+    '</div>'+
+    '<script>(function(){var t='+JSON.stringify(recapText())+';var a=document.getElementById("rcWa");if(a)a.href="https://wa.me/?text="+encodeURIComponent(t);var m=document.getElementById("rcMail");if(m)m.href="mailto:?subject="+encodeURIComponent("Étude de marché — Récapitulatif")+"&body="+encodeURIComponent(t);})();<\/script>'+
+    '</body></html>';
+}
+function recapEtudeOpen(){
+  if(!window.__fidiData){ alert('Lancez une analyse avant de générer le récapitulatif.'); return; }
+  var html = recapBuildHTML();
+  var w = window.open('', '_blank');
+  if(!w){ alert('Fenêtre bloquée. Autorisez les pop-ups pour ce site.'); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+}
+
 // ═══ Décote surfacique PROMOTEUR — tarification professionnelle ══════════════
 // Même logique que la décote particulier, mais appliquée au niveau d'un opérateur
 // (promoteur, aménageur, développeur foncier). Un professionnel achète toujours
@@ -5169,7 +5270,7 @@ window.Compte = (function(){
         '<li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabSolde">Mon solde</button></li>'+
         '<li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabOffres" onclick="Compte.loadOffres()">Offres & crédits</button></li>'+
         (admin ? '<li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabAdmin" title="Gestion des comptes et de la grille tarifaire">Administration</button></li>' : '')+
-        (admin ? '<li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabFactAdmin" onclick="Compte.loadFactAdmin()" title="Suivi des paiements encaissés par FIDI + commissions dues aux collaborateurs">Facturation FIDI</button></li>' : '')+
+        (admin ? '<li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabFactAdmin" onclick="Compte.loadFactAdmin()" title="Suivi des règlements + commissions (facturation OPTIMMO DOM)">Facturation</button></li>' : '')+
       '</ul>'+
       '<div class="tab-content">'+
         '<div class="tab-pane fade show active" id="tabIdent">'+
@@ -5268,7 +5369,7 @@ window.Compte = (function(){
         // ─── Onglet Facturation FIDI (encaissement + commissions) ───
         (admin ? '<div class="tab-pane fade" id="tabFactAdmin">'+
           '<div class="d-flex flex-wrap gap-2 align-items-center mb-3 pb-2 border-bottom">'+
-            '<div class="fw-bold" style="font-size:1.05rem;color:#1f1a14;"><i class="bi bi-bank2 me-2" style="color:#b87333;"></i>Facturation FIDI — encaissement pour compte de</div>'+
+            '<div class="fw-bold" style="font-size:1.05rem;color:#1f1a14;"><i class="bi bi-bank2 me-2" style="color:#b87333;"></i>Facturation — encaissement pour compte de (OPTIMMO DOM)</div>'+
           '</div>'+
           '<div class="alert alert-light border small mb-3" style="background:#f5f1e8;border-left:3px solid #b87333!important;">'+
             '<div class="fw-semibold mb-1">Comment ça marche</div>'+
@@ -5293,6 +5394,17 @@ window.Compte = (function(){
             '<button class="btn btn-sm btn-outline-info" onclick="Compte.loadFactAdmin()" title="Recharger la liste depuis Notion"><i class="bi bi-arrow-clockwise"></i></button>'+
           '</div>'+
           '<div id="factStatsBox" class="row g-2 mb-2"></div>'+
+          // ─── Alertes règlements : retard + config seuils (relances gérées par l'admin) ───
+          '<div class="border rounded p-2 mb-2" style="background:#fbf7ef;border-left:3px solid #b87333!important;">'+
+            '<div class="d-flex flex-wrap gap-2 align-items-center">'+
+              '<span class="fw-semibold small"><i class="bi bi-bell me-1" style="color:#b87333;"></i>Alertes règlements — me prévenir dès :</span>'+
+              '<span class="small">Rappel J+<input type="number" id="factSeuilA" min="1" class="form-control form-control-sm d-inline-block" style="width:64px;" value="3"></span>'+
+              '<span class="small">Relance J+<input type="number" id="factSeuilB" min="1" class="form-control form-control-sm d-inline-block" style="width:64px;" value="7"></span>'+
+              '<button class="btn btn-sm btn-outline-secondary" onclick="Compte.factSaveSeuils()">Appliquer</button>'+
+              '<span class="text-muted small">Les relances restent manuelles (bouton Relancer). Auto-relance cloud : voir AUTORELANCE_ENABLED.</span>'+
+            '</div>'+
+          '</div>'+
+          '<div id="factAlertsBox" class="mb-2"></div>'+
           '<div class="table-responsive"><table class="table table-sm align-middle" style="font-size:.85rem;">'+
             '<thead style="background:#efe9d9;color:#4a4238;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;">'+
               '<tr><th>Réf</th><th>Date</th><th>Client</th><th>Type</th><th class="text-end">TTC</th><th class="text-center" title="Nombre de relances envoyées">Relances</th><th class="text-end" title="Commission FIDI si mode encaissement">Comm.</th><th class="text-end" title="À reverser au collaborateur">À reverser</th><th>Statut</th><th class="text-end">Actions</th></tr>'+
@@ -5771,6 +5883,47 @@ window.Compte = (function(){
   }
 
   document.addEventListener('DOMContentLoaded', refresh);
+  // Seuils d'alerte règlement (mémorisés). A = rappel, B = relance.
+  function factSeuils(){
+    var a=3, b=7;
+    try { a=parseInt(localStorage.getItem('fidi:relance:seuilA'))||3; b=parseInt(localStorage.getItem('fidi:relance:seuilB'))||7; } catch(e){}
+    return { a:a, b:b };
+  }
+  function factSaveSeuils(){
+    var a=parseInt((document.getElementById('factSeuilA')||{}).value)||3;
+    var b=parseInt((document.getElementById('factSeuilB')||{}).value)||7;
+    try { localStorage.setItem('fidi:relance:seuilA',a); localStorage.setItem('fidi:relance:seuilB',b); } catch(e){}
+    renderFactAlerts(window._factCache||[]);
+  }
+  function factAgeJours(dateStr){
+    if(!dateStr) return null; var d=new Date(dateStr); if(isNaN(d.getTime())) return null;
+    return Math.floor((Date.now()-d.getTime())/86400000);
+  }
+  function renderFactAlerts(items){
+    var box=document.getElementById('factAlertsBox'); if(!box) return;
+    var s=factSeuils();
+    var impayes=(items||[]).filter(function(f){ return f.statut!=='Payée' && f.statut!=='Annulée'; });
+    var retard=impayes.map(function(f){ return Object.assign({}, f, {jours:factAgeJours(f.date)}); })
+                      .filter(function(f){ return f.jours!=null && f.jours>=s.a; })
+                      .sort(function(x,y){ return (y.jours||0)-(x.jours||0); });
+    var critiques=retard.filter(function(f){ return f.jours>=s.b; }).length;
+    var payes=(items||[]).filter(function(f){ return f.statut==='Payée'; }).length;
+    if(!retard.length){
+      box.innerHTML='<div class="alert alert-success py-2 small mb-0"><i class="bi bi-check-circle me-1"></i>Aucun règlement en retard au-delà de J+'+s.a+'. '+payes+' facture(s) payée(s) dans la liste.</div>';
+      return;
+    }
+    var rows=retard.slice(0,8).map(function(f){
+      var lvl = f.jours>=s.b ? 'danger' : 'warning';
+      return '<div class="d-flex justify-content-between align-items-center py-1 border-bottom" style="border-color:#eadfce!important;">'+
+        '<div class="small"><span class="badge bg-'+lvl+(lvl==='warning'?' text-dark':'')+'">J+'+f.jours+'</span> '+esc(f.client||f.ref||'')+' <span class="text-muted">· '+esc(f.ref||'')+' · '+(Number(f.montant)||0).toLocaleString('fr-FR')+' €</span></div>'+
+        '<button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="relancerFacture((window._factCache||[]).find(function(x){return x.ref===\''+esc(String(f.ref).replace(/'/g,"")) +'\';}), function(){Compte.loadFactAdmin();})"><i class="bi bi-bell"></i> Relancer</button>'+
+      '</div>';
+    }).join('');
+    box.innerHTML='<div class="alert alert-warning py-2 mb-0" style="background:#fdf3e3;border-color:#e6c68a;">'+
+      '<div class="fw-semibold small mb-1"><i class="bi bi-exclamation-triangle me-1"></i>'+retard.length+' règlement(s) en retard ≥ J+'+s.a+(critiques?' · '+critiques+' critique(s) ≥ J+'+s.b:'')+'</div>'+
+      rows+'</div>';
+  }
+
   async function loadFactAdmin(filter){
     // 1. Collaborateurs FIDI encaisse (depuis cache admin)
     const bodyC = document.getElementById('factCollabBody');
@@ -5808,6 +5961,13 @@ window.Compte = (function(){
       const d = await r.json();
       if(!r.ok){ body.innerHTML = '<tr><td colspan="10" class="text-danger p-3">'+esc(d.error||'Erreur')+'</td></tr>'; return; }
       window._factCache = d.items || []; // pour le rapport comptable
+      // Alertes règlements : seuils mémorisés + encart retard
+      try {
+        const sl = factSeuils();
+        const iA=document.getElementById('factSeuilA'); if(iA) iA.value=sl.a;
+        const iB=document.getElementById('factSeuilB'); if(iB) iB.value=sl.b;
+        renderFactAlerts(d.items||[]);
+      } catch(e){}
       // Stats top
       const s = d.stats || {};
       const statsBox = document.getElementById('factStatsBox');
@@ -6080,7 +6240,7 @@ window.Compte = (function(){
 
   return { open, doLogin, logout, refresh, setCredits, setRecherches, consume, adminCreate, adminCredit, adminToggle,
            adminIllimite, adminQuota, adminDelete, adminReseau, adminTarifGroup, adminRefresh,
-           adminEditNom, adminCommission, openFiche, ficheRoleChange, ficheSave, loadFactAdmin, factRelance, relanceVia, factDelete, factFicheClient,
+           adminEditNom, adminCommission, openFiche, ficheRoleChange, ficheSave, loadFactAdmin, factSaveSeuils, factRelance, relanceVia, factDelete, factFicheClient,
            openRapportCompta, rcSetMonth, rcSetYear, genRapportCompta,
            openCreateForm, closeCreateForm, adCreateRoleChange, openTarifForm, closeTarifForm, copySignupLink,
            loadOffres, chooseOffer, payOffer, offerToggle, offerPrice, bulkRecalc, bulkSyncCumul,
