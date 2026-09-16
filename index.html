@@ -4354,6 +4354,9 @@ function emailComposeUrl(service, to, subject, body){
 window.relancerFacture = function(f, onDone){
   var origin = location.origin;
   var lien = f.delivery_url || (f.jeton ? origin+'/l/'+f.jeton : '');
+  // Force le module de paiement carte/PayPal même si la facture a été créée
+  // sans « paiement requis » (envoi immédiat) — sinon le client ne voit que la facture.
+  if(lien) lien += (lien.indexOf('?')>=0 ? '&' : '?') + 'pay=1';
   var montant = Number(f.montant||0).toLocaleString('fr-FR');
   var subject = 'Rappel — Facture '+f.ref+' en attente de règlement';
   var msg = 'Bonjour,\n\nSauf erreur de notre part, la facture '+f.ref+' d\'un montant de '+montant+' € TTC reste à régler.'
@@ -4371,7 +4374,9 @@ window.relancerFacture = function(f, onDone){
   dlg.innerHTML =
     '<div style="background:#fff;border-radius:12px;max-width:470px;width:92%;padding:22px 24px;box-shadow:0 12px 40px rgba(0,0,0,.35);font-family:inherit;">'+
       '<h5 style="font-weight:700;margin:0 0 4px;"><i class="bi bi-bell me-1" style="color:#b03a2e;"></i>Relancer '+esc2(f.client||f.ref)+'</h5>'+
-      '<p style="font-size:.82rem;color:#667;margin:0 0 14px;">Facture '+esc2(f.ref)+' · '+montant+' € · '+(f.relances||0)+' relance(s) déjà envoyée(s)'+(lien?' · <span style="color:#198754;">paiement en ligne inclus</span>':'')+'</p>'+
+      '<p style="font-size:.82rem;color:#667;margin:0 0 8px;">Facture '+esc2(f.ref)+' · '+montant+' € · '+(f.relances||0)+' relance(s) déjà envoyée(s)'+(lien?' · <span style="color:#198754;">paiement CB / PayPal inclus</span>':'')+'</p>'+
+      // ── Test du lien de paiement (vérifie que le module CB apparaît avant d'envoyer) ───
+      (lien ? '<a href="'+esc2(lien)+'" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm w-100 mb-2"><i class="bi bi-box-arrow-up-right me-1"></i>Tester le lien de paiement (ouvre la page carte / PayPal)</a>' : '')+
       // ── WhatsApp : indicatif + numéro éditables ───
       '<div style="border:1px solid #dee2e6;border-radius:8px;padding:10px;margin-bottom:8px;">'+
         '<div style="font-size:.8rem;font-weight:600;margin-bottom:6px;"><i class="bi bi-whatsapp me-1" style="color:#25D366;"></i>WhatsApp — numéro du client :</div>'+
@@ -5825,7 +5830,8 @@ window.Compte = (function(){
   function factRelance(ref){
     const f = (window._factCache||[]).find(x=>x.ref===ref) || {};
     const origin = location.origin;
-    const lien = f.jeton ? origin+'/l/'+f.jeton : (f.delivery_url||'');
+    let lien = f.jeton ? origin+'/l/'+f.jeton : (f.delivery_url||'');
+    if(lien) lien += (lien.indexOf('?')>=0?'&':'?')+'pay=1'; // force le module CB/PayPal (facture impayée)
     const msg = 'Bonjour,\n\nSauf erreur de notre part, la facture '+ref+' d\'un montant de '+(f.montant||'').toLocaleString('fr-FR')+' € TTC reste à régler.'
       + (lien ? '\n\nVous pouvez la consulter et la régler ici : '+lien : '')
       + '\n\nNous vous remercions.\nOPTIMMO DOM';

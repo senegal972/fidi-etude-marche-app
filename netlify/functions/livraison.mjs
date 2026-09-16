@@ -64,6 +64,11 @@ export const handler = async (event) => {
     if (m) { try { token = decodeURIComponent(m[1]).trim(); } catch { token = m[1].trim(); } }
   }
   const origin = reqOrigin(event);
+  // Mode « forcer le paiement » : une relance ajoute ?pay=1 pour présenter le
+  // bouton carte/PayPal même si la facture a été créée sans « paiement requis »
+  // (envoi immédiat). Sans effet si la facture est déjà payée.
+  let forcePay = String(q.pay || "") === "1" || String(q.pay || "") === "true";
+  if (!forcePay && /[?&]pay=(1|true)\b/.test(event.rawUrl || "")) forcePay = true;
 
   const shell = (msg) => ({ statusCode: 200, headers: HTML, body: page(
     `<div class="card"><div class="hd"><div class="logo">FIDI<span>.</span></div><div class="sub">Cabinet conseil en immobilier</div></div>
@@ -94,7 +99,9 @@ export const handler = async (event) => {
   const facBtn = `<a class="btn btn-fac" href="${esc(factureHtmlUrl(f, origin))}" target="_blank" id="btnFac">🧾 Voir / imprimer la facture</a>`;
 
   // ── Cas 1 : débloqué (paiement non requis, ou déjà payé) ────────────────────
-  if (f.unlocked) {
+  // Exception : si une relance force le paiement (?pay=1) et que la facture n'est
+  // PAS encore payée, on saute vers le bloc de paiement (Cas 2) pour présenter la CB.
+  if (f.unlocked && !(forcePay && !f.paye)) {
     const statut = f.paye
       ? `<div class="center" style="margin-bottom:6px"><span class="badge b-ok">✓ Payée</span></div>`
       : "";
