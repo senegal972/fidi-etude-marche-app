@@ -115,6 +115,9 @@
 [functions."inpn"]
   timeout = 20
 
+[functions."facture-autorelance"]
+  timeout = 26
+
 [functions."karugeo"]
   timeout = 20
 

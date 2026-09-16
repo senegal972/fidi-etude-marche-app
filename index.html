@@ -4400,7 +4400,9 @@ window.relancerFacture = function(f, onDone){
             '</div>'+
           '</div>'
         : '<button class="btn btn-outline-secondary w-100 mb-2" disabled><i class="bi bi-envelope me-1"></i>E-mail (pas d\'adresse sur la facture)</button>')+
-      '<button class="btn btn-outline-danger w-100" onclick="__relanceSend(\'log\')"><i class="bi bi-journal-check me-1"></i>Enregistrer la relance seulement</button>'+
+      '<button class="btn btn-outline-danger w-100 mb-2" onclick="__relanceSend(\'log\')"><i class="bi bi-journal-check me-1"></i>Enregistrer la relance seulement</button>'+
+      // Renvoi du document (étude / avis) — utile si le client n'a pas reçu ses documents après règlement
+      ((f.email && f.jeton) ? '<button class="btn btn-outline-primary w-100" onclick="__relanceResendDoc()"><i class="bi bi-arrow-repeat me-1"></i>Renvoyer le document par e-mail (lien de remise)</button>' : '')+
       '<div style="text-align:right;margin-top:12px;"><button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'relanceDlgGlobal\').remove()">Fermer</button></div>'+
     '</div>';
   document.body.appendChild(dlg);
@@ -4443,6 +4445,20 @@ window.relancerFacture = function(f, onDone){
     var d = document.getElementById('relanceDlgGlobal'); if(d) d.remove();
     if(canal==='whatsapp' && wa){ window.open('https://wa.me/'+wa+'?text='+encodeURIComponent(msg), '_blank'); }
     await logRelance();
+  };
+  // Renvoi du document (étude / avis) : e-mail automatique avec le lien de remise /l/<jeton>.
+  // Le client y retrouve ses documents (une fois la facture réglée, la page les débloque).
+  window.__relanceResendDoc = async function(){
+    var docLien = origin + '/l/' + f.jeton; // sans ?pay=1 : page de remise / téléchargement
+    try {
+      var r = await fetch('/api/send-email', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ to:f.email, subject:'Vos documents FIDI — '+(f.ref||''), lien:docLien,
+          kind:(f.type||'document'), titre:(f.client||''),
+          message:'Voici le lien pour accéder à vos documents. Si votre facture n\'est pas encore réglée, vous pourrez la régler depuis cette page.' })});
+      var jj = await r.json().catch(function(){return{};});
+      if(r.ok){ if(typeof toast==='function') toast('Document renvoyé par e-mail.'); var dd=document.getElementById('relanceDlgGlobal'); if(dd) dd.remove(); }
+      else alert(jj.error || 'Envoi impossible (RESEND_API_KEY non configuré ?).');
+    } catch(e){ alert('Erreur réseau : '+e.message); }
   };
 };
 
