@@ -1796,7 +1796,7 @@ function renderAleasMq(b, lat, lon){
     var e=b.utm.e, n=b.utm.n, half=260;
     var p={ SERVICE:'WMS',VERSION:'1.3.0',REQUEST:'GetMap',LAYERS:'scan100,zone_reglementaire,parcelles',
       STYLES:'',CRS:'EPSG:32620',BBOX:(e-half)+','+(n-half)+','+(e+half)+','+(n+half),
-      WIDTH:520,HEIGHT:520,FORMAT:'image/png' };
+      WIDTH:360,HEIGHT:360,FORMAT:'image/png' };
     var u='http://mapserv.pprn972.fr/mapserv?map=/var/www/pprn/mapfile/pprn.map&'+Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]);}).join('&');
     mapImg='/api/img-proxy?url='+encodeURIComponent(u);
   }
@@ -1810,11 +1810,11 @@ function renderAleasMq(b, lat, lon){
   wrap.classList.remove('d-none');
   wrap.innerHTML =
     '<div class="fw-bold mb-2" style="color:#1a3a6e;"><i class="bi bi-exclamation-octagon me-1"></i>Localisation et détails des aléas au point indiqué</div>'+
-    '<div class="row g-3">'+
-      '<div class="col-md-6">'+
-        (mapImg ? '<img src="'+mapImg+'" alt="Zonage réglementaire PPRN Martinique" style="width:100%;border:1px solid #cdd6e2;border-radius:8px;" onerror="this.style.display=\'none\'">' : '')+
+    '<div class="row g-3 align-items-start">'+
+      '<div class="col-md-4">'+
+        (mapImg ? '<img src="'+mapImg+'" alt="Zonage réglementaire PPRN Martinique" style="width:100%;max-width:240px;border:1px solid #cdd6e2;border-radius:8px;" onerror="this.style.display=\'none\'">' : '')+
       '</div>'+
-      '<div class="col-md-6">'+
+      '<div class="col-md-8">'+
         '<div class="mb-2">'+zonBadge+'</div>'+
         '<div class="table-responsive"><table class="table table-sm align-middle mb-1" style="font-size:.85rem;">'+
           '<thead style="background:#efe9d9;color:#4a4238;font-size:.7rem;text-transform:uppercase;"><tr><th>Aléa</th><th class="text-center">Niveau au point</th></tr></thead>'+
@@ -4301,7 +4301,7 @@ function recapBuildHTML(){
       '.ruine .rgrid{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:9.5px}.ruine .rgrid>div{display:flex;flex-direction:column}.ruine .rgrid span{color:#8a7a5a;font-size:8px;text-transform:uppercase}'+
       '.ruine .rform{font-size:9.5px;margin:5px 0;color:#334}.ruine .rres{display:flex;justify-content:space-between;align-items:center;border:1.5px solid;border-radius:6px;padding:4px 9px;background:#fff;font-size:13px}.ruine .rres span{font-size:9px;color:#667;text-transform:uppercase}'+
       '.enr{display:flex;flex-wrap:wrap;gap:6px;font-size:9px}.enr>div{flex:1 1 30%;min-width:150px;margin:0!important}.enr .border,.enr .rounded{border:1px solid #dbe2ec!important;border-radius:6px;padding:6px;background:#fafbfc}.enr .badge{font-size:8px;padding:1px 5px}.enr a{color:#12294d}'+
-      '.aleas img{max-width:100%}.aleas .fw-bold{font-weight:700;font-size:11px;color:#1a3a6e}.aleas .small{font-size:8px;color:#667}'+
+      '.aleas img{max-width:240px;width:100%}.aleas .fw-bold{font-weight:700;font-size:11px;color:#1a3a6e}.aleas .small{font-size:8px;color:#667}.aleas .row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start}.aleas .row>div{flex:1;min-width:180px}.aleas .row>div:first-child{flex:0 0 240px;max-width:240px}'+
       '.kv{display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px dashed #e6ebf2}.kv b{font-weight:600}'+
       '.foot{margin-top:8px;font-size:8.5px;color:#8a94a3;border-top:1px solid #dbe2ec;padding-top:4px}'+
       'img{max-width:100%}'+
