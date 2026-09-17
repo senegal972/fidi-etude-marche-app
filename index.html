@@ -600,10 +600,10 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
             <!-- Enrichissement local — Géorisques + ONF + IDG régionales -->
             <div id="enrichLocalWrap" class="mt-3 pt-3 border-top">
               <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
-                <button class="btn btn-sm btn-outline-danger" type="button" onclick="etudeEnrichirLocal()">
+                <button class="btn btn-sm btn-outline-danger" type="button" id="btnEnrich" onclick="etudeEnrichToggle()">
                   <i class="bi bi-shield-exclamation me-1"></i>Enrichir : Géorisques + ONF + IDG régionale
                 </button>
-                <span class="small text-muted">Interroge 3 sources publiques par coordonnées</span>
+                <span class="small text-muted">Actif automatiquement. Cliquez pour masquer (exclure de l'impression).</span>
               </div>
               <div id="enrichLocalOut" class="row g-2"></div>
             </div>
@@ -1734,6 +1734,29 @@ async function exportPdfServeur(){
   }
 }
 
+// Bouton bascule : affiche / masque l'enrichissement (masqué = exclu de l'impression/récap).
+async function etudeEnrichToggle(){
+  var out = document.getElementById('enrichLocalOut'); var btn = document.getElementById('btnEnrich');
+  if(!out) return;
+  var visible = out.style.display !== 'none' && out.children.length > 0;
+  if(visible){
+    out.style.display = 'none'; window.__enrichVisible = false;
+    if(btn) btn.innerHTML = '<i class="bi bi-eye me-1"></i>Afficher l\'enrichissement (Géorisques + ONF + IDG)';
+    return;
+  }
+  out.style.display = ''; window.__enrichVisible = true;
+  if(btn) btn.innerHTML = '<i class="bi bi-eye-slash me-1"></i>Masquer l\'enrichissement (exclure de l\'impression)';
+  if(out.dataset.loaded !== '1' || out.children.length === 0){ await etudeEnrichirLocal(); out.dataset.loaded = '1'; }
+}
+// Auto-activation : lance l'enrichissement dès qu'une analyse est disponible.
+function etudeEnrichAuto(){
+  var d = window.__fidiData; if(!d || !d.localisation || d.localisation.lat==null) return;
+  var out = document.getElementById('enrichLocalOut'); if(!out) return;
+  out.dataset.loaded = ''; out.style.display = ''; window.__enrichVisible = true;
+  var btn = document.getElementById('btnEnrich'); if(btn) btn.innerHTML = '<i class="bi bi-eye-slash me-1"></i>Masquer l\'enrichissement (exclure de l\'impression)';
+  try { etudeEnrichirLocal().then(function(){ out.dataset.loaded='1'; }); } catch(e){}
+}
+
 // ── Enrichissement local (Géorisques + ONF + IDG régionale) ─────────
 async function etudeEnrichirLocal(){
   var d = window.__fidiData; if(!d || !d.localisation){ alert("Lancez une analyse d'étude avant."); return; }
@@ -2493,6 +2516,8 @@ function renderMap(lat, lon, city){
 
   // Récupère zone PLU + référence cadastrale au point analysé (API GPU)
   loadGpuInfo(lat, lon);
+  // Enrichissement (Géorisques + ONF + IDG) automatiquement actif — masquable via le bouton.
+  try { setTimeout(etudeEnrichAuto, 300); } catch(e){}
 }
 
 // Couleurs réglementaires des zones PLU par type
@@ -4062,26 +4087,47 @@ function recapBuildHTML(){
   if(mapHtml) mapHtml = mapHtml.replace(/(src|href)="\/api\//g, '$1="'+location.origin+'/api/');
   var chartImg = '';
   try { var cv=document.getElementById('transChart'); if(cv && cv.toDataURL) chartImg = cv.toDataURL('image/png'); } catch(e){}
-  // Tableau complet des transactions (rayon de l'étude) — tel qu'affiché aujourd'hui.
+  // Enrichissement (Géorisques + ONF + IDG) — inclus seulement s'il est affiché à l'écran.
+  var enrichHtml = '';
+  try {
+    var _eo=document.getElementById('enrichLocalOut');
+    if(_eo && _eo.style.display!=='none' && _eo.children.length && window.__enrichVisible!==false){
+      enrichHtml=_eo.innerHTML.replace(/(src|href)="\/api\//g,'$1="'+location.origin+'/api/');
+    }
+  } catch(e){}
+  // Tableau des transactions (rayon de l'étude) — tel qu'affiché, LIMITÉ aux 10 premières lignes.
   var txTableFull = '';
-  try { var _tb=document.getElementById('transProchesBody'); var _tbl=_tb&&_tb.closest('table'); if(_tbl && _tb.children.length) txTableFull=_tbl.outerHTML; } catch(e){}
+  try {
+    var _tb=document.getElementById('transProchesBody'); var _tbl=_tb&&_tb.closest('table');
+    if(_tbl && _tb.children.length){
+      var _clone=_tbl.cloneNode(true); var _tb2=_clone.querySelector('tbody');
+      if(_tb2){ Array.prototype.slice.call(_tb2.querySelectorAll('tr')).slice(10).forEach(function(r){ r.remove(); }); }
+      txTableFull=_clone.outerHTML;
+    }
+  } catch(e){}
   // Récap du calcul « bâtiment ruine / à détruire / vétuste » (si renseigné).
   var ruineTbl = '';
   var rl = window.__ruineLast;
   if(rl && rl.surf>0){
-    var modeLbl = rl.mode==='demo' ? 'À démolir — moins-value' : (rl.mode==='recup' ? 'Gros œuvre récupérable — plus-value' : 'Bâti vétuste résiduel — plus-value');
-    var tauxLbl = rl.mode==='demo' ? 'Coût démolition' : (rl.mode==='recup' ? 'Valeur récupération' : 'Prix bâti neuf');
+    var modeLbl = rl.mode==='demo' ? 'À démolir' : (rl.mode==='recup' ? 'Gros œuvre récupérable' : 'Bâti vétuste résiduel');
+    var tauxLbl = rl.mode==='demo' ? 'Coût de démolition' : (rl.mode==='recup' ? 'Valeur de récupération' : 'Prix du bâti neuf');
     var signe = rl.delta<0 ? 'Moins-value' : 'Plus-value';
-    ruineTbl = '<h2>Bâtiment en ruine / à détruire / vétuste</h2>'+
-      '<table style="max-width:420px"><tbody>'+
-        '<tr><td>Cas retenu</td><td style="text-align:right"><b>'+esc(modeLbl)+'</b></td></tr>'+
-        '<tr><td>Surface bâtie</td><td style="text-align:right">'+Number(rl.surf).toLocaleString('fr-FR')+' m²</td></tr>'+
-        '<tr><td>'+esc(tauxLbl)+'</td><td style="text-align:right">'+Number(rl.taux).toLocaleString('fr-FR')+' €/m²</td></tr>'+
-        (rl.vet!=null ? '<tr><td>Vétusté appliquée</td><td style="text-align:right">'+rl.vet+' %</td></tr>' : '')+
-        '<tr style="background:#f4f7f4"><td><b>'+signe+'</b></td><td style="text-align:right"><b style="color:'+(rl.delta<0?'#b02a37':'#198754')+'">'+(rl.delta<0?'−':'+')+Number(Math.abs(rl.delta)).toLocaleString('fr-FR')+' €</b></td></tr>'+
-        '<tr><td>Intégré à l\'estimation</td><td style="text-align:right">'+(rl.applied?'Oui':'Non (calcul indicatif)')+'</td></tr>'+
-      '</tbody></table>'+
-      '<div style="font-size:8px;color:#8a94a3">Barèmes indicatifs (démolition 100–250 €/m², gros œuvre ≈ 40–50 % du neuf). À dire d\'expert / devis.</div>';
+    var coul = rl.delta<0 ? '#b02a37' : '#198754';
+    var formule = Number(rl.surf).toLocaleString('fr-FR')+' m² × '+Number(rl.taux).toLocaleString('fr-FR')+' €/m²'+
+      (rl.vet!=null ? ' × (1 − '+rl.vet+' %)' : '')+' = '+(rl.delta<0?'−':'+')+Number(Math.abs(rl.delta)).toLocaleString('fr-FR')+' €';
+    ruineTbl = '<div class="ruine">'+
+      '<div class="rh">🏚 Valeur du bâti existant — '+esc(modeLbl)+'</div>'+
+      '<div class="rgrid">'+
+        '<div><span>Cas retenu</span><b>'+esc(modeLbl)+'</b></div>'+
+        '<div><span>Surface bâtie</span><b>'+Number(rl.surf).toLocaleString('fr-FR')+' m²</b></div>'+
+        '<div><span>'+esc(tauxLbl)+'</span><b>'+Number(rl.taux).toLocaleString('fr-FR')+' €/m²</b></div>'+
+        (rl.vet!=null ? '<div><span>Vétusté</span><b>'+rl.vet+' %</b></div>' : '')+
+        '<div><span>Intégré à l\'estimation</span><b>'+(rl.applied?'Oui':'Non (indicatif)')+'</b></div>'+
+      '</div>'+
+      '<div class="rform">Calcul : <b>'+esc(formule)+'</b></div>'+
+      '<div class="rres" style="border-color:'+coul+'"><span>'+signe+' retenue</span><b style="color:'+coul+'">'+(rl.delta<0?'−':'+')+Number(Math.abs(rl.delta)).toLocaleString('fr-FR')+' €</b></div>'+
+      '<div style="font-size:8px;color:#8a94a3;margin-top:2px">Barèmes indicatifs (démolition 100–250 €/m², gros œuvre ≈ 40–50 % du neuf ; majoration DOM). À dire d\'expert / devis.</div>'+
+    '</div>';
   }
   var today = new Date().toLocaleDateString('fr-FR');
   return '<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Récapitulatif — '+esc(adr)+'</title>'+
@@ -4100,6 +4146,11 @@ function recapBuildHTML(){
       '.cols{display:flex;gap:10px}.cols>div{flex:1}'+
       'table{width:100%;border-collapse:collapse;font-size:9.5px}th,td{padding:2px 4px;border-bottom:1px solid #eef1f5;text-align:left}th{color:#667;font-size:8px;text-transform:uppercase}td.adr{font-size:8.5px;color:#556;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'+
       '.txfull table{font-size:8.5px}.txfull th,.txfull td{padding:1.5px 4px}.txfull th i,.txfull button,.txfull .btn{display:none!important}.txfull .badge{padding:1px 4px;font-size:8px}'+
+      '.ruine{border:1px solid #e6c68a;background:#fbf7ef;border-radius:8px;padding:8px 10px;margin:8px 0}'+
+      '.ruine .rh{font-weight:700;color:#8a5a1c;font-size:11px;margin-bottom:5px}'+
+      '.ruine .rgrid{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:9.5px}.ruine .rgrid>div{display:flex;flex-direction:column}.ruine .rgrid span{color:#8a7a5a;font-size:8px;text-transform:uppercase}'+
+      '.ruine .rform{font-size:9.5px;margin:5px 0;color:#334}.ruine .rres{display:flex;justify-content:space-between;align-items:center;border:1.5px solid;border-radius:6px;padding:4px 9px;background:#fff;font-size:13px}.ruine .rres span{font-size:9px;color:#667;text-transform:uppercase}'+
+      '.enr{display:flex;flex-wrap:wrap;gap:6px;font-size:9px}.enr>div{flex:1 1 30%;min-width:150px;margin:0!important}.enr .border,.enr .rounded{border:1px solid #dbe2ec!important;border-radius:6px;padding:6px;background:#fafbfc}.enr .badge{font-size:8px;padding:1px 5px}.enr a{color:#12294d}'+
       '.kv{display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px dashed #e6ebf2}.kv b{font-weight:600}'+
       '.foot{margin-top:8px;font-size:8.5px;color:#8a94a3;border-top:1px solid #dbe2ec;padding-top:4px}'+
       'img{max-width:100%}'+
@@ -4128,9 +4179,10 @@ function recapBuildHTML(){
         '<div>'+(chartImg?'<h2>Volume de transactions / an (DVF)</h2><img src="'+chartImg+'" style="width:100%;border:1px solid #dbe2ec;border-radius:6px">':'<div style="color:#8a94a3;font-size:9px;margin-top:20px">Graphe de volume indisponible (relancez l\'analyse).</div>')+'</div>'+
       '</div>'+
       // Tableau des transactions enregistrées SOUS les deux blocs (tel qu\'affiché dans l\'étude, rayon 1 km)
-      '<h2>Transactions enregistrées (rayon d\'analyse)</h2>'+
+      '<h2>Transactions enregistrées — 10 plus proches (rayon d\'analyse)</h2>'+
       (txTableFull ? '<div class="txfull">'+txTableFull+'</div>'
         : '<table><thead><tr><th>Date</th><th>Type</th><th style="text-align:right">Surf.</th><th style="text-align:right">Prix</th><th style="text-align:right">€/m²</th><th style="text-align:right">Dist.</th><th>Adresse</th></tr></thead><tbody>'+tx+'</tbody></table>')+
+      (enrichHtml ? '<h2>Enrichissement — risques &amp; couches réglementaires</h2><div class="enr">'+enrichHtml+'</div>' : '')+
       '<div class="foot">Document indicatif établi par OPTIMMO DOM (FIDI Conseil) à partir de données publiques (DVF, GPU/IGN, Géorisques). <b>Ni un avis notarié ni une expertise réglementée.</b> Valeurs à confirmer.</div>'+
     '</div>'+
     '<script>(function(){var t='+JSON.stringify(recapText())+';var a=document.getElementById("rcWa");if(a)a.href="https://wa.me/?text="+encodeURIComponent(t);var m=document.getElementById("rcMail");if(m)m.href="mailto:?subject="+encodeURIComponent("Étude de marché — Récapitulatif")+"&body="+encodeURIComponent(t);})();<\/script>'+
