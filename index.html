@@ -184,6 +184,8 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
   body{background:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
   .navbar-fidi,.search-panel,.btn-print,.btn-pdf,#loading-panel,#init-panel{display:none!important;}
   .modal,.modal-backdrop,#inputDestinataire,#printScaleDialog{display:none!important;}
+  #etudeNoteWrap .form-check{display:none!important;} /* la case à cocher ne s'imprime pas */
+  #etudeNoteWrap.np{display:none!important;}           /* note masquée si « Imprimer » décoché */
   /* Échelle d'impression réglable : préserve la mise en page en la réduisant
      proportionnellement (aucune recomposition), pilotée par --print-scale. */
   #results-panel{zoom:var(--print-scale,1);}
@@ -548,6 +550,18 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
           </ul>
         </div>
       </div>
+    </div>
+
+    <!-- Note / mémo sur l'origine de l'étude (imprimable ou non selon la case) -->
+    <div id="etudeNoteWrap" class="mb-3 np">
+      <div class="d-flex align-items-center gap-2 mb-1 flex-wrap">
+        <label class="small fw-semibold mb-0" style="color:#5c6470;"><i class="bi bi-journal-text me-1"></i>Note / origine de l'étude (mémo)</label>
+        <div class="form-check ms-2 mb-0">
+          <input class="form-check-input" type="checkbox" id="etudeNotePrint" onchange="etudeNoteToggle()">
+          <label class="form-check-label small" for="etudeNotePrint">Imprimer cette note avec l'étude</label>
+        </div>
+      </div>
+      <textarea id="etudeNote" class="form-control form-control-sm" rows="2" placeholder="Ex : étude réalisée à la demande de… · contexte / source du mandat · remarques internes… (mémo)" oninput="etudeNoteSave()"></textarea>
     </div>
 
     <!-- Synthèse narrative -->
@@ -1759,6 +1773,25 @@ function etudeEnrichAuto(){
   try { etudeEnrichirLocal().then(function(){ out.dataset.loaded='1'; }); } catch(e){}
 }
 
+// ── Note / mémo sur l'origine de l'étude (imprimable ou non) ────────────────
+function _noteKey(){
+  try { var ref=(typeof currentEtudeRef==='function'&&currentEtudeRef())||((window.__fidiInputs||{}).adresse)||'default'; return 'fidi:note:'+ref; }
+  catch(e){ return 'fidi:note:default'; }
+}
+function etudeNoteSave(){
+  try { var t=(document.getElementById('etudeNote')||{}).value||''; var p=!!(document.getElementById('etudeNotePrint')||{}).checked;
+    localStorage.setItem(_noteKey(), JSON.stringify({t:t,p:p})); } catch(e){}
+}
+function etudeNoteToggle(){
+  var w=document.getElementById('etudeNoteWrap'); var c=!!(document.getElementById('etudeNotePrint')||{}).checked;
+  if(w) w.classList.toggle('np', !c); etudeNoteSave();
+}
+function etudeNoteLoad(){
+  var ta=document.getElementById('etudeNote'), cb=document.getElementById('etudeNotePrint'), w=document.getElementById('etudeNoteWrap');
+  var st={t:'',p:false}; try { var raw=localStorage.getItem(_noteKey()); if(raw) st=JSON.parse(raw)||st; } catch(e){}
+  if(ta) ta.value=st.t||''; if(cb) cb.checked=!!st.p; if(w) w.classList.toggle('np', !st.p);
+}
+
 // ── Carte du zonage réglementaire PPRN au point indiqué (Géorisques / BRGM) ──
 // Superpose le zonage réglementaire PPRN (inondation, mouvement de terrain, feu)
 // au fond IGN + cadastre, centré sur le point analysé.
@@ -2450,6 +2483,7 @@ function renderResults(d){
   document.getElementById('res-titre').textContent   = loc.city || loc.label || '—';
   document.getElementById('res-contexte').textContent = loc.context || '';
   document.getElementById('res-date').textContent     = 'Analyse du ' + (d.generated_at || '');
+  try { etudeNoteLoad(); } catch(e){}  // charge la note/mémo de cette étude (si déjà saisie)
 
   // Score
   renderScore(sc);
@@ -4185,6 +4219,8 @@ function recapBuildHTML(){
   var adr = loc.label || [loc.name, loc.postcode, loc.city].filter(Boolean).join(' ') || '[adresse]';
   var med=_rcTxt('est-med'), mn=_rcTxt('est-min'), mx=_rcTxt('est-max'), base=_rcTxt('est-base');
   var synth = _rcTxt('syntheseBody');
+  // Note / mémo — incluse seulement si la case « Imprimer cette note » est cochée.
+  var noteTxt=''; try { var _nt=document.getElementById('etudeNote'), _np=document.getElementById('etudeNotePrint'); if(_nt&&_np&&_np.checked&&(_nt.value||'').trim()) noteTxt=_nt.value.trim(); } catch(e){}
   var zon = zone.libelle ? (esc(zone.libelle)+(zone.typezone?' <span style="color:#667">('+esc(zone.typezone)+')</span>':'')) : esc(zone.typezone||'Zonage non déterminé (RNU)');
   var cont = parc.contenance ? Number(parc.contenance).toLocaleString('fr-FR')+' m²' : '—';
   var refcad = [parc.section, parc.numero].filter(Boolean).join(' ') || '—';
@@ -4301,6 +4337,7 @@ function recapBuildHTML(){
       '.ruine .rgrid{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:9.5px}.ruine .rgrid>div{display:flex;flex-direction:column}.ruine .rgrid span{color:#8a7a5a;font-size:8px;text-transform:uppercase}'+
       '.ruine .rform{font-size:9.5px;margin:5px 0;color:#334}.ruine .rres{display:flex;justify-content:space-between;align-items:center;border:1.5px solid;border-radius:6px;padding:4px 9px;background:#fff;font-size:13px}.ruine .rres span{font-size:9px;color:#667;text-transform:uppercase}'+
       '.enr{display:flex;flex-wrap:wrap;gap:6px;font-size:9px}.enr>div{flex:1 1 30%;min-width:150px;margin:0!important}.enr .border,.enr .rounded{border:1px solid #dbe2ec!important;border-radius:6px;padding:6px;background:#fafbfc}.enr .badge{font-size:8px;padding:1px 5px}.enr a{color:#12294d}'+
+      '.note{background:#fff8e6;border:1px solid #e6d9a8;border-radius:6px;padding:6px 9px;margin:8px 0;font-size:10px;white-space:pre-wrap;color:#5a4a1c}'+
       '.aleas img{max-width:240px;width:100%}.aleas .fw-bold{font-weight:700;font-size:11px;color:#1a3a6e}.aleas .small{font-size:8px;color:#667}.aleas .row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start}.aleas .row>div{flex:1;min-width:180px}.aleas .row>div:first-child{flex:0 0 240px;max-width:240px}'+
       // Couleurs d\'origine (Bootstrap non chargé dans la fenêtre d\'impression) — restituées pour badges/chips/textes.
       ':root{--crit:#d97a6e;--good:#5aa886;--warn:#e6b566;--bleuet:#7d9cd0;--lavande:#c4b6e6;--menthe:#9fd3bf}'+
@@ -4319,6 +4356,7 @@ function recapBuildHTML(){
     '</div>'+
     '<div class="pg">'+
       '<div class="hd"><div><h1>Étude de marché — Récapitulatif</h1><div style="color:#445">'+esc(adr)+'</div></div><div style="text-align:right"><div class="logo" style="font-size:15px;letter-spacing:-.3px;">OPTIMMO DOM</div><div style="font-size:9px;color:#667">FIDI · Franck FIDI · '+today+'</div></div></div>'+
+      (noteTxt ? '<div class="note"><b>Note :</b> '+esc(noteTxt)+'</div>' : '')+
       '<h2>Estimation vénale du bien</h2>'+
       '<div class="est"><div class="c"><div class="lbl">Borne basse</div><div class="big">'+(mn||'—')+'</div></div>'+
         '<div class="c" style="background:#eef3fb"><div class="lbl">Valeur médiane</div><div class="big">'+(med||'—')+'</div></div>'+
