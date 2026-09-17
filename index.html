@@ -4302,6 +4302,11 @@ function recapBuildHTML(){
       '.ruine .rform{font-size:9.5px;margin:5px 0;color:#334}.ruine .rres{display:flex;justify-content:space-between;align-items:center;border:1.5px solid;border-radius:6px;padding:4px 9px;background:#fff;font-size:13px}.ruine .rres span{font-size:9px;color:#667;text-transform:uppercase}'+
       '.enr{display:flex;flex-wrap:wrap;gap:6px;font-size:9px}.enr>div{flex:1 1 30%;min-width:150px;margin:0!important}.enr .border,.enr .rounded{border:1px solid #dbe2ec!important;border-radius:6px;padding:6px;background:#fafbfc}.enr .badge{font-size:8px;padding:1px 5px}.enr a{color:#12294d}'+
       '.aleas img{max-width:240px;width:100%}.aleas .fw-bold{font-weight:700;font-size:11px;color:#1a3a6e}.aleas .small{font-size:8px;color:#667}.aleas .row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start}.aleas .row>div{flex:1;min-width:180px}.aleas .row>div:first-child{flex:0 0 240px;max-width:240px}'+
+      // Couleurs d\'origine (Bootstrap non chargé dans la fenêtre d\'impression) — restituées pour badges/chips/textes.
+      ':root{--crit:#d97a6e;--good:#5aa886;--warn:#e6b566;--bleuet:#7d9cd0;--lavande:#c4b6e6;--menthe:#9fd3bf}'+
+      '.badge{display:inline-block;padding:2px 6px;border-radius:6px;font-size:8px;font-weight:700;color:#fff}'+
+      '.bg-danger{background:#d15b4a!important;color:#fff!important}.bg-warning{background:#e6b566!important;color:#3a2c00!important}.bg-success{background:#4f9e7e!important;color:#fff!important}.bg-secondary{background:#8a94a3!important;color:#fff!important}.bg-info{background:#7d9cd0!important;color:#12294d!important}.bg-primary{background:#3f5c93!important;color:#fff!important}.bg-light{background:#eef1f5!important;color:#333!important}.text-dark{color:#213547!important}'+
+      '.text-danger{color:#c0392b!important}.text-success{color:#198754!important}.text-warning{color:#b8860b!important}.text-primary,.text-info{color:#1a4b8e!important}.text-muted{color:#8a94a3!important}'+
       '.kv{display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px dashed #e6ebf2}.kv b{font-weight:600}'+
       '.foot{margin-top:8px;font-size:8.5px;color:#8a94a3;border-top:1px solid #dbe2ec;padding-top:4px}'+
       'img{max-width:100%}'+
@@ -4313,7 +4318,7 @@ function recapBuildHTML(){
       '<span style="opacity:.8;font-size:11px;">Astuce : « Imprimer » → « Enregistrer en PDF » pour joindre le PDF.</span>'+
     '</div>'+
     '<div class="pg">'+
-      '<div class="hd"><div><h1>Étude de marché — Récapitulatif</h1><div style="color:#445">'+esc(adr)+'</div></div><div style="text-align:right"><div class="logo">FIDI<span>.</span></div><div style="font-size:9px;color:#667">OPTIMMO DOM · '+today+'</div></div></div>'+
+      '<div class="hd"><div><h1>Étude de marché — Récapitulatif</h1><div style="color:#445">'+esc(adr)+'</div></div><div style="text-align:right"><div class="logo" style="font-size:15px;letter-spacing:-.3px;">OPTIMMO DOM</div><div style="font-size:9px;color:#667">FIDI · Franck FIDI · '+today+'</div></div></div>'+
       '<h2>Estimation vénale du bien</h2>'+
       '<div class="est"><div class="c"><div class="lbl">Borne basse</div><div class="big">'+(mn||'—')+'</div></div>'+
         '<div class="c" style="background:#eef3fb"><div class="lbl">Valeur médiane</div><div class="big">'+(med||'—')+'</div></div>'+
