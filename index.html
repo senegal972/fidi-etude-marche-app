@@ -4038,19 +4038,27 @@ function recapBuildHTML(){
   var zon = zone.libelle ? (esc(zone.libelle)+(zone.typezone?' <span style="color:#667">('+esc(zone.typezone)+')</span>':'')) : esc(zone.typezone||'Zonage non déterminé (RNU)');
   var cont = parc.contenance ? Number(parc.contenance).toLocaleString('fr-FR')+' m²' : '—';
   var refcad = [parc.section, parc.numero].filter(Boolean).join(' ') || '—';
-  // Transactions (échantillon)
-  var tx = (window.transData||[]).slice(0,6).map(function(t){
-    var a = t.adresse || t.commune || t.nom_commune || '';
-    var s = t.surface || t.surface_reelle_bati || t.surf || '';
-    var pm2 = t.prix_m2 || (t.valeur && s ? Math.round(t.valeur/s) : '');
-    var pr = t.valeur || t.prix || t.valeur_fonciere || '';
-    var an = t.annee || (t.date ? String(t.date).slice(0,4) : '');
-    return '<tr><td>'+esc(a)+'</td><td style="text-align:right">'+(s?esc(s)+' m²':'—')+'</td><td style="text-align:right">'+(pr?Number(pr).toLocaleString('fr-FR')+' €':'—')+'</td><td style="text-align:right">'+(pm2?Number(pm2).toLocaleString('fr-FR')+' €/m²':'—')+'</td><td style="text-align:right">'+esc(an)+'</td></tr>';
-  }).join('') || '<tr><td colspan="5" style="color:#888">Transactions non chargées</td></tr>';
+  // Transactions : 10 plus proches (tri par distance croissante).
+  var txAll = (window.transData||[]).slice().sort(function(a,b){ return (a.distance_m||9e9)-(b.distance_m||9e9); }).slice(0,10);
+  var fmtDistR = function(m){ return m==null?'—':(m<1000?Math.round(m)+' m':(m/1000).toFixed(1)+' km'); };
+  var tx = txAll.map(function(t){
+    var adr = [t.adresse_numero, t.adresse_nom_voie, t.code_postal].filter(Boolean).join(' ');
+    var s = t.surface_reelle_bati ? Math.round(t.surface_reelle_bati) : '';
+    var pm2 = (t.surface_reelle_bati && t.valeur_fonciere) ? Math.round(t.valeur_fonciere/t.surface_reelle_bati) : '';
+    var an = t.date ? String(t.date).slice(0,7) : '';
+    return '<tr><td>'+esc(an)+'</td><td>'+esc(t.type_local||'—')+'</td>'+
+      '<td style="text-align:right">'+(s?esc(s)+' m²':'—')+'</td>'+
+      '<td style="text-align:right">'+(t.valeur_fonciere?Number(t.valeur_fonciere).toLocaleString('fr-FR')+' €':'—')+'</td>'+
+      '<td style="text-align:right">'+(pm2?Number(pm2).toLocaleString('fr-FR')+' €/m²':'—')+'</td>'+
+      '<td style="text-align:right">'+fmtDistR(t.distance_m)+'</td>'+
+      '<td class="adr">'+esc(adr)+'</td></tr>';
+  }).join('') || '<tr><td colspan="7" style="color:#888">Transactions non chargées (lancez l\'analyse).</td></tr>';
+  // Carte (demi-largeur) + image du graphe DVF (volume par année).
   var mapHtml = '';
-  try { if(typeof buildPrintMapHTML==='function' && loc.lat && loc.lon) mapHtml = buildPrintMapHTML(loc.lat, loc.lon, gpu.parcelleGeom, 720, 250); } catch(e){}
-  // Fenêtre print = about:blank : les URLs root-relatives ne se résolvent pas → on absolutise.
+  try { if(typeof buildPrintMapHTML==='function' && loc.lat && loc.lon) mapHtml = buildPrintMapHTML(loc.lat, loc.lon, gpu.parcelleGeom, 360, 230); } catch(e){}
   if(mapHtml) mapHtml = mapHtml.replace(/(src|href)="\/api\//g, '$1="'+location.origin+'/api/');
+  var chartImg = '';
+  try { var cv=document.getElementById('transChart'); if(cv && cv.toDataURL) chartImg = cv.toDataURL('image/png'); } catch(e){}
   var today = new Date().toLocaleDateString('fr-FR');
   return '<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Récapitulatif — '+esc(adr)+'</title>'+
     '<style>'+
@@ -4066,7 +4074,7 @@ function recapBuildHTML(){
       '.est{display:flex;gap:8px;margin:8px 0}.est .c{flex:1;border:1px solid #dbe2ec;border-radius:8px;padding:8px;text-align:center}'+
       '.est .big{font-size:18px;font-weight:800;color:#12294d}.est .lbl{font-size:9px;color:#667;text-transform:uppercase;letter-spacing:.04em}'+
       '.cols{display:flex;gap:10px}.cols>div{flex:1}'+
-      'table{width:100%;border-collapse:collapse;font-size:10px}th,td{padding:3px 5px;border-bottom:1px solid #eef1f5;text-align:left}th{color:#667;font-size:8.5px;text-transform:uppercase}'+
+      'table{width:100%;border-collapse:collapse;font-size:9.5px}th,td{padding:2px 4px;border-bottom:1px solid #eef1f5;text-align:left}th{color:#667;font-size:8px;text-transform:uppercase}td.adr{font-size:8.5px;color:#556;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'+
       '.kv{display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px dashed #e6ebf2}.kv b{font-weight:600}'+
       '.foot{margin-top:8px;font-size:8.5px;color:#8a94a3;border-top:1px solid #dbe2ec;padding-top:4px}'+
       'img{max-width:100%}'+
@@ -4086,15 +4094,18 @@ function recapBuildHTML(){
       (base?'<div style="font-size:9.5px;color:#667">'+esc(base)+'</div>':'')+
       (synth?'<h2>Synthèse de marché</h2><div style="font-size:10.5px">'+esc(synth)+'</div>':'')+
       '<div class="cols">'+
-        '<div><h2>Transactions enregistrées (DVF)</h2><table><thead><tr><th>Bien</th><th style="text-align:right">Surf.</th><th style="text-align:right">Prix</th><th style="text-align:right">€/m²</th><th style="text-align:right">Année</th></tr></thead><tbody>'+tx+'</tbody></table></div>'+
-        '<div style="max-width:38%"><h2>Constructibilité / cadastre</h2>'+
+        '<div style="flex:1.7"><h2>Transactions enregistrées — 10 plus proches (DVF)</h2><table><thead><tr><th>Date</th><th>Type</th><th style="text-align:right">Surf.</th><th style="text-align:right">Prix</th><th style="text-align:right">€/m²</th><th style="text-align:right">Dist.</th><th>Adresse</th></tr></thead><tbody>'+tx+'</tbody></table></div>'+
+        '<div style="max-width:32%"><h2>Constructibilité / cadastre</h2>'+
           '<div class="kv"><span>Zonage PLU</span><b>'+zon+'</b></div>'+
           '<div class="kv"><span>Référence cadastrale</span><b>'+esc(refcad)+'</b></div>'+
           '<div class="kv"><span>Surface (cadastre)</span><b>'+esc(cont)+'</b></div>'+
           '<div style="font-size:8.5px;color:#8a94a3;margin-top:4px">Règles exactes au règlement écrit du PLU.</div>'+
         '</div>'+
       '</div>'+
-      (mapHtml?'<h2>Localisation · Cadastre &amp; Urbanisme</h2><div>'+mapHtml+'</div>':'')+
+      '<div class="cols" style="margin-top:6px">'+
+        '<div>'+(mapHtml?'<h2>Localisation · Cadastre &amp; Urbanisme</h2>'+mapHtml:'')+'</div>'+
+        '<div>'+(chartImg?'<h2>Volume de transactions / an (DVF)</h2><img src="'+chartImg+'" style="width:100%;border:1px solid #dbe2ec;border-radius:6px">':'<div style="color:#8a94a3;font-size:9px;margin-top:20px">Graphe de volume indisponible (relancez l\'analyse).</div>')+'</div>'+
+      '</div>'+
       '<div class="foot">Document indicatif établi par OPTIMMO DOM (FIDI Conseil) à partir de données publiques (DVF, GPU/IGN, Géorisques). <b>Ni un avis notarié ni une expertise réglementée.</b> Valeurs à confirmer.</div>'+
     '</div>'+
     '<script>(function(){var t='+JSON.stringify(recapText())+';var a=document.getElementById("rcWa");if(a)a.href="https://wa.me/?text="+encodeURIComponent(t);var m=document.getElementById("rcMail");if(m)m.href="mailto:?subject="+encodeURIComponent("Étude de marché — Récapitulatif")+"&body="+encodeURIComponent(t);})();<\/script>'+
@@ -5543,9 +5554,15 @@ window.Compte = (function(){
   }
 
   // ── Fiche compte complète (bouton « Modifier ») : édition globale en une fois ──
-  function openFiche(email){
+  async function openFiche(email){
     const u = (_adminUsersCache||[]).find(x=>x.email===email);
     if(!u){ alert('Compte introuvable.'); return; }
+    // Précharge la liste des grilles tarifaires (si l'onglet Offres n'a pas été ouvert).
+    if(!window._offresGrilles || !window._offresGrilles.length){
+      try { const rg = await fetch('/api/offres',{credentials:'same-origin'}); const dg = await rg.json(); if(dg && dg.grilles) window._offresGrilles = dg.grilles; } catch(e){}
+    }
+    // Réseaux déjà enregistrés (pour le menu déroulant).
+    const reseaux = Array.from(new Set((_adminUsersCache||[]).map(x=>x.reseau).filter(Boolean))).sort();
     const isSA = (state.user && state.user.email) === (state.superAdmin || 'contact@fidiconseil.com');
     const roleOpts = [['Collaborateur','Collaborateur'],['Test','Test (jetable)'],['Éphémère','Éphémère (accès temporaire)']];
     if(isSA) roleOpts.splice(1,0,['Administrateur','Administrateur']);
@@ -5569,7 +5586,10 @@ window.Compte = (function(){
           '<div class="col-md-4"><label class="form-label small mb-0">Crédits</label><input id="fcCredits" type="number" min="0" class="form-control form-control-sm" value="'+(u.credits!=null?u.credits:0)+'"></div>'+
           '<div class="col-md-4"><label class="form-label small mb-0">Quota essais</label><input id="fcQuota" type="number" min="0" class="form-control form-control-sm" value="'+(u.quota!=null?u.quota:5)+'"></div>'+
           '<div class="col-md-4 d-flex align-items-end"><div class="form-check"><input id="fcIllimite" type="checkbox" class="form-check-input"'+(u.illimite?' checked':'')+'><label class="form-check-label small" for="fcIllimite">Accès illimité (∞)</label></div></div>'+
-          '<div class="col-md-6"><label class="form-label small mb-0">Réseau</label><input id="fcReseau" class="form-control form-control-sm" value="'+esc(u.reseau||'')+'" placeholder="Optimmo Dom, Sextant…"></div>'+
+          '<div class="col-md-6"><label class="form-label small mb-0">Réseau</label>'+
+            '<input id="fcReseau" class="form-control form-control-sm" list="fcReseauList" value="'+esc(u.reseau||'')+'" placeholder="Optimmo Dom, Sextant…">'+
+            '<datalist id="fcReseauList">'+reseaux.map(function(rz){return '<option value="'+esc(rz)+'">';}).join('')+'</datalist>'+
+          '</div>'+
           '<div class="col-md-6"><label class="form-label small mb-0">Grille tarifaire</label>'+
             '<input id="fcTarif" class="form-control form-control-sm" list="fcTarifList" value="'+esc(u.tarifGroup||'')+'" placeholder="Standard, Partenaire, Banque…">'+
             '<datalist id="fcTarifList">'+((window._offresGrilles||['Standard']).map(function(g){return '<option value="'+esc(g)+'">';}).join(''))+'</datalist>'+

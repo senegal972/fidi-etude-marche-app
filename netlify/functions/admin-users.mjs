@@ -90,7 +90,7 @@ export const handler = async (event) => {
       // Champs additionnels post-création (Réseau, Grille tarifaire, Expiration) si fournis
       const extra = {};
       if (b.reseau) { await ensureProperty(DB.users, "Réseau", { rich_text: {} }); extra["Réseau"] = P.text(String(b.reseau).slice(0, 100)); }
-      if (b.tarifGroup) extra["Grille tarifaire"] = P.select(String(b.tarifGroup).slice(0, 100));
+      if (b.tarifGroup) { await ensureProperty(DB.users, "Grille tarifaire", { select: {} }); extra["Grille tarifaire"] = P.select(String(b.tarifGroup).slice(0, 100)); }
       if (b.expire) { await ensureProperty(DB.users, "Expire le", { date: {} }); extra["Expire le"] = P.date(String(b.expire)); }
       if (Object.keys(extra).length && createdPage?.id) {
         try { await updatePage(createdPage.id, extra); } catch {}
@@ -124,7 +124,10 @@ export const handler = async (event) => {
       if (b.illimite != null) patch["Illimité"] = P.checkbox(!!b.illimite);
       if (b.quota != null && b.quota !== "") { const q = parseInt(b.quota); if (Number.isFinite(q) && q >= 0) patch["Quota recherches"] = P.number(q); }
       if (b.reseau != null) { await ensureProperty(DB.users, "Réseau", { rich_text: {} }); patch["Réseau"] = P.text(String(b.reseau).slice(0, 100)); }
-      if (b.tarifGroup != null) patch["Grille tarifaire"] = b.tarifGroup ? P.select(String(b.tarifGroup).slice(0, 100)) : { select: null };
+      if (b.tarifGroup != null) {
+        await ensureProperty(DB.users, "Grille tarifaire", { select: {} });
+        patch["Grille tarifaire"] = b.tarifGroup ? P.select(String(b.tarifGroup).slice(0, 100)) : { select: null };
+      }
       if (b.fidi_encaisse != null || b.commission != null) {
         await ensureProperty(DB.users, "FIDI encaisse", { checkbox: {} });
         await ensureProperty(DB.users, "Commission FIDI %", { number: {} });
@@ -185,6 +188,7 @@ export const handler = async (event) => {
     }
     if (action === "set_tarif_group") {
       const g = String(b.tarifGroup || "").slice(0, 100);
+      await ensureProperty(DB.users, "Grille tarifaire", { select: {} });
       await updatePage(page.id, g ? { "Grille tarifaire": P.select(g) } : { "Grille tarifaire": { select: null } });
       return authResp(200, { ok: true, email, tarifGroup: g });
     }
