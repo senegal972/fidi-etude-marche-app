@@ -115,6 +115,9 @@
 [functions."inpn"]
   timeout = 20
 
+[functions."pprn972"]
+  timeout = 20
+
 [functions."facture-autorelance"]
   timeout = 26
 
@@ -380,6 +383,11 @@
 [[redirects]]
   from   = "/api/inpn"
   to     = "/.netlify/functions/inpn"
+  status = 200
+
+[[redirects]]
+  from   = "/api/pprn972"
+  to     = "/.netlify/functions/pprn972"
   status = 200
 
 [[redirects]]

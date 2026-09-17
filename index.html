@@ -1771,7 +1771,59 @@ function _pprOverlayUrl(bbox, W, H){
   var u='https://mapsref.brgm.fr/wxs/georisques/risques?'+Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]);}).join('&');
   return '/api/img-proxy?url='+encodeURIComponent(u);
 }
+// Dispatcher : Martinique → PPRN officiel (préfecture 972) ; ailleurs → Géorisques.
 async function renderAleasPpr(lat, lon){
+  var wrap=document.getElementById('aleasPprWrap'); if(!wrap) return;
+  if(lat==null||lon==null){ wrap.classList.add('d-none'); return; }
+  var isMq = lat>=14 && lat<=15 && lon<=-60.5 && lon>=-61.6;
+  if(isMq){
+    try {
+      var rr=await fetch('/api/pprn972?lat='+lat+'&lon='+lon);
+      var b=rr.ok?await rr.json():null;
+      if(b && b.mq && !b.error){ renderAleasMq(b, lat, lon); return; }
+    } catch(e){}
+  }
+  return renderAleasGeorisques(lat, lon); // repli
+}
+// Rendu PPRN Martinique (source officielle préfecture) : carte zonage + tableau détail.
+function renderAleasMq(b, lat, lon){
+  var wrap=document.getElementById('aleasPprWrap'); if(!wrap) return;
+  var esc=escHtml;
+  var z=b.zonage||{}, flags=z.flags||{};
+  // Carte officielle : fond + zonage réglementaire + parcelles (EPSG:32620 via img-proxy).
+  var mapImg='';
+  if(b.utm && b.utm.e){
+    var e=b.utm.e, n=b.utm.n, half=260;
+    var p={ SERVICE:'WMS',VERSION:'1.3.0',REQUEST:'GetMap',LAYERS:'scan100,zone_reglementaire,parcelles',
+      STYLES:'',CRS:'EPSG:32620',BBOX:(e-half)+','+(n-half)+','+(e+half)+','+(n+half),
+      WIDTH:520,HEIGHT:520,FORMAT:'image/png' };
+    var u='http://mapserv.pprn972.fr/mapserv?map=/var/www/pprn/mapfile/pprn.map&'+Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]);}).join('&');
+    mapImg='/api/img-proxy?url='+encodeURIComponent(u);
+  }
+  var aleas=b.aleas||[];
+  var rows = aleas.length ? aleas.map(function(a){
+    return '<tr><td>'+esc(a.label)+'</td><td style="text-align:center"><span class="badge bg-danger">'+esc(a.niveau_label||'Concerné')+'</span></td></tr>';
+  }).join('') : '<tr><td colspan="2" class="text-muted small">Aucun aléa cartographié à ce point.</td></tr>';
+  var zonBadge = b.reglemente
+    ? '<span class="badge bg-warning text-dark">Zone réglementée '+esc(z.code||'')+'</span>'
+    : '<span class="badge bg-success">Hors zonage réglementaire à ce point</span>';
+  wrap.classList.remove('d-none');
+  wrap.innerHTML =
+    '<div class="fw-bold mb-2" style="color:#1a3a6e;"><i class="bi bi-exclamation-octagon me-1"></i>Localisation et détails des aléas au point indiqué</div>'+
+    '<div class="row g-3">'+
+      '<div class="col-md-6">'+
+        (mapImg ? '<img src="'+mapImg+'" alt="Zonage réglementaire PPRN Martinique" style="width:100%;border:1px solid #cdd6e2;border-radius:8px;" onerror="this.style.display=\'none\'">' : '')+
+      '</div>'+
+      '<div class="col-md-6">'+
+        '<div class="mb-2">'+zonBadge+'</div>'+
+        '<div class="table-responsive"><table class="table table-sm align-middle mb-1" style="font-size:.85rem;">'+
+          '<thead style="background:#efe9d9;color:#4a4238;font-size:.7rem;text-transform:uppercase;"><tr><th>Aléa</th><th class="text-center">Niveau au point</th></tr></thead>'+
+          '<tbody>'+rows+'</tbody></table></div>'+
+      '</div>'+
+    '</div>'+
+    '<div class="small text-muted mt-1">Source <b>officielle : PPRN Martinique</b> (préfecture 972). Détail <b>au point indiqué</b> (non à la parcelle entière). Un PPR approuvé par arrêté préfectoral est une servitude d\'utilité publique opposable ; seul le document original approuvé fait foi. <a href="http://carto.pprn972.fr/carto/web/" target="_blank" rel="noopener">Carte officielle PPRN972 ↗</a></div>';
+}
+async function renderAleasGeorisques(lat, lon){
   var wrap=document.getElementById('aleasPprWrap'); if(!wrap) return;
   if(lat==null||lon==null){ wrap.classList.add('d-none'); return; }
   var d=window.__fidiData||{}, r=d.risques||{};

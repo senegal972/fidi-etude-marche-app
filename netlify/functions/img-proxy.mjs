@@ -11,6 +11,7 @@ const ALLOWED_HOSTS = new Set([
   "data.geopf.fr",
   "wxs.ign.fr",
   "mapsref.brgm.fr", // WMS Géorisques (zonage réglementaire PPRN)
+  "mapserv.pprn972.fr", // WMS PPRN Martinique (préfecture 972)
 ]);
 const TIMEOUT_MS = 12000;
 
@@ -28,7 +29,11 @@ export const handler = async (event) => {
 
   let target;
   try { target = new URL(raw); } catch { return errResp(400, "url invalide"); }
-  if (target.protocol !== "https:") return errResp(400, "https requis");
+  // HTTPS requis, sauf pour quelques hôtes officiels servis uniquement en HTTP (WMS préfecture).
+  const HTTP_OK = new Set(["mapserv.pprn972.fr"]);
+  if (target.protocol !== "https:" && !(target.protocol === "http:" && HTTP_OK.has(target.hostname))) {
+    return errResp(400, "https requis");
+  }
   if (!ALLOWED_HOSTS.has(target.hostname)) return errResp(403, "domaine non autorisé");
 
   const ctrl = new AbortController();
