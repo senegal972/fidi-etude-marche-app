@@ -1771,24 +1771,55 @@ function _pprOverlayUrl(bbox, W, H){
   var u='https://mapsref.brgm.fr/wxs/georisques/risques?'+Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]);}).join('&');
   return '/api/img-proxy?url='+encodeURIComponent(u);
 }
-function renderAleasPpr(lat, lon, geom){
+async function renderAleasPpr(lat, lon){
   var wrap=document.getElementById('aleasPprWrap'); if(!wrap) return;
   if(lat==null||lon==null){ wrap.classList.add('d-none'); return; }
-  var W=760,H=380;
-  var bbox = (typeof _parcelleBBox==='function') ? _parcelleBBox(lat,lon,geom) : [lon-0.006,lat-0.004,lon+0.006,lat+0.004];
-  var baseSrc = _wmsUrl(bbox,W,H);
-  var pprSrc  = _pprOverlayUrl(bbox,W,H);
-  var insee=((window.__fidiData||{}).localisation||{}).citycode||'';
-  var lienGr = 'https://www.georisques.gouv.fr/mes-risques/connaitre-les-risques-pres-de-chez-moi';
+  var d=window.__fidiData||{}, r=d.risques||{};
+  // Complément Géorisques (radon, argiles, PPR, CatNat, sites pollués, ICPE) au point.
+  var det={};
+  try {
+    var insee=(d.localisation||{}).citycode||'';
+    var rr=await fetch('/api/georisques-adresse?lat='+lat+'&lon='+lon+(insee?'&insee='+insee:''));
+    var jj=rr.ok?await rr.json():null; det=(jj&&jj.details)||{};
+  } catch(e){}
+  var synArr = Array.isArray(r.synthese)?r.synthese:[];
+  var syn = synArr.join(' ');
+  var has=function(re){ return re.test(syn); };
+  var sis = (r.sismicite&&r.sismicite.zone) ? (r.sismicite.libelle||('Zone '+String(r.sismicite.zone).replace(/zone/i,'').trim())) : '';
+  var radon = (det.radon&&det.radon.items&&det.radon.items[0]) ? ('Catégorie '+(det.radon.items[0].classe_potentiel||det.radon.items[0].categorie||det.radon.items[0].classe||'?'))
+            : (r.radon&&r.radon.classe ? ('Catégorie '+String(r.radon.classe).trim()) : '');
+  var argiles = (det.argiles&&det.argiles.items&&det.argiles.items[0]) ? (det.argiles.items[0].exposition||det.argiles.items[0].niveau||'exposé') : '';
+  var pprN=(det.ppr&&det.ppr.count)||0, catnat=(det.catnat&&det.catnat.count)||0, ssp=(det.sites_pollues&&det.sites_pollues.count)||0, icpe=(det.installations_classees&&det.installations_classees.count)||0, cav=(det.cavites&&det.cavites.count)||0;
+  // Détail des aléas au point (présent / absent + précision)
+  var aleas=[
+    ['Inondation', has(/inond/i), ''],
+    ['Submersion marine', has(/submers/i), ''],
+    ['Séisme', !!sis || has(/s[ée]isme/i), sis],
+    ['Mouvement de terrain', has(/mouvement|glissement/i), ''],
+    ['Retrait-gonflement des argiles', !!argiles, argiles],
+    ['Cavités souterraines', cav>0, cav?cav+' recensée(s)':''],
+    ['Éruption volcanique', has(/volcan/i), ''],
+    ['Tsunami / raz-de-marée', has(/tsunami|raz/i), ''],
+    ['Radon', !!radon, radon],
+    ['Feux de forêt', has(/feu/i), '']
+  ];
+  var rows=aleas.map(function(a){
+    return '<tr><td>'+a[0]+'</td><td style="text-align:center">'+(a[1]?'<span class="badge bg-danger">Présent</span>':'<span class="text-muted">—</span>')+'</td><td class="small text-muted">'+(a[2]||'')+'</td></tr>';
+  }).join('');
+  var chips=[];
+  if(pprN) chips.push(pprN+' PPR');
+  if(catnat) chips.push(catnat+' arrêté(s) CatNat');
+  if(ssp) chips.push(ssp+' site(s) pollué(s)');
+  if(icpe) chips.push(icpe+' ICPE');
+  var lienGr='https://www.georisques.gouv.fr/mes-risques/connaitre-les-risques-pres-de-chez-moi';
   wrap.classList.remove('d-none');
   wrap.innerHTML =
     '<div class="fw-bold mb-2" style="color:#1a3a6e;"><i class="bi bi-exclamation-octagon me-1"></i>Localisation et détails des aléas au point indiqué</div>'+
-    '<div style="position:relative;max-width:'+W+'px;border:1px solid #cdd6e2;border-radius:8px;overflow:hidden;">'+
-      '<img src="'+baseSrc+'" style="display:block;width:100%;" alt="Fond IGN + cadastre" loading="lazy">'+
-      '<img src="'+pprSrc+'" style="position:absolute;inset:0;width:100%;height:100%;" alt="Zonage réglementaire PPRN" loading="lazy" onerror="this.style.display=\'none\'">'+
-      '<div style="position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:#d6336c;border:2px solid #fff;box-shadow:0 0 0 2px rgba(214,51,108,.5);"></div>'+
-    '</div>'+
-    '<div class="small text-muted mt-1">Zonage réglementaire <b>PPRN</b> (inondation · mouvement de terrain · feu) superposé au fond IGN/cadastre — <b>au point indiqué</b>, non à la parcelle entière (qui peut relever de plusieurs zonages). Un PPR approuvé par arrêté préfectoral est une servitude d\'utilité publique opposable. Seul le document original approuvé fait foi. Source : Géorisques (BRGM). '+
+    '<div class="table-responsive"><table class="table table-sm align-middle mb-1" style="font-size:.85rem;">'+
+      '<thead style="background:#efe9d9;color:#4a4238;font-size:.7rem;text-transform:uppercase;"><tr><th>Aléa</th><th class="text-center">Au point</th><th>Précision</th></tr></thead>'+
+      '<tbody>'+rows+'</tbody></table></div>'+
+    (chips.length?'<div class="mb-1">'+chips.map(function(c){return '<span class="badge bg-secondary me-1">'+c+'</span>';}).join('')+'</div>':'')+
+    '<div class="small text-muted">Aléas recensés <b>au point indiqué</b> (non à la parcelle entière). Un PPR approuvé par arrêté préfectoral est une servitude d\'utilité publique opposable ; seul le document original approuvé fait foi. Source : Géorisques (BRGM). '+
       '<a href="'+lienGr+'" target="_blank" rel="noopener">Rapport officiel Géorisques ↗</a></div>';
 }
 
@@ -4131,7 +4162,10 @@ function recapBuildHTML(){
   try {
     var _eo=document.getElementById('enrichLocalOut');
     if(_eo && _eo.style.display!=='none' && _eo.children.length && window.__enrichVisible!==false){
-      enrichHtml=_eo.innerHTML.replace(/(src|href)="\/api\//g,'$1="'+location.origin+'/api/');
+      // Clone puis retire le bloc « Portails cartographiques de référence » (exclu de l'impression).
+      var _ec=_eo.cloneNode(true);
+      Array.prototype.slice.call(_ec.children).forEach(function(ch){ if(/Portails cartographiques/i.test(ch.textContent||'')) ch.parentNode.removeChild(ch); });
+      enrichHtml=_ec.innerHTML.replace(/(src|href)="\/api\//g,'$1="'+location.origin+'/api/');
     }
   } catch(e){}
   // Carte des aléas PPRN au point indiqué.
@@ -4176,6 +4210,23 @@ function recapBuildHTML(){
       '<div style="font-size:8px;color:#8a94a3;margin-top:2px">Barèmes indicatifs (démolition 100–250 €/m², gros œuvre ≈ 40–50 % du neuf ; majoration DOM). À dire d\'expert / devis.</div>'+
     '</div>';
   }
+  // Bloc « Prix du terrain » — méthode retenue (au-dessus du bâti). Uniquement si terrain (prix/m² + surface).
+  var terrainTbl = '';
+  var estim = d.estimation || {};
+  if(estim.surface>0 && estim.prix_m2>0){
+    var surfT = Number(estim.surface), pm2 = Number(estim.prix_m2);
+    var valT = (window.__estBase && window.__estBase.med>0) ? window.__estBase.med : (typeof ruineParse==='function' ? ruineParse('est-med') : Math.round(surfT*pm2));
+    terrainTbl = '<div class="ruine" style="border-color:#b7c9e6;background:#eef3fb">'+
+      '<div class="rh" style="color:#1a4b8e">🟦 Prix du terrain — méthode retenue</div>'+
+      '<div class="rgrid">'+
+        '<div><span>Surface cadastrale</span><b>'+surfT.toLocaleString('fr-FR')+' m²</b></div>'+
+        '<div><span>Prix au m² (décoté)</span><b>'+pm2.toFixed(2)+' €/m²</b></div>'+
+        '<div><span>Valeur du terrain</span><b>'+valT.toLocaleString('fr-FR')+' €</b></div>'+
+      '</div>'+
+      '<div class="rform">Calcul : <b>'+surfT.toLocaleString('fr-FR')+' m² × '+pm2.toFixed(2)+' €/m² = '+valT.toLocaleString('fr-FR')+' €</b></div>'+
+      (base?'<div style="font-size:8px;color:#8a94a3">'+esc(base)+'</div>':'')+
+    '</div>';
+  }
   var today = new Date().toLocaleDateString('fr-FR');
   return '<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Récapitulatif — '+esc(adr)+'</title>'+
     '<style>'+
@@ -4216,6 +4267,7 @@ function recapBuildHTML(){
         '<div class="c" style="background:#eef3fb"><div class="lbl">Valeur médiane</div><div class="big">'+(med||'—')+'</div></div>'+
         '<div class="c"><div class="lbl">Borne haute</div><div class="big">'+(mx||'—')+'</div></div></div>'+
       (base?'<div style="font-size:9.5px;color:#667">'+esc(base)+'</div>':'')+
+      terrainTbl+
       ruineTbl+
       (synth?'<h2>Synthèse de marché</h2><div style="font-size:10.5px">'+esc(synth)+'</div>':'')+
       '<div class="kv" style="margin-top:4px"><span>Zonage PLU</span><b>'+zon+'</b></div>'+
