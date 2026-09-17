@@ -10,6 +10,7 @@
 const ALLOWED_HOSTS = new Set([
   "data.geopf.fr",
   "wxs.ign.fr",
+  "mapsref.brgm.fr", // WMS Géorisques (zonage réglementaire PPRN)
 ]);
 const TIMEOUT_MS = 12000;
 

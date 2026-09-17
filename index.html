@@ -607,6 +607,8 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
               </div>
               <div id="enrichLocalOut" class="row g-2"></div>
             </div>
+            <!-- Localisation et détails des aléas au point indiqué (zonage réglementaire PPR) -->
+            <div id="aleasPprWrap" class="mt-3 pt-3 border-top d-none"></div>
           </div>
         </div>
       </div>
@@ -1757,6 +1759,39 @@ function etudeEnrichAuto(){
   try { etudeEnrichirLocal().then(function(){ out.dataset.loaded='1'; }); } catch(e){}
 }
 
+// ── Carte du zonage réglementaire PPRN au point indiqué (Géorisques / BRGM) ──
+// Superpose le zonage réglementaire PPRN (inondation, mouvement de terrain, feu)
+// au fond IGN + cadastre, centré sur le point analysé.
+function _pprOverlayUrl(bbox, W, H){
+  // BRGM Géorisques WMS 1.3.0 en CRS:84 (ordre lon,lat). bbox interne = [minLon,minLat,maxLon,maxLat].
+  var p = { SERVICE:'WMS', VERSION:'1.3.0', REQUEST:'GetMap',
+    LAYERS:'PPRN_INOND,PPRN_MVT,PPRN_FEU', STYLES:'', CRS:'CRS:84',
+    BBOX: bbox[0]+','+bbox[1]+','+bbox[2]+','+bbox[3],
+    WIDTH:W, HEIGHT:H, FORMAT:'image/png', TRANSPARENT:'true' };
+  var u='https://mapsref.brgm.fr/wxs/georisques/risques?'+Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]);}).join('&');
+  return '/api/img-proxy?url='+encodeURIComponent(u);
+}
+function renderAleasPpr(lat, lon, geom){
+  var wrap=document.getElementById('aleasPprWrap'); if(!wrap) return;
+  if(lat==null||lon==null){ wrap.classList.add('d-none'); return; }
+  var W=760,H=380;
+  var bbox = (typeof _parcelleBBox==='function') ? _parcelleBBox(lat,lon,geom) : [lon-0.006,lat-0.004,lon+0.006,lat+0.004];
+  var baseSrc = _wmsUrl(bbox,W,H);
+  var pprSrc  = _pprOverlayUrl(bbox,W,H);
+  var insee=((window.__fidiData||{}).localisation||{}).citycode||'';
+  var lienGr = 'https://www.georisques.gouv.fr/mes-risques/connaitre-les-risques-pres-de-chez-moi';
+  wrap.classList.remove('d-none');
+  wrap.innerHTML =
+    '<div class="fw-bold mb-2" style="color:#1a3a6e;"><i class="bi bi-exclamation-octagon me-1"></i>Localisation et détails des aléas au point indiqué</div>'+
+    '<div style="position:relative;max-width:'+W+'px;border:1px solid #cdd6e2;border-radius:8px;overflow:hidden;">'+
+      '<img src="'+baseSrc+'" style="display:block;width:100%;" alt="Fond IGN + cadastre" loading="lazy">'+
+      '<img src="'+pprSrc+'" style="position:absolute;inset:0;width:100%;height:100%;" alt="Zonage réglementaire PPRN" loading="lazy" onerror="this.style.display=\'none\'">'+
+      '<div style="position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:#d6336c;border:2px solid #fff;box-shadow:0 0 0 2px rgba(214,51,108,.5);"></div>'+
+    '</div>'+
+    '<div class="small text-muted mt-1">Zonage réglementaire <b>PPRN</b> (inondation · mouvement de terrain · feu) superposé au fond IGN/cadastre — <b>au point indiqué</b>, non à la parcelle entière (qui peut relever de plusieurs zonages). Un PPR approuvé par arrêté préfectoral est une servitude d\'utilité publique opposable. Seul le document original approuvé fait foi. Source : Géorisques (BRGM). '+
+      '<a href="'+lienGr+'" target="_blank" rel="noopener">Rapport officiel Géorisques ↗</a></div>';
+}
+
 // ── Enrichissement local (Géorisques + ONF + IDG régionale) ─────────
 async function etudeEnrichirLocal(){
   var d = window.__fidiData; if(!d || !d.localisation){ alert("Lancez une analyse d'étude avant."); return; }
@@ -2518,6 +2553,8 @@ function renderMap(lat, lon, city){
   loadGpuInfo(lat, lon);
   // Enrichissement (Géorisques + ONF + IDG) automatiquement actif — masquable via le bouton.
   try { setTimeout(etudeEnrichAuto, 300); } catch(e){}
+  // Carte du zonage réglementaire PPRN au point indiqué (raffinée à la réception de la parcelle).
+  try { renderAleasPpr(lat, lon); } catch(e){}
 }
 
 // Couleurs réglementaires des zones PLU par type
@@ -2656,6 +2693,8 @@ async function loadGpuInfo(lat, lon){
         try { if(typeof etudeAutoFillContenance === 'function') etudeAutoFillContenance(); } catch(e){}
         // Recalcule la rubrique constructibilité (surface constructible = contenance × emprise)
         try { renderConstructibilite(lat, lon); } catch(e){}
+        // Raffine la carte des aléas PPRN avec l'emprise réelle de la parcelle.
+        try { renderAleasPpr(lat, lon, f.geometry); } catch(e){}
         const ref = `${p.section||''} ${p.numero||''}`.trim();
         elParc.innerHTML = `<span class="fw-bold">${escHtml(ref||'—')}</span>`
           + (p.contenance?` · ${Number(p.contenance).toLocaleString('fr-FR')} m²`:'')
@@ -4095,6 +4134,14 @@ function recapBuildHTML(){
       enrichHtml=_eo.innerHTML.replace(/(src|href)="\/api\//g,'$1="'+location.origin+'/api/');
     }
   } catch(e){}
+  // Carte des aléas PPRN au point indiqué.
+  var aleasHtml = '';
+  try {
+    var _ap=document.getElementById('aleasPprWrap');
+    if(_ap && !_ap.classList.contains('d-none') && _ap.children.length){
+      aleasHtml=_ap.innerHTML.replace(/(src|href)="\/api\//g,'$1="'+location.origin+'/api/');
+    }
+  } catch(e){}
   // Tableau des transactions (rayon de l'étude) — tel qu'affiché, LIMITÉ aux 10 premières lignes.
   var txTableFull = '';
   try {
@@ -4151,6 +4198,7 @@ function recapBuildHTML(){
       '.ruine .rgrid{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:9.5px}.ruine .rgrid>div{display:flex;flex-direction:column}.ruine .rgrid span{color:#8a7a5a;font-size:8px;text-transform:uppercase}'+
       '.ruine .rform{font-size:9.5px;margin:5px 0;color:#334}.ruine .rres{display:flex;justify-content:space-between;align-items:center;border:1.5px solid;border-radius:6px;padding:4px 9px;background:#fff;font-size:13px}.ruine .rres span{font-size:9px;color:#667;text-transform:uppercase}'+
       '.enr{display:flex;flex-wrap:wrap;gap:6px;font-size:9px}.enr>div{flex:1 1 30%;min-width:150px;margin:0!important}.enr .border,.enr .rounded{border:1px solid #dbe2ec!important;border-radius:6px;padding:6px;background:#fafbfc}.enr .badge{font-size:8px;padding:1px 5px}.enr a{color:#12294d}'+
+      '.aleas img{max-width:100%}.aleas .fw-bold{font-weight:700;font-size:11px;color:#1a3a6e}.aleas .small{font-size:8px;color:#667}'+
       '.kv{display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px dashed #e6ebf2}.kv b{font-weight:600}'+
       '.foot{margin-top:8px;font-size:8.5px;color:#8a94a3;border-top:1px solid #dbe2ec;padding-top:4px}'+
       'img{max-width:100%}'+
@@ -4183,6 +4231,7 @@ function recapBuildHTML(){
       (txTableFull ? '<div class="txfull">'+txTableFull+'</div>'
         : '<table><thead><tr><th>Date</th><th>Type</th><th style="text-align:right">Surf.</th><th style="text-align:right">Prix</th><th style="text-align:right">€/m²</th><th style="text-align:right">Dist.</th><th>Adresse</th></tr></thead><tbody>'+tx+'</tbody></table>')+
       (enrichHtml ? '<h2>Enrichissement — risques &amp; couches réglementaires</h2><div class="enr">'+enrichHtml+'</div>' : '')+
+      (aleasHtml ? '<h2>Aléas au point indiqué — zonage réglementaire PPRN</h2><div class="aleas">'+aleasHtml+'</div>' : '')+
       '<div class="foot">Document indicatif établi par OPTIMMO DOM (FIDI Conseil) à partir de données publiques (DVF, GPU/IGN, Géorisques). <b>Ni un avis notarié ni une expertise réglementée.</b> Valeurs à confirmer.</div>'+
     '</div>'+
     '<script>(function(){var t='+JSON.stringify(recapText())+';var a=document.getElementById("rcWa");if(a)a.href="https://wa.me/?text="+encodeURIComponent(t);var m=document.getElementById("rcMail");if(m)m.href="mailto:?subject="+encodeURIComponent("Étude de marché — Récapitulatif")+"&body="+encodeURIComponent(t);})();<\/script>'+
