@@ -3948,11 +3948,13 @@ function ruineCalc(){
   var mode = (document.getElementById('ruineMode')||{}).value;
   var res = document.getElementById('ruineResult');
   if(!isFinite(surf) || surf<=0 || !isFinite(taux) || taux<0){ if(res) res.innerHTML='<span class="text-danger">Surface / montant invalides.</span>'; window.__ruineDelta=0; return; }
-  var delta;
+  var delta, vetStore=null;
   if(mode==='demo') delta = -Math.round(surf*taux);
   else if(mode==='recup') delta = Math.round(surf*taux);
-  else { var vet=parseFloat((document.getElementById('ruineVet')||{}).value); if(!isFinite(vet)) vet=0; delta = Math.round(surf*taux*(1-vet/100)); }
+  else { var vet=parseFloat((document.getElementById('ruineVet')||{}).value); if(!isFinite(vet)) vet=0; vetStore=vet; delta = Math.round(surf*taux*(1-vet/100)); }
   window.__ruineDelta = delta;
+  // Détails du calcul (repris dans le récapitulatif A4).
+  window.__ruineLast = { surf:surf, mode:mode, taux:taux, vet:vetStore, delta:delta, applied:(window.__ruineAppliedDelta?true:false) };
   if(res) res.innerHTML = (delta<0?'<span style="color:#b02a37;">Moins-value ':'<span style="color:#198754;">Plus-value +')
     + fmt(Math.abs(delta)) + ' €</span> <span class="text-muted">('+fmt(surf)+' m² × '+fmt(taux)+' €/m²'+(mode==='vetuste'?' × (1−vétusté)':'')+')</span>';
 }
@@ -3972,8 +3974,9 @@ function ruineApply(add){
   if(tag) tag.textContent = applied ? ('bâti '+(applied>0?'+':'−')+fmt(Math.abs(applied))+' € inclus') : '';
   var dd=window.__fidiData||{}; dd.estimation=dd.estimation||{};
   dd.estimation.ruine_delta=applied; dd.estimation.valeur_med=med; dd.estimation.valeur_min=mn; dd.estimation.valeur_max=mx;
+  if(window.__ruineLast) window.__ruineLast.applied = !!applied; // trace l'état pour le récap
 }
-function ruineReset(){ window.__estBase=null; window.__ruineDelta=0; window.__ruineAppliedDelta=0;
+function ruineReset(){ window.__estBase=null; window.__ruineDelta=0; window.__ruineAppliedDelta=0; window.__ruineLast=null;
   var t=document.getElementById('ruineAppliedTag'); if(t) t.textContent='';
   var p=document.getElementById('ruinePanel'); if(p){ p.classList.add('d-none'); p.innerHTML=''; } }
 function ruineOpen(){
@@ -4059,6 +4062,27 @@ function recapBuildHTML(){
   if(mapHtml) mapHtml = mapHtml.replace(/(src|href)="\/api\//g, '$1="'+location.origin+'/api/');
   var chartImg = '';
   try { var cv=document.getElementById('transChart'); if(cv && cv.toDataURL) chartImg = cv.toDataURL('image/png'); } catch(e){}
+  // Tableau complet des transactions (rayon de l'étude) — tel qu'affiché aujourd'hui.
+  var txTableFull = '';
+  try { var _tb=document.getElementById('transProchesBody'); var _tbl=_tb&&_tb.closest('table'); if(_tbl && _tb.children.length) txTableFull=_tbl.outerHTML; } catch(e){}
+  // Récap du calcul « bâtiment ruine / à détruire / vétuste » (si renseigné).
+  var ruineTbl = '';
+  var rl = window.__ruineLast;
+  if(rl && rl.surf>0){
+    var modeLbl = rl.mode==='demo' ? 'À démolir — moins-value' : (rl.mode==='recup' ? 'Gros œuvre récupérable — plus-value' : 'Bâti vétuste résiduel — plus-value');
+    var tauxLbl = rl.mode==='demo' ? 'Coût démolition' : (rl.mode==='recup' ? 'Valeur récupération' : 'Prix bâti neuf');
+    var signe = rl.delta<0 ? 'Moins-value' : 'Plus-value';
+    ruineTbl = '<h2>Bâtiment en ruine / à détruire / vétuste</h2>'+
+      '<table style="max-width:420px"><tbody>'+
+        '<tr><td>Cas retenu</td><td style="text-align:right"><b>'+esc(modeLbl)+'</b></td></tr>'+
+        '<tr><td>Surface bâtie</td><td style="text-align:right">'+Number(rl.surf).toLocaleString('fr-FR')+' m²</td></tr>'+
+        '<tr><td>'+esc(tauxLbl)+'</td><td style="text-align:right">'+Number(rl.taux).toLocaleString('fr-FR')+' €/m²</td></tr>'+
+        (rl.vet!=null ? '<tr><td>Vétusté appliquée</td><td style="text-align:right">'+rl.vet+' %</td></tr>' : '')+
+        '<tr style="background:#f4f7f4"><td><b>'+signe+'</b></td><td style="text-align:right"><b style="color:'+(rl.delta<0?'#b02a37':'#198754')+'">'+(rl.delta<0?'−':'+')+Number(Math.abs(rl.delta)).toLocaleString('fr-FR')+' €</b></td></tr>'+
+        '<tr><td>Intégré à l\'estimation</td><td style="text-align:right">'+(rl.applied?'Oui':'Non (calcul indicatif)')+'</td></tr>'+
+      '</tbody></table>'+
+      '<div style="font-size:8px;color:#8a94a3">Barèmes indicatifs (démolition 100–250 €/m², gros œuvre ≈ 40–50 % du neuf). À dire d\'expert / devis.</div>';
+  }
   var today = new Date().toLocaleDateString('fr-FR');
   return '<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Récapitulatif — '+esc(adr)+'</title>'+
     '<style>'+
@@ -4075,6 +4099,7 @@ function recapBuildHTML(){
       '.est .big{font-size:18px;font-weight:800;color:#12294d}.est .lbl{font-size:9px;color:#667;text-transform:uppercase;letter-spacing:.04em}'+
       '.cols{display:flex;gap:10px}.cols>div{flex:1}'+
       'table{width:100%;border-collapse:collapse;font-size:9.5px}th,td{padding:2px 4px;border-bottom:1px solid #eef1f5;text-align:left}th{color:#667;font-size:8px;text-transform:uppercase}td.adr{font-size:8.5px;color:#556;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'+
+      '.txfull table{font-size:8.5px}.txfull th,.txfull td{padding:1.5px 4px}.txfull th i,.txfull button,.txfull .btn{display:none!important}.txfull .badge{padding:1px 4px;font-size:8px}'+
       '.kv{display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px dashed #e6ebf2}.kv b{font-weight:600}'+
       '.foot{margin-top:8px;font-size:8.5px;color:#8a94a3;border-top:1px solid #dbe2ec;padding-top:4px}'+
       'img{max-width:100%}'+
@@ -4092,20 +4117,20 @@ function recapBuildHTML(){
         '<div class="c" style="background:#eef3fb"><div class="lbl">Valeur médiane</div><div class="big">'+(med||'—')+'</div></div>'+
         '<div class="c"><div class="lbl">Borne haute</div><div class="big">'+(mx||'—')+'</div></div></div>'+
       (base?'<div style="font-size:9.5px;color:#667">'+esc(base)+'</div>':'')+
+      ruineTbl+
       (synth?'<h2>Synthèse de marché</h2><div style="font-size:10.5px">'+esc(synth)+'</div>':'')+
-      '<div class="cols">'+
-        '<div style="flex:1.7"><h2>Transactions enregistrées — 10 plus proches (DVF)</h2><table><thead><tr><th>Date</th><th>Type</th><th style="text-align:right">Surf.</th><th style="text-align:right">Prix</th><th style="text-align:right">€/m²</th><th style="text-align:right">Dist.</th><th>Adresse</th></tr></thead><tbody>'+tx+'</tbody></table></div>'+
-        '<div style="max-width:32%"><h2>Constructibilité / cadastre</h2>'+
-          '<div class="kv"><span>Zonage PLU</span><b>'+zon+'</b></div>'+
-          '<div class="kv"><span>Référence cadastrale</span><b>'+esc(refcad)+'</b></div>'+
-          '<div class="kv"><span>Surface (cadastre)</span><b>'+esc(cont)+'</b></div>'+
-          '<div style="font-size:8.5px;color:#8a94a3;margin-top:4px">Règles exactes au règlement écrit du PLU.</div>'+
-        '</div>'+
-      '</div>'+
+      '<div class="kv" style="margin-top:4px"><span>Zonage PLU</span><b>'+zon+'</b></div>'+
+      '<div class="kv"><span>Référence cadastrale</span><b>'+esc(refcad)+'</b></div>'+
+      '<div class="kv"><span>Surface (cadastre)</span><b>'+esc(cont)+'</b></div>'+
+      // Deux blocs côte à côte : carte (gauche) + graphe volume (droite)
       '<div class="cols" style="margin-top:6px">'+
         '<div>'+(mapHtml?'<h2>Localisation · Cadastre &amp; Urbanisme</h2>'+mapHtml:'')+'</div>'+
         '<div>'+(chartImg?'<h2>Volume de transactions / an (DVF)</h2><img src="'+chartImg+'" style="width:100%;border:1px solid #dbe2ec;border-radius:6px">':'<div style="color:#8a94a3;font-size:9px;margin-top:20px">Graphe de volume indisponible (relancez l\'analyse).</div>')+'</div>'+
       '</div>'+
+      // Tableau des transactions enregistrées SOUS les deux blocs (tel qu\'affiché dans l\'étude, rayon 1 km)
+      '<h2>Transactions enregistrées (rayon d\'analyse)</h2>'+
+      (txTableFull ? '<div class="txfull">'+txTableFull+'</div>'
+        : '<table><thead><tr><th>Date</th><th>Type</th><th style="text-align:right">Surf.</th><th style="text-align:right">Prix</th><th style="text-align:right">€/m²</th><th style="text-align:right">Dist.</th><th>Adresse</th></tr></thead><tbody>'+tx+'</tbody></table>')+
       '<div class="foot">Document indicatif établi par OPTIMMO DOM (FIDI Conseil) à partir de données publiques (DVF, GPU/IGN, Géorisques). <b>Ni un avis notarié ni une expertise réglementée.</b> Valeurs à confirmer.</div>'+
     '</div>'+
     '<script>(function(){var t='+JSON.stringify(recapText())+';var a=document.getElementById("rcWa");if(a)a.href="https://wa.me/?text="+encodeURIComponent(t);var m=document.getElementById("rcMail");if(m)m.href="mailto:?subject="+encodeURIComponent("Étude de marché — Récapitulatif")+"&body="+encodeURIComponent(t);})();<\/script>'+
