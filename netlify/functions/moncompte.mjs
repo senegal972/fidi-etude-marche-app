@@ -13,6 +13,9 @@ export const handler = async (event) => {
       return authResp(200, { authenticated: false, paywall: paywallOn(), login_required: loginRequired(), cost_etude: costEtude(), paypal: paypalInfo() });
     }
     const u = found.user;
+    // Template (profil type) assigné au compte — pilote les feature flags côté app.
+    const tplProp = (found.page.properties || {})["Template"];
+    const template = (tplProp && tplProp.select && tplProp.select.name) || "";
     return authResp(200, {
       authenticated: true,
       paywall: paywallOn(),
@@ -22,6 +25,7 @@ export const handler = async (event) => {
       user: {
         email: u.email, nom: u.nom, role: u.role, statut: u.statut, credits: u.credits,
         illimite: u.illimite, quota: u.quota, recherches: u.recherches,
+        template,
       },
     });
   } catch (e) {

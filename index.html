@@ -1135,6 +1135,45 @@ let transSortCol = 'distance_m';
 let transSortAsc = true;
 let transData = [];
 
+// ═══ Feature flags / Templates (profils types par client) ════════════════════
+// Le compte connecté peut porter un « Template » (banque / agent / promoteur / custom).
+// Le template active/désactive des modules. Admin = tout affiché. Couche data = /api/templates.
+window.FidiFlags = (function(){
+  var flags = null, injected = false;
+  // Association id de conteneur → module (évite de taguer le HTML partout).
+  var TAG_BY_ID = {
+    enrichLocalWrap:'enrichir', aleasPprWrap:'pprn', gpuInfo:'urbanisme',
+    promoteurBox:'potentiel_foncier', terrainDecoteBox:'potentiel_foncier'
+  };
+  function _style(){ if(injected) return; injected=true; try{ var s=document.createElement('style'); s.textContent='.flag-hidden{display:none!important}'; document.head.appendChild(s); }catch(e){} }
+  function _user(){ try{ return (window.Compte && Compte.state && Compte.state.user) || null; }catch(e){ return null; } }
+  function isAdmin(){ var u=_user(); return !!(u && u.role==='Administrateur'); }
+  function _slug(){ var u=_user(); return (u && u.template) || ''; }
+  async function load(){
+    _style();
+    var slug=_slug();
+    if(isAdmin() || !slug){ flags=null; apply(); return; }   // admin OU aucun template → tout affiché
+    try {
+      var r=await fetch('/api/templates',{credentials:'same-origin'}); var d=await r.json();
+      var t=(d.templates||[]).find(function(x){ return x.slug===slug; });
+      flags = (t && t.flags) ? t.flags : null;
+    } catch(e){ flags=null; }
+    apply();
+  }
+  function on(key){ return !flags || flags[key]!==false; }
+  function apply(){
+    _style();
+    // Applique les tags par id (dynamiques : recalculés à chaque apply).
+    Object.keys(TAG_BY_ID).forEach(function(id){ var el=document.getElementById(id); if(el && !el.getAttribute('data-flag')) el.setAttribute('data-flag', TAG_BY_ID[id]); });
+    document.querySelectorAll('[data-flag]').forEach(function(el){
+      var keys=(el.getAttribute('data-flag')||'').split(/\s+/).filter(Boolean);
+      var show = keys.length===0 || keys.some(on);
+      el.classList.toggle('flag-hidden', !show);
+    });
+  }
+  return { load:load, on:on, apply:apply, get flags(){ return flags; } };
+})();
+
 const fmt = (n, dec=0) => n != null ? Number(n).toLocaleString('fr-FR',{minimumFractionDigits:dec,maximumFractionDigits:dec}) : '—';
 const fmtEur = n => n != null ? fmt(n) + ' €' : '—';
 const fmtM2  = n => n != null ? fmt(n) + ' €/m²' : '—';
@@ -2484,6 +2523,7 @@ function renderResults(d){
   document.getElementById('res-contexte').textContent = loc.context || '';
   document.getElementById('res-date').textContent     = 'Analyse du ' + (d.generated_at || '');
   try { etudeNoteLoad(); } catch(e){}  // charge la note/mémo de cette étude (si déjà saisie)
+  try { window.FidiFlags && setTimeout(FidiFlags.apply, 400); } catch(e){}  // masque les modules hors template
 
   // Score
   renderScore(sc);
@@ -5384,6 +5424,7 @@ window.Compte = (function(){
     }catch(e){ state.authenticated = false; state.user = null; }
     render();
     renderGate();
+    try { window.FidiFlags && FidiFlags.load(); } catch(e){}  // applique le template (modules visibles)
   }
 
   // ─── Portail d'accueil (vitrine + connexion) ────────────────────────────────
@@ -5834,6 +5875,10 @@ window.Compte = (function(){
     if(!window._offresGrilles || !window._offresGrilles.length){
       try { const rg = await fetch('/api/offres',{credentials:'same-origin'}); const dg = await rg.json(); if(dg && dg.grilles) window._offresGrilles = dg.grilles; } catch(e){}
     }
+    // Précharge les templates (profils types) pour l'assignation.
+    if(!window._templates){
+      try { const rt = await fetch('/api/templates',{credentials:'same-origin'}); const dt = await rt.json(); if(dt && dt.templates){ window._templates = dt.templates; window._templateModules = dt.modules; } } catch(e){}
+    }
     // Réseaux déjà enregistrés (pour le menu déroulant).
     const reseaux = Array.from(new Set((_adminUsersCache||[]).map(x=>x.reseau).filter(Boolean))).sort();
     const isSA = (state.user && state.user.email) === (state.superAdmin || 'contact@fidiconseil.com');
@@ -5867,6 +5912,12 @@ window.Compte = (function(){
             '<input id="fcTarif" class="form-control form-control-sm" list="fcTarifList" value="'+esc(u.tarifGroup||'')+'" placeholder="Standard, Partenaire, Banque…">'+
             '<datalist id="fcTarifList">'+((window._offresGrilles||['Standard']).map(function(g){return '<option value="'+esc(g)+'">';}).join(''))+'</datalist>'+
             '<div class="text-muted" style="font-size:.66rem;">Grilles créées dans Offres &amp; crédits. Vide = Standard.</div></div>'+
+          '<div class="col-md-6"><label class="form-label small mb-0">Template (modules visibles)</label>'+
+            '<select id="fcTemplate" class="form-select form-select-sm">'+
+              '<option value="">Complet (par défaut)</option>'+
+              ((window._templates||[]).map(function(t){ return '<option value="'+esc(t.slug)+'"'+((u.template===t.slug)?' selected':'')+'>'+esc(t.name)+'</option>'; }).join(''))+
+            '</select>'+
+            '<div class="text-muted" style="font-size:.66rem;">Profil type (banque, promoteur…) : active/désactive des modules pour ce client.</div></div>'+
         '</div>'+
         '<div class="border rounded p-2 mt-3" style="background:#f5f9f5;">'+
           '<div class="form-check"><input id="fcEncaisse" type="checkbox" class="form-check-input"'+(u.fidi_encaisse?' checked':'')+'><label class="form-check-label small fw-semibold" for="fcEncaisse">FIDI encaisse pour ce collaborateur (solution de portage)</label></div>'+
@@ -5897,7 +5948,7 @@ window.Compte = (function(){
     const payload={ email:email,
       nom: val('fcNom'), role: val('fcRole'), statut: val('fcStatut'),
       credits: val('fcCredits'), quota: val('fcQuota'), illimite: chk('fcIllimite'),
-      reseau: val('fcReseau'), tarifGroup: val('fcTarif'),
+      reseau: val('fcReseau'), tarifGroup: val('fcTarif'), template: val('fcTemplate'),
       fidi_encaisse: chk('fcEncaisse'), commission: val('fcCommission'),
       expire: (val('fcRole')==='Éphémère') ? (val('fcExpire')||'') : '' };
     const msg=document.getElementById('fcMsg'); if(msg) msg.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Enregistrement…';

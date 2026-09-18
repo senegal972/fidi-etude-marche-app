@@ -61,9 +61,10 @@ export const handler = async (event) => {
         const fidiEncaisse = !!(props["FIDI encaisse"]?.checkbox);
         const commission = props["Commission FIDI %"]?.number ?? 25;
         const expire = props["Expire le"]?.date?.start || "";
+        const template = props["Template"]?.select?.name || "";
         return { email: u.email, nom: u.nom, role: u.role, statut: u.statut, credits: u.credits,
                  illimite: u.illimite, quota: u.quota, recherches: u.recherches,
-                 reseau, tarifGroup, fidi_encaisse: fidiEncaisse, commission, expire };
+                 reseau, tarifGroup, fidi_encaisse: fidiEncaisse, commission, expire, template };
       });
       return authResp(200, { ok: true, users, super_admin: SUPER_ADMIN_EMAIL, me: me.user.email });
     }
@@ -127,6 +128,10 @@ export const handler = async (event) => {
       if (b.tarifGroup != null) {
         await ensureProperty(DB.users, "Grille tarifaire", { select: {} });
         patch["Grille tarifaire"] = b.tarifGroup ? P.select(String(b.tarifGroup).slice(0, 100)) : { select: null };
+      }
+      if (b.template != null) {
+        await ensureProperty(DB.users, "Template", { select: {} });
+        patch["Template"] = b.template ? P.select(String(b.template).slice(0, 100)) : { select: null };
       }
       if (b.fidi_encaisse != null || b.commission != null) {
         await ensureProperty(DB.users, "FIDI encaisse", { checkbox: {} });
