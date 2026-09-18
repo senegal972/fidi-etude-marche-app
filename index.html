@@ -1143,7 +1143,9 @@ window.FidiFlags = (function(){
   // Association id de conteneur → module (évite de taguer le HTML partout).
   var TAG_BY_ID = {
     enrichLocalWrap:'enrichir', aleasPprWrap:'pprn', gpuInfo:'urbanisme',
-    promoteurBox:'potentiel_foncier', terrainDecoteBox:'potentiel_foncier'
+    promoteurBox:'potentiel_foncier', terrainDecoteBox:'potentiel_foncier',
+    estimationRow:'estimation_venale', dpeContainer:'dpe', rendementRow:'loyers_marche',
+    transProchesRow:'dvf', topComparRow:'dvf'
   };
   function _style(){ if(injected) return; injected=true; try{ var s=document.createElement('style'); s.textContent='.flag-hidden{display:none!important}'; document.head.appendChild(s); }catch(e){} }
   function _user(){ try{ return (window.Compte && Compte.state && Compte.state.user) || null; }catch(e){ return null; } }
@@ -1172,6 +1174,58 @@ window.FidiFlags = (function(){
     });
   }
   return { load:load, on:on, apply:apply, get flags(){ return flags; } };
+})();
+
+// ═══ Éditeur de Templates (admin) — interrupteurs par module ═════════════════
+window.Templates = (function(){
+  var data={modules:[],templates:[],custom_store:false}, _cur=null;
+  function esc2(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+  async function open(){ try{ var r=await fetch('/api/templates',{credentials:'same-origin'}); data=await r.json(); }catch(e){ alert('Erreur chargement templates'); return; } render(); }
+  function shell(inner){
+    var old=document.getElementById('tplModalRoot'); if(old) old.remove();
+    var dlg=document.createElement('div'); dlg.id='tplModalRoot';
+    dlg.style.cssText='position:fixed;inset:0;z-index:30060;background:rgba(0,0,0,.5);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:24px 12px;';
+    dlg.innerHTML='<div style="background:#fff;border-radius:14px;max-width:640px;width:96%;padding:22px 24px;box-shadow:0 12px 40px rgba(0,0,0,.35);max-height:90vh;overflow:auto;">'+inner+'</div>';
+    document.body.appendChild(dlg); dlg.addEventListener('click',function(e){ if(e.target===dlg) dlg.remove(); });
+  }
+  function render(){ shell(list()); }
+  function list(){
+    var rows=(data.templates||[]).map(function(t){
+      var nb=Object.keys(t.flags||{}).filter(function(k){return t.flags[k];}).length;
+      return '<tr><td><b>'+esc2(t.name)+'</b> <span class="text-muted small">('+esc2(t.slug)+')</span>'+(t.is_system?' <span class="badge bg-secondary">système</span>':'')+'</td>'+
+        '<td class="text-end small text-muted">'+nb+' modules actifs</td>'+
+        '<td class="text-end"><button class="btn btn-sm '+(t.is_system?'btn-outline-secondary':'btn-outline-primary')+'" onclick="Templates.edit(\''+esc2(t.slug)+'\')">'+(t.is_system?'Voir / dupliquer':'Modifier')+'</button></td></tr>';
+    }).join('');
+    return '<div class="d-flex justify-content-between align-items-center mb-2"><h5 class="fw-bold mb-0"><i class="bi bi-grid-3x3-gap me-1"></i>Templates (profils types)</h5><button class="btn-close" onclick="document.getElementById(\'tplModalRoot\').remove()"></button></div>'+
+      (data.custom_store?'':'<div class="alert alert-warning py-2 small">Création/édition custom désactivée : définir <b>NOTION_DB_TEMPLATES</b> (base Notion : Nom, Slug, Flags, Systeme) pour enregistrer des templates personnalisés. Les templates système restent assignables aux comptes.</div>')+
+      '<div class="table-responsive"><table class="table table-sm align-middle"><tbody>'+rows+'</tbody></table></div>'+
+      (data.custom_store?'<button class="btn btn-sm btn-primary" onclick="Templates.edit(null)"><i class="bi bi-plus-lg me-1"></i>Nouveau template</button>':'');
+  }
+  function editor(t){
+    var mods=data.modules||[], ro=!!t.is_system;
+    var sw=mods.map(function(m){ var on=t.flags?(t.flags[m.key]!==false):true;
+      return '<div class="d-flex justify-content-between align-items-center py-1 border-bottom"><span class="small">'+esc2(m.label)+'</span>'+
+        '<div class="form-check form-switch mb-0"><input class="form-check-input" type="checkbox" data-mod="'+esc2(m.key)+'"'+(on?' checked':'')+(ro?' disabled':'')+'></div></div>'; }).join('');
+    return '<div class="d-flex justify-content-between align-items-center mb-2"><h5 class="fw-bold mb-0">'+(t.__new?'Nouveau template':(ro?'Système : ':'Modifier : ')+esc2(t.name||''))+'</h5><button class="btn-close" onclick="Templates.back()"></button></div>'+
+      (ro?'<div class="alert alert-secondary py-1 small">Template système en lecture seule — utilisez « Dupliquer » pour créer une variante modifiable.</div>':'')+
+      '<div class="row g-2 mb-2"><div class="col-md-7"><label class="form-label small mb-0">Nom</label><input id="tplName" class="form-control form-control-sm" value="'+esc2(t.name||'')+'"'+(ro?' disabled':'')+'></div>'+
+      '<div class="col-md-5"><label class="form-label small mb-0">Slug</label><input id="tplSlug" class="form-control form-control-sm" value="'+esc2(t.slug||'')+'"'+((ro||!t.__new)?' disabled':'')+' placeholder="banque-x"></div></div>'+
+      '<div class="border rounded p-2" style="max-height:300px;overflow:auto;">'+sw+'</div>'+
+      '<div class="d-flex justify-content-between mt-3"><div>'+(ro?'<button class="btn btn-sm btn-outline-primary" onclick="Templates.duplicate()">Dupliquer</button>':(t.id?'<button class="btn btn-sm btn-outline-danger" onclick="Templates.remove(\''+t.id+'\')">Supprimer</button>':''))+'</div>'+
+      '<div><button class="btn btn-sm btn-outline-secondary me-2" onclick="Templates.back()">Retour</button>'+(ro?'':'<button class="btn btn-sm btn-primary" onclick="Templates.save()">Enregistrer</button>')+'</div></div>';
+  }
+  function edit(slug){ if(slug===null||slug===undefined){ _cur={__new:true,name:'',slug:'',flags:{},is_system:false}; } else { _cur=(data.templates||[]).find(function(x){return x.slug===slug;}); } if(_cur) shell(editor(_cur)); }
+  function back(){ render(); }
+  function duplicate(){ if(!_cur) return; _cur={__new:true,name:(_cur.name||'')+' (copie)',slug:'',flags:Object.assign({},_cur.flags),is_system:false}; shell(editor(_cur)); }
+  function collect(){ var flags={}; document.querySelectorAll('#tplModalRoot [data-mod]').forEach(function(el){ flags[el.getAttribute('data-mod')]=el.checked; });
+    return { action:'save', id:_cur.id, name:(document.getElementById('tplName')||{}).value||'', slug:(document.getElementById('tplSlug')||{}).value||_cur.slug, flags:flags }; }
+  async function save(){ var p=collect(); if(!p.name||!p.slug){ alert('Nom + slug requis.'); return; }
+    var r=await fetch('/api/templates',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)}); var d=await r.json();
+    if(!r.ok){ alert(d.error||'Erreur.'); return; } window._templates=null; await open(); }
+  async function remove(id){ if(!confirm('Supprimer définitivement ce template ?')) return;
+    var r=await fetch('/api/templates',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete',id:id})}); var d=await r.json();
+    if(!r.ok){ alert(d.error||'Erreur.'); return; } window._templates=null; await open(); }
+  return { open:open, edit:edit, back:back, duplicate:duplicate, save:save, remove:remove };
 })();
 
 const fmt = (n, dec=0) => n != null ? Number(n).toLocaleString('fr-FR',{minimumFractionDigits:dec,maximumFractionDigits:dec}) : '—';
@@ -5625,6 +5679,7 @@ window.Compte = (function(){
               '<select class="form-select form-select-sm" id="adFilterReseau" onchange="Compte.adminRefresh()" style="max-width:180px;"><option value="">Tous réseaux</option></select>'+
               '<button class="btn btn-sm btn-outline-primary" onclick="Compte.copySignupLink()"><i class="bi bi-link-45deg me-1"></i>Copier lien inscription</button>'+
               '<button class="btn btn-sm btn-primary" onclick="Compte.openCreateForm()"><i class="bi bi-person-plus-fill me-1"></i>Créer un compte</button>'+
+              '<button class="btn btn-sm btn-outline-primary ms-2" onclick="Templates.open()" title="Gérer les profils types (modules visibles par client)"><i class="bi bi-grid-3x3-gap me-1"></i>Templates</button>'+
             '</div>'+
           '</div>'+
 
