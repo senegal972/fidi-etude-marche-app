@@ -42,7 +42,9 @@ const SYSTEM = [
     flags: withOn(allFlags(false), ["urbanisme", "cadastre", "potentiel_foncier", "dvf", "estimation_venale", "georisques", "pprn", "export_pdf"]) },
 ];
 
-const DB_TPL = process.env.NOTION_DB_TEMPLATES || "";
+// Base Notion « Templates » (créée sous « FIDI — Études de marché & Avis de valeur »).
+// Surchargeable via NOTION_DB_TEMPLATES.
+const DB_TPL = process.env.NOTION_DB_TEMPLATES || "b1e2d5cc40844a5386794de62131c82b";
 
 function tplFromPage(pg) {
   const p = pg.properties || {};
@@ -64,6 +66,32 @@ async function customTemplates() {
     cursor = r.has_more ? r.next_cursor : null;
   } while (cursor);
   return out.filter((t) => t.slug);
+}
+
+// ── Enforcement serveur : flags effectifs d'un compte + garde par module ──────
+// Résout les flags du template assigné au compte (système ou custom).
+export async function flagsForSlug(slug) {
+  if (!slug) return null;
+  const sys = SYSTEM.find((s) => s.slug === slug);
+  if (sys) return sys.flags;
+  try { const c = await customTemplates(); const t = c.find((x) => x.slug === slug); return t ? t.flags : null; }
+  catch { return null; }
+}
+// À appeler en tête d'une fonction servant des données d'un module gated.
+// Lève une erreur { status:403 } si le module est désactivé pour le compte.
+// Admin / non authentifié / sans template → laissé passer (le paywall gère l'accès global).
+export async function assertModule(event, key) {
+  const me = await currentUser(event);
+  if (!me || me.user.role === "Administrateur") return;
+  const tpl = (me.page.properties || {})["Template"];
+  const slug = (tpl && tpl.select && tpl.select.name) || "";
+  if (!slug) return;
+  const flags = await flagsForSlug(slug);
+  if (flags && flags[key] === false) {
+    const e = new Error("Module « " + key + " » non inclus dans votre profil d'accès.");
+    e.status = 403;
+    throw e;
+  }
 }
 
 export const handler = async (event) => {

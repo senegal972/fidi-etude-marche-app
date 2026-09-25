@@ -4,6 +4,7 @@
 // Source : "Carte des loyers" — indicateurs d'annonce DHUP/MEF (open data).
 
 import { cacheGet, cacheSet, cacheTag } from "./_cache.mjs";
+import { assertModule } from "./templates.mjs";
 
 const TIMEOUT_MS = 15000;
 const CSV_MAISON = "https://static.data.gouv.fr/resources/carte-des-loyers-indicateurs-de-loyers-dannonce-par-commune-en-2024/20241205-145700/pred-mai-mef-dhup.csv";
@@ -58,6 +59,10 @@ async function lookupLoyer(url, codeInsee) {
 
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return jsonResp(200, {});
+
+  // Enforcement serveur : module « Loyers de marché » désactivé pour ce profil → 403.
+  try { await assertModule(event, "loyers_marche"); }
+  catch (e) { if (e && e.status === 403) return jsonResp(403, { error: e.message, module: "loyers_marche" }); }
 
   let b = {};
   try { b = JSON.parse(event.body || "{}"); }
