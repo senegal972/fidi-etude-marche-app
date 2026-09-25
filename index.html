@@ -4884,8 +4884,12 @@ window.relancerFacture = function(f, onDone){
       ((f.email && f.jeton) ? '<button class="btn btn-outline-primary w-100" onclick="__relanceResendDoc()"><i class="bi bi-arrow-repeat me-1"></i>Renvoyer le document par e-mail (lien de remise)</button>' : '')+
       '<div style="text-align:right;margin-top:12px;"><button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'relanceDlgGlobal\').remove()">Fermer</button></div>'+
     '</div>';
-  document.body.appendChild(dlg);
+  // Rattache à la modale Bootstrap ouverte (sinon son piège de focus bloque le champ
+  // téléphone). Repli sur body si aucune modale.
+  var _relHost = document.querySelector('.modal.show') || document.body;
+  _relHost.appendChild(dlg);
   dlg.addEventListener('click', function(e){ if(e.target===dlg) dlg.remove(); });
+  setTimeout(function(){ var t=document.getElementById('rlTel'); if(t) t.focus(); }, 40);
   // Active/désactive le bouton WhatsApp selon la saisie
   window.__rlToggleWa = function(){
     var v = (document.getElementById('rlTel')||{}).value||'';
@@ -6472,22 +6476,37 @@ window.Compte = (function(){
       loadFactAdmin();
     } catch(e){ alert('Erreur réseau : '+e.message); }
   }
-  // Fiche client = historique de toutes ses factures (réutilise l'endpoint client)
+  // Fiche client = contact ÉDITABLE + historique de toutes ses factures.
   async function factFicheClient(client, email){
-    const holder = document.getElementById('factListBody');
-    // Ouvre un modal léger avec l'historique du client
+    // Coordonnées connues (depuis le cache factures : dernière facture du client).
+    var known = (window._factCache||[]).filter(function(f){ return (email && f.email===email) || (!email && f.client===client); });
+    var last = known[known.length-1] || {};
+    var c = { nom: client||last.client||'', email: email||last.email||'', telephone: last.telephone||'', adresse: last.adresse||'' };
     let dlg = document.getElementById('ficheClientDlg');
     if(dlg) dlg.remove();
     dlg = document.createElement('div');
     dlg.id='ficheClientDlg';
-    dlg.style.cssText='position:fixed;inset:0;z-index:30000;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;';
-    dlg.innerHTML='<div style="background:#fff;border-radius:12px;max-width:720px;width:94%;max-height:82vh;overflow:auto;padding:20px 22px;box-shadow:0 12px 40px rgba(0,0,0,.35);">'+
-      '<div class="d-flex align-items-center mb-2"><h5 class="fw-bold mb-0"><i class="bi bi-person-vcard me-1" style="color:#1a4b8e;"></i>Fiche client — '+esc(client)+'</h5>'+
-      '<button class="btn btn-sm btn-outline-secondary ms-auto" onclick="document.getElementById(\'ficheClientDlg\').remove()"><i class="bi bi-x"></i></button></div>'+
-      '<div class="small text-muted mb-2">'+esc(email||'')+'</div>'+
+    dlg.style.cssText='position:fixed;inset:0;z-index:30040;background:rgba(0,0,0,.5);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:24px 12px;';
+    dlg.innerHTML='<div style="background:#fff;border-radius:12px;max-width:720px;width:94%;max-height:90vh;overflow:auto;padding:20px 22px;box-shadow:0 12px 40px rgba(0,0,0,.35);">'+
+      '<div class="d-flex align-items-center mb-2"><h5 class="fw-bold mb-0"><i class="bi bi-person-vcard me-1" style="color:#1a4b8e;"></i>Fiche contact — '+esc(c.nom)+'</h5>'+
+      '<button class="btn-close ms-auto" onclick="document.getElementById(\'ficheClientDlg\').remove()"></button></div>'+
+      // ── Contact éditable ──
+      '<div class="border rounded p-2 mb-3" style="background:#f7f9fc;">'+
+        '<div class="fw-semibold small mb-2"><i class="bi bi-pencil-square me-1"></i>Coordonnées (modifiable)</div>'+
+        '<div class="row g-2">'+
+          '<div class="col-md-6"><label class="form-label small mb-0">Nom / société</label><input id="fcCliNom" class="form-control form-control-sm" value="'+esc(c.nom)+'"></div>'+
+          '<div class="col-md-6"><label class="form-label small mb-0">E-mail</label><input id="fcCliEmail" type="email" class="form-control form-control-sm" value="'+esc(c.email)+'"></div>'+
+          '<div class="col-md-6"><label class="form-label small mb-0">Téléphone</label><input id="fcCliTel" type="tel" class="form-control form-control-sm" value="'+esc(c.telephone)+'" placeholder="+596 6 96 …"></div>'+
+          '<div class="col-md-6"><label class="form-label small mb-0">Adresse</label><input id="fcCliAdr" class="form-control form-control-sm" value="'+esc(c.adresse)+'"></div>'+
+        '</div>'+
+        '<div class="d-flex align-items-center gap-2 mt-2"><button class="btn btn-sm btn-primary" onclick="Compte.factSaveContact()"><i class="bi bi-check-lg me-1"></i>Enregistrer le contact</button><span id="fcCliMsg" class="small"></span></div>'+
+      '</div>'+
+      '<div class="fw-semibold small mb-1"><i class="bi bi-receipt me-1"></i>Historique des factures</div>'+
       '<div id="ficheClientBody" class="small text-muted">Chargement…</div></div>';
-    document.body.appendChild(dlg);
+    var _host = document.querySelector('.modal.show') || document.body;
+    _host.appendChild(dlg);
     dlg.addEventListener('click',e=>{ if(e.target===dlg) dlg.remove(); });
+    setTimeout(function(){ var n=document.getElementById('fcCliNom'); if(n) n.focus(); }, 40);
     try {
       const qp = email ? 'email='+encodeURIComponent(email) : 'client='+encodeURIComponent(client);
       const r = await fetch('/api/factures/client?'+qp, {credentials:'same-origin'});
@@ -6511,6 +6530,20 @@ window.Compte = (function(){
         (j.stats.cancelled?'<span class="badge bg-secondary">'+j.stats.cancelled+' annulées</span>':'')+'</div>'+
         '<table class="table table-sm"><thead class="table-light"><tr><th>N°</th><th>Date</th><th>Prestation</th><th class="text-end">Montant</th><th>Statut</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="6" class="text-muted">Aucune facture</td></tr>')+'</tbody></table>';
     } catch(e){ document.getElementById('ficheClientBody').innerHTML='<span class="text-danger">Erreur : '+esc(e.message)+'</span>'; }
+  }
+  // Enregistre / met à jour le contact (CRM Notion) depuis la fiche.
+  async function factSaveContact(){
+    var v=function(id){ var el=document.getElementById(id); return el?el.value.trim():''; };
+    var payload={ nom:v('fcCliNom'), email:v('fcCliEmail'), telephone:v('fcCliTel'), adresse:v('fcCliAdr') };
+    var msg=document.getElementById('fcCliMsg');
+    if(!payload.nom && !payload.email){ if(msg) msg.innerHTML='<span class="text-danger">Nom ou e-mail requis.</span>'; return; }
+    if(msg) msg.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Enregistrement…';
+    try {
+      var r=await fetch('/api/crm-clients',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      var d=await r.json().catch(function(){return{};});
+      if(!r.ok){ if(msg) msg.innerHTML='<span class="text-danger">'+esc(d.error||d.hint||'Erreur (CRM non configuré ?)')+'</span>'; return; }
+      if(msg) msg.innerHTML='<span class="text-success">✓ Contact enregistré</span>';
+    } catch(e){ if(msg) msg.innerHTML='<span class="text-danger">Erreur réseau.</span>'; }
   }
   function factRelance(ref){
     const f = (window._factCache||[]).find(x=>x.ref===ref) || {};
@@ -6539,7 +6572,7 @@ window.Compte = (function(){
         '</div>'+
         '<div class="text-end mt-3"><button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'relanceDlg\').remove()">Fermer</button></div>'+
       '</div>';
-    document.body.appendChild(dlg);
+    (document.querySelector('.modal.show') || document.body).appendChild(dlg);
     dlg.addEventListener('click', e=>{ if(e.target===dlg) dlg.remove(); });
     // Mémorise le contexte pour relanceVia
     window._relanceCtx = { ref, msg, tel, email:f.email||'' };
@@ -6679,7 +6712,7 @@ window.Compte = (function(){
   return { open, doLogin, logout, refresh, setCredits, setRecherches, consume, adminCreate, adminCredit, adminToggle,
            adminIllimite, adminQuota, adminDelete, adminReseau, adminTarifGroup, adminRefresh,
            adminEditNom, adminCommission, openFiche, ficheRoleChange, ficheSave, loadFactAdmin, factSaveSeuils, factRelance, relanceVia, factDelete, factFicheClient,
-           openRapportCompta, rcSetMonth, rcSetYear, genRapportCompta,
+           openRapportCompta, rcSetMonth, rcSetYear, genRapportCompta, factSaveContact,
            openCreateForm, closeCreateForm, adCreateRoleChange, openTarifForm, closeTarifForm, copySignupLink,
            loadOffres, chooseOffer, payOffer, offerToggle, offerPrice, bulkRecalc, bulkSyncCumul, offresSelectGrille, offresCreateGrid,
            loadTarifsAdmin, tarifCreate, tarifPrice, tarifToggle, tarifDelete, tarifEditNom, tarifEditCat, tarifEditDesc,
