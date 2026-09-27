@@ -4222,6 +4222,144 @@
     return h;
   }
 
+  // ── Graphiques SVG inline (LOT G) — pas de librairie, compatibles impression ────
+  var GOLD = '#b8860b', BLEU = '#1a3a6e';
+  function svgEl(w, h, inner) {
+    return '<svg viewBox="0 0 ' + w + ' ' + h + '" width="100%" style="max-width:' + w + 'px;height:auto;font-family:Calibri,Arial,sans-serif;" xmlns="http://www.w3.org/2000/svg">' + inner + '</svg>';
+  }
+  function txt(x, y, s, opts) {
+    opts = opts || {};
+    return '<text x="' + x + '" y="' + y + '" font-size="' + (opts.size || 11) + '" fill="' + (opts.fill || '#333') + '"' +
+      (opts.anchor ? ' text-anchor="' + opts.anchor + '"' : '') + (opts.weight ? ' font-weight="' + opts.weight + '"' : '') + '>' + esc(s) + '</text>';
+  }
+  // 1) Barres horizontales €/m² des comparables inclus, avec bande bas–haut + retenu + moyenne.
+  function chartComparablesM2(data) {
+    var vals = comparablesM2(data);
+    if (vals.length < 2) return '';
+    var inp = buildV2Input(data);
+    var bas = inp.comparaison.bas, central = inp.comparaison.central, haut = inp.comparaison.haut;
+    var moyenne = Math.round(vals.reduce(function (s, v) { return s + v; }, 0) / vals.length);
+    var maxV = Math.max(haut, vals[vals.length - 1]) * 1.05, minV = 0;
+    var W = 560, padL = 40, padR = 90, padT = 26, rowH = 20, H = padT + vals.length * rowH + 30;
+    var plotW = W - padL - padR;
+    var xOf = function (v) { return padL + (v - minV) / (maxV - minV) * plotW; };
+    var inner = '';
+    // bande bas–haut
+    inner += '<rect x="' + xOf(bas) + '" y="' + (padT - 6) + '" width="' + (xOf(haut) - xOf(bas)) + '" height="' + (vals.length * rowH + 6) + '" fill="' + GOLD + '" opacity="0.10"/>';
+    vals.forEach(function (v, i) {
+      var y = padT + i * rowH;
+      inner += '<rect x="' + padL + '" y="' + y + '" width="' + (xOf(v) - padL) + '" height="' + (rowH - 6) + '" fill="' + BLEU + '" opacity="0.75"/>';
+      inner += txt(xOf(v) + 4, y + rowH - 8, fmt(Math.round(v)) + ' €/m²', { size: 9, fill: '#333' });
+    });
+    // trait retenu (central) + moyenne (pointillé)
+    inner += '<line x1="' + xOf(central) + '" y1="' + (padT - 8) + '" x2="' + xOf(central) + '" y2="' + (padT + vals.length * rowH) + '" stroke="' + GOLD + '" stroke-width="2"/>';
+    inner += txt(xOf(central), padT - 12, 'retenu ' + fmt(central), { size: 9, fill: GOLD, anchor: 'middle', weight: 'bold' });
+    inner += '<line x1="' + xOf(moyenne) + '" y1="' + (padT - 8) + '" x2="' + xOf(moyenne) + '" y2="' + (padT + vals.length * rowH) + '" stroke="#666" stroke-width="1" stroke-dasharray="4 3"/>';
+    inner += txt(xOf(moyenne), padT + vals.length * rowH + 14, 'moyenne ' + fmt(moyenne), { size: 8, fill: '#666', anchor: 'middle' });
+    return svgEl(W, H, inner);
+  }
+  // 2) Fourchettes des méthodes : une ligne par méthode + synthèse, point central,
+  //    traits pointillés verticaux aux prix des annonces du bien sujet.
+  function chartMethodesFourchette(data, r) {
+    var rows = [
+      { lbl: 'Comparaison', m: r.comparaison, on: r.actives.comparaison },
+      { lbl: 'Sol + constr.', m: r.solConstruction, on: r.actives.solConstruction },
+      { lbl: 'Capitalisation', m: r.capitalisation, on: r.actives.capitalisation },
+      { lbl: 'SYNTHÈSE', m: r.synthese, on: true, synth: true },
+    ].filter(function (x) { return x.on; });
+    var all = [];
+    rows.forEach(function (x) { all.push(x.m.bas, x.m.central, x.m.haut); });
+    var sujet = (data.comparables || []).filter(function (c) { return /bien sujet|veille auto/i.test(c.note || '') && num(c.prix); }).map(function (c) { return num(c.prix); });
+    sujet.forEach(function (p) { all.push(p); });
+    var maxV = Math.max.apply(null, all) * 1.05, minV = Math.min.apply(null, all) * 0.95;
+    if (!(maxV > minV)) return '';
+    var W = 560, padL = 110, padR = 30, padT = 20, rowH = 30, H = padT + rows.length * rowH + 34;
+    var plotW = W - padL - padR;
+    var xOf = function (v) { return padL + (v - minV) / (maxV - minV) * plotW; };
+    var inner = '';
+    sujet.forEach(function (p) {
+      inner += '<line x1="' + xOf(p) + '" y1="' + (padT - 4) + '" x2="' + xOf(p) + '" y2="' + (padT + rows.length * rowH) + '" stroke="#c0392b" stroke-width="1" stroke-dasharray="3 3"/>';
+      inner += txt(xOf(p), padT + rows.length * rowH + 12, 'annonce ' + fmt(Math.round(p / 1000)) + 'k', { size: 8, fill: '#c0392b', anchor: 'middle' });
+    });
+    rows.forEach(function (x, i) {
+      var y = padT + i * rowH + rowH / 2;
+      inner += txt(6, y + 3, x.lbl, { size: 10, fill: x.synth ? BLEU : '#333', weight: x.synth ? 'bold' : 'normal' });
+      inner += '<line x1="' + xOf(x.m.bas) + '" y1="' + y + '" x2="' + xOf(x.m.haut) + '" y2="' + y + '" stroke="' + (x.synth ? GOLD : BLEU) + '" stroke-width="' + (x.synth ? 5 : 3) + '" stroke-linecap="round" opacity="' + (x.synth ? 1 : 0.7) + '"/>';
+      inner += '<circle cx="' + xOf(x.m.central) + '" cy="' + y + '" r="' + (x.synth ? 5 : 4) + '" fill="' + (x.synth ? GOLD : BLEU) + '"/>';
+      inner += txt(xOf(x.m.haut) + 4, y + 3, fmt(Math.round(x.m.central / 1000)) + 'k', { size: 8, fill: '#666' });
+    });
+    return svgEl(W, H, inner);
+  }
+  // 3) Anneau de répartition des revenus (annuel / saisonnier) avec total au centre.
+  function chartRevenusAnneau(r) {
+    var cap = r.capitalisation, a = cap.revenuAnnuel, s = cap.revenuSaisonnier, tot = a + s;
+    if (tot <= 0) return '';
+    var W = 260, H = 180, cx = 90, cy = 90, R = 70, rin = 42;
+    function arc(start, frac, color) {
+      var end = start + frac * Math.PI * 2;
+      var large = frac > 0.5 ? 1 : 0;
+      var x1 = cx + R * Math.cos(start), y1 = cy + R * Math.sin(start);
+      var x2 = cx + R * Math.cos(end), y2 = cy + R * Math.sin(end);
+      var xi2 = cx + rin * Math.cos(end), yi2 = cy + rin * Math.sin(end);
+      var xi1 = cx + rin * Math.cos(start), yi1 = cy + rin * Math.sin(start);
+      return '<path d="M ' + x1 + ' ' + y1 + ' A ' + R + ' ' + R + ' 0 ' + large + ' 1 ' + x2 + ' ' + y2 +
+        ' L ' + xi2 + ' ' + yi2 + ' A ' + rin + ' ' + rin + ' 0 ' + large + ' 0 ' + xi1 + ' ' + yi1 + ' Z" fill="' + color + '"/>';
+    }
+    var start = -Math.PI / 2;
+    var inner = arc(start, a / tot, BLEU) + arc(start + a / tot * Math.PI * 2, s / tot, GOLD);
+    inner += txt(cx, cy - 2, fmt(Math.round(tot / 1000)) + 'k €', { size: 13, fill: BLEU, anchor: 'middle', weight: 'bold' });
+    inner += txt(cx, cy + 14, 'revenu brut', { size: 8, fill: '#666', anchor: 'middle' });
+    inner += '<rect x="180" y="60" width="12" height="12" fill="' + BLEU + '"/>' + txt(196, 70, 'Annuel ' + fmt(Math.round(a / 1000)) + 'k', { size: 9 });
+    inner += '<rect x="180" y="82" width="12" height="12" fill="' + GOLD + '"/>' + txt(196, 92, 'Saisonnier ' + fmt(Math.round(s / 1000)) + 'k', { size: 9 });
+    return svgEl(W, H, inner);
+  }
+
+  // Bloc « Fourchette multi-méthodes » pour le document (tuiles + tableau + graphiques).
+  function buildFourchetteDocHTML(data) {
+    var mv = data.methodesV2;
+    if (!mv) return '';
+    var hasData = (data.comparables || []).length || (mv.lots || []).length || num((data.cadastre || {}).shonAutorisee);
+    if (!hasData) return '';
+    var r = CALC.calculerMethodes(buildV2Input(data));
+    var syn = r.synthese;
+    if (!(syn.central > 0)) return '';
+    var b = data.bien, cad = data.cadastre || {};
+    var terrain = num(cad.contenance) || num(b.surfaceCarrez);
+    // 4 tuiles
+    function tile(lbl, val) {
+      return '<td style="border:.4pt solid #bfbfbf;padding:8pt;text-align:center;width:25%;">' +
+        '<div style="font-size:8pt;color:#5c6470;text-transform:uppercase;">' + esc(lbl) + '</div>' +
+        '<div style="font-size:13pt;font-weight:800;color:' + BLEU + ';">' + val + '</div></td>';
+    }
+    var margeP = num(data.strategie && data.strategie.margeNegoPct);
+    var prixPres = num(data.strategie && data.strategie.prixPresentationManuel) || CALC.arrondi(syn.central * (1 + margeP / 100));
+    var html = '<h1>5 ter. Synthèse multi-méthodes (fourchette)</h1>';
+    html += '<table style="margin-bottom:8pt;"><tr>' +
+      tile('Terrain', terrain ? fmt(terrain) + ' m²' : '—') +
+      tile('SHOB / SHON', (num(cad.shobAutorisee) || '—') + ' / ' + (num(cad.shonAutorisee) || '—')) +
+      tile('Valeur vénale (central)', fmtE(syn.central)) +
+      tile('Prix de présentation', fmtE(prixPres)) +
+      '</tr></table>';
+    // tableau méthodes
+    function mrow(lbl, m, strong) {
+      return '<tr' + (strong ? ' class="gold-row"' : '') + '><td' + (strong ? '' : ' class="lbl"') + '>' + esc(lbl) + '</td>' +
+        '<td class="center">' + fmtE(m.bas) + '</td><td class="center">' + fmtE(m.central) + '</td><td class="center">' + fmtE(m.haut) + '</td></tr>';
+    }
+    html += '<table><thead><tr><th>Méthode</th><th class="center">Bas</th><th class="center">Central</th><th class="center">Haut</th></tr></thead><tbody>' +
+      (r.actives.comparaison ? mrow('Comparaison (' + r.comparaison.baseType + ')', r.comparaison) : '') +
+      (r.actives.solConstruction ? mrow('Sol + construction', r.solConstruction) : '') +
+      (r.actives.capitalisation ? mrow('Capitalisation multi-lots', r.capitalisation) : '') +
+      mrow('SYNTHÈSE (pondérée, arrondie)', syn, true) +
+      '</tbody></table>';
+    // graphiques
+    var g1 = chartComparablesM2(data), g2 = chartMethodesFourchette(data, r), g3 = chartRevenusAnneau(r);
+    if (g1) html += '<h2>€/m² des comparables</h2><div style="break-inside:avoid;page-break-inside:avoid;">' + g1 + '</div>';
+    if (g2) html += '<h2>Fourchettes des méthodes</h2><div style="break-inside:avoid;page-break-inside:avoid;">' + g2 + '</div>';
+    if (g3) html += '<h2>Répartition des revenus</h2><div style="break-inside:avoid;page-break-inside:avoid;">' + g3 + '</div>';
+    html += '<p style="font-size:8.5pt;color:#5c6470;font-style:italic;">Fourchette d\'aide à la décision. Ni notaire ni expert. Hypothèses « à valider » (coûts, primes, taux) modifiables dans l\'application.</p>';
+    return html;
+  }
+
   function buildAvisDocHTML(data, calc) {
     var b = data.bien, m = data.marche, sig = data.signataire;
     var occ = b.statut === 'occupe';
@@ -4621,6 +4759,11 @@
         '<p style="margin-top:12px;"><b style="color:#1a3a6e;">Conclusion :</b> ' + conclusionTexte + '</p>';
     }
 
+    // ── Fourchette multi-méthodes + graphiques (LOT E/G) — vente uniquement ──
+    if (_nature !== 'location') {
+      try { html += buildFourchetteDocHTML(data); } catch (e) { /* jamais bloquer le doc */ }
+    }
+
     html += '<h1>8. Réserves et limites de l\'avis</h1><div class="reserves">' +
       String(data.reserves || '').split('\n\n').map(function (p) { return '<p>' + esc(p) + '</p>'; }).join('') + '</div>';
 
@@ -4640,6 +4783,24 @@
       (_contact ? '<p style="color:#5c6470;">' + esc(_contact) + '</p>' : '') +
       (_legales ? '<p style="color:#5c6470;font-size:8pt;">' + esc(_legales) + '</p>' : '') +
       (sig.footerLibre ? '<p style="color:#5c6470;font-size:8pt;font-style:italic;margin-top:6pt;">' + esc(sig.footerLibre) + '</p>' : '') +
+      '</div>';
+
+    // ── Pied de page OPTIMMO DOM + sources (LOT G) ─────────────────────────────
+    var sources = (data.comparables || []).filter(function (c) { return c.lien; }).map(function (c) {
+      var dm = (String(c.note || '').match(/(\d{4}-\d{2}-\d{2})/) || [])[1] || '';
+      return { url: c.lien, date: dm };
+    });
+    var srcHtml = sources.length
+      ? '<div style="margin-top:10pt;font-size:7.5pt;color:#5c6470;break-inside:avoid;page-break-inside:avoid;"><b>Sources (annonces relevées) :</b><br/>' +
+        sources.map(function (s) { return esc(s.url) + (s.date ? ' — relevé le ' + esc(s.date) : ''); }).join('<br/>') + '</div>'
+      : '';
+    var _adrPied = [sig.adresseSociete, sig.codePostal, sig.ville].filter(Boolean).join(' — ');
+    html += srcHtml +
+      '<div style="margin-top:14pt;border-top:2pt solid ' + GOLD + ';padding-top:6pt;font-size:8pt;color:#5c6470;text-align:center;break-inside:avoid;page-break-inside:avoid;">' +
+        '<b>' + esc(sig.societe || 'OPTIMMO DOM') + '</b>' + (_adrPied ? ' · ' + esc(_adrPied) : '') +
+        ' · RCS 799 493 408' +
+        (sig.carteProHoguet ? ' · Carte pro ' + esc(sig.carteProHoguet) : '') +
+        '<br/>Avis de valeur — document d\'aide à la décision, ne constitue ni une expertise judiciaire ni un acte notarié.' +
       '</div>';
 
     return html;
