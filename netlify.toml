@@ -133,6 +133,9 @@
   node_bundler = "esbuild"
   external_node_modules = ["@netlify/blobs"]
 
+[functions."avis-de-valeur"]
+  timeout = 12
+
 [functions."facture-autorelance"]
   timeout = 26
 
@@ -423,6 +426,11 @@
 [[redirects]]
   from   = "/api/annonces-background"
   to     = "/.netlify/functions/annonces-background"
+  status = 200
+
+[[redirects]]
+  from   = "/api/avis-de-valeur"
+  to     = "/.netlify/functions/avis-de-valeur"
   status = 200
 
 [[redirects]]

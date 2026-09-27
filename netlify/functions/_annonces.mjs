@@ -114,6 +114,7 @@ function extractFromHtml(url, html, desc) {
 }
 
 // ── Post-traitement ──────────────────────────────────────────────────────────
+export { dedup, similarite, estBienSujet, stats, extractFromHtml, pickJsonLd };
 function dedup(items) {
   const out = [];
   for (const a of items) {

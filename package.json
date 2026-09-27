@@ -8,7 +8,8 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node tests/avis-marigot.test.mjs"
+    "test": "node --test tests/functions.test.mjs tests/annonces.test.mjs tests/avis-marigot.test.mjs",
+    "test:marigot": "node tests/avis-marigot.test.mjs"
   },
   "dependencies": {
     "@netlify/blobs": "^8.1.0",
