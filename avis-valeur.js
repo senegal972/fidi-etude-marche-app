@@ -800,20 +800,35 @@
       if (contenance > 0 && !num(d.cadastre.contenance)) d.cadastre.contenance = String(Math.round(contenance));
     }
     if (zonageStr) d.cadastre.zonage = zonageStr;
-    // Droits à bâtir depuis l'étude si disponible (emprise/COS × terrain)
+    // Droits à bâtir : 1) valeur fournie par l'étude si présente ; 2) sinon estimation INDICATIVE
+    //    SHOB ≈ contenance × emprise médiane de la zone (même gabarit que l'étude, § constructibilité).
+    var terrainCad = contenanceTotale(d.cadastre) || contenance;
     var cst = fidi.constructibilite || (fidi.estimation && fidi.estimation.constructibilite) || (zoneG && zoneG.constructibilite) || null;
-    if (cst) {
-      var shonEt = Number(cst.shon || cst.shon_autorisee || cst.surface_constructible) || 0;
-      var shobEt = Number(cst.shob || cst.shob_autorisee || cst.emprise_max) || 0;
-      if (shonEt > 0 && !num(d.cadastre.shonAutorisee)) d.cadastre.shonAutorisee = String(Math.round(shonEt));
-      if (shobEt > 0 && !num(d.cadastre.shobAutorisee)) d.cadastre.shobAutorisee = String(Math.round(shobEt));
+    var shonEt = cst ? (Number(cst.shon || cst.shon_autorisee || cst.surface_constructible) || 0) : 0;
+    var shobEt = cst ? (Number(cst.shob || cst.shob_autorisee || cst.emprise_max) || 0) : 0;
+    if (!(shobEt > 0) && terrainCad > 0) {
+      var cp = (loc.postcode) || (d.bien && d.bien.cp) || '';
+      var emp = empriseMedianeZone(zoneG.typezone, cp);   // fraction 0..1, 0 si non constructible
+      if (emp > 0) shobEt = Math.round(terrainCad * emp);
     }
+    if (shonEt > 0 && !num(d.cadastre.shonAutorisee)) d.cadastre.shonAutorisee = String(Math.round(shonEt));
+    if (shobEt > 0 && !num(d.cadastre.shobAutorisee)) d.cadastre.shobAutorisee = String(Math.round(shobEt));
     // Vigilances / atouts issus du score (rafraîchis)
     var vig = risquesToVigilances(fidi.risques, score.axes);
     if (vig.length) d.vigilances = vig;
     var at = atoutsFromScore(score);
     if (at.length) d.atouts = at;
     return d;
+  }
+
+  // Emprise au sol médiane INDICATIVE par type de zone PLU (miroir du gabarit de l'étude,
+  // index.html § constructRules). Retourne une fraction 0..1 ; 0 si non constructible (A/N/inconnu).
+  function empriseMedianeZone(typezone, cp) {
+    var z = String(typezone || '').toUpperCase();
+    var centre = /^(97200|97110|97300|97400|97600)/.test(String(cp || ''));
+    if (z.indexOf('AU') === 0) return 0.40;               // 30–50 %
+    if (z.charAt(0) === 'U') return centre ? 0.70 : 0.50; // 60–80 % centre, 40–60 % courant
+    return 0;                                             // A / N / inconnu : pas d'estimation auto
   }
 
   function buildPrefillFromEtude(fidi, inputs) {
