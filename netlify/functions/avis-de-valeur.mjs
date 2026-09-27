@@ -50,6 +50,12 @@ export const handler = async (event) => {
 
   const terr = territoirePourCode(body.territoire || bien.code_insee, bien.cp);
 
+  // Cadastre multi-parcelles : contenance retenue = somme des parcelles en mode multiple.
+  const parcelles = Array.isArray(cad.parcelles) ? cad.parcelles : [];
+  const contenanceTotale = (cad.mode === "multiple" && parcelles.length)
+    ? parcelles.reduce((s, p) => s + n(p.contenance), 0)
+    : n(cad.contenance);
+
   // €/m² comparaison : override manuel sinon quantiles des annonces fournies.
   const comp = mv.comparaison || {};
   const annM2 = annonces.map((a) => n(a.prix_m2)).filter((v) => v > 0);
@@ -119,6 +125,7 @@ export const handler = async (event) => {
   return j(200, {
     ok: true,
     territoire: { code: terr.code, libelle: terr.libelle, dvf_disponible: terr.dvf_disponible },
+    foncier: { mode: cad.mode === "multiple" ? "multiple" : "simple", nb_parcelles: cad.mode === "multiple" ? parcelles.length : (cad.section || cad.numero ? 1 : 0), contenance_totale: contenanceTotale },
     valeur: {
       methodes,
       synthese: { bas: syn.bas, central: syn.central, haut: syn.haut },

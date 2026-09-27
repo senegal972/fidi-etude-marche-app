@@ -47,6 +47,15 @@ test("avis-de-valeur : fixture Marigot → synthèse 5,30 M€ au central", asyn
   assert.equal(b.territoire.code, "977"); // Saint-Barthélemy
 });
 
+test("avis-de-valeur : cadastre multi-parcelles → contenance totale sommée", async () => {
+  const { handler } = await import("../netlify/functions/avis-de-valeur.mjs");
+  const body = { bien: { cp: "97133" }, cadastre: { mode: "multiple", parcelles: [{ section: "AX", numero: "7", contenance: 1125 }, { section: "AX", numero: "8", contenance: 875 }] } };
+  const r = await handler(ev("POST", body));
+  const b = JSON.parse(r.body);
+  assert.equal(b.foncier.nb_parcelles, 2);
+  assert.equal(b.foncier.contenance_totale, 2000);
+});
+
 test("annonces : repli sans clé → statut indisponible, pas de 500", async () => {
   delete process.env.SEARCH_API_KEY;
   delete process.env.ANTHROPIC_API_KEY;

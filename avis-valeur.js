@@ -37,6 +37,23 @@
   }
   function clone(x) { return JSON.parse(JSON.stringify(x)); }
 
+  // ── Cadastre multi-parcelles ────────────────────────────────
+  // Contenance retenue : somme des parcelles en mode multiple, sinon parcelle unique.
+  function contenanceTotale(cad) {
+    cad = cad || {};
+    if (cad.mode === 'multiple' && Array.isArray(cad.parcelles) && cad.parcelles.length) {
+      return cad.parcelles.reduce(function (s, p) { return s + num(p.contenance); }, 0);
+    }
+    return num(cad.contenance);
+  }
+  function parcellesRefLabel(cad) {
+    cad = cad || {};
+    if (cad.mode === 'multiple' && Array.isArray(cad.parcelles) && cad.parcelles.length) {
+      return cad.parcelles.map(function (p) { return [p.section, p.numero].filter(Boolean).join(' '); }).filter(Boolean).join(' · ');
+    }
+    return [cad.section, cad.numero].filter(Boolean).join(' ');
+  }
+
   // ── Moteur multi-méthodes v2 (LOT E) ────────────────────────
   // Miroir EXACT de netlify/functions/_avis_calcul.mjs (testé par tests/avis-marigot.test.mjs).
   // Toute modification doit être répercutée dans les deux fichiers.
@@ -136,9 +153,12 @@
         refCadastrale: '', zonagePlu: '', // réinjectés depuis l'étude (cadastre + PLU/GPU)
         photos: [] // [{ dataUrl, name, w, h }] max 2 photos compressees
       },
-      // ── Cadastre & urbanisme (LOT D) ─────────────────────────────────────
+      // ── Cadastre & urbanisme (LOT D + multi-parcelles) ───────────────────
       cadastre: {
-        section: '', numero: '', feuille: '', contenance: '',   // contenance = surface terrain (m²)
+        mode: 'simple',   // 'simple' (1 parcelle) | 'multiple' (liste ci-dessous)
+        section: '', numero: '', feuille: '', contenance: '',   // contenance = surface terrain (m²) — mode simple
+        // Mode multiple : ensemble de parcelles (déjà divisées à réf. propres, OU contiguës de même origine, nues).
+        parcelles: [],  // { section, numero, feuille, contenance, origine, nue(bool), zonage, note }
         shobAutorisee: '', shonAutorisee: '',
         zonage: '',
         voieTraversante: false, servitudes: '', voisins: '', droitsResiduels: ''
@@ -1059,6 +1079,8 @@
     if (!d.locatif) d.locatif = def.locatif;
     if (!d.cadastre) d.cadastre = def.cadastre;
     else Object.keys(def.cadastre).forEach(function (k) { if (d.cadastre[k] == null) d.cadastre[k] = def.cadastre[k]; });
+    if (!Array.isArray(d.cadastre.parcelles)) d.cadastre.parcelles = [];
+    if (!d.cadastre.mode) d.cadastre.mode = 'simple';
     if (!d.methodesV2) d.methodesV2 = def.methodesV2;
     if (!d.strategie) d.strategie = def.strategie;
     // Migration : l'ancien loyer unique (bien.loyer) devient un lot unique si aucun lot défini.
@@ -1280,23 +1302,56 @@
     }
     if (id === 'cadastre') {
       var cad = d.cadastre || {};
-      var terrain = num(cad.contenance) || num(b.surfaceCarrez);
+      var multi = cad.mode === 'multiple';
+      var terrain = contenanceTotale(cad) || num(b.surfaceCarrez);
+      var nbParc = multi ? (cad.parcelles || []).length : (cad.section || cad.numero ? 1 : 0);
       var shon = num(cad.shonAutorisee), shob = num(cad.shobAutorisee);
       var ratioShonTerrain = (shon && terrain) ? (shon / terrain) : null;   // droits à bâtir / m² sol
       var ratioShobShon = (shob && shon) ? (shob / shon) : null;
       function kpiTile(lbl, val, tip) {
-        return '<div style="flex:1;min-width:120px;background:#f4f6fa;border:1px solid #dee2e6;border-radius:8px;padding:.5rem .7rem;">' +
+        return '<div style="flex:1;min-width:110px;background:#f4f6fa;border:1px solid #dee2e6;border-radius:8px;padding:.5rem .7rem;">' +
           '<div style="font-size:.68rem;color:#5c6470;text-transform:uppercase;letter-spacing:.03em;">' + esc(lbl) + '</div>' +
           '<div style="font-size:1.05rem;font-weight:700;color:#1a4b8e;">' + val + '</div>' +
           (tip ? '<div style="font-size:.66rem;color:#888;">' + esc(tip) + '</div>' : '') + '</div>';
       }
-      var refCad = [cad.section, cad.numero].filter(Boolean).join(' ') || (b.refCadastrale || '—');
+      // Éditeur d'une parcelle de la liste (mode multiple)
+      var parcRows = (cad.parcelles || []).map(function (p, i) {
+        function li(key, ph, type) { return '<input type="' + (type || 'text') + '" placeholder="' + esc(ph) + '" value="' + esc(p[key]) + '" data-list="cadastre.parcelles" data-idx="' + i + '" data-key="' + key + '"/>'; }
+        return '<div class="av-cmp">' +
+          '<div class="av-cmp-head">' +
+            '<span style="background:#1a4b8e;color:#fff;font-size:.6rem;font-weight:700;border-radius:3px;padding:1px 6px;">P' + (i + 1) + '</span>' +
+            '<label class="av-cmp-inc"><input type="checkbox"' + (p.nue ? ' checked' : '') + ' data-list="cadastre.parcelles" data-idx="' + i + '" data-key="nue"/> nue (non bâtie)</label>' +
+            '<button class="av-del" data-listdel="cadastre.parcelles" data-idx="' + i + '" title="Supprimer">✕</button>' +
+          '</div>' +
+          '<div class="av-grid-4">' +
+            '<div class="av-field"><label>Section</label>' + li('section', 'AX') + '</div>' +
+            '<div class="av-field"><label>Numéro</label>' + li('numero', '7') + '</div>' +
+            '<div class="av-field"><label>Feuille</label>' + li('feuille', '000 AX 01') + '</div>' +
+            '<div class="av-field"><label>Contenance (m²)</label>' + li('contenance', '', 'number') + '</div>' +
+          '</div>' +
+          '<div class="av-grid-2">' +
+            '<div class="av-field"><label>Origine cadastrale (parcelle mère)</label>' + li('origine', 'ex : AX 3 (avant division)') + '</div>' +
+            '<div class="av-field"><label>Zonage</label>' + li('zonage', 'Ub, N, A…') + '</div>' +
+          '</div>' +
+          '<div class="av-field"><label>Note</label>' + li('note', 'observation sur cette parcelle') + '</div>' +
+        '</div>';
+      }).join('');
+
+      var refCad = parcellesRefLabel(cad) || (b.refCadastrale || '—');
       return head('Cadastre & urbanisme', 'Référence parcellaire, contenance, droits à bâtir (SHOB/SHON) et lecture du plan') +
         '<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.6rem;">' +
-          kpiTile('Référence', esc(refCad), cad.feuille ? 'feuille ' + esc(cad.feuille) : '') +
-          kpiTile('Terrain', terrain ? fmt(terrain) + ' m²' : '—', 'contenance cadastrale') +
+          kpiTile('Référence', esc(refCad), cad.feuille && !multi ? 'feuille ' + esc(cad.feuille) : (multi ? nbParc + ' parcelle(s)' : '')) +
+          kpiTile('Terrain total', terrain ? fmt(terrain) + ' m²' : '—', multi ? 'somme des ' + nbParc + ' parcelles' : 'contenance cadastrale') +
           kpiTile('SHON / terrain', ratioShonTerrain != null ? ratioShonTerrain.toFixed(2) : '—', 'droits à bâtir par m² de sol') +
           kpiTile('SHOB / SHON', ratioShobShon != null ? ratioShobShon.toFixed(2) : '—', 'ratio surfaces') +
+        '</div>' +
+        // Bascule simple / multiple
+        '<div class="av-box" style="padding:.5rem .7rem;margin-bottom:.6rem;">' +
+          '<div style="display:flex;gap:1.2rem;flex-wrap:wrap;">' +
+            '<label style="font-weight:600;font-size:.85rem;cursor:pointer;"><input type="radio" name="avCadMode" value="simple" data-radio="cadastre.mode"' + (!multi ? ' checked' : '') + '/> Parcelle unique</label>' +
+            '<label style="font-weight:600;font-size:.85rem;cursor:pointer;"><input type="radio" name="avCadMode" value="multiple" data-radio="cadastre.mode"' + (multi ? ' checked' : '') + '/> Ensemble de parcelles</label>' +
+          '</div>' +
+          '<div class="av-tip" style="margin-top:.3rem;">« Ensemble de parcelles » : plusieurs parcelles déjà divisées (réf. propres), ou parcelles contiguës de même <b>origine</b> cadastrale, non bâties. La contenance retenue pour la valorisation = somme des contenances.</div>' +
         '</div>' +
         '<div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.6rem;">' +
           '<label class="btn btn-sm btn-outline-primary mb-0"><i class="bi bi-file-earmark-pdf me-1"></i>Importer le PDF « Informations parcelles »' +
@@ -1304,15 +1359,20 @@
           '<button class="btn btn-sm btn-outline-secondary" data-action="cadastre-ign" title="Pré-remplir section/numéro/contenance depuis les coordonnées GPS (API Carto IGN)"><i class="bi bi-geo-alt me-1"></i>Pré-remplir depuis GPS (IGN)</button>' +
           '<a class="btn btn-sm btn-outline-secondary" href="https://www.cadastre.gouv.fr/scpc/rechercherPlan.do" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right me-1"></i>Ouvrir cadastre.gouv.fr</a>' +
         '</div>' +
-        '<div class="av-tip" style="margin-bottom:.5rem;">Le PDF est lu <b>localement dans le navigateur</b> (pdf.js) : référence, contenance et adresse en sont extraites. Aucun fichier n\'est envoyé au serveur.</div>' +
-        '<div class="av-box"><div class="av-box-title">Parcelle</div>' +
-          '<div class="av-grid-4">' +
-            fld('Section', 'cadastre.section', { ph: 'ex : AX' }) +
-            fld('Numéro', 'cadastre.numero', { ph: 'ex : 7' }) +
-            fld('Feuille', 'cadastre.feuille', { ph: 'ex : 000 AX 01' }) +
-            fld('Contenance (m²)', 'cadastre.contenance', { type: 'number', tip: 'Surface cadastrale du terrain' }) +
-          '</div>' +
-        '</div>' +
+        '<div class="av-tip" style="margin-bottom:.5rem;">Le PDF est lu <b>localement dans le navigateur</b> (pdf.js). ' + (multi ? 'En mode « ensemble », l\'import <b>ajoute</b> une parcelle à la liste.' : 'Aucun fichier n\'est envoyé au serveur.') + '</div>' +
+        (multi
+          ? '<div class="av-box"><div class="av-box-title">Parcelles (' + nbParc + ') — contenance totale ' + (terrain ? fmt(terrain) + ' m²' : '—') + '</div>' +
+              (parcRows || '<div class="av-tip">Aucune parcelle. Ajoutez-en, ou importez un PDF « Informations parcelles ».</div>') +
+              '<button class="av-add" data-listadd="cadastre.parcelles" style="border:1px solid var(--av-blue);border-radius:6px;padding:.25rem .6rem;margin-top:.4rem;">+ Ajouter une parcelle</button>' +
+            '</div>'
+          : '<div class="av-box"><div class="av-box-title">Parcelle</div>' +
+              '<div class="av-grid-4">' +
+                fld('Section', 'cadastre.section', { ph: 'ex : AX' }) +
+                fld('Numéro', 'cadastre.numero', { ph: 'ex : 7' }) +
+                fld('Feuille', 'cadastre.feuille', { ph: 'ex : 000 AX 01' }) +
+                fld('Contenance (m²)', 'cadastre.contenance', { type: 'number', tip: 'Surface cadastrale du terrain' }) +
+              '</div>' +
+            '</div>') +
         '<div class="av-box"><div class="av-box-title">Droits à bâtir</div>' +
           '<div class="av-grid-3">' +
             fld('SHOB autorisée (m²)', 'cadastre.shobAutorisee', { type: 'number', tip: 'Surface hors œuvre brute constructible' }) +
@@ -2326,7 +2386,17 @@
     if (el.dataset.p) setPath(state.data, el.dataset.p, val);
     else if (el.dataset.list) { var arr = getPath(state.data, el.dataset.list); arr[+el.dataset.idx][el.dataset.key] = val; }
     else if (el.dataset.simplelist) { getPath(state.data, el.dataset.simplelist)[+el.dataset.idx] = val; }
-    else if (el.dataset.radio) { setPath(state.data, el.dataset.radio, val); showSection(state.section); return; }
+    else if (el.dataset.radio) {
+      setPath(state.data, el.dataset.radio, val);
+      // Passage cadastre simple → multiple : amorce la liste avec la parcelle unique saisie.
+      if (el.dataset.radio === 'cadastre.mode' && val === 'multiple') {
+        var _c = state.data.cadastre;
+        if ((!_c.parcelles || !_c.parcelles.length) && (_c.section || _c.numero || num(_c.contenance))) {
+          _c.parcelles = [{ section: _c.section || '', numero: _c.numero || '', feuille: _c.feuille || '', contenance: _c.contenance || '', origine: '', nue: !!(state.data.bien && isTerrain(state.data.bien.type)), zonage: _c.zonage || '', note: '' }];
+        }
+      }
+      showSection(state.section); return;
+    }
     else return;
     // Une case à cocher peut modifier la structure affichée (méthodes, inclus…) → re-render
     if (isCb) { showSection(state.section); return; }
@@ -2381,6 +2451,7 @@
       var key = t.dataset.listadd, tpl;
       if (key === 'loyers') tpl = { type: '', surface: '', loyer: '', secteur: '' };
       else if (key === 'methodesV2.lots') tpl = { libelle: '', nombre: 1, mode: 'annuel', loyerMensuel: '', semaines: '', prixSemaine: '' };
+      else if (key === 'cadastre.parcelles') tpl = { section: '', numero: '', feuille: '', contenance: '', origine: '', nue: true, zonage: '', note: '' };
       else if (key === 'comparables') tpl = comparableTemplate();
       else if (key === 'expert.surfaces') tpl = { label: 'Nouvelle ligne', surface: 0, coef: 1 };
       else if (key === 'expert.contexte.composition') tpl = { niveau: 'RDC', pieces: '' };
@@ -2949,6 +3020,7 @@
   // Assemble l'entrée du moteur v2 depuis le bien, le cadastre, les comparables et les overrides.
   function buildV2Input(data) {
     var mv = data.methodesV2 || {}, cad = data.cadastre || {}, b = data.bien || {};
+    var contenance = contenanceTotale(cad);
     var m2 = comparablesM2(data);
     var comp = mv.comparaison || {};
     var compBas = num(comp.prixM2Bas) || (m2.length ? Math.round(quantile(m2, 0.25)) : 0);
@@ -3018,7 +3090,7 @@
 
       '<div class="av-box"><div class="av-box-title">2. Sol + construction</div>' +
         '<label class="small text-muted">Charge foncière (totaux €, bas / central / haut)</label>' +
-        tri3('methodesV2.solConstruction.chargeFonciere', '€', 'Ex. médiane des €/m² terrain × contenance (' + (num(d.cadastre.contenance) || '—') + ' m²).') +
+        tri3('methodesV2.solConstruction.chargeFonciere', '€', 'Ex. médiane des €/m² terrain × contenance (' + (contenanceTotale(d.cadastre) || '—') + ' m²).') +
         '<div class="av-grid-4">' +
           fld('Coût SHON (€/m²)', 'methodesV2.solConstruction.coutShonM2', { type: 'number' }) +
           fld('Coût annexes (€/m²)', 'methodesV2.solConstruction.coutAnnexesM2', { type: 'number', tip: 'sur (SHOB − SHON)' }) +
@@ -3116,24 +3188,25 @@
   function parseCadastreText(txt) {
     var cad = state.data.cadastre;
     var hit = [];
+    var section = '', numero = '', contenance = '';
     // Référence : "Référence cadastrale de la parcelle : 000 AX 07" ou "Section AX N° 7"
     var mRef = txt.match(/parcelle[^:]{0,30}:?\s*([0-9]{0,3}\s*[A-Z]{1,2})\s*0*([0-9]{1,4})/i)
             || txt.match(/section\s*:?\s*([A-Z]{1,2})\b[^0-9]{0,12}(?:n[°o]|numéro)?\s*0*([0-9]{1,4})/i);
     if (mRef) {
-      cad.section = mRef[1].replace(/\s+/g, '').replace(/^0+/, '') || cad.section;
-      cad.numero = String(parseInt(mRef[2], 10)) || cad.numero;
-      hit.push('référence ' + cad.section + ' ' + cad.numero);
+      section = mRef[1].replace(/\s+/g, '').replace(/^0+/, '');
+      numero = String(parseInt(mRef[2], 10));
+      hit.push('référence ' + section + ' ' + numero);
     }
     // Contenance : "Contenance cadastrale : 1 125 m²" (ou en ares/centiares "11 a 25 ca")
     var mCont = txt.match(/contenance[^0-9]{0,20}([0-9][0-9\s.]{1,9})\s*m²/i);
-    if (mCont) { cad.contenance = String(num(mCont[1])); hit.push('contenance ' + cad.contenance + ' m²'); }
+    if (mCont) { contenance = String(num(mCont[1])); hit.push('contenance ' + contenance + ' m²'); }
     else {
       var mAca = txt.match(/([0-9]{1,3})\s*ha\s*([0-9]{1,2})\s*a\s*([0-9]{1,2})\s*ca/i) || txt.match(/([0-9]{1,2})\s*a\s*([0-9]{1,2})\s*ca/i);
       if (mAca) {
         var m2;
         if (mAca.length === 4) m2 = num(mAca[1]) * 10000 + num(mAca[2]) * 100 + num(mAca[3]);
         else m2 = num(mAca[1]) * 100 + num(mAca[2]);
-        cad.contenance = String(m2); hit.push('contenance ' + m2 + ' m²');
+        contenance = String(m2); hit.push('contenance ' + m2 + ' m²');
       }
     }
     // Adresse : "Adresse : Chemin ..." → complète bien.adresse si vide
@@ -3141,8 +3214,18 @@
     if (mAdr && !state.data.bien.adresse) { state.data.bien.adresse = mAdr[1].trim(); hit.push('adresse'); }
 
     if (!hit.length) { toast('Aucune donnée reconnue dans le PDF — saisie manuelle.', true); return; }
+    if (cad.mode === 'multiple') {
+      // Ajoute une parcelle à l'ensemble (n'écrase pas les précédentes).
+      if (!Array.isArray(cad.parcelles)) cad.parcelles = [];
+      cad.parcelles.push({ section: section, numero: numero, feuille: '', contenance: contenance, origine: '', nue: !!(state.data.bien && isTerrain(state.data.bien.type)), zonage: '', note: 'Importé PDF' });
+      toast('Parcelle ajoutée : ' + hit.join(' · '));
+    } else {
+      if (section) cad.section = section;
+      if (numero) cad.numero = numero;
+      if (contenance) cad.contenance = contenance;
+      toast('Importé : ' + hit.join(' · '));
+    }
     showSection('cadastre');
-    toast('Importé : ' + hit.join(' · '));
   }
 
   // Pré-remplissage via API Carto IGN (cadastre) depuis les coordonnées GPS de l'étude.
@@ -3158,12 +3241,18 @@
         if (!f) { toast('Aucune parcelle trouvée à ces coordonnées', true); return; }
         var p = f.properties || {};
         var cad = state.data.cadastre;
-        if (p.section) cad.section = p.section;
-        if (p.numero) cad.numero = String(parseInt(p.numero, 10) || p.numero);
-        if (p.contenance) cad.contenance = String(num(p.contenance));   // m²
-        if (p.feuille) cad.feuille = String(p.feuille);
+        var sec = p.section || '', numP = p.numero ? String(parseInt(p.numero, 10) || p.numero) : '', cont = p.contenance ? String(num(p.contenance)) : '', feu = p.feuille ? String(p.feuille) : '';
+        if (cad.mode === 'multiple') {
+          if (!Array.isArray(cad.parcelles)) cad.parcelles = [];
+          cad.parcelles.push({ section: sec, numero: numP, feuille: feu, contenance: cont, origine: '', nue: !!(state.data.bien && isTerrain(state.data.bien.type)), zonage: '', note: 'IGN' });
+        } else {
+          if (sec) cad.section = sec;
+          if (numP) cad.numero = numP;
+          if (cont) cad.contenance = cont;
+          if (feu) cad.feuille = feu;
+        }
         showSection('cadastre');
-        toast('IGN : ' + [cad.section, cad.numero].filter(Boolean).join(' ') + (cad.contenance ? ' · ' + cad.contenance + ' m²' : ''));
+        toast('IGN : ' + [sec, numP].filter(Boolean).join(' ') + (cont ? ' · ' + cont + ' m²' : ''));
       })
       .catch(function (e) { toast('API Carto IGN indisponible (' + e.message + ') — saisie manuelle.', true); });
   }
@@ -4324,7 +4413,7 @@
     var syn = r.synthese;
     if (!(syn.central > 0)) return '';
     var b = data.bien, cad = data.cadastre || {};
-    var terrain = num(cad.contenance) || num(b.surfaceCarrez);
+    var terrain = contenanceTotale(cad) || num(b.surfaceCarrez);
     // 4 tuiles
     function tile(lbl, val) {
       return '<td style="border:.4pt solid #bfbfbf;padding:8pt;text-align:center;width:25%;">' +
@@ -4471,10 +4560,12 @@
       html += '<h2>Éléments non considérés dans la mission</h2><p style="font-size:9pt;color:#5c6470;">' + esc(ctxDoc.horsMission) + '</p>';
     }
 
+    var _cadDoc = data.cadastre || {};
+    var _refCadDoc = parcellesRefLabel(_cadDoc) || b.refCadastrale || '';
     html += '<h1>2. Identification et description du bien</h1><table>' +
       row('Type de bien', esc(b.type)) +
       row('Adresse', adresseComplete) +
-      row('Référence cadastrale', b.refCadastrale ? esc(b.refCadastrale) : '') +
+      row('Référence cadastrale', _refCadDoc ? esc(_refCadDoc) : '') +
       row('Zonage PLU', b.zonagePlu ? esc(b.zonagePlu) : '') +
       row('Immeuble', b.immeuble ? esc(b.immeuble) : '') +
       row('Étage', b.etage ? esc(b.etage) : '') +
@@ -4489,6 +4580,24 @@
       (occ && b.loyer ? row('Rapport locatif annuel', fmtE(num(b.loyer) * 12) + ' / an (hors charges)') : '') +
       ((calc.vetuste > 0 || data.etat.commentaire) ? row('État / vétusté', (calc.vetuste ? 'Vétusté estimée ' + calc.vetuste + ' %' : '') + (data.etat.commentaire ? (calc.vetuste ? ' — ' : '') + esc(data.etat.commentaire) : '')) : '') +
       '</table>';
+
+    // ── Ensemble de parcelles (cadastre multi-parcelles) ─────────────────────
+    if (_cadDoc.mode === 'multiple' && (_cadDoc.parcelles || []).length) {
+      var _totCont = contenanceTotale(_cadDoc);
+      html += '<h2>Assiette foncière — ' + (_cadDoc.parcelles.length) + ' parcelles (contenance totale ≈ ' + fmt(_totCont) + ' m²)</h2>' +
+        '<table><thead><tr><th>Parcelle</th><th>Réf.</th><th class="center">Contenance</th><th>Origine</th><th class="center">Bâtie</th><th>Zonage</th></tr></thead><tbody>' +
+        _cadDoc.parcelles.map(function (p, i) {
+          return '<tr><td>P' + (i + 1) + '</td>' +
+            '<td>' + esc([p.section, p.numero].filter(Boolean).join(' ') || '—') + (p.feuille ? ' <span style="color:#5c6470;">(f. ' + esc(p.feuille) + ')</span>' : '') + '</td>' +
+            '<td class="center">' + (num(p.contenance) ? fmt(num(p.contenance)) + ' m²' : '—') + '</td>' +
+            '<td>' + (p.origine ? esc(p.origine) : '—') + '</td>' +
+            '<td class="center">' + (p.nue ? 'nue' : 'bâtie') + '</td>' +
+            '<td>' + (p.zonage ? esc(p.zonage) : '—') + '</td></tr>';
+        }).join('') +
+        '<tr class="gold-row"><td colspan="2">CONTENANCE TOTALE</td><td class="center">' + fmt(_totCont) + ' m²</td><td colspan="3"></td></tr>' +
+        '</tbody></table>' +
+        '<p style="font-size:8.5pt;color:#5c6470;">Ensemble de parcelles ' + (_cadDoc.parcelles.every(function (p) { return p.nue; }) ? 'nues (non bâties)' : 'mixtes') + '. La valorisation retient la contenance totale ci-dessus.</p>';
+    }
 
     // ── Bloc photos du bien (bien.photos) — format A5 (moitié A4), une par ligne ──
     // Conditionnel : n'apparaît que si au moins une photo. break-inside:avoid pour
