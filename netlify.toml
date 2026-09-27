@@ -121,6 +121,9 @@
 [functions."templates"]
   timeout = 15
 
+[functions."territoire"]
+  timeout = 10
+
 [functions."facture-autorelance"]
   timeout = 26
 
@@ -396,6 +399,11 @@
 [[redirects]]
   from   = "/api/templates"
   to     = "/.netlify/functions/templates"
+  status = 200
+
+[[redirects]]
+  from   = "/api/territoire"
+  to     = "/.netlify/functions/territoire"
   status = 200
 
 [[redirects]]
