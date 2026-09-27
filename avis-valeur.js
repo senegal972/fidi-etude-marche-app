@@ -37,6 +37,68 @@
   }
   function clone(x) { return JSON.parse(JSON.stringify(x)); }
 
+  // ── Moteur multi-méthodes v2 (LOT E) ────────────────────────
+  // Miroir EXACT de netlify/functions/_avis_calcul.mjs (testé par tests/avis-marigot.test.mjs).
+  // Toute modification doit être répercutée dans les deux fichiers.
+  var CALC = (function () {
+    var DEF = { coutShonM2: 7000, coutAnnexesM2: 1500, vetustePct: 20, gestionSaisonnierePct: 25, vacancePct: 5, poids: { comparaison: 40, solConstruction: 20, capitalisation: 40 } };
+    function nn(v) { if (v == null || v === '') return 0; var x = parseFloat(String(v).replace(',', '.')); return isFinite(x) ? x : 0; }
+    function arrondi(v) { v = nn(v); return v >= 1e6 ? Math.round(v / 50000) * 50000 : Math.round(v / 1000) * 1000; }
+    function tri(o) { o = o || {}; return { bas: nn(o.bas), central: nn(o.central), haut: nn(o.haut) }; }
+    function comparaison(input) {
+      var shon = nn(input.shon), base = shon > 0 ? shon : nn(input.surfaceHab), pm = tri(input.comparaison);
+      return { base: base, baseType: shon > 0 ? 'SHON' : 'habitable', bas: base * pm.bas, central: base * pm.central, haut: base * pm.haut };
+    }
+    function solConstruction(input) {
+      var shon = nn(input.shon), shob = nn(input.shob);
+      var cS = input.coutShonM2 != null ? nn(input.coutShonM2) : DEF.coutShonM2;
+      var cA = input.coutAnnexesM2 != null ? nn(input.coutAnnexesM2) : DEF.coutAnnexesM2;
+      var forfait = nn(input.forfait), vet = (input.vetustePct != null ? nn(input.vetustePct) : DEF.vetustePct) / 100;
+      var neuf = shon * cS + Math.max(0, shob - shon) * cA + forfait, dep = neuf * (1 - vet);
+      var cf = tri(input.chargeFonciere), prime = tri(input.prime);
+      var calc = function (c, p) { return (c + dep) * (1 + p / 100); };
+      return { batiNeuf: neuf, batiDeprecie: dep, bas: calc(cf.bas, prime.bas), central: calc(cf.central, prime.central), haut: calc(cf.haut, prime.haut) };
+    }
+    function revenus(lots) {
+      var annuel = 0, sais = 0;
+      (lots || []).forEach(function (l) {
+        var nb = nn(l.nombre) || 1;
+        if (l.mode === 'saisonnier') sais += nb * nn(l.semaines) * nn(l.prixSemaine);
+        else annuel += nb * nn(l.loyerMensuel) * 12;
+      });
+      return { annuel: annuel, saisonnier: sais, brut: annuel + sais };
+    }
+    function capitalisation(input) {
+      var r = revenus(input.lots), ch = input.charges || {};
+      var gest = (ch.gestionSaisonnierePct != null ? nn(ch.gestionSaisonnierePct) : DEF.gestionSaisonnierePct) / 100;
+      var vac = (ch.vacancePct != null ? nn(ch.vacancePct) : DEF.vacancePct) / 100;
+      var charges = gest * r.saisonnier + vac * r.annuel + nn(ch.forfaitCharges);
+      var net = r.brut - charges, taux = tri(input.taux);
+      var val = function (t) { return t > 0 ? net / (t / 100) : 0; };
+      return { revenuBrut: r.brut, revenuAnnuel: r.annuel, revenuSaisonnier: r.saisonnier, charges: charges, revenuNet: net, bas: val(taux.bas), central: val(taux.central), haut: val(taux.haut) };
+    }
+    function calculerMethodes(input) {
+      input = input || {};
+      var comp = comparaison(input), sc = solConstruction(input), cap = capitalisation(input);
+      var actives = {
+        comparaison: input.methodes ? input.methodes.comparaison !== false : true,
+        solConstruction: input.methodes ? input.methodes.solConstruction !== false : true,
+        capitalisation: input.methodes ? input.methodes.capitalisation !== false : true,
+      };
+      var p = Object.assign({}, DEF.poids, input.poids || {}), byKey = { comparaison: comp, solConstruction: sc, capitalisation: cap };
+      function pond(champ) {
+        var s = 0, w = 0;
+        Object.keys(actives).forEach(function (k) { if (!actives[k]) return; var wk = nn(p[k]); if (wk <= 0) return; s += wk * byKey[k][champ]; w += wk; });
+        return w > 0 ? s / w : 0;
+      }
+      var bB = pond('bas'), bC = pond('central'), bH = pond('haut');
+      return { comparaison: comp, solConstruction: sc, capitalisation: cap, poids: p, actives: actives,
+        synthese: { bas: arrondi(bB), central: arrondi(bC), haut: arrondi(bH), brut: { bas: bB, central: bC, haut: bH } } };
+    }
+    return { calculerMethodes: calculerMethodes, revenus: revenus, arrondi: arrondi, DEF: DEF };
+  })();
+  window.FidiAvisCalcV2 = CALC;
+
   // ── Modèle par défaut ───────────────────────────────────────
   // Génère une référence unique FIDI-AV-YYYY-NNN où NNN = max des avis
   // existants (localStorage) + 1. Évite l'écrasement Notion : chaque nouvel
@@ -80,6 +142,27 @@
         shobAutorisee: '', shonAutorisee: '',
         zonage: '',
         voieTraversante: false, servitudes: '', voisins: '', droitsResiduels: ''
+      },
+      // ── Méthodes v2 en fourchette (LOT E) ────────────────────────────────
+      methodesV2: {
+        actif: false,   // opt-in : n'affecte l'affichage que si activé (rétrocompat)
+        comparaison: { prixM2Bas: '', prixM2Central: '', prixM2Haut: '' },   // vide → auto (P25/médiane/P75 comparables)
+        solConstruction: {
+          chargeFonciere: { bas: '', central: '', haut: '' },  // totaux € (vide → médiane comparables terrains × contenance)
+          coutShonM2: 7000, coutAnnexesM2: 1500, forfait: '', vetustePct: '',  // vétusté vide → grille d'état
+          prime: { bas: '', central: '', haut: '' }            // % (vide → profil territoire)
+        },
+        lots: [],   // { libelle, nombre, mode:'annuel'|'saisonnier', loyerMensuel, semaines, prixSemaine }
+        charges: { gestionSaisonnierePct: 25, vacancePct: 5, forfaitCharges: '' },
+        taux: { bas: '', central: '', haut: '' },  // % (vide → profil territoire)
+        poids: { comparaison: 40, solConstruction: 20, capitalisation: 40 }
+      },
+      // ── Stratégie de prix (LOT F) ────────────────────────────────────────
+      strategie: {
+        margeNegoPct: 8.5,          // marge de négociation par défaut — à valider
+        prixPresentationManuel: '', // vide → central × (1 + marge), arrondi 50 000 €
+        honorairesPct: '', honorairesCharge: 'acquéreur',  // acquéreur | vendeur
+        exclureNonRegularise: false
       },
       marche: {
         sources: [{ nom: '', bas: '', moyen: '', haut: '' }],
@@ -938,6 +1021,9 @@
     // Valeur : rebranding
     add('calcul',       isLoc ? 'Valeur locative retenue' : 'Valeur vénale retenue');
 
+    // Fourchette multi-méthodes (LOT E) — vente uniquement
+    if (isVente) add('methodesv2', 'Fourchette multi-méthodes');
+
     // Cadre locatif : LOCATION uniquement (rubrique dédiée)
     if (isLoc) add('locatif', 'Cadre locatif & obligations');
 
@@ -971,6 +1057,12 @@
     if (!d.locatif) d.locatif = def.locatif;
     if (!d.cadastre) d.cadastre = def.cadastre;
     else Object.keys(def.cadastre).forEach(function (k) { if (d.cadastre[k] == null) d.cadastre[k] = def.cadastre[k]; });
+    if (!d.methodesV2) d.methodesV2 = def.methodesV2;
+    if (!d.strategie) d.strategie = def.strategie;
+    // Migration : l'ancien loyer unique (bien.loyer) devient un lot unique si aucun lot défini.
+    if (d.methodesV2 && (!d.methodesV2.lots || !d.methodesV2.lots.length) && d.bien && num(d.bien.loyer) > 0) {
+      d.methodesV2.lots = [{ libelle: 'Bien loué', nombre: 1, mode: 'annuel', loyerMensuel: num(d.bien.loyer), semaines: '', prixSemaine: '' }];
+    }
     if (!d.metadata) d.metadata = def.metadata;
     if (!d.metadata.nature) d.metadata.nature = 'vente';
     if (d.bien && !Array.isArray(d.bien.photos)) d.bien.photos = [];
@@ -1233,6 +1325,7 @@
           fld('Droits résiduels / potentiel', 'cadastre.droitsResiduels', { ta: true, rows: 2, ph: 'droits à bâtir non consommés, division possible…' }) +
         '</div>';
     }
+    if (id === 'methodesv2') return renderMethodesV2();
     if (id === 'etat') {
       // ── TERRAIN : état d'entretien de la parcelle (pas de vétusté de bâti) ──
       if (d.bien && isTerrain(d.bien.type)) {
@@ -2234,6 +2327,8 @@
     else return;
     // Une case à cocher peut modifier la structure affichée (méthodes, inclus…) → re-render
     if (isCb) { showSection(state.section); return; }
+    // Fourchette multi-méthodes : recalcul complet au blur / changement de select (pas à chaque frappe).
+    if (state.section === 'methodesv2' && e.type === 'change') { showSection('methodesv2'); return; }
     refreshOutputs();
   }
 
@@ -2282,6 +2377,7 @@
     if (t.dataset.listadd) {
       var key = t.dataset.listadd, tpl;
       if (key === 'loyers') tpl = { type: '', surface: '', loyer: '', secteur: '' };
+      else if (key === 'methodesV2.lots') tpl = { libelle: '', nombre: 1, mode: 'annuel', loyerMensuel: '', semaines: '', prixSemaine: '' };
       else if (key === 'comparables') tpl = comparableTemplate();
       else if (key === 'expert.surfaces') tpl = { label: 'Nouvelle ligne', surface: 0, coef: 1 };
       else if (key === 'expert.contexte.composition') tpl = { niveau: 'RDC', pieces: '' };
@@ -2688,6 +2784,149 @@
     var added = (state.data.comparables || []).length - before;
     toast(added + ' annonce(s) ajoutée(s)');
     showSection('comparables');
+  }
+
+  // ── Fourchette multi-méthodes (LOT E) ──────────────────────────────────────────
+  function quantile(sorted, q) {
+    if (!sorted.length) return 0;
+    var pos = (sorted.length - 1) * q, base = Math.floor(pos), rest = pos - base;
+    return sorted[base + 1] !== undefined ? sorted[base] + rest * (sorted[base + 1] - sorted[base]) : sorted[base];
+  }
+  // €/m² ajustés des comparables « inclus » de nature vendu/annonce (pas terrain).
+  function comparablesM2(data) {
+    var vals = [];
+    (data.comparables || []).forEach(function (c) {
+      if (c.inclus === false) return;
+      var s = num(c.surface), p = num(c.prix);
+      if (!s || !p) return;
+      var m2 = (p / s) * (1 + num(c.ajustementPct) / 100);
+      if (m2 > 0) vals.push(m2);
+    });
+    return vals.sort(function (a, b) { return a - b; });
+  }
+
+  // Assemble l'entrée du moteur v2 depuis le bien, le cadastre, les comparables et les overrides.
+  function buildV2Input(data) {
+    var mv = data.methodesV2 || {}, cad = data.cadastre || {}, b = data.bien || {};
+    var m2 = comparablesM2(data);
+    var comp = mv.comparaison || {};
+    var compBas = num(comp.prixM2Bas) || (m2.length ? Math.round(quantile(m2, 0.25)) : 0);
+    var compCen = num(comp.prixM2Central) || (m2.length ? Math.round(quantile(m2, 0.50)) : 0);
+    var compHau = num(comp.prixM2Haut) || (m2.length ? Math.round(quantile(m2, 0.75)) : 0);
+    var sc = mv.solConstruction || {};
+    var cf = sc.chargeFonciere || {};
+    var vet = (sc.vetustePct !== '' && sc.vetustePct != null) ? num(sc.vetustePct) : vetusteGlobale(data);
+    var taux = mv.taux || {};
+    var tCen = num(taux.central) || num((data.calcul || {}).tauxCapi) || 6.5;
+    var tBas = num(taux.bas) || (tCen + 0.5);   // taux plus haut → valeur plus basse
+    var tHau = num(taux.haut) || Math.max(0.5, tCen - 0.5);
+    return {
+      shon: num(cad.shonAutorisee), shob: num(cad.shobAutorisee), surfaceHab: num(b.surfaceCarrez),
+      comparaison: { bas: compBas, central: compCen, haut: compHau },
+      chargeFonciere: { bas: num(cf.bas), central: num(cf.central), haut: num(cf.haut) },
+      coutShonM2: sc.coutShonM2, coutAnnexesM2: sc.coutAnnexesM2, forfait: num(sc.forfait), vetustePct: vet,
+      prime: sc.prime || { bas: 0, central: 0, haut: 0 },
+      lots: mv.lots || [],
+      charges: mv.charges || {},
+      taux: { bas: tBas, central: tCen, haut: tHau },
+      poids: mv.poids || CALC.DEF.poids,
+      _autoComparaison: !(num(comp.prixM2Bas) || num(comp.prixM2Central) || num(comp.prixM2Haut)),
+    };
+  }
+
+  function renderMethodesV2() {
+    var d = state.data, mv = d.methodesV2, inp = buildV2Input(d), r = CALC.calculerMethodes(inp);
+    function tri3(base, unit, tipAuto) {
+      return '<div class="av-grid-3">' +
+        '<div class="av-field"><label>Bas</label>' + fldRaw(base + '.bas', getPath(d, base + '.bas'), 'number') + '</div>' +
+        '<div class="av-field"><label>Central</label>' + fldRaw(base + '.central', getPath(d, base + '.central'), 'number') + '</div>' +
+        '<div class="av-field"><label>Haut</label>' + fldRaw(base + '.haut', getPath(d, base + '.haut'), 'number') + '</div>' +
+        '</div>' + (tipAuto ? '<div class="av-tip">' + esc(tipAuto) + '</div>' : '');
+    }
+    function methRow(label, m, active) {
+      return '<tr' + (active ? '' : ' style="opacity:.4;"') + '><td>' + esc(label) + '</td>' +
+        '<td style="text-align:right;">' + fmtE(m.bas) + '</td>' +
+        '<td style="text-align:right;font-weight:700;">' + fmtE(m.central) + '</td>' +
+        '<td style="text-align:right;">' + fmtE(m.haut) + '</td></tr>';
+    }
+    var rev = r.capitalisation;
+    var lots = mv.lots || [];
+    var lotRows = lots.map(function (l, i) {
+      var sais = l.mode === 'saisonnier';
+      return '<div class="av-row" style="grid-template-columns:1.4fr .6fr .9fr 1fr 1fr 28px;align-items:end;gap:.4rem;">' +
+        '<input type="text" placeholder="Libellé (T2, studio…)" value="' + esc(l.libelle) + '" data-list="methodesV2.lots" data-idx="' + i + '" data-key="libelle"/>' +
+        '<input type="number" min="1" placeholder="nb" value="' + esc(l.nombre) + '" data-list="methodesV2.lots" data-idx="' + i + '" data-key="nombre"/>' +
+        '<select data-list="methodesV2.lots" data-idx="' + i + '" data-key="mode">' +
+          '<option value="annuel"' + (!sais ? ' selected' : '') + '>Annuel</option>' +
+          '<option value="saisonnier"' + (sais ? ' selected' : '') + '>Saisonnier</option></select>' +
+        (sais
+          ? '<input type="number" placeholder="semaines" value="' + esc(l.semaines) + '" data-list="methodesV2.lots" data-idx="' + i + '" data-key="semaines"/>' +
+            '<input type="number" placeholder="€/semaine" value="' + esc(l.prixSemaine) + '" data-list="methodesV2.lots" data-idx="' + i + '" data-key="prixSemaine"/>'
+          : '<input type="number" placeholder="loyer €/mois" value="' + esc(l.loyerMensuel) + '" data-list="methodesV2.lots" data-idx="' + i + '" data-key="loyerMensuel"/>' +
+            '<div class="av-cmp-calc" style="align-self:center;">×12</div>') +
+        '<button class="av-del" data-listdel="methodesV2.lots" data-idx="' + i + '" title="Supprimer">✕</button>' +
+        '</div>';
+    }).join('');
+
+    return head('Fourchette multi-méthodes', 'Comparaison · Sol + construction · Capitalisation → synthèse bas / central / haut') +
+      '<div class="av-tip" style="margin-bottom:.6rem;">Méthode d\'aide à la décision (ni notaire ni expert). Base de la comparaison : <b>SHON autorisée</b> si renseignée dans l\'onglet Cadastre, sinon surface habitable. Champs vides = auto (quantiles des comparables inclus, profil territoire).</div>' +
+
+      '<div class="av-box"><div class="av-box-title">1. Comparaison — €/m² (base ' + esc(r.comparaison.baseType) + ' ' + fmt(r.comparaison.base) + ' m²)</div>' +
+        tri3('methodesV2.comparaison.prixM2', '€/m²', inp._autoComparaison ? ('Auto (P25/médiane/P75 des comparables inclus) : ' + fmt(inp.comparaison.bas) + ' / ' + fmt(inp.comparaison.central) + ' / ' + fmt(inp.comparaison.haut) + ' €/m². Renseignez pour forcer.') : 'Valeurs saisies manuellement.') +
+      '</div>' +
+
+      '<div class="av-box"><div class="av-box-title">2. Sol + construction</div>' +
+        '<label class="small text-muted">Charge foncière (totaux €, bas / central / haut)</label>' +
+        tri3('methodesV2.solConstruction.chargeFonciere', '€', 'Ex. médiane des €/m² terrain × contenance (' + (num(d.cadastre.contenance) || '—') + ' m²).') +
+        '<div class="av-grid-4">' +
+          fld('Coût SHON (€/m²)', 'methodesV2.solConstruction.coutShonM2', { type: 'number' }) +
+          fld('Coût annexes (€/m²)', 'methodesV2.solConstruction.coutAnnexesM2', { type: 'number', tip: 'sur (SHOB − SHON)' }) +
+          fld('Forfait (€)', 'methodesV2.solConstruction.forfait', { type: 'number', tip: 'piscine / VRD / aménagements' }) +
+          fld('Vétusté (%)', 'methodesV2.solConstruction.vetustePct', { type: 'number', ph: String(vetusteGlobale(d)), tip: 'vide = grille d\'état (' + vetusteGlobale(d) + ' %)' }) +
+        '</div>' +
+        '<label class="small text-muted">Prime de rareté (%, bas / central / haut)</label>' +
+        tri3('methodesV2.solConstruction.prime', '%', 'Profil du territoire — à valider.') +
+        '<div class="small text-muted">Bâti neuf : ' + fmtE(r.solConstruction.batiNeuf) + ' → déprécié ' + fmtE(r.solConstruction.batiDeprecie) + '.</div>' +
+      '</div>' +
+
+      '<div class="av-box"><div class="av-box-title">3. Capitalisation multi-lots</div>' +
+        (lotRows || '<div class="av-tip">Aucun lot. Ajoutez les baux (annuel) et locations saisonnières.</div>') +
+        '<button class="av-add" data-listadd="methodesV2.lots" style="border:1px solid var(--av-blue);border-radius:6px;padding:.25rem .6rem;margin:.3rem 0;">+ Ajouter un lot</button>' +
+        '<div class="av-grid-4">' +
+          fld('Gestion saisonnière (%)', 'methodesV2.charges.gestionSaisonnierePct', { type: 'number' }) +
+          fld('Vacance (%)', 'methodesV2.charges.vacancePct', { type: 'number' }) +
+          fld('Forfait charges (€/an)', 'methodesV2.charges.forfaitCharges', { type: 'number' }) +
+          '<div class="av-field"><label>Revenu net</label><div class="av-cmp-calc hl">' + fmtE(rev.revenuNet) + '</div></div>' +
+        '</div>' +
+        '<div class="small text-muted">Revenu brut ' + fmtE(rev.revenuBrut) + ' (annuel ' + fmtE(rev.revenuAnnuel) + ' + saisonnier ' + fmtE(rev.revenuSaisonnier) + ') − charges ' + fmtE(rev.charges) + '.</div>' +
+        '<label class="small text-muted mt-2 d-block">Taux de capitalisation (%, bas / central / haut)</label>' +
+        tri3('methodesV2.taux', '%', 'Taux bas → valeur basse. Vide = depuis la valeur retenue (' + fmt(num((d.calcul || {}).tauxCapi)) + ' %).') +
+      '</div>' +
+
+      '<div class="av-box"><div class="av-box-title">Pondération (%)</div>' +
+        '<div class="av-grid-3">' +
+          fld('Comparaison', 'methodesV2.poids.comparaison', { type: 'number' }) +
+          fld('Sol + construction', 'methodesV2.poids.solConstruction', { type: 'number' }) +
+          fld('Capitalisation', 'methodesV2.poids.capitalisation', { type: 'number' }) +
+        '</div>' +
+      '</div>' +
+
+      '<div class="av-box" style="background:#0d2b52;color:#fff;">' +
+        '<div class="av-box-title" style="color:#fff;">Synthèse (moyenne pondérée, arrondie)</div>' +
+        '<table style="width:100%;font-size:.85rem;color:#fff;border-collapse:collapse;">' +
+          '<thead><tr><th style="text-align:left;">Méthode</th><th style="text-align:right;">Bas</th><th style="text-align:right;">Central</th><th style="text-align:right;">Haut</th></tr></thead>' +
+          '<tbody>' +
+            methRow('Comparaison', r.comparaison, r.actives.comparaison) +
+            methRow('Sol + construction', r.solConstruction, r.actives.solConstruction) +
+            methRow('Capitalisation', r.capitalisation, r.actives.capitalisation) +
+            '<tr style="border-top:2px solid rgba(255,255,255,.4);font-weight:800;font-size:1rem;"><td>SYNTHÈSE</td>' +
+              '<td style="text-align:right;">' + fmtE(r.synthese.bas) + '</td>' +
+              '<td style="text-align:right;">' + fmtE(r.synthese.central) + '</td>' +
+              '<td style="text-align:right;">' + fmtE(r.synthese.haut) + '</td></tr>' +
+          '</tbody>' +
+        '</table>' +
+        '<div class="small" style="color:rgba(255,255,255,.7);margin-top:.4rem;">Arrondi au 50 000 € au-dessus de 1 M€, au 1 000 € en dessous.</div>' +
+      '</div>';
   }
 
   // ── Cadastre (LOT D) ─────────────────────────────────────────────────────────

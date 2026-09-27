@@ -7,6 +7,9 @@
   "engines": {
     "node": ">=18"
   },
+  "scripts": {
+    "test": "node tests/avis-marigot.test.mjs"
+  },
   "dependencies": {
     "@netlify/blobs": "^8.1.0",
     "@sparticuz/chromium": "^131.0.1",
