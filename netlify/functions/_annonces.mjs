@@ -4,8 +4,25 @@
 import crypto from "node:crypto";
 
 const UA = "OPTIMMO-DOM-Veille/1.0 (+avis de valeur)";
-const FETCH_MS = 7000;
-const MAX_URLS = 8;               // borne de sécurité (temps + volume) — mode synchrone < 26 s
+const FETCH_MS = 6000;
+const MAX_FETCH = 16;             // pages max récupérées (temps) — mode synchrone < 26 s
+const TARGET_ITEMS = 10;          // objectif d'annonces exploitables (variable ; on s'arrête dès atteint)
+
+// Portails immobiliers, par ordre de PRIORITÉ (les « stars » d'abord, puis DOM, puis élargissement).
+// Extensible : ajouter ici les domaines fournis par l'utilisateur (diffusion de ses biens).
+const PORTAILS = [
+  "seloger.com", "leboncoin.fr", "bienici.com", "logic-immo.com", "pap.fr",
+  "immobilier.lefigaro.fr", "avendrealouer.fr", "paruvendu.fr", "ouestfrance-immo.com",
+  "explorimmo.com", "superimmo.com", "green-acres.fr", "bellesdemeures.com",
+  "lux-residence.com", "properstar.fr", "immobilier.notaires.fr", "figaro-immobilier.fr",
+  // DOM / Antilles / Saint-Barth
+  "cyphoma.com", "stbarthimmo.com", "immo972.com", "immodom.com", "karib-immo.com",
+];
+const PORTAIL_SET = new Set(PORTAILS);
+// Domaine appartenant à un portail (gère sous-domaines : www déjà retiré par host()).
+function estPortail(u) { const h = host(u); return PORTAIL_SET.has(h) || PORTAILS.some((p) => h === p || h.endsWith("." + p)); }
+// Rang de priorité (plus petit = plus prioritaire ; 999 = hors liste).
+function rangPortail(u) { const h = host(u); let best = 999; PORTAILS.forEach((p, i) => { if ((h === p || h.endsWith("." + p)) && i < best) best = i; }); return best; }
 
 export function sha1(s) { return crypto.createHash("sha1").update(String(s)).digest("hex"); }
 
@@ -172,32 +189,42 @@ export async function rechercherAnnonces(criteres) {
   const commune = criteres.commune || "";
   const quartier = criteres.quartier || "";
   const type = criteres.type_bien || "maison";
-  const requetes = [
+  const cible = Number(criteres.cible) > 0 ? Number(criteres.cible) : TARGET_ITEMS;
+
+  // Requêtes CIBLÉES portails d'abord (site:), puis générales pour l'élargissement.
+  const topPortails = ["seloger.com", "leboncoin.fr", "bienici.com", "logic-immo.com"];
+  const requetesPortail = topPortails.map((p) => `${type} ${quartier} ${commune} site:${p}`.trim());
+  const requetesGenerales = [
     `${type} à vendre ${quartier} ${commune}`.trim(),
     `villa ${quartier} ${commune} à vendre`.trim(),
-    `${commune} ${quartier} immobilier prix vente`.trim(),
+    `${commune} ${quartier} immobilier annonce prix vente`.trim(),
     ...(criteres.inclure_terrains ? [`terrain constructible ${quartier} ${commune} à vendre`.trim()] : []),
   ];
+  const requetes = [...requetesPortail, ...requetesGenerales];
 
-  // 1) Récupère les URLs via Brave (dédupliquées).
-  const seen = new Set(); const urls = [];
+  // 1) Récupère les URLs candidates via Brave (dédupliquées, plus large qu'avant).
+  const seen = new Set(); const candidats = [];
   for (const q of requetes) {
-    for (const r of await braveSearch(q, key, 8)) {
-      if (r.url && !seen.has(r.url)) { seen.add(r.url); urls.push(r); }
-      if (urls.length >= MAX_URLS) break;
+    for (const r of await braveSearch(q, key, 10)) {
+      if (r.url && !seen.has(r.url)) { seen.add(r.url); candidats.push(r); }
     }
-    if (urls.length >= MAX_URLS) break;
+    if (candidats.length >= 40) break;   // borne le volume Brave
   }
+  // Tri : portails prioritaires d'abord (par rang), le reste (élargissement) ensuite.
+  candidats.sort((a, b) => rangPortail(a.url) - rangPortail(b.url));
 
-  // 2) Fetch + extraction, en respectant robots.txt et 1 req/s/domaine.
-  const items = []; const lastHit = {};
-  for (const r of urls.slice(0, MAX_URLS)) {
+  // 2) Fetch + extraction (robots.txt, 1 req/s/domaine). On PRIORISE les portails et on
+  //    ÉLARGIT aux autres si la cible n'est pas atteinte. Arrêt anticipé dès `cible` annonces.
+  const items = []; const lastHit = {}; let fetched = 0;
+  for (const r of candidats) {
+    if (items.length >= cible || fetched >= MAX_FETCH) break;
     try {
       if (!(await allowedByRobots(r.url))) continue;
       const h = host(r.url);
       const wait = 1000 - (Date.now() - (lastHit[h] || 0));
       if (wait > 0) await sleep(wait);
       lastHit[h] = Date.now();
+      fetched++;
       const resp = await fetchTimeout(r.url);
       if (!resp.ok) continue;
       const ct = resp.headers.get("content-type") || "";
@@ -205,6 +232,7 @@ export async function rechercherAnnonces(criteres) {
       const html = await resp.text();
       const a = extractFromHtml(r.url, html, r.desc);
       a.commune = commune; a.quartier = quartier;
+      a.portail = estPortail(r.url);
       if (plausible(a) && (a.prix || a.surface_hab || a.surface_terrain)) items.push(a);
     } catch { /* source KO ignorée */ }
   }
@@ -229,6 +257,8 @@ export async function rechercherAnnonces(criteres) {
       prix_m2: stats(comparables.filter((a) => !a.hors_cible), "prix_m2"),
       prix_m2_terrain: stats(terrains, "prix_m2_terrain"),
       nb_comparables: comparables.length, nb_terrains: terrains.length,
+      nb_portails: uniques.filter((a) => a.portail).length,       // issus de portails prioritaires
+      nb_elargissement: uniques.filter((a) => !a.portail).length, // issus d'autres sources
     },
     criteres, genere_le: new Date().toISOString(),
   };
