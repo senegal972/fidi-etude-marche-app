@@ -126,12 +126,8 @@
 
 [functions."annonces"]
   timeout = 15
-  node_bundler = "esbuild"
-  external_node_modules = ["@netlify/blobs"]
-
-[functions."annonces-background"]
-  node_bundler = "esbuild"
-  external_node_modules = ["@netlify/blobs"]
+  # Pas d'override de bundler : le bundler Netlify par défaut fournit le contexte Netlify Blobs
+  # automatiquement (esbuild + external cassait ce contexte -> erreur "not configured / 401").
 
 [functions."avis-de-valeur"]
   timeout = 12
