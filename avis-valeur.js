@@ -1023,6 +1023,8 @@
 
     // Fourchette multi-méthodes (LOT E) — vente uniquement
     if (isVente) add('methodesv2', 'Fourchette multi-méthodes');
+    // Stratégie de prix & coût acquéreur (LOT F) — vente uniquement
+    if (isVente) add('strategie', 'Stratégie & coût acquéreur');
 
     // Cadre locatif : LOCATION uniquement (rubrique dédiée)
     if (isLoc) add('locatif', 'Cadre locatif & obligations');
@@ -1326,6 +1328,7 @@
         '</div>';
     }
     if (id === 'methodesv2') return renderMethodesV2();
+    if (id === 'strategie') return renderStrategie();
     if (id === 'etat') {
       // ── TERRAIN : état d'entretien de la parcelle (pas de vétusté de bâti) ──
       if (d.bien && isTerrain(d.bien.type)) {
@@ -2328,7 +2331,7 @@
     // Une case à cocher peut modifier la structure affichée (méthodes, inclus…) → re-render
     if (isCb) { showSection(state.section); return; }
     // Fourchette multi-méthodes : recalcul complet au blur / changement de select (pas à chaque frappe).
-    if (state.section === 'methodesv2' && e.type === 'change') { showSection('methodesv2'); return; }
+    if ((state.section === 'methodesv2' || state.section === 'strategie') && e.type === 'change') { showSection(state.section); return; }
     refreshOutputs();
   }
 
@@ -2784,6 +2787,144 @@
     var added = (state.data.comparables || []).length - before;
     toast(added + ' annonce(s) ajoutée(s)');
     showSection('comparables');
+  }
+
+  // ── Profils territoriaux (miroir compact de _territoires.mjs, LOT F) ────────────
+  var TERR = {
+    "972": { libelle: 'Martinique', droits: 5.80, notaire: 1.0, tva: 8.5, hono: 5, fisc: 'TVA 8,5 % (DOM) ; régime de droit commun. À confirmer.' },
+    "971": { libelle: 'Guadeloupe', droits: 5.80, notaire: 1.0, tva: 8.5, hono: 5, fisc: 'TVA 8,5 % (DOM) ; régime de droit commun. À confirmer.' },
+    "973": { libelle: 'Guyane', droits: 5.80, notaire: 1.0, tva: 8.5, hono: 5, fisc: 'TVA 8,5 % (DOM) ; régime de droit commun. À confirmer.' },
+    "974": { libelle: 'La Réunion', droits: 5.80, notaire: 1.0, tva: 8.5, hono: 5, fisc: 'TVA 8,5 % (DOM) ; régime de droit commun. À confirmer.' },
+    "976": { libelle: 'Mayotte', droits: 5.80, notaire: 1.0, tva: 0, hono: 5, fisc: 'Régime fiscal spécifique. À confirmer.' },
+    "977": { libelle: 'Saint-Barthélemy', droits: 5.0, notaire: 1.5, tva: 0, hono: 5, fisc: "Pas de TVA ni de taxe foncière pour les résidents fiscaux de la Collectivité ; plus-value selon le régime local. À confirmer." },
+    "978": { libelle: 'Saint-Martin', droits: 5.0, notaire: 1.5, tva: 0, hono: 5, fisc: 'Collectivité : régime fiscal spécifique. À confirmer.' },
+    "metropole": { libelle: 'Métropole', droits: 5.80, notaire: 1.0, tva: 20, hono: 5, fisc: 'TVA 20 % ; régime de droit commun. À confirmer.' },
+  };
+  function terrPourCp(cp) {
+    cp = String(cp || '').trim();
+    if (cp === '97133') return TERR['977'];
+    if (cp === '97150') return TERR['978'];
+    var pre = ['971', '972', '973', '974', '976'];
+    for (var i = 0; i < pre.length; i++) if (cp.indexOf(pre[i]) === 0) return TERR[pre[i]];
+    return TERR['metropole'];
+  }
+
+  // Coût global acquéreur pour un prix net vendeur donné.
+  function coutAcquereur(netVendeur, terr, honoPct, honoCharge) {
+    netVendeur = num(netVendeur);
+    var hono = netVendeur * honoPct / 100;
+    var tvaHono = hono * terr.tva / 100;
+    var honoTTC = hono + tvaHono;
+    var acq = honoCharge === 'acquéreur';
+    var prixFAI = acq ? netVendeur + honoTTC : netVendeur;   // vendeur : honoraires déduits de sa part
+    var baseDroits = acq ? netVendeur : prixFAI;
+    var droits = baseDroits * terr.droits / 100;
+    var notaire = baseDroits * terr.notaire / 100;
+    var total = prixFAI + droits + notaire;
+    return { netVendeur: netVendeur, hono: hono, tvaHono: tvaHono, honoTTC: honoTTC, prixFAI: prixFAI, droits: droits, notaire: notaire, total: total };
+  }
+
+  // Vigilances automatiques (LOT F). Retourne [{ niveau:'rouge'|'orange'|'info', txt }].
+  function vigilancesAuto(data, r) {
+    var out = [], cad = data.cadastre || {}, b = data.bien || {};
+    var shon = num(cad.shonAutorisee);
+    var hab = num(b.surfaceCarrez);
+    // Conformité des surfaces
+    if (shon && hab && hab > shon) {
+      var ecart = hab - shon;
+      var impact = Math.round(ecart * (r ? r.comparaison.central / Math.max(1, r.comparaison.base) : 0));
+      out.push({ niveau: 'rouge', txt: 'Surface habitable (' + fmt(hab) + ' m²) supérieure à la SHON autorisée (' + fmt(shon) + ' m²) : écart ' + fmt(ecart) + ' m², impact jusqu\'à ≈ ' + fmtE(ecart * (r ? r.comparaison.central / Math.max(1, r.comparaison.base) : 0)) + '. Vérifier la régularité (permis, conformité).' });
+    }
+    // Bien sujet exposé à des annonces (double exposition)
+    var annoncesSujet = (data.comparables || []).filter(function (c) { return c.nature === 'annonce' && /veille auto|bien sujet/i.test(c.note || ''); });
+    if (annoncesSujet.length >= 2) out.push({ niveau: 'orange', txt: 'Double exposition : le bien apparaît sur au moins 2 annonces à des prix potentiellement différents. Recommander un mandat exclusif unique.' });
+    // Voie / servitudes
+    if (cad.voieTraversante) out.push({ niveau: 'orange', txt: 'Voie traversante / accès partagé : vérifier les servitudes de passage et leur impact sur la constructibilité.' });
+    if (cad.servitudes) out.push({ niveau: 'info', txt: 'Servitudes déclarées : ' + esc(cad.servitudes) });
+    // Statut locatif
+    if ((data.methodesV2 && data.methodesV2.lots || []).length) out.push({ niveau: 'info', txt: 'Bien loué / multi-lots : la vente peut être soumise aux baux en cours (congé, préavis, droit de préemption du locataire).' });
+    // Droits résiduels
+    if (cad.zonage) out.push({ niveau: 'info', txt: 'Zonage ' + esc(cad.zonage) + ' : vérifier les droits à bâtir résiduels et le règlement de la zone.' });
+    // Note fiscale territoire
+    var terr = terrPourCp(b.cp);
+    out.push({ niveau: 'info', txt: 'Fiscalité (' + terr.libelle + ') : ' + terr.fisc });
+    return out;
+  }
+
+  function renderStrategie() {
+    var d = state.data, st = d.strategie, b = d.bien;
+    var r = CALC.calculerMethodes(buildV2Input(d));
+    var central = r.synthese.central, bas = r.synthese.bas;
+    var terr = terrPourCp(b.cp);
+    var honoPct = st.honorairesPct !== '' && st.honorairesPct != null ? num(st.honorairesPct) : terr.hono;
+    var marge = num(st.margeNegoPct);
+    var prixPresentation = num(st.prixPresentationManuel) || CALC.arrondi(central * (1 + marge / 100));
+    var objectif = central;   // objectif de signature
+    var cPres = coutAcquereur(prixPresentation, terr, honoPct, st.honorairesCharge);
+    var cObj = coutAcquereur(objectif, terr, honoPct, st.honorairesCharge);
+    function row(lbl, a, c, strong) {
+      return '<tr' + (strong ? ' style="font-weight:800;border-top:2px solid #ccc;"' : '') + '><td>' + esc(lbl) + '</td>' +
+        '<td style="text-align:right;">' + fmtE(a) + '</td><td style="text-align:right;">' + fmtE(c) + '</td></tr>';
+    }
+    var vig = vigilancesAuto(d, r);
+    var vigHtml = vig.map(function (v) {
+      var col = v.niveau === 'rouge' ? '#dc3545' : v.niveau === 'orange' ? '#b8860b' : '#5c6470';
+      var ic = v.niveau === 'rouge' ? '⛔' : v.niveau === 'orange' ? '⚠️' : 'ℹ️';
+      return '<div style="display:flex;gap:.4rem;padding:.25rem 0;border-top:1px solid #eee;"><span>' + ic + '</span>' +
+        '<span style="font-size:.82rem;color:' + col + ';">' + v.txt + '</span></div>';
+    }).join('');
+
+    // Recommandations
+    var rendementBrut = r.capitalisation.revenuBrut && central ? (r.capitalisation.revenuBrut / central * 100) : 0;
+    var cible = rendementBrut > 4.5 ? 'investisseur (rendement brut ' + fmt(rendementBrut, 1) + ' % au central)' : 'résidentiel / résidence secondaire';
+
+    return head('Stratégie de prix & coût acquéreur', 'Prix de présentation, objectif de signature, coût global acquéreur et vigilances') +
+      '<div class="av-tip" style="margin-bottom:.6rem;">Territoire détecté : <b>' + esc(terr.libelle) + '</b> — droits ' + terr.droits + ' %, émoluments notaire ' + terr.notaire + ' %, TVA honoraires ' + terr.tva + ' %. Hypothèses « à valider ».</div>' +
+
+      '<div class="av-box"><div class="av-box-title">Positionnement (depuis la synthèse : bas ' + fmtE(bas) + ' / central ' + fmtE(central) + ')</div>' +
+        '<div class="av-grid-3">' +
+          fld('Marge de négociation (%)', 'strategie.margeNegoPct', { type: 'number', tip: 'présentation = central × (1 + marge), arrondi 50 000 €' }) +
+          fld('Prix de présentation (€)', 'strategie.prixPresentationManuel', { type: 'number', ph: String(CALC.arrondi(central * (1 + marge / 100))), tip: 'vide = auto' }) +
+          '<div class="av-field"><label>Plancher (bas)</label><div class="av-cmp-calc">' + fmtE(bas) + '</div></div>' +
+        '</div>' +
+        '<div class="small text-muted">Prix de présentation retenu : <b>' + fmtE(prixPresentation) + '</b> · Objectif de signature (central) : <b>' + fmtE(objectif) + '</b>.</div>' +
+      '</div>' +
+
+      '<div class="av-box"><div class="av-box-title">Honoraires</div>' +
+        '<div class="av-grid-3">' +
+          fld('Honoraires (%)', 'strategie.honorairesPct', { type: 'number', ph: String(terr.hono), tip: 'vide = défaut territoire' }) +
+          fld('À la charge de', 'strategie.honorairesCharge', { type: 'select', options: ['acquéreur', 'vendeur'] }) +
+          '<div class="av-field"><label>TVA honoraires</label><div class="av-cmp-calc">' + terr.tva + ' %</div></div>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="av-box"><div class="av-box-title">Coût global acquéreur</div>' +
+        '<table style="width:100%;font-size:.85rem;border-collapse:collapse;">' +
+          '<thead><tr><th style="text-align:left;">Poste</th><th style="text-align:right;">Présentation</th><th style="text-align:right;">Objectif signature</th></tr></thead>' +
+          '<tbody>' +
+            row('Net vendeur', cPres.netVendeur, cObj.netVendeur) +
+            row('Honoraires (' + honoPct + ' %)', cPres.hono, cObj.hono) +
+            row('TVA honoraires', cPres.tvaHono, cObj.tvaHono) +
+            row('Prix FAI', cPres.prixFAI, cObj.prixFAI) +
+            row('Droits de mutation (' + terr.droits + ' %)', cPres.droits, cObj.droits) +
+            row('Émoluments notaire (' + terr.notaire + ' %)', cPres.notaire, cObj.notaire) +
+            row('COÛT TOTAL ACQUÉREUR', cPres.total, cObj.total, true) +
+          '</tbody>' +
+        '</table>' +
+        '<div class="small text-muted mt-1">Base des droits/notaire = net vendeur si honoraires à charge acquéreur. Indicatif, hors débours et cas particuliers.</div>' +
+      '</div>' +
+
+      '<div class="av-box"><div class="av-box-title">Vigilances automatiques</div>' + (vigHtml || '<div class="av-tip">Aucune vigilance détectée.</div>') + '</div>' +
+
+      '<div class="av-box"><div class="av-box-title">Recommandations</div>' +
+        '<ul style="margin:0;padding-left:1.1rem;font-size:.85rem;">' +
+          '<li>Cible acquéreur probable : <b>' + cible + '</b>.</li>' +
+          (vig.some(function (v) { return /double exposition/i.test(v.txt); }) ? '<li>Privilégier un <b>mandat exclusif unique</b> pour éviter la double exposition à des prix différents.</li>' : '') +
+          '<li>Dossier technique à constituer : titre de propriété, DPE, diagnostics, plan cadastral, règlement de zone, éventuels baux et permis.</li>' +
+          '<li>' + (st.exclureNonRegularise ? 'Surfaces non régularisées <b>exclues</b> de la valeur.' : 'Option : exclure les surfaces non régularisées de la valeur (case ci-dessous).') + '</li>' +
+        '</ul>' +
+        '<label class="d-inline-flex align-items-center gap-1 mt-2"><input type="checkbox"' + (st.exclureNonRegularise ? ' checked' : '') + ' data-p="strategie.exclureNonRegularise"/> <span class="small">Exclure les surfaces non régularisées de la valeur</span></label>' +
+      '</div>';
   }
 
   // ── Fourchette multi-méthodes (LOT E) ──────────────────────────────────────────
