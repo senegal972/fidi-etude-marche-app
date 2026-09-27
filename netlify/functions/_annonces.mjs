@@ -4,8 +4,8 @@
 import crypto from "node:crypto";
 
 const UA = "OPTIMMO-DOM-Veille/1.0 (+avis de valeur)";
-const FETCH_MS = 6000;
-const MAX_FETCH = 16;             // pages max récupérées (temps) — mode synchrone < 26 s
+const FETCH_MS = 9000;            // certaines pages portails sont lentes ; < 26 s au total via MAX_FETCH
+const MAX_FETCH = 12;             // pages max récupérées (temps) — mode synchrone < 26 s
 const TARGET_ITEMS = 10;          // objectif d'annonces exploitables (variable ; on s'arrête dès atteint)
 
 // Portails immobiliers, par ordre de PRIORITÉ (les « stars » d'abord, puis DOM, puis élargissement).
@@ -216,26 +216,29 @@ export async function rechercherAnnonces(criteres) {
   // 2) Fetch + extraction (robots.txt, 1 req/s/domaine). On PRIORISE les portails et on
   //    ÉLARGIT aux autres si la cible n'est pas atteinte. Arrêt anticipé dès `cible` annonces.
   const items = []; const lastHit = {}; let fetched = 0;
+  const diag = { candidats: candidats.length, robots: 0, http: 0, nothtml: 0, vide: 0, err: 0 };
   for (const r of candidats) {
     if (items.length >= cible || fetched >= MAX_FETCH) break;
     try {
-      if (!(await allowedByRobots(r.url))) continue;
+      if (!(await allowedByRobots(r.url))) { diag.robots++; continue; }
       const h = host(r.url);
       const wait = 1000 - (Date.now() - (lastHit[h] || 0));
       if (wait > 0) await sleep(wait);
       lastHit[h] = Date.now();
       fetched++;
       const resp = await fetchTimeout(r.url);
-      if (!resp.ok) continue;
+      if (!resp.ok) { diag.http++; continue; }
       const ct = resp.headers.get("content-type") || "";
-      if (!/html/i.test(ct)) continue;
+      if (!/html/i.test(ct)) { diag.nothtml++; continue; }
       const html = await resp.text();
       const a = extractFromHtml(r.url, html, r.desc);
       a.commune = commune; a.quartier = quartier;
       a.portail = estPortail(r.url);
       if (plausible(a) && (a.prix || a.surface_hab || a.surface_terrain)) items.push(a);
-    } catch { /* source KO ignorée */ }
+      else diag.vide++;
+    } catch { diag.err++; }
   }
+  try { console.log("[veille] diag", JSON.stringify({ ...diag, fetched, items: items.length, hosts: candidats.slice(0, 12).map((c) => host(c.url)) })); } catch (e) {}
 
   // 3) Post-traitement.
   const uniques = dedup(items);
