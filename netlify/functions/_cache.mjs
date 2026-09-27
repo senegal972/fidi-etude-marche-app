@@ -10,6 +10,7 @@ async function getStoreSafe() {
     const mod = await import("@netlify/blobs");
     storeRef = mod.getStore({ name: "fidi-cache", consistency: "strong" });
   } catch (e) {
+    console.error("[_cache] getStore FAILED:", e && (e.message || e));
     storeRef = null;
   }
   return storeRef;
@@ -28,8 +29,9 @@ export async function cacheGet(key) {
 
 export async function cacheSet(key, data) {
   const s = await getStoreSafe();
-  if (!s) return;
-  try { await s.setJSON(key, { ts: Date.now(), data }); } catch (e) {}
+  if (!s) { console.error("[_cache] cacheSet no store for", key); return; }
+  try { await s.setJSON(key, { ts: Date.now(), data }); }
+  catch (e) { console.error("[_cache] setJSON FAILED for", key, ":", e && (e.message || e)); }
 }
 
 export function cacheTag(...parts) {
