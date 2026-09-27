@@ -153,6 +153,17 @@ function stats(items, key) {
   return { min: vals[0], mediane: med, moyenne: moy, max: vals[vals.length - 1], n: vals.length };
 }
 
+// Garde-fou anti-extraction aberrante (pages d'accueil, agrégats de chiffres parasites).
+function plausible(a) {
+  if (a.prix != null && (a.prix < 1000 || a.prix > 200000000)) return false;         // < 1 k€ ou > 200 M€
+  if (a.surface_hab != null && (a.surface_hab < 5 || a.surface_hab > 3000)) return false;
+  if (a.surface_terrain != null && (a.surface_terrain < 10 || a.surface_terrain > 500000)) return false;
+  if (a.prix_m2 != null && a.prix_m2 > 200000) return false;                          // > 200 k€/m² = erreur
+  if (a.prix_m2_terrain != null && a.prix_m2_terrain > 300000) return false;
+  if (a.chambres != null && a.chambres > 30) return false;
+  return true;
+}
+
 // ── Point d'entrée ────────────────────────────────────────────────────────────
 export async function rechercherAnnonces(criteres) {
   const key = process.env.SEARCH_API_KEY || "";
@@ -194,7 +205,7 @@ export async function rechercherAnnonces(criteres) {
       const html = await resp.text();
       const a = extractFromHtml(r.url, html, r.desc);
       a.commune = commune; a.quartier = quartier;
-      if (a.prix || a.surface_hab || a.surface_terrain) items.push(a);
+      if (plausible(a) && (a.prix || a.surface_hab || a.surface_terrain)) items.push(a);
     } catch { /* source KO ignorée */ }
   }
 
