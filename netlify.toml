@@ -124,6 +124,15 @@
 [functions."territoire"]
   timeout = 10
 
+[functions."annonces"]
+  timeout = 15
+  node_bundler = "esbuild"
+  external_node_modules = ["@netlify/blobs"]
+
+[functions."annonces-background"]
+  node_bundler = "esbuild"
+  external_node_modules = ["@netlify/blobs"]
+
 [functions."facture-autorelance"]
   timeout = 26
 
@@ -404,6 +413,16 @@
 [[redirects]]
   from   = "/api/territoire"
   to     = "/.netlify/functions/territoire"
+  status = 200
+
+[[redirects]]
+  from   = "/api/annonces"
+  to     = "/.netlify/functions/annonces"
+  status = 200
+
+[[redirects]]
+  from   = "/api/annonces-background"
+  to     = "/.netlify/functions/annonces-background"
   status = 200
 
 [[redirects]]
