@@ -74,6 +74,13 @@
         refCadastrale: '', zonagePlu: '', // réinjectés depuis l'étude (cadastre + PLU/GPU)
         photos: [] // [{ dataUrl, name, w, h }] max 2 photos compressees
       },
+      // ── Cadastre & urbanisme (LOT D) ─────────────────────────────────────
+      cadastre: {
+        section: '', numero: '', feuille: '', contenance: '',   // contenance = surface terrain (m²)
+        shobAutorisee: '', shonAutorisee: '',
+        zonage: '',
+        voieTraversante: false, servitudes: '', voisins: '', droitsResiduels: ''
+      },
       marche: {
         sources: [{ nom: '', bas: '', moyen: '', haut: '' }],
         moyenneBas: '', moyenneMoyen: '', moyenneHaut: '', evol12m: '', evol3m: '', commentaire: ''
@@ -913,6 +920,7 @@
     // Communes
     add('metadata',     'Référence');
     add('bien',         isLoc ? 'Le bien (mis en location)' : 'Le bien');
+    add('cadastre',     'Cadastre & urbanisme');
     add('etat',         'État & vétusté');
     add('localisation', 'Localisation & risques');
 
@@ -961,6 +969,8 @@
     var def = defaultData();
     if (!d.expert) d.expert = def.expert;
     if (!d.locatif) d.locatif = def.locatif;
+    if (!d.cadastre) d.cadastre = def.cadastre;
+    else Object.keys(def.cadastre).forEach(function (k) { if (d.cadastre[k] == null) d.cadastre[k] = def.cadastre[k]; });
     if (!d.metadata) d.metadata = def.metadata;
     if (!d.metadata.nature) d.metadata.nature = 'vente';
     if (d.bien && !Array.isArray(d.bien.photos)) d.bien.photos = [];
@@ -984,6 +994,7 @@
   var SECTIONS = [
     { id: 'metadata', label: '1. Référence' },
     { id: 'bien', label: '2. Le bien' },
+    { id: 'cadastre', label: '2b. Cadastre & urbanisme' },
     { id: 'etat', label: '3. État & vétusté' },
     { id: 'localisation', label: '4. Localisation & risques' },
     { id: 'marche', label: '5. Marché' },
@@ -1172,6 +1183,55 @@
           '</div>' +
           fld('Prix de cession / proposé (€)', 'bien.prixVente', { type: 'number', flag: true, tip: "Net vendeur, hors frais d'agence" })
         ) + photosHtml;
+    }
+    if (id === 'cadastre') {
+      var cad = d.cadastre || {};
+      var terrain = num(cad.contenance) || num(b.surfaceCarrez);
+      var shon = num(cad.shonAutorisee), shob = num(cad.shobAutorisee);
+      var ratioShonTerrain = (shon && terrain) ? (shon / terrain) : null;   // droits à bâtir / m² sol
+      var ratioShobShon = (shob && shon) ? (shob / shon) : null;
+      function kpiTile(lbl, val, tip) {
+        return '<div style="flex:1;min-width:120px;background:#f4f6fa;border:1px solid #dee2e6;border-radius:8px;padding:.5rem .7rem;">' +
+          '<div style="font-size:.68rem;color:#5c6470;text-transform:uppercase;letter-spacing:.03em;">' + esc(lbl) + '</div>' +
+          '<div style="font-size:1.05rem;font-weight:700;color:#1a4b8e;">' + val + '</div>' +
+          (tip ? '<div style="font-size:.66rem;color:#888;">' + esc(tip) + '</div>' : '') + '</div>';
+      }
+      var refCad = [cad.section, cad.numero].filter(Boolean).join(' ') || (b.refCadastrale || '—');
+      return head('Cadastre & urbanisme', 'Référence parcellaire, contenance, droits à bâtir (SHOB/SHON) et lecture du plan') +
+        '<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.6rem;">' +
+          kpiTile('Référence', esc(refCad), cad.feuille ? 'feuille ' + esc(cad.feuille) : '') +
+          kpiTile('Terrain', terrain ? fmt(terrain) + ' m²' : '—', 'contenance cadastrale') +
+          kpiTile('SHON / terrain', ratioShonTerrain != null ? ratioShonTerrain.toFixed(2) : '—', 'droits à bâtir par m² de sol') +
+          kpiTile('SHOB / SHON', ratioShobShon != null ? ratioShobShon.toFixed(2) : '—', 'ratio surfaces') +
+        '</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.6rem;">' +
+          '<label class="btn btn-sm btn-outline-primary mb-0"><i class="bi bi-file-earmark-pdf me-1"></i>Importer le PDF « Informations parcelles »' +
+            '<input type="file" accept="application/pdf" data-action="cadastre-pdf" style="display:none;"/></label>' +
+          '<button class="btn btn-sm btn-outline-secondary" data-action="cadastre-ign" title="Pré-remplir section/numéro/contenance depuis les coordonnées GPS (API Carto IGN)"><i class="bi bi-geo-alt me-1"></i>Pré-remplir depuis GPS (IGN)</button>' +
+          '<a class="btn btn-sm btn-outline-secondary" href="https://www.cadastre.gouv.fr/scpc/rechercherPlan.do" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right me-1"></i>Ouvrir cadastre.gouv.fr</a>' +
+        '</div>' +
+        '<div class="av-tip" style="margin-bottom:.5rem;">Le PDF est lu <b>localement dans le navigateur</b> (pdf.js) : référence, contenance et adresse en sont extraites. Aucun fichier n\'est envoyé au serveur.</div>' +
+        '<div class="av-box"><div class="av-box-title">Parcelle</div>' +
+          '<div class="av-grid-4">' +
+            fld('Section', 'cadastre.section', { ph: 'ex : AX' }) +
+            fld('Numéro', 'cadastre.numero', { ph: 'ex : 7' }) +
+            fld('Feuille', 'cadastre.feuille', { ph: 'ex : 000 AX 01' }) +
+            fld('Contenance (m²)', 'cadastre.contenance', { type: 'number', tip: 'Surface cadastrale du terrain' }) +
+          '</div>' +
+        '</div>' +
+        '<div class="av-box"><div class="av-box-title">Droits à bâtir</div>' +
+          '<div class="av-grid-3">' +
+            fld('SHOB autorisée (m²)', 'cadastre.shobAutorisee', { type: 'number', tip: 'Surface hors œuvre brute constructible' }) +
+            fld('SHON autorisée (m²)', 'cadastre.shonAutorisee', { type: 'number', tip: 'Surface hors œuvre nette (base de la méthode comparaison si renseignée)' }) +
+            fld('Zonage', 'cadastre.zonage', { ph: 'ex : Ub, N, A…', tip: 'Zone du PLU/POS applicable' }) +
+          '</div>' +
+        '</div>' +
+        '<div class="av-box"><div class="av-box-title">Lecture du plan</div>' +
+          '<label class="d-inline-flex align-items-center gap-1 mb-2"><input type="checkbox"' + (cad.voieTraversante ? ' checked' : '') + ' data-p="cadastre.voieTraversante"/> <span class="small">Voie traversante / accès partagé</span></label>' +
+          fld('Servitudes', 'cadastre.servitudes', { ta: true, rows: 2, ph: 'passage, tréfonds, vue, réseaux…' }) +
+          fld('Voisinage', 'cadastre.voisins', { ta: true, rows: 2, ph: 'nature des parcelles contiguës' }) +
+          fld('Droits résiduels / potentiel', 'cadastre.droitsResiduels', { ta: true, rows: 2, ph: 'droits à bâtir non consommés, division possible…' }) +
+        '</div>';
     }
     if (id === 'etat') {
       // ── TERRAIN : état d'entretien de la parcelle (pas de vétusté de bâti) ──
@@ -2089,6 +2149,10 @@
       if (e.type === 'change') handlePhotoAdd(el.files && el.files[0]);
       return;
     }
+    if (el.type === 'file' && el.dataset.action === 'cadastre-pdf') {
+      if (e.type === 'change') importCadastrePdf(el.files && el.files[0]);
+      return;
+    }
     // Sélecteur client (destinataire)
     if (el.tagName === 'SELECT' && el.dataset.action === 'pick-client') {
       var cid2 = el.value;
@@ -2385,6 +2449,7 @@
     else if (a === 'toggle-paste') { var w = document.getElementById('avPasteWrap'); if (w) w.style.display = w.style.display === 'none' ? 'block' : 'none'; }
     else if (a === 'parse-paste') parsePaste();
     else if (a === 'photo-del') { handlePhotoDelete(+t.dataset.idx); return; }
+    else if (a === 'cadastre-ign') prefillCadastreIgn();
     else if (a === 'veille-annonces') launchVeille();
     else if (a === 'veille-add') addVeilleItem(+t.dataset.veilleIdx);
     else if (a === 'veille-add-all') addVeilleAll();
@@ -2623,6 +2688,104 @@
     var added = (state.data.comparables || []).length - before;
     toast(added + ' annonce(s) ajoutée(s)');
     showSection('comparables');
+  }
+
+  // ── Cadastre (LOT D) ─────────────────────────────────────────────────────────
+  // Chargeur pdf.js à la demande (CDN cdnjs) — lecture 100 % côté client.
+  var _pdfjsLoading = null;
+  function loadPdfJs() {
+    if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+    if (_pdfjsLoading) return _pdfjsLoading;
+    var BASE = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+    _pdfjsLoading = new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = BASE + 'pdf.min.js';
+      s.onload = function () {
+        try { window.pdfjsLib.GlobalWorkerOptions.workerSrc = BASE + 'pdf.worker.min.js'; } catch (e) {}
+        resolve(window.pdfjsLib);
+      };
+      s.onerror = function () { reject(new Error('Chargement pdf.js impossible')); };
+      document.head.appendChild(s);
+    });
+    return _pdfjsLoading;
+  }
+
+  function importCadastrePdf(file) {
+    if (!file) return;
+    toast('Lecture du PDF cadastral…');
+    loadPdfJs().then(function (pdfjsLib) {
+      return file.arrayBuffer().then(function (buf) {
+        return pdfjsLib.getDocument({ data: buf }).promise;
+      }).then(function (pdf) {
+        var pages = [];
+        for (var i = 1; i <= pdf.numPages; i++) pages.push(i);
+        return Promise.all(pages.map(function (n) {
+          return pdf.getPage(n).then(function (pg) { return pg.getTextContent(); })
+            .then(function (tc) { return tc.items.map(function (it) { return it.str; }).join(' '); });
+        }));
+      });
+    }).then(function (texts) {
+      var txt = texts.join(' \n ').replace(/\s+/g, ' ');
+      parseCadastreText(txt);
+    }).catch(function (e) {
+      toast('PDF illisible (scan image ?) : ' + e.message + ' — saisie manuelle.', true);
+    });
+  }
+
+  // Extraction best-effort depuis le texte d'un relevé / fiche parcelle.
+  function parseCadastreText(txt) {
+    var cad = state.data.cadastre;
+    var hit = [];
+    // Référence : "Référence cadastrale de la parcelle : 000 AX 07" ou "Section AX N° 7"
+    var mRef = txt.match(/parcelle[^:]{0,30}:?\s*([0-9]{0,3}\s*[A-Z]{1,2})\s*0*([0-9]{1,4})/i)
+            || txt.match(/section\s*:?\s*([A-Z]{1,2})\b[^0-9]{0,12}(?:n[°o]|numéro)?\s*0*([0-9]{1,4})/i);
+    if (mRef) {
+      cad.section = mRef[1].replace(/\s+/g, '').replace(/^0+/, '') || cad.section;
+      cad.numero = String(parseInt(mRef[2], 10)) || cad.numero;
+      hit.push('référence ' + cad.section + ' ' + cad.numero);
+    }
+    // Contenance : "Contenance cadastrale : 1 125 m²" (ou en ares/centiares "11 a 25 ca")
+    var mCont = txt.match(/contenance[^0-9]{0,20}([0-9][0-9\s.]{1,9})\s*m²/i);
+    if (mCont) { cad.contenance = String(num(mCont[1])); hit.push('contenance ' + cad.contenance + ' m²'); }
+    else {
+      var mAca = txt.match(/([0-9]{1,3})\s*ha\s*([0-9]{1,2})\s*a\s*([0-9]{1,2})\s*ca/i) || txt.match(/([0-9]{1,2})\s*a\s*([0-9]{1,2})\s*ca/i);
+      if (mAca) {
+        var m2;
+        if (mAca.length === 4) m2 = num(mAca[1]) * 10000 + num(mAca[2]) * 100 + num(mAca[3]);
+        else m2 = num(mAca[1]) * 100 + num(mAca[2]);
+        cad.contenance = String(m2); hit.push('contenance ' + m2 + ' m²');
+      }
+    }
+    // Adresse : "Adresse : Chemin ..." → complète bien.adresse si vide
+    var mAdr = txt.match(/adresse[^:]{0,10}:\s*([A-Za-z0-9À-ÿ' ,.-]{5,80}?)(?:\s{2,}|Contenance|Section|Références|$)/i);
+    if (mAdr && !state.data.bien.adresse) { state.data.bien.adresse = mAdr[1].trim(); hit.push('adresse'); }
+
+    if (!hit.length) { toast('Aucune donnée reconnue dans le PDF — saisie manuelle.', true); return; }
+    showSection('cadastre');
+    toast('Importé : ' + hit.join(' · '));
+  }
+
+  // Pré-remplissage via API Carto IGN (cadastre) depuis les coordonnées GPS de l'étude.
+  function prefillCadastreIgn() {
+    var lat = num(getPath(state.data, 'loc.lat')), lon = num(getPath(state.data, 'loc.lon'));
+    if (!lat || !lon) { toast('Coordonnées GPS absentes (section « Localisation »)', true); return; }
+    toast('Interrogation API Carto IGN…');
+    var geom = encodeURIComponent(JSON.stringify({ type: 'Point', coordinates: [lon, lat] }));
+    fetch('https://apicarto.ign.fr/api/cadastre/parcelle?geom=' + geom, { headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
+      .then(function (fc) {
+        var f = fc && fc.features && fc.features[0];
+        if (!f) { toast('Aucune parcelle trouvée à ces coordonnées', true); return; }
+        var p = f.properties || {};
+        var cad = state.data.cadastre;
+        if (p.section) cad.section = p.section;
+        if (p.numero) cad.numero = String(parseInt(p.numero, 10) || p.numero);
+        if (p.contenance) cad.contenance = String(num(p.contenance));   // m²
+        if (p.feuille) cad.feuille = String(p.feuille);
+        showSection('cadastre');
+        toast('IGN : ' + [cad.section, cad.numero].filter(Boolean).join(' ') + (cad.contenance ? ' · ' + cad.contenance + ' m²' : ''));
+      })
+      .catch(function (e) { toast('API Carto IGN indisponible (' + e.message + ') — saisie manuelle.', true); });
   }
 
   // Importe les ventes DVF proches (transactions individuelles de l'étude) comme comparables
