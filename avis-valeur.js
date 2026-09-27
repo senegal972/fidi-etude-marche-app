@@ -627,7 +627,8 @@
     return '';
   }
   function evolutionFromDvf(dvfAnnees, typeBien) {
-    var field = (typeBien || '').indexOf('maison') >= 0 ? 'prix_m2_maison' : 'prix_m2_appart';
+    var tb = String(typeBien || '');
+    var field = tb.indexOf('terrain') >= 0 ? 'prix_m2_terrain' : (tb.indexOf('maison') >= 0 ? 'prix_m2_maison' : 'prix_m2_appart');
     var pts = (dvfAnnees || []).filter(function (r) { return r[field]; }).map(function (r) { return [r.annee, Number(r[field])]; });
     if (pts.length < 2) return null;
     pts.sort(function (a, b) { return a[0] - b[0]; });
@@ -777,19 +778,26 @@
     }
     if (est.valeur_med) d.bien.prixVente = String(est.valeur_med);
 
-    // Sources : médiane locale + une ligne par année DVF
+    // Sources : médiane locale + une ligne par année DVF.
+    // IMPORTANT : pour un TERRAIN, on n'affiche QUE le €/m² terrain (prix_m2_terrain) — jamais
+    // le €/m² bâti (maison/appart), qui inclut la construction et fausse la lecture (souhait métier).
+    var isTer = isTerrain(d.bien.type);
     var sources = [];
-    var med = (fidi.valoris && (fidi.valoris[typeBien] || fidi.valoris.tous)) || null;
+    var med = isTer
+      ? (fidi.valoris && fidi.valoris.terrain) || null
+      : (fidi.valoris && (fidi.valoris[typeBien] || fidi.valoris.tous)) || null;
     if (med && med.prix_median_m2) {
-      sources.push({ nom: 'DVF — médiane locale (data.gouv.fr)', bas: '', moyen: String(med.prix_median_m2), haut: '' });
+      sources.push({ nom: isTer ? 'DVF — médiane terrains (data.gouv.fr)' : 'DVF — médiane locale (data.gouv.fr)', bas: '', moyen: String(med.prix_median_m2), haut: '' });
     }
-    var field = typeBien.indexOf('maison') >= 0 ? 'prix_m2_maison' : 'prix_m2_appart';
+    var field = isTer ? 'prix_m2_terrain' : (typeBien.indexOf('maison') >= 0 ? 'prix_m2_maison' : 'prix_m2_appart');
     (fidi.dvf_annees || []).forEach(function (r) {
-      if (r[field]) sources.push({ nom: 'DVF ' + r.annee, bas: '', moyen: String(r[field]), haut: '' });
+      if (r[field]) sources.push({ nom: (isTer ? 'DVF terrains ' : 'DVF ') + r.annee, bas: '', moyen: String(r[field]), haut: '' });
     });
+    // Terrain sans donnée DVF terrain : on préfère AUCUNE ligne plutôt que des €/m² bâti trompeurs.
     if (sources.length) d.marche.sources = sources;
+    else if (isTer) d.marche.sources = [{ nom: 'À compléter — DVF terrains à bâtir (peu de ventes en DOM)', bas: '', moyen: '', haut: '' }];
 
-    var evo = evolutionFromDvf(fidi.dvf_annees, typeBien);
+    var evo = evolutionFromDvf(fidi.dvf_annees, isTer ? 'terrain' : typeBien);
     var tendDetail = score.axes && score.axes.tendance ? score.axes.tendance.detail : '';
     if (evo) d.marche.commentaire = 'Évolution observée ' + (evo.pct >= 0 ? '+' : '') + evo.pct + ' % sur la période ' + evo.periode + (tendDetail ? ' (' + tendDetail + ')' : '') + '.';
     else if (tendDetail) d.marche.commentaire = tendDetail + '.';
