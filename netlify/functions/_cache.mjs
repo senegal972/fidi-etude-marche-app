@@ -8,7 +8,13 @@ async function getStoreSafe() {
   if (storeRef !== undefined) return storeRef;
   try {
     const mod = await import("@netlify/blobs");
-    storeRef = mod.getStore({ name: "fidi-cache", consistency: "strong" });
+    const opts = { name: "fidi-cache", consistency: "strong" };
+    // Config manuelle : le contexte Blobs auto n'est pas injecté quand la fonction est
+    // bundlée avec esbuild + external_node_modules. On fournit siteID + token depuis l'env.
+    const siteID = process.env.NETLIFY_SITE_ID || process.env.SITE_ID || process.env.BLOBS_SITE_ID;
+    const token = process.env.NETLIFY_AUTH_TOKEN || process.env.NETLIFY_API_TOKEN || process.env.BLOBS_TOKEN;
+    if (siteID && token) { opts.siteID = siteID; opts.token = token; }
+    storeRef = mod.getStore(opts);
   } catch (e) {
     console.error("[_cache] getStore FAILED:", e && (e.message || e));
     storeRef = null;
