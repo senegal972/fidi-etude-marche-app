@@ -827,6 +827,41 @@
       d.bien.zonagePlu = [zoneG.typezone, zoneG.libelle].filter(Boolean).join(' — ');
     }
 
+    // ── Réinjection CADASTRE & URBANISME (LOT D) depuis l'étude / GPU ──
+    // Remplit l'onglet « Cadastre & urbanisme » (parcelle, contenance, zonage, droits à bâtir)
+    // à partir des données de l'étude de marché (window.__fidiGpu + estimation).
+    d.cadastre = d.cadastre || {};
+    if (!Array.isArray(d.cadastre.parcelles)) d.cadastre.parcelles = [];
+    if (!d.cadastre.mode) d.cadastre.mode = 'simple';
+    var zonageStr = [zoneG.typezone, zoneG.libelle].filter(Boolean).join(' — ');
+    // Plusieurs parcelles fournies par l'étude → mode « ensemble ».
+    var gpuParcelles = Array.isArray(gpu.parcelles) ? gpu.parcelles.filter(function (p) { return p && (p.section || p.numero || p.contenance); }) : null;
+    if (gpuParcelles && gpuParcelles.length > 1) {
+      d.cadastre.mode = 'multiple';
+      d.cadastre.parcelles = gpuParcelles.map(function (p) {
+        return {
+          section: p.section || '', numero: p.numero ? String(p.numero) : '', feuille: p.feuille ? String(p.feuille) : '',
+          contenance: p.contenance ? String(Math.round(Number(p.contenance))) : '',
+          origine: p.origine || '', nue: isTerrain(d.bien.type), zonage: zonageStr, note: 'Étude'
+        };
+      });
+    } else {
+      // Parcelle unique : ne pas écraser une saisie existante.
+      if (parc.section && !d.cadastre.section) d.cadastre.section = parc.section;
+      if (parc.numero && !d.cadastre.numero) d.cadastre.numero = String(parc.numero);
+      if (parc.feuille && !d.cadastre.feuille) d.cadastre.feuille = String(parc.feuille);
+      if (contenance > 0 && !num(d.cadastre.contenance)) d.cadastre.contenance = String(Math.round(contenance));
+    }
+    if (zonageStr && !d.cadastre.zonage) d.cadastre.zonage = zonageStr;
+    // Droits à bâtir : si l'étude a calculé une constructibilité (emprise/COS × terrain), on l'injecte.
+    var cst = fidi.constructibilite || (fidi.estimation && fidi.estimation.constructibilite) || (zoneG && zoneG.constructibilite) || null;
+    if (cst) {
+      var shonEt = Number(cst.shon || cst.shon_autorisee || cst.surface_constructible) || 0;
+      var shobEt = Number(cst.shob || cst.shob_autorisee || cst.emprise_max) || 0;
+      if (shonEt > 0 && !num(d.cadastre.shonAutorisee)) d.cadastre.shonAutorisee = String(Math.round(shonEt));
+      if (shobEt > 0 && !num(d.cadastre.shobAutorisee)) d.cadastre.shobAutorisee = String(Math.round(shobEt));
+    }
+
     // ── Réinjection spécifique TERRAIN (à bâtir / agricole / naturel-ONF) ──
     if (isTerrain(d.bien.type)) {
       d.bien.regime = 'Monopropriété';
