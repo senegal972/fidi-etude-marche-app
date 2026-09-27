@@ -755,6 +755,67 @@
     return [addr, type, loc.lat, loc.lon].join('|');
   }
 
+  // Ré-injecte les champs « ÉTUDE » géographiques & cadastraux sur un avis EXISTANT.
+  // Appelé par le prefill ET à chaque ouverture (resync), pour que les zones à badge « étude »
+  // (localisation & risques, cadastre, droits à bâtir, zonage) reflètent toujours l'étude courante.
+  function injectEtudeGeoCadastre(d, fidi, inputs) {
+    if (!d || !fidi) return d;
+    var loc = fidi.localisation || {};
+    var score = fidi.score || {};
+    // Localisation & risques
+    d.loc = d.loc || {};
+    d.loc.adresse = (inputs && inputs.adresse) || loc.label || d.loc.adresse || '';
+    if (loc.lat != null) d.loc.lat = String(loc.lat);
+    if (loc.lon != null) d.loc.lon = String(loc.lon);
+    var lr = extractLocRisques(fidi);
+    if (lr.sismicite) d.loc.sismicite = lr.sismicite;
+    if (lr.radon) d.loc.radon = lr.radon;
+    if (lr.ppr) d.loc.ppr = lr.ppr;
+    if (lr.detail) d.loc.risquesDetail = lr.detail;
+
+    // Cadastre / urbanisme (GPU)
+    var gpu = window.__fidiGpu || {};
+    var parc = gpu.parcelle || {};
+    var zoneG = gpu.zone || {};
+    var contenance = Number(parc.contenance) || 0;
+    if (parc.numero || parc.section) d.bien.refCadastrale = [parc.section, parc.numero].filter(Boolean).join(' ');
+    var zonageStr = [zoneG.typezone, zoneG.libelle].filter(Boolean).join(' — ');
+    if (zonageStr) d.bien.zonagePlu = zonageStr;
+
+    d.cadastre = d.cadastre || {};
+    if (!Array.isArray(d.cadastre.parcelles)) d.cadastre.parcelles = [];
+    if (!d.cadastre.mode) d.cadastre.mode = 'simple';
+    var gpuParcelles = Array.isArray(gpu.parcelles) ? gpu.parcelles.filter(function (p) { return p && (p.section || p.numero || p.contenance); }) : null;
+    if (gpuParcelles && gpuParcelles.length > 1) {
+      d.cadastre.mode = 'multiple';
+      d.cadastre.parcelles = gpuParcelles.map(function (p) {
+        return { section: p.section || '', numero: p.numero ? String(p.numero) : '', feuille: p.feuille ? String(p.feuille) : '',
+          contenance: p.contenance ? String(Math.round(Number(p.contenance))) : '', origine: p.origine || '',
+          nue: isTerrain(d.bien.type), zonage: zonageStr, note: 'Étude' };
+      });
+    } else {
+      if (parc.section && !d.cadastre.section) d.cadastre.section = parc.section;
+      if (parc.numero && !d.cadastre.numero) d.cadastre.numero = String(parc.numero);
+      if (parc.feuille && !d.cadastre.feuille) d.cadastre.feuille = String(parc.feuille);
+      if (contenance > 0 && !num(d.cadastre.contenance)) d.cadastre.contenance = String(Math.round(contenance));
+    }
+    if (zonageStr) d.cadastre.zonage = zonageStr;
+    // Droits à bâtir depuis l'étude si disponible (emprise/COS × terrain)
+    var cst = fidi.constructibilite || (fidi.estimation && fidi.estimation.constructibilite) || (zoneG && zoneG.constructibilite) || null;
+    if (cst) {
+      var shonEt = Number(cst.shon || cst.shon_autorisee || cst.surface_constructible) || 0;
+      var shobEt = Number(cst.shob || cst.shob_autorisee || cst.emprise_max) || 0;
+      if (shonEt > 0 && !num(d.cadastre.shonAutorisee)) d.cadastre.shonAutorisee = String(Math.round(shonEt));
+      if (shobEt > 0 && !num(d.cadastre.shobAutorisee)) d.cadastre.shobAutorisee = String(Math.round(shobEt));
+    }
+    // Vigilances / atouts issus du score (rafraîchis)
+    var vig = risquesToVigilances(fidi.risques, score.axes);
+    if (vig.length) d.vigilances = vig;
+    var at = atoutsFromScore(score);
+    if (at.length) d.atouts = at;
+    return d;
+  }
+
   function buildPrefillFromEtude(fidi, inputs) {
     var d = defaultData();
     var sig = loadSignataire();
@@ -826,67 +887,14 @@
     if (evo) d.marche.commentaire = 'Évolution observée ' + (evo.pct >= 0 ? '+' : '') + evo.pct + ' % sur la période ' + evo.periode + (tendDetail ? ' (' + tendDetail + ')' : '') + '.';
     else if (tendDetail) d.marche.commentaire = tendDetail + '.';
 
-    // Localisation & risques (persistés dans l'avis)
-    d.loc.adresse = (inputs && inputs.adresse) || loc.label || '';
-    d.loc.lat = loc.lat != null ? String(loc.lat) : '';
-    d.loc.lon = loc.lon != null ? String(loc.lon) : '';
-    var lr = extractLocRisques(fidi);
-    d.loc.sismicite = lr.sismicite; d.loc.radon = lr.radon; d.loc.ppr = lr.ppr; d.loc.risquesDetail = lr.detail;
+    // Localisation, risques, cadastre & urbanisme (helper réutilisé au resync d'ouverture)
+    injectEtudeGeoCadastre(d, fidi, inputs);
 
-    var vig = risquesToVigilances(fidi.risques, score.axes);
-    if (vig.length) d.vigilances = vig;
-    var at = atoutsFromScore(score);
-    if (at.length) d.atouts = at;
-
-    // ── Réinjection cadastre / urbanisme (GPU) — tous types ─────
-    // Le cadastre + le zonage PLU proviennent de window.__fidiGpu (rempli par l'étude).
+    // ── Réinjection spécifique TERRAIN (à bâtir / agricole / naturel-ONF) ──
     var gpu = window.__fidiGpu || {};
     var parc = gpu.parcelle || {};
     var zoneG = gpu.zone || {};
     var contenance = Number(parc.contenance) || 0;
-    if (parc.numero || parc.section) {
-      d.bien.refCadastrale = [parc.section, parc.numero].filter(Boolean).join(' ');
-    }
-    if (zoneG.typezone || zoneG.libelle) {
-      d.bien.zonagePlu = [zoneG.typezone, zoneG.libelle].filter(Boolean).join(' — ');
-    }
-
-    // ── Réinjection CADASTRE & URBANISME (LOT D) depuis l'étude / GPU ──
-    // Remplit l'onglet « Cadastre & urbanisme » (parcelle, contenance, zonage, droits à bâtir)
-    // à partir des données de l'étude de marché (window.__fidiGpu + estimation).
-    d.cadastre = d.cadastre || {};
-    if (!Array.isArray(d.cadastre.parcelles)) d.cadastre.parcelles = [];
-    if (!d.cadastre.mode) d.cadastre.mode = 'simple';
-    var zonageStr = [zoneG.typezone, zoneG.libelle].filter(Boolean).join(' — ');
-    // Plusieurs parcelles fournies par l'étude → mode « ensemble ».
-    var gpuParcelles = Array.isArray(gpu.parcelles) ? gpu.parcelles.filter(function (p) { return p && (p.section || p.numero || p.contenance); }) : null;
-    if (gpuParcelles && gpuParcelles.length > 1) {
-      d.cadastre.mode = 'multiple';
-      d.cadastre.parcelles = gpuParcelles.map(function (p) {
-        return {
-          section: p.section || '', numero: p.numero ? String(p.numero) : '', feuille: p.feuille ? String(p.feuille) : '',
-          contenance: p.contenance ? String(Math.round(Number(p.contenance))) : '',
-          origine: p.origine || '', nue: isTerrain(d.bien.type), zonage: zonageStr, note: 'Étude'
-        };
-      });
-    } else {
-      // Parcelle unique : ne pas écraser une saisie existante.
-      if (parc.section && !d.cadastre.section) d.cadastre.section = parc.section;
-      if (parc.numero && !d.cadastre.numero) d.cadastre.numero = String(parc.numero);
-      if (parc.feuille && !d.cadastre.feuille) d.cadastre.feuille = String(parc.feuille);
-      if (contenance > 0 && !num(d.cadastre.contenance)) d.cadastre.contenance = String(Math.round(contenance));
-    }
-    if (zonageStr && !d.cadastre.zonage) d.cadastre.zonage = zonageStr;
-    // Droits à bâtir : si l'étude a calculé une constructibilité (emprise/COS × terrain), on l'injecte.
-    var cst = fidi.constructibilite || (fidi.estimation && fidi.estimation.constructibilite) || (zoneG && zoneG.constructibilite) || null;
-    if (cst) {
-      var shonEt = Number(cst.shon || cst.shon_autorisee || cst.surface_constructible) || 0;
-      var shobEt = Number(cst.shob || cst.shob_autorisee || cst.emprise_max) || 0;
-      if (shonEt > 0 && !num(d.cadastre.shonAutorisee)) d.cadastre.shonAutorisee = String(Math.round(shonEt));
-      if (shobEt > 0 && !num(d.cadastre.shobAutorisee)) d.cadastre.shobAutorisee = String(Math.round(shobEt));
-    }
-
-    // ── Réinjection spécifique TERRAIN (à bâtir / agricole / naturel-ONF) ──
     if (isTerrain(d.bien.type)) {
       d.bien.regime = 'Monopropriété';
       var nature = terrainNatureFromGpu();
@@ -4543,6 +4551,53 @@
     return html;
   }
 
+  // Bloc « Stratégie de prix & coût acquéreur » pour le document (LOT F).
+  function buildStrategieDocHTML(data) {
+    var mv = data.methodesV2, st = data.strategie, b = data.bien;
+    if (!mv || !st) return '';
+    var r = CALC.calculerMethodes(buildV2Input(data));
+    var syn = r.synthese;
+    if (!(syn.central > 0)) return '';
+    var terr = terrPourCp(b.cp);
+    var honoPct = (st.honorairesPct !== '' && st.honorairesPct != null) ? num(st.honorairesPct) : terr.hono;
+    var marge = num(st.margeNegoPct);
+    var prixPres = num(st.prixPresentationManuel) || CALC.arrondi(syn.central * (1 + marge / 100));
+    var cPres = coutAcquereur(prixPres, terr, honoPct, st.honorairesCharge);
+    var cObj = coutAcquereur(syn.central, terr, honoPct, st.honorairesCharge);
+    function crow(lbl, a, c, strong) {
+      return '<tr' + (strong ? ' class="gold-row"' : '') + '><td' + (strong ? '' : ' class="lbl"') + '>' + esc(lbl) + '</td>' +
+        '<td class="center">' + fmtE(a) + '</td><td class="center">' + fmtE(c) + '</td></tr>';
+    }
+    var html = '<h1>7 ter. Stratégie de prix et coût global acquéreur</h1>';
+    html += '<p>Territoire : <b>' + esc(terr.libelle) + '</b> — droits de mutation ' + terr.droits + ' %, émoluments notaire ' + terr.notaire + ' %, TVA honoraires ' + terr.tva + ' %. Hypothèses « à valider ».</p>';
+    html += '<table><tbody>' +
+      '<tr><td class="lbl">Prix de présentation net vendeur</td><td class="center">' + fmtE(prixPres) + ' <span style="color:#5c6470;">(central + ' + fmt(marge) + ' % de négociation)</span></td></tr>' +
+      '<tr><td class="lbl">Objectif de signature (central)</td><td class="center">' + fmtE(syn.central) + '</td></tr>' +
+      '<tr><td class="lbl">Plancher (bas)</td><td class="center">' + fmtE(syn.bas) + '</td></tr>' +
+      '</tbody></table>';
+    html += '<h2>Coût global acquéreur</h2>' +
+      '<table><thead><tr><th>Poste</th><th class="center">Présentation</th><th class="center">Objectif signature</th></tr></thead><tbody>' +
+        crow('Net vendeur', cPres.netVendeur, cObj.netVendeur) +
+        crow('Honoraires (' + honoPct + ' %, ' + esc(st.honorairesCharge || 'acquéreur') + ')', cPres.hono, cObj.hono) +
+        crow('TVA honoraires', cPres.tvaHono, cObj.tvaHono) +
+        crow('Prix FAI', cPres.prixFAI, cObj.prixFAI) +
+        crow('Droits de mutation (' + terr.droits + ' %)', cPres.droits, cObj.droits) +
+        crow('Émoluments notaire (' + terr.notaire + ' %)', cPres.notaire, cObj.notaire) +
+        crow('COÛT TOTAL ACQUÉREUR', cPres.total, cObj.total, true) +
+      '</tbody></table>' +
+      '<p style="font-size:8.5pt;color:#5c6470;">Base des droits et émoluments = net vendeur si honoraires à charge acquéreur. Indicatif, hors débours et cas particuliers.</p>';
+    // Vigilances automatiques
+    var vig = vigilancesAuto(data, r);
+    if (vig.length) {
+      html += '<h2>Vigilances</h2><ul style="margin:0;padding-left:1.1rem;font-size:9pt;">' +
+        vig.map(function (v) {
+          var ic = v.niveau === 'rouge' ? '⛔ ' : v.niveau === 'orange' ? '⚠️ ' : '• ';
+          return '<li>' + ic + v.txt + '</li>';
+        }).join('') + '</ul>';
+    }
+    return html;
+  }
+
   function buildAvisDocHTML(data, calc) {
     var b = data.bien, m = data.marche, sig = data.signataire;
     var occ = b.statut === 'occupe';
@@ -4663,7 +4718,15 @@
       row('Zonage PLU', b.zonagePlu ? esc(b.zonagePlu) : '') +
       row('Immeuble', b.immeuble ? esc(b.immeuble) : '') +
       row('Étage', b.etage ? esc(b.etage) : '') +
-      row(isTerrain(b.type) ? 'Surface du terrain (cadastre)' : 'Surface habitable (loi Carrez)', b.surfaceCarrez ? '≈ ' + esc(b.surfaceCarrez) + ' m²' + (!isTerrain(b.type) && b.sejour ? ' – séjour de ' + esc(b.sejour) + ' m²' : '') : '') +
+      (function () {
+        var _tot = contenanceTotale(_cadDoc);
+        var _multi = _cadDoc.mode === 'multiple' && (_cadDoc.parcelles || []).length > 1;
+        if (isTerrain(b.type)) {
+          var _surfTer = _tot || num(b.surfaceCarrez);
+          return row('Surface du terrain (cadastre)', _surfTer ? '≈ ' + fmt(_surfTer) + ' m²' + (_multi ? ' (assiette : ' + _cadDoc.parcelles.length + ' parcelles)' : '') : '');
+        }
+        return row('Surface habitable (loi Carrez)', b.surfaceCarrez ? '≈ ' + esc(b.surfaceCarrez) + ' m²' + (b.sejour ? ' – séjour de ' + esc(b.sejour) + ' m²' : '') : '');
+      })() +
       row('Surface SHOB annoncée', b.surfaceShob ? '≈ ' + esc(b.surfaceShob) + ' m²' : '') +
       row('Terrasse / Balcon', b.terrasse ? esc(b.terrasse) + ' m²' : '') +
       row('Stationnement', b.parking ? esc(b.parking) : '') +
@@ -4962,9 +5025,10 @@
         '<p style="margin-top:12px;"><b style="color:#1a3a6e;">Conclusion :</b> ' + conclusionTexte + '</p>';
     }
 
-    // ── Fourchette multi-méthodes + graphiques (LOT E/G) — vente uniquement ──
+    // ── Fourchette multi-méthodes + graphiques (LOT E/G) + Stratégie & coût acquéreur (LOT F) — vente ──
     if (_nature !== 'location') {
       try { html += buildFourchetteDocHTML(data); } catch (e) { /* jamais bloquer le doc */ }
+      try { html += buildStrategieDocHTML(data); } catch (e) { /* jamais bloquer le doc */ }
     }
 
     html += '<h1>8. Réserves et limites de l\'avis</h1><div class="reserves">' +
@@ -5086,6 +5150,10 @@
       state.data.metadata.nature = natureDemande;
       applyDefaultsForNature(natureDemande);
     }
+    // RESYNC ÉTUDE : à chaque ouverture (y compris avis sauvegardé rechargé), on réassigne les
+    // champs à badge « étude » (localisation & risques, cadastre, droits à bâtir, zonage) depuis
+    // l'étude de marché courante, pour qu'ils ne restent jamais vides/périmés.
+    if (window.__fidiData) { try { injectEtudeGeoCadastre(state.data, window.__fidiData, window.__fidiInputs); } catch (e) {} }
     refreshSavedSelect();
     state._crmRefreshed = false; // ré-autorise un refresh CRM à chaque ouverture de modale
     // Refresh header (toggle vente/loc) : rebuild rapide de la modale si nature a changé
