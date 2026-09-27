@@ -602,7 +602,31 @@
         if (k && k.indexOf(AVIS_PREFIX) === 0) out.push(k.slice(AVIS_PREFIX.length));
       }
     } catch (e) {}
-    return out.sort();
+    // Tri par date (metadata.date) décroissante puis par ref : le plus récent d'abord.
+    return out.sort(function (a, b) {
+      var da = '', db = '';
+      try { da = (JSON.parse(localStorage.getItem(AVIS_PREFIX + a)).metadata || {}).date || ''; } catch (e) {}
+      try { db = (JSON.parse(localStorage.getItem(AVIS_PREFIX + b)).metadata || {}).date || ''; } catch (e) {}
+      if (da !== db) return da < db ? 1 : -1;   // date desc
+      return a < b ? 1 : -1;                    // ref desc
+    });
+  }
+
+  // Dernier avis sauvegardé correspondant à l'étude courante (même __srcKey) et à la nature demandée.
+  // Sans étude chargée (freshKey vide) : dernier avis de cette nature, toutes études confondues.
+  function findLatestAvisForEtude(freshKey, nature) {
+    var refs = listSavedAvis();   // déjà triés du plus récent au plus ancien
+    for (var i = 0; i < refs.length; i++) {
+      try {
+        var d = JSON.parse(localStorage.getItem(AVIS_PREFIX + refs[i]));
+        if (!d) continue;
+        var natD = (d.metadata && d.metadata.nature) || 'vente';
+        if (nature && natD !== nature) continue;
+        if (freshKey && d.__srcKey && d.__srcKey !== freshKey) continue;  // autre étude
+        return { ref: refs[i], data: d };
+      } catch (e) {}
+    }
+    return null;
   }
 
   // ── Pré-remplissage depuis l'étude de marché ────────────────
@@ -3465,7 +3489,16 @@
   function doSave() {
     var ref = (state.data.metadata.ref || '').trim();
     if (!ref) { toast('Référence requise', true); return; }
-    try { localStorage.setItem(AVIS_PREFIX + ref, JSON.stringify(state.data)); refreshSavedSelect(); toast('Avis sauvegardé'); }
+    // Rattache l'avis à l'étude courante (pour la reprise automatique) + marque comme sauvegardé.
+    if (!state.data.__srcKey && window.__fidiData) {
+      try { state.data.__srcKey = etudeKeyOf(window.__fidiData, window.__fidiInputs); } catch (e) {}
+    }
+    state.data.__saved = true;
+    try {
+      localStorage.setItem(AVIS_PREFIX + ref, JSON.stringify(state.data));
+      try { localStorage.setItem('fidi:avis:last', ref); } catch (e) {}
+      refreshSavedSelect(); toast('Avis sauvegardé');
+    }
     catch (e) { toast('Erreur de sauvegarde', true); }
     cloudSaveAvis(ref); // synchro Notion en arrière-plan (best-effort)
   }
@@ -5026,6 +5059,21 @@
     // Re-préremplissage si une étude est chargée et que le brouillon courant provient
     // d'une AUTRE étude (corrige type/surface/immeuble/destinataire périmés au réouverture).
     var freshKey = window.__fidiData ? etudeKeyOf(window.__fidiData, window.__fidiInputs) : '';
+
+    // Reprise du dernier travail : au 1er open (pas de brouillon en mémoire) et sans avis
+    // explicitement demandé, on recharge le DERNIER avis sauvegardé cohérent avec l'étude
+    // courante (même origine + même nature). Sinon on prefill neuf (comportement précédent).
+    if (!state.data && !refDemande) {
+      var resume = findLatestAvisForEtude(freshKey, natureDemande);
+      if (resume) {
+        state.data = ensureExpertBlock(resume.data);
+        state.data.__saved = true;
+        state.section = 'metadata';
+        refDemande = resume.ref;   // marque comme chargé → évite le prefill destructif ci-dessous
+        toast('Dernier avis rechargé : ' + resume.ref);
+      }
+    }
+
     var stale = state.data && !state.data.__saved && freshKey && state.data.__srcKey !== freshKey;
     if (!state.data || (stale && !refDemande)) {
       state.data = window.__fidiData ? buildPrefillFromEtude(window.__fidiData, window.__fidiInputs) : buildPrefillFromEtude(null, null);
