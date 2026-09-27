@@ -16,7 +16,7 @@ const PORTAILS = [
   "explorimmo.com", "superimmo.com", "green-acres.fr", "bellesdemeures.com",
   "lux-residence.com", "properstar.fr", "immobilier.notaires.fr", "figaro-immobilier.fr",
   // DOM / Antilles / Saint-Barth
-  "cyphoma.com", "stbarthimmo.com", "immo972.com", "immodom.com", "karib-immo.com",
+  "cyphoma.com", "stbarthimmo.com", "immo972.com", "immodom.com", "karib-immo.com", "domimmo.com",
 ];
 const PORTAIL_SET = new Set(PORTAILS);
 // Domaine appartenant à un portail (gère sous-domaines : www déjà retiré par host()).
@@ -132,14 +132,25 @@ function extractFromHtml(url, html, desc) {
 
 // ── Post-traitement ──────────────────────────────────────────────────────────
 export { dedup, similarite, estBienSujet, stats, extractFromHtml, pickJsonLd };
+// Normalise une URL pour comparer (retire protocole, www, query, slash final).
+function urlKey(u) {
+  try { const x = new URL(u); return (x.hostname.replace(/^www\./, "") + x.pathname).replace(/\/+$/, "").toLowerCase(); }
+  catch { return String(u || "").toLowerCase(); }
+}
 function dedup(items) {
-  const out = [];
+  const out = []; const urlSeen = new Set();
   for (const a of items) {
+    const uk = urlKey(a.url);
+    if (uk && urlSeen.has(uk)) continue;            // même annonce (URL identique) → doublon
     const dup = out.find((b) =>
       (a.prix && b.prix && a.source === b.source && Math.abs(a.prix - b.prix) / a.prix < 0.001) ||
       (a.surface_terrain && b.surface_terrain && Math.abs(a.surface_terrain - b.surface_terrain) / a.surface_terrain <= 0.02 &&
-        a.quartier && a.quartier === b.quartier && a.prix && b.prix && Math.abs(a.prix - b.prix) / a.prix <= 0.10));
-    if (!dup) out.push(a);
+        a.quartier && a.quartier === b.quartier && a.prix && b.prix && Math.abs(a.prix - b.prix) / a.prix <= 0.10) ||
+      // même bien multi-diffusé : prix identique + même surface (hab ou terrain), sources différentes
+      (a.prix && b.prix && Math.abs(a.prix - b.prix) / a.prix < 0.005 &&
+        ((a.surface_hab && b.surface_hab && Math.abs(a.surface_hab - b.surface_hab) <= 2) ||
+         (a.surface_terrain && b.surface_terrain && Math.abs(a.surface_terrain - b.surface_terrain) <= 5))));
+    if (!dup) { out.push(a); if (uk) urlSeen.add(uk); }
   }
   return out;
 }
@@ -191,15 +202,28 @@ export async function rechercherAnnonces(criteres) {
   const type = criteres.type_bien || "maison";
   const cible = Number(criteres.cible) > 0 ? Number(criteres.cible) : TARGET_ITEMS;
 
+  const estTerrain = /terrain/i.test(type) || !!criteres.inclure_terrains;
+  // Majors demandés : LeBonCoin, SeLoger, Bien'ici, Logic-Immo (+ DomImmo pour les DOM).
+  const topPortails = ["leboncoin.fr", "seloger.com", "bienici.com", "logic-immo.com", "domimmo.com"];
   // Requêtes CIBLÉES portails d'abord (site:), puis générales pour l'élargissement.
-  const topPortails = ["seloger.com", "leboncoin.fr", "bienici.com", "logic-immo.com"];
-  const requetesPortail = topPortails.map((p) => `${type} ${quartier} ${commune} site:${p}`.trim());
-  const requetesGenerales = [
-    `${type} à vendre ${quartier} ${commune}`.trim(),
-    `villa ${quartier} ${commune} à vendre`.trim(),
-    `${commune} ${quartier} immobilier annonce prix vente`.trim(),
-    ...(criteres.inclure_terrains ? [`terrain constructible ${quartier} ${commune} à vendre`.trim()] : []),
-  ];
+  const motTerrain = "terrain à vendre";
+  const requetesPortail = topPortails.map((p) =>
+    estTerrain ? `${motTerrain} ${commune} site:${p}`.trim()
+               : `${type} ${quartier} ${commune} site:${p}`.trim());
+  const requetesGenerales = estTerrain
+    ? [
+        // TERRAINS : on ne filtre PAS la surface ; tous les terrains à vendre de la commune (périphérie).
+        `terrain à vendre ${commune}`.trim(),
+        `terrain constructible ${commune} à vendre`.trim(),
+        `terrain à bâtir ${quartier} ${commune}`.trim(),
+        `${commune} vente terrain prix`.trim(),
+      ]
+    : [
+        `${type} à vendre ${quartier} ${commune}`.trim(),
+        `villa ${quartier} ${commune} à vendre`.trim(),
+        `${commune} ${quartier} immobilier annonce prix vente`.trim(),
+        ...(criteres.inclure_terrains ? [`terrain à vendre ${commune}`.trim()] : []),
+      ];
   const requetes = [...requetesPortail, ...requetesGenerales];
 
   // 1) Récupère les URLs candidates via Brave (dédupliquées, plus large qu'avant).
@@ -210,14 +234,27 @@ export async function rechercherAnnonces(criteres) {
     }
     if (candidats.length >= 40) break;   // borne le volume Brave
   }
-  // Tri : portails prioritaires d'abord (par rang), le reste (élargissement) ensuite.
-  candidats.sort((a, b) => rangPortail(a.url) - rangPortail(b.url));
+  // Ordonnancement ROUND-ROBIN par domaine : 1 URL par hôte à chaque tour, hôtes triés par
+  // priorité portail. Évite que les majors bloqués (seloger/leboncoin en 403) cramment le budget
+  // avant d'atteindre les sources permissives (DOM, agrégateurs). Max MAX_PER_HOST URLs par domaine.
+  const MAX_PER_HOST = 2;
+  const byHost = new Map();
+  for (const r of candidats) { const h = host(r.url); if (!byHost.has(h)) byHost.set(h, []); byHost.get(h).push(r); }
+  const hostOrder = [...byHost.keys()].sort((a, b) => {
+    const ra = Math.min(...byHost.get(a).map((x) => rangPortail(x.url)));
+    const rb = Math.min(...byHost.get(b).map((x) => rangPortail(x.url)));
+    return ra - rb;
+  });
+  const ordered = [];
+  for (let round = 0; round < MAX_PER_HOST; round++) {
+    for (const h of hostOrder) { const arr = byHost.get(h); if (arr[round]) ordered.push(arr[round]); }
+  }
 
-  // 2) Fetch + extraction (robots.txt, 1 req/s/domaine). On PRIORISE les portails et on
-  //    ÉLARGIT aux autres si la cible n'est pas atteinte. Arrêt anticipé dès `cible` annonces.
+  // 2) Fetch + extraction (robots.txt, 1 req/s/domaine). Round-robin => diversité d'hôtes ;
+  //    arrêt anticipé dès `cible` annonces exploitables.
   const items = []; const lastHit = {}; let fetched = 0;
-  const diag = { candidats: candidats.length, robots: 0, http: 0, nothtml: 0, vide: 0, err: 0 };
-  for (const r of candidats) {
+  const diag = { candidats: candidats.length, hosts: byHost.size, robots: 0, http: 0, nothtml: 0, vide: 0, err: 0 };
+  for (const r of ordered) {
     if (items.length >= cible || fetched >= MAX_FETCH) break;
     try {
       if (!(await allowedByRobots(r.url))) { diag.robots++; continue; }
