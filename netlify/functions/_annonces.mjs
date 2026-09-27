@@ -4,8 +4,8 @@
 import crypto from "node:crypto";
 
 const UA = "OPTIMMO-DOM-Veille/1.0 (+avis de valeur)";
-const FETCH_MS = 12000;
-const MAX_URLS = 14;              // borne de sécurité (temps + volume)
+const FETCH_MS = 7000;
+const MAX_URLS = 8;               // borne de sécurité (temps + volume) — mode synchrone < 26 s
 
 export function sha1(s) { return crypto.createHash("sha1").update(String(s)).digest("hex"); }
 

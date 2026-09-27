@@ -2700,10 +2700,19 @@
       .then(function (r) { return r.json(); })
       .then(function (j) {
         if (j.statut === 'indisponible') { veilleMem = j; refreshVeilleBox(); return; }
+        // Mode synchrone : le POST renvoie directement les résultats (statut termine/erreur + resultats).
+        if (j.resultats || j.statut === 'termine' || j.statut === 'erreur') {
+          veilleMem = j; refreshVeilleBox();
+          var res = j.resultats || {};
+          var n = (res.comparables || []).length + (res.terrains || []).length + (res.bien_sujet_expose || []).length;
+          if (j.statut === 'erreur') toast('Erreur veille : ' + (j.erreur || ''), true);
+          else toast(n + ' annonce(s) trouvée(s)');
+          return;
+        }
+        // Compat ancien mode asynchrone (job + polling) si jamais réactivé côté serveur.
         if (!j.job_id) { veilleMem = { statut: 'erreur', raison: j.error || 'Réponse inattendue' }; refreshVeilleBox(); return; }
         veilleMem = { statut: 'en_cours', job_id: j.job_id };
-        if (j.cache) { pollVeille(j.job_id); }      // résultat déjà en cache : on lit tout de suite
-        else { veillePoll = setTimeout(function () { pollVeille(j.job_id); }, 4000); }
+        veillePoll = setTimeout(function () { pollVeille(j.job_id); }, 4000);
         refreshVeilleBox();
       })
       .catch(function (e) { veilleMem = { statut: 'erreur', raison: e.message }; refreshVeilleBox(); });

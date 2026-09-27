@@ -125,9 +125,7 @@
   timeout = 10
 
 [functions."annonces"]
-  timeout = 15
-  # Pas d'override de bundler : le bundler Netlify par défaut fournit le contexte Netlify Blobs
-  # automatiquement (esbuild + external cassait ce contexte -> erreur "not configured / 401").
+  timeout = 26   # mode synchrone : la recherche s'exécute dans la requête (pas de Blobs, pas de background)
 
 [functions."avis-de-valeur"]
   timeout = 12
