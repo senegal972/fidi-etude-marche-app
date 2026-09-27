@@ -16,7 +16,7 @@ async function getStoreSafe() {
     }
     storeRef = mod.getStore(opts);
   } catch (e) {
-    console.error("[_cache] getStore FAILED:", e && (e.message || e));
+    // Blobs indisponible (dev local, sandbox, ou contexte non injecté) → no-op gracieux, silencieux.
     storeRef = null;
   }
   return storeRef;
@@ -35,9 +35,8 @@ export async function cacheGet(key) {
 
 export async function cacheSet(key, data) {
   const s = await getStoreSafe();
-  if (!s) { console.error("[_cache] cacheSet no store for", key); return; }
-  try { await s.setJSON(key, { ts: Date.now(), data }); }
-  catch (e) { console.error("[_cache] setJSON FAILED for", key, ":", e && (e.message || e)); }
+  if (!s) return;                                             // pas de store → no-op silencieux
+  try { await s.setJSON(key, { ts: Date.now(), data }); } catch (e) { /* écriture best-effort */ }
 }
 
 export function cacheTag(...parts) {

@@ -44,3 +44,6 @@ credentials.json
 *.tmp
 *.tmp.*
 *.bak
+
+# graphify build artefacts
+graphify-out/
