@@ -24,6 +24,18 @@ function estPortail(u) { const h = host(u); return PORTAIL_SET.has(h) || PORTAIL
 // Rang de priorité (plus petit = plus prioritaire ; 999 = hors liste).
 function rangPortail(u) { const h = host(u); let best = 999; PORTAILS.forEach((p, i) => { if ((h === p || h.endsWith("." + p)) && i < best) best = i; }); return best; }
 
+// URL de FICHE d'annonce (vs page d'accueil / catégorie de portail).
+// Heuristique : chemin ≥ 2 segments ET (identifiant chiffré long OU mot-clé de fiche).
+function estFicheAnnonce(u) {
+  let path = "";
+  try { path = new URL(u).pathname || "/"; } catch { return false; }
+  const segs = path.split("/").filter(Boolean);
+  if (segs.length < 2) return false;                                  // "/" ou "/categorie/" = pas une fiche
+  const hasId = /\d{5,}/.test(path) || segs.some((s) => /\d{5,}/.test(s));
+  const kw = /(annonce|detail|bien|propriet|property|a-vendre|\/vente[s]?\/|listing|ref[-_=]|\/ad\/|offre)/i.test(path);
+  return hasId || kw;
+}
+
 export function sha1(s) { return crypto.createHash("sha1").update(String(s)).digest("hex"); }
 
 async function fetchTimeout(url, ms = FETCH_MS, opts = {}) {
@@ -271,7 +283,10 @@ export async function rechercherAnnonces(criteres) {
       const a = extractFromHtml(r.url, html, r.desc);
       a.commune = commune; a.quartier = quartier;
       a.portail = estPortail(r.url);
-      if (plausible(a) && (a.prix || a.surface_hab || a.surface_terrain)) items.push(a);
+      // Vraie ANNONCE (pas une page catégorie/accueil) : URL de type fiche + prix ET une surface.
+      // Élimine les pages d'accueil de portail (prix parasite, surface absente).
+      const vraie = estFicheAnnonce(r.url) && a.prix && (a.surface_hab || a.surface_terrain);
+      if (plausible(a) && vraie) items.push(a);
       else diag.vide++;
     } catch { diag.err++; }
   }
