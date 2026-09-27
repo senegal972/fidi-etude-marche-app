@@ -139,6 +139,20 @@
     return prefix + next;
   }
 
+  // Hash déterministe d'une chaîne (djb2) → base36. Sert à la référence stable d'avis.
+  function hashStr(s) {
+    var h = 5381; s = String(s || '');
+    for (var i = 0; i < s.length; i++) { h = ((h << 5) + h + s.charCodeAt(i)) & 0x7fffffff; }
+    return (h >>> 0).toString(36);
+  }
+  // Référence STABLE d'avis pour une étude donnée : même étude → même clé → UN SEUL enregistrement
+  // (rechargé et écrasé, pas de prolifération d'avis numérotés).
+  function stableRefForEtude(fidi, inputs) {
+    var k = etudeKeyOf(fidi, inputs);
+    if (!k) return '';
+    return 'FIDI-AV-' + hashStr(k).toUpperCase();
+  }
+
   function defaultData() {
     var y = new Date().getFullYear();
     return {
@@ -169,7 +183,7 @@
         comparaison: { prixM2Bas: '', prixM2Central: '', prixM2Haut: '' },   // vide → auto (P25/médiane/P75 comparables)
         solConstruction: {
           chargeFonciere: { bas: '', central: '', haut: '' },  // totaux € (vide → médiane comparables terrains × contenance)
-          coutShonM2: 7000, coutAnnexesM2: 1500, forfait: '', vetustePct: '',  // vétusté vide → grille d'état
+          coutShonM2: '', coutAnnexesM2: '', forfait: '', vetustePct: '',  // vide → coûts du profil territoire ; vétusté vide → grille d'état
           prime: { bas: '', central: '', haut: '' }            // % (vide → profil territoire)
         },
         lots: [],   // { libelle, nombre, mode:'annuel'|'saisonnier', loyerMensuel, semaines, prixSemaine }
@@ -813,6 +827,11 @@
     }
     if (shonEt > 0 && !num(d.cadastre.shonAutorisee)) d.cadastre.shonAutorisee = String(Math.round(shonEt));
     if (shobEt > 0 && !num(d.cadastre.shobAutorisee)) d.cadastre.shobAutorisee = String(Math.round(shobEt));
+    // Terrain multi-parcelles : la surface du bien = contenance TOTALE (somme), pas la 1re parcelle.
+    if (isTerrain(d.bien.type)) {
+      var _ct = contenanceTotale(d.cadastre);
+      if (_ct > 0) d.bien.surfaceCarrez = String(Math.round(_ct));
+    }
     // Vigilances / atouts issus du score (rafraîchis)
     var vig = risquesToVigilances(fidi.risques, score.axes);
     if (vig.length) d.vigilances = vig;
@@ -836,6 +855,9 @@
     var sig = loadSignataire();
     if (sig) d.signataire = Object.assign({}, d.signataire, sig);
     if (!fidi) return d;
+    // Référence STABLE liée à l'étude → un seul enregistrement par étude (écrasé, pas de doublon).
+    var _sref = stableRefForEtude(fidi, inputs);
+    if (_sref) d.metadata.ref = _sref;
 
     var loc = fidi.localisation || {};
     var est = fidi.estimation || {};
@@ -913,8 +935,10 @@
     if (isTerrain(d.bien.type)) {
       d.bien.regime = 'Monopropriété';
       var nature = terrainNatureFromGpu();
-      // Surface : la contenance cadastrale prime sur toute saisie (souhait métier).
-      if (contenance > 0) d.bien.surfaceCarrez = String(Math.round(contenance));
+      // Surface : la contenance cadastrale TOTALE (somme des parcelles en multi-parcelles) prime.
+      var contTot = contenanceTotale(d.cadastre) || contenance;
+      if (contTot > 0) d.bien.surfaceCarrez = String(Math.round(contTot));
+      contenance = contTot;   // le reste du bloc (prix = €/m² × contenance) utilise le total
       if (nature === 'agricole' || nature === 'naturel') {
         // ── AGRICOLE / NATUREL : le marché DVF (constructions) ne s'applique PAS. ──
         // On récupère le €/m² de zone déjà calculé par l'étude (estimation corrigée),
@@ -2969,15 +2993,16 @@
   }
 
   // ── Profils territoriaux (miroir compact de _territoires.mjs, LOT F) ────────────
+  // Miroir de _territoires.mjs (droits/fiscalité + coûts construction + prime rareté + taux capi).
   var TERR = {
-    "972": { libelle: 'Martinique', droits: 5.80, notaire: 1.0, tva: 8.5, hono: 5, fisc: 'TVA 8,5 % (DOM) ; régime de droit commun. À confirmer.' },
-    "971": { libelle: 'Guadeloupe', droits: 5.80, notaire: 1.0, tva: 8.5, hono: 5, fisc: 'TVA 8,5 % (DOM) ; régime de droit commun. À confirmer.' },
-    "973": { libelle: 'Guyane', droits: 5.80, notaire: 1.0, tva: 8.5, hono: 5, fisc: 'TVA 8,5 % (DOM) ; régime de droit commun. À confirmer.' },
-    "974": { libelle: 'La Réunion', droits: 5.80, notaire: 1.0, tva: 8.5, hono: 5, fisc: 'TVA 8,5 % (DOM) ; régime de droit commun. À confirmer.' },
-    "976": { libelle: 'Mayotte', droits: 5.80, notaire: 1.0, tva: 0, hono: 5, fisc: 'Régime fiscal spécifique. À confirmer.' },
-    "977": { libelle: 'Saint-Barthélemy', droits: 5.0, notaire: 1.5, tva: 0, hono: 5, fisc: "Pas de TVA ni de taxe foncière pour les résidents fiscaux de la Collectivité ; plus-value selon le régime local. À confirmer." },
-    "978": { libelle: 'Saint-Martin', droits: 5.0, notaire: 1.5, tva: 0, hono: 5, fisc: 'Collectivité : régime fiscal spécifique. À confirmer.' },
-    "metropole": { libelle: 'Métropole', droits: 5.80, notaire: 1.0, tva: 20, hono: 5, fisc: 'TVA 20 % ; régime de droit commun. À confirmer.' },
+    "972": { libelle: 'Martinique', droits: 5.80, notaire: 1.0, tva: 8.5, hono: 5, cout: { shon: 2200, annexes: 600 }, prime: { bas: 0, central: 3, haut: 5 }, taux: { bas: 6.0, central: 6.5, haut: 7.0 }, fisc: 'TVA 8,5 % (DOM) ; régime de droit commun. À confirmer.' },
+    "971": { libelle: 'Guadeloupe', droits: 5.80, notaire: 1.0, tva: 8.5, hono: 5, cout: { shon: 2200, annexes: 600 }, prime: { bas: 0, central: 3, haut: 5 }, taux: { bas: 6.0, central: 6.5, haut: 7.0 }, fisc: 'TVA 8,5 % (DOM) ; régime de droit commun. À confirmer.' },
+    "973": { libelle: 'Guyane', droits: 5.80, notaire: 1.0, tva: 8.5, hono: 5, cout: { shon: 2300, annexes: 650 }, prime: { bas: 0, central: 2, haut: 5 }, taux: { bas: 6.5, central: 7.0, haut: 7.5 }, fisc: 'TVA 8,5 % (DOM) ; régime de droit commun. À confirmer.' },
+    "974": { libelle: 'La Réunion', droits: 5.80, notaire: 1.0, tva: 8.5, hono: 5, cout: { shon: 2200, annexes: 600 }, prime: { bas: 0, central: 3, haut: 6 }, taux: { bas: 5.5, central: 6.0, haut: 6.5 }, fisc: 'TVA 8,5 % (DOM) ; régime de droit commun. À confirmer.' },
+    "976": { libelle: 'Mayotte', droits: 5.80, notaire: 1.0, tva: 0, hono: 5, cout: { shon: 2400, annexes: 700 }, prime: { bas: 0, central: 3, haut: 6 }, taux: { bas: 6.5, central: 7.0, haut: 7.5 }, fisc: 'Régime fiscal spécifique. À confirmer.' },
+    "977": { libelle: 'Saint-Barthélemy', droits: 5.0, notaire: 1.5, tva: 0, hono: 5, cout: { shon: 7000, annexes: 1500 }, prime: { bas: 10, central: 15, haut: 20 }, taux: { bas: 3.5, central: 4.0, haut: 4.5 }, fisc: "Pas de TVA ni de taxe foncière pour les résidents fiscaux de la Collectivité ; plus-value selon le régime local. À confirmer." },
+    "978": { libelle: 'Saint-Martin', droits: 5.0, notaire: 1.5, tva: 0, hono: 5, cout: { shon: 4500, annexes: 1200 }, prime: { bas: 5, central: 10, haut: 15 }, taux: { bas: 4.0, central: 4.5, haut: 5.0 }, fisc: 'Collectivité : régime fiscal spécifique. À confirmer.' },
+    "metropole": { libelle: 'Métropole', droits: 5.80, notaire: 1.0, tva: 20, hono: 5, cout: { shon: 2000, annexes: 550 }, prime: { bas: 0, central: 0, haut: 5 }, taux: { bas: 4.0, central: 5.0, haut: 6.0 }, fisc: 'TVA 20 % ; régime de droit commun. À confirmer.' },
   };
   function terrPourCp(cp) {
     cp = String(cp || '').trim();
@@ -3128,7 +3153,9 @@
   // Assemble l'entrée du moteur v2 depuis le bien, le cadastre, les comparables et les overrides.
   function buildV2Input(data) {
     var mv = data.methodesV2 || {}, cad = data.cadastre || {}, b = data.bien || {};
+    var terr = terrPourCp(b.cp);
     var contenance = contenanceTotale(cad);
+    var estTer = isTerrain(b.type);
     var m2 = comparablesM2(data);
     var comp = mv.comparaison || {};
     var compBas = num(comp.prixM2Bas) || (m2.length ? Math.round(quantile(m2, 0.25)) : 0);
@@ -3137,21 +3164,48 @@
     var sc = mv.solConstruction || {};
     var cf = sc.chargeFonciere || {};
     var vet = (sc.vetustePct !== '' && sc.vetustePct != null) ? num(sc.vetustePct) : vetusteGlobale(data);
-    var taux = mv.taux || {};
-    var tCen = num(taux.central) || num((data.calcul || {}).tauxCapi) || 6.5;
-    var tBas = num(taux.bas) || (tCen + 0.5);   // taux plus haut → valeur plus basse
-    var tHau = num(taux.haut) || Math.max(0.5, tCen - 0.5);
+    // Coûts de construction : saisie sinon PROFIL TERRITOIRE (Martinique 2200/600, St-Barth 7000/1500…).
+    var coutS = num(sc.coutShonM2) || (terr.cout ? terr.cout.shon : 2200);
+    var coutA = num(sc.coutAnnexesM2) || (terr.cout ? terr.cout.annexes : 600);
+    // Prime de rareté : saisie sinon profil territoire.
+    var pr = sc.prime || {}, tp = terr.prime || { bas: 0, central: 0, haut: 0 };
+    var prime = { bas: num(pr.bas) || tp.bas, central: num(pr.central) || tp.central, haut: num(pr.haut) || tp.haut };
+    // Taux de capitalisation : saisie sinon profil territoire.
+    var taux = mv.taux || {}, tt = terr.taux || { bas: 6.5, central: 6.5, haut: 6.5 };
+    var tCen = num(taux.central) || tt.central;
+    var tBas = num(taux.bas) || tt.bas;
+    var tHau = num(taux.haut) || tt.haut;
+    // Charge foncière : saisie sinon estimée = €/m² terrain (marché de l'étude) × contenance totale.
+    var m2Ter = num((data.marche || {}).moyenneMoyen);
+    var m2TerBas = num((data.marche || {}).moyenneBas) || (m2Ter ? Math.round(m2Ter * 0.85) : 0);
+    var m2TerHau = num((data.marche || {}).moyenneHaut) || (m2Ter ? Math.round(m2Ter * 1.15) : 0);
+    var cfCen = num(cf.central) || (estTer && m2Ter && contenance ? Math.round(m2Ter * contenance) : 0);
+    var cfBas = num(cf.bas) || (estTer && m2TerBas && contenance ? Math.round(m2TerBas * contenance) : 0);
+    var cfHau = num(cf.haut) || (estTer && m2TerHau && contenance ? Math.round(m2TerHau * contenance) : 0);
+    // Base comparaison : terrain → contenance TOTALE ; bâti → SHON autorisée sinon surface habitable.
+    var shonIn = estTer ? 0 : num(cad.shonAutorisee);
+    var surfaceHabIn = estTer ? contenance : num(b.surfaceCarrez);
+    var nbLots = (mv.lots || []).length;
+    // Activation auto : une méthode sans donnée ne tire pas la synthèse vers 0.
+    // Override manuel possible via methodesV2.methodes (case cochée dans la pondération future).
+    var actives = (mv.methodes && typeof mv.methodes === 'object') ? mv.methodes : {
+      comparaison: compCen > 0,
+      solConstruction: (cfCen > 0 || num(cad.shobAutorisee) > 0 || num(sc.forfait) > 0),
+      capitalisation: nbLots > 0,
+    };
     return {
-      shon: num(cad.shonAutorisee), shob: num(cad.shobAutorisee), surfaceHab: num(b.surfaceCarrez),
+      shon: shonIn, shob: num(cad.shobAutorisee), surfaceHab: surfaceHabIn,
       comparaison: { bas: compBas, central: compCen, haut: compHau },
-      chargeFonciere: { bas: num(cf.bas), central: num(cf.central), haut: num(cf.haut) },
-      coutShonM2: sc.coutShonM2, coutAnnexesM2: sc.coutAnnexesM2, forfait: num(sc.forfait), vetustePct: vet,
-      prime: sc.prime || { bas: 0, central: 0, haut: 0 },
+      chargeFonciere: { bas: cfBas, central: cfCen, haut: cfHau },
+      coutShonM2: coutS, coutAnnexesM2: coutA, forfait: num(sc.forfait), vetustePct: vet,
+      prime: prime,
       lots: mv.lots || [],
       charges: mv.charges || {},
       taux: { bas: tBas, central: tCen, haut: tHau },
       poids: mv.poids || CALC.DEF.poids,
+      methodes: actives,
       _autoComparaison: !(num(comp.prixM2Bas) || num(comp.prixM2Central) || num(comp.prixM2Haut)),
+      _terr: terr, _estTerrain: estTer, _contenance: contenance,
     };
   }
 
@@ -3189,39 +3243,43 @@
         '</div>';
     }).join('');
 
+    var _terrLbl = (inp._terr && inp._terr.libelle) || '';
+    var baseLbl = inp._estTerrain ? ('terrain — contenance totale ' + fmt(r.comparaison.base) + ' m²') : (esc(r.comparaison.baseType) + ' ' + fmt(r.comparaison.base) + ' m²');
     return head('Fourchette multi-méthodes', 'Comparaison · Sol + construction · Capitalisation → synthèse bas / central / haut') +
-      '<div class="av-tip" style="margin-bottom:.6rem;">Méthode d\'aide à la décision (ni notaire ni expert). Base de la comparaison : <b>SHON autorisée</b> si renseignée dans l\'onglet Cadastre, sinon surface habitable. Champs vides = auto (quantiles des comparables inclus, profil territoire).</div>' +
+      '<div class="av-tip" style="margin-bottom:.6rem;">Méthode d\'aide à la décision (ni notaire ni expert). Base de la comparaison : <b>' + (inp._estTerrain ? 'contenance totale du terrain' : 'SHON autorisée si renseignée, sinon surface habitable') + '</b>. Champs vides = auto (comparables inclus + <b>profil territoire ' + esc(_terrLbl) + '</b>).</div>' +
 
-      '<div class="av-box"><div class="av-box-title">1. Comparaison — €/m² (base ' + esc(r.comparaison.baseType) + ' ' + fmt(r.comparaison.base) + ' m²)</div>' +
+      '<div class="av-box"><div class="av-box-title">1. Comparaison — €/m² (base ' + baseLbl + ')</div>' +
         tri3('methodesV2.comparaison.prixM2', '€/m²', inp._autoComparaison ? ('Auto (P25/médiane/P75 des comparables inclus) : ' + fmt(inp.comparaison.bas) + ' / ' + fmt(inp.comparaison.central) + ' / ' + fmt(inp.comparaison.haut) + ' €/m². Renseignez pour forcer.') : 'Valeurs saisies manuellement.') +
       '</div>' +
 
       '<div class="av-box"><div class="av-box-title">2. Sol + construction</div>' +
+        '<div class="av-tip">Valorise le foncier (charge foncière) + le bâti reconstruit à neuf, déprécié de la vétusté. Adapté au terrain à bâtir et au bien récent.</div>' +
         '<label class="small text-muted">Charge foncière (totaux €, bas / central / haut)</label>' +
-        tri3('methodesV2.solConstruction.chargeFonciere', '€', 'Ex. médiane des €/m² terrain × contenance (' + (contenanceTotale(d.cadastre) || '—') + ' m²).') +
+        tri3('methodesV2.solConstruction.chargeFonciere', '€', 'Vide = €/m² terrain du marché (étude) × contenance ' + (contenanceTotale(d.cadastre) || '—') + ' m² → ' + fmtE(inp.chargeFonciere.central) + '. Renseignez pour forcer.') +
         '<div class="av-grid-4">' +
-          fld('Coût SHON (€/m²)', 'methodesV2.solConstruction.coutShonM2', { type: 'number' }) +
-          fld('Coût annexes (€/m²)', 'methodesV2.solConstruction.coutAnnexesM2', { type: 'number', tip: 'sur (SHOB − SHON)' }) +
+          fld('Coût SHON (€/m²)', 'methodesV2.solConstruction.coutShonM2', { type: 'number', ph: String((inp._terr.cout || {}).shon || ''), tip: 'coût de construction neuf. Vide = profil ' + esc(_terrLbl) + ' (' + ((inp._terr.cout || {}).shon || '—') + ' €/m²)' }) +
+          fld('Coût annexes (€/m²)', 'methodesV2.solConstruction.coutAnnexesM2', { type: 'number', ph: String((inp._terr.cout || {}).annexes || ''), tip: 'sur (SHOB − SHON). Vide = profil territoire' }) +
           fld('Forfait (€)', 'methodesV2.solConstruction.forfait', { type: 'number', tip: 'piscine / VRD / aménagements' }) +
           fld('Vétusté (%)', 'methodesV2.solConstruction.vetustePct', { type: 'number', ph: String(vetusteGlobale(d)), tip: 'vide = grille d\'état (' + vetusteGlobale(d) + ' %)' }) +
         '</div>' +
         '<label class="small text-muted">Prime de rareté (%, bas / central / haut)</label>' +
-        tri3('methodesV2.solConstruction.prime', '%', 'Profil du territoire — à valider.') +
+        tri3('methodesV2.solConstruction.prime', '%', 'Sur-valeur d\'un foncier rare/recherché (vue mer, littoral, tension du marché). Vide = profil ' + esc(_terrLbl) + ' : ' + inp.prime.bas + ' / ' + inp.prime.central + ' / ' + inp.prime.haut + ' %.') +
         '<div class="small text-muted">Bâti neuf : ' + fmtE(r.solConstruction.batiNeuf) + ' → déprécié ' + fmtE(r.solConstruction.batiDeprecie) + '.</div>' +
       '</div>' +
 
       '<div class="av-box"><div class="av-box-title">3. Capitalisation multi-lots</div>' +
+        '<div class="av-tip">Valorise par le <b>revenu locatif</b> (baux annuels + locations saisonnières). Utile pour un bien loué / de rapport. <b>Sans lot, cette méthode est inactive</b> (mettez son poids à 0 ci-dessous). Ajoutez un lot par type (studio, T2…) et son mode.</div>' +
         (lotRows || '<div class="av-tip">Aucun lot. Ajoutez les baux (annuel) et locations saisonnières.</div>') +
         '<button class="av-add" data-listadd="methodesV2.lots" style="border:1px solid var(--av-blue);border-radius:6px;padding:.25rem .6rem;margin:.3rem 0;">+ Ajouter un lot</button>' +
         '<div class="av-grid-4">' +
-          fld('Gestion saisonnière (%)', 'methodesV2.charges.gestionSaisonnierePct', { type: 'number' }) +
-          fld('Vacance (%)', 'methodesV2.charges.vacancePct', { type: 'number' }) +
-          fld('Forfait charges (€/an)', 'methodesV2.charges.forfaitCharges', { type: 'number' }) +
+          fld('Gestion saisonnière (%)', 'methodesV2.charges.gestionSaisonnierePct', { type: 'number', tip: 'frais de gestion sur le revenu saisonnier (conciergerie, ménage, commissions plateformes). Défaut 25 %' }) +
+          fld('Vacance (%)', 'methodesV2.charges.vacancePct', { type: 'number', tip: 'perte pour périodes inoccupées, sur le revenu annuel. Défaut 5 %' }) +
+          fld('Forfait charges (€/an)', 'methodesV2.charges.forfaitCharges', { type: 'number', tip: 'taxe foncière, PNO, entretien…' }) +
           '<div class="av-field"><label>Revenu net</label><div class="av-cmp-calc hl">' + fmtE(rev.revenuNet) + '</div></div>' +
         '</div>' +
         '<div class="small text-muted">Revenu brut ' + fmtE(rev.revenuBrut) + ' (annuel ' + fmtE(rev.revenuAnnuel) + ' + saisonnier ' + fmtE(rev.revenuSaisonnier) + ') − charges ' + fmtE(rev.charges) + '.</div>' +
         '<label class="small text-muted mt-2 d-block">Taux de capitalisation (%, bas / central / haut)</label>' +
-        tri3('methodesV2.taux', '%', 'Taux bas → valeur basse. Vide = depuis la valeur retenue (' + fmt(num((d.calcul || {}).tauxCapi)) + ' %).') +
+        tri3('methodesV2.taux', '%', 'Rendement attendu. Taux bas → valeur haute. Vide = profil ' + esc(_terrLbl) + ' : ' + inp.taux.bas + ' / ' + inp.taux.central + ' / ' + inp.taux.haut + ' %.') +
       '</div>' +
 
       '<div class="av-box"><div class="av-box-title">Pondération (%)</div>' +
@@ -5139,17 +5197,32 @@
     // d'une AUTRE étude (corrige type/surface/immeuble/destinataire périmés au réouverture).
     var freshKey = window.__fidiData ? etudeKeyOf(window.__fidiData, window.__fidiInputs) : '';
 
-    // Reprise du dernier travail : au 1er open (pas de brouillon en mémoire) et sans avis
-    // explicitement demandé, on recharge le DERNIER avis sauvegardé cohérent avec l'étude
-    // courante (même origine + même nature). Sinon on prefill neuf (comportement précédent).
-    if (!state.data && !refDemande) {
-      var resume = findLatestAvisForEtude(freshKey, natureDemande);
-      if (resume) {
-        state.data = ensureExpertBlock(resume.data);
+    // UN SEUL avis par étude : au 1er open (pas de brouillon, pas de ref explicite), on recharge
+    // l'avis à la RÉFÉRENCE STABLE de l'étude (toutes les données saisies + comparables importés).
+    // Migration : si pas encore d'avis « stable » mais un ancien avis numéroté existe pour cette
+    // étude, on le récupère et on le ré-enregistre sous la ref stable (données préservées).
+    if (!state.data && !refDemande && window.__fidiData) {
+      var sref = stableRefForEtude(window.__fidiData, window.__fidiInputs);
+      var loaded = null;
+      if (sref) { try { var raw0 = localStorage.getItem(AVIS_PREFIX + sref); if (raw0) loaded = JSON.parse(raw0); } catch (e) {} }
+      if (!loaded) {
+        var old = findLatestAvisForEtude(freshKey, natureDemande);   // ancien avis numéroté de cette étude
+        if (old) {
+          loaded = old.data;
+          if (sref) {
+            loaded.metadata = loaded.metadata || {};
+            loaded.metadata.ref = sref;
+            // Ré-enregistre sous la ref stable et retire l'ancien numéroté (un seul enregistrement).
+            try { localStorage.setItem(AVIS_PREFIX + sref, JSON.stringify(loaded)); localStorage.removeItem(AVIS_PREFIX + old.ref); localStorage.setItem('fidi:avis:last', sref); } catch (e) {}
+          }
+        }
+      }
+      if (loaded) {
+        state.data = ensureExpertBlock(loaded);
         state.data.__saved = true;
         state.section = 'metadata';
-        refDemande = resume.ref;   // marque comme chargé → évite le prefill destructif ci-dessous
-        toast('Dernier avis rechargé : ' + resume.ref);
+        refDemande = state.data.metadata.ref;   // marque comme chargé → évite le prefill destructif
+        toast('Avis rechargé : ' + state.data.metadata.ref);
       }
     }
 
