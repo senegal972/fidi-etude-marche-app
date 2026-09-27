@@ -1318,7 +1318,9 @@
         '<button class="av-add" data-listadd="comparables" style="border:1px solid var(--av-blue);border-radius:6px;padding:.25rem .6rem;">+ Ajouter une annonce</button>' +
         '<button class="btn btn-sm btn-outline-secondary" data-action="toggle-paste"><i class="bi bi-clipboard me-1"></i>Coller une annonce</button>' +
         '<button class="btn btn-sm btn-outline-primary" data-action="import-extension"><i class="bi bi-download me-1"></i>Importer depuis l\'extension</button>' +
+        '<button class="btn btn-sm btn-primary" data-action="veille-annonces"><i class="bi bi-search me-1"></i>🔎 Rechercher les annonces similaires</button>' +
         '</div>' +
+        '<div id="avVeilleBox" style="margin-bottom:.6rem;">' + renderVeilleBox() + '</div>' +
         '<div id="avExtImport" style="display:none;margin-bottom:.6rem;padding:.6rem;background:#f4f6fa;border:1px solid #dee2e6;border-radius:6px;"></div>' +
         '<div id="avPasteWrap" style="display:none;margin-bottom:.6rem;">' +
         '<textarea id="avPasteText" rows="3" placeholder="Collez ici le texte d\'une annonce (le prix, la surface et le type seront extraits automatiquement)…" style="width:100%;font-size:.8rem;"></textarea>' +
@@ -2383,6 +2385,10 @@
     else if (a === 'toggle-paste') { var w = document.getElementById('avPasteWrap'); if (w) w.style.display = w.style.display === 'none' ? 'block' : 'none'; }
     else if (a === 'parse-paste') parsePaste();
     else if (a === 'photo-del') { handlePhotoDelete(+t.dataset.idx); return; }
+    else if (a === 'veille-annonces') launchVeille();
+    else if (a === 'veille-add') addVeilleItem(+t.dataset.veilleIdx);
+    else if (a === 'veille-add-all') addVeilleAll();
+    else if (a === 'veille-clear') { veilleMem = null; stopVeillePoll(); refreshVeilleBox(); }
     else if (a === 'import-extension') openExtensionImport();
     else if (a === 'ext-refresh') loadExtensionInbox();
     else if (a === 'ext-set-token') setExtensionToken();
@@ -2394,6 +2400,229 @@
     else if (a === 'ext-import-selected-loyers') importSelectedLoyersFromExt();
     else if (a === 'pdf') exportPdf();
     else if (a === 'pdf-server') doExportPdfServer();
+  }
+
+  // ── Veille annonces (LOT B/C) ───────────────────────────────────────────────
+  // État transitoire (non persisté dans l'avis sauvegardé) : dernier résultat + timer polling.
+  var veilleMem = null;      // { statut, job_id, resultats } | { statut:'indisponible', ... }
+  var veillePoll = null;     // id setTimeout
+  var veillePollN = 0;
+
+  function stopVeillePoll() { if (veillePoll) { clearTimeout(veillePoll); veillePoll = null; } veillePollN = 0; }
+
+  function refreshVeilleBox() {
+    var box = document.getElementById('avVeilleBox');
+    if (box) box.innerHTML = renderVeilleBox();
+  }
+
+  // Construit les critères depuis le bien courant.
+  function veilleCriteres() {
+    var b = state.data.bien || {};
+    var lieuDit = (state.data.metadata && state.data.metadata.lieuDit) || '';
+    var terrainSurf = num(getPath(state.data, 'expert.sc.terrain.surfTotale'));
+    var estTerrain = (typeof isTerrain === 'function' && isTerrain(b.type)) || (!num(b.surfaceCarrez) && !!terrainSurf);
+    return {
+      commune: b.commune || '',
+      quartier: lieuDit || b.immeuble || '',
+      code_postal: b.cp || '',
+      type_bien: b.type || (estTerrain ? 'terrain' : 'maison'),
+      surface_hab: num(b.surfaceCarrez) || null,
+      surface_terrain: terrainSurf || null,
+      budget_indicatif: num(b.prixVente) || null,
+      inclure_terrains: !!estTerrain || !!terrainSurf,
+    };
+  }
+
+  function launchVeille() {
+    var c = veilleCriteres();
+    if (!c.commune) { toast('Renseignez au moins la commune du bien', true); return; }
+    stopVeillePoll();
+    veilleMem = { statut: 'en_cours', job_id: null };
+    refreshVeilleBox();
+    toast('Recherche des annonces similaires…');
+    fetch('/api/annonces', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify(c),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j.statut === 'indisponible') { veilleMem = j; refreshVeilleBox(); return; }
+        if (!j.job_id) { veilleMem = { statut: 'erreur', raison: j.error || 'Réponse inattendue' }; refreshVeilleBox(); return; }
+        veilleMem = { statut: 'en_cours', job_id: j.job_id };
+        if (j.cache) { pollVeille(j.job_id); }      // résultat déjà en cache : on lit tout de suite
+        else { veillePoll = setTimeout(function () { pollVeille(j.job_id); }, 4000); }
+        refreshVeilleBox();
+      })
+      .catch(function (e) { veilleMem = { statut: 'erreur', raison: e.message }; refreshVeilleBox(); });
+  }
+
+  function pollVeille(jobId) {
+    veillePollN++;
+    fetch('/api/annonces?job_id=' + encodeURIComponent(jobId), { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        var st = j.statut || 'inconnu';
+        if (st === 'en_cours' && veillePollN < 60) {   // ~4 min max (60 × 4 s)
+          veillePoll = setTimeout(function () { pollVeille(jobId); }, 4000);
+          return;
+        }
+        stopVeillePoll();
+        veilleMem = j;                                  // { statut, job_id, resultats, ... }
+        refreshVeilleBox();
+        var res = j.resultats || {};
+        var n = (res.comparables || []).length + (res.terrains || []).length + (res.bien_sujet_expose || []).length;
+        if (st === 'termine') toast(n + ' annonce(s) trouvée(s)');
+        else if (st === 'inconnu') toast('Job expiré, relancez la recherche', true);
+        else if (st === 'erreur') toast('Erreur veille : ' + (j.erreur || ''), true);
+      })
+      .catch(function () {
+        if (veillePollN < 60) { veillePoll = setTimeout(function () { pollVeille(jobId); }, 4000); }
+        else { stopVeillePoll(); veilleMem = { statut: 'erreur', raison: 'réseau' }; refreshVeilleBox(); }
+      });
+  }
+
+  // Toutes les annonces trouvées, à plat, pour l'affichage + import.
+  function veilleItems() {
+    var res = (veilleMem && veilleMem.resultats) || {};
+    return []
+      .concat((res.bien_sujet_expose || []).map(function (x) { return Object.assign({ __grp: 'sujet' }, x); }))
+      .concat((res.comparables || []).map(function (x) { return Object.assign({ __grp: 'comparable' }, x); }))
+      .concat((res.terrains || []).map(function (x) { return Object.assign({ __grp: 'terrain' }, x); }));
+  }
+
+  function renderVeilleBox() {
+    if (!veilleMem) return '';
+    var s = veilleMem.statut;
+    if (s === 'en_cours') {
+      return '<div class="av-box" style="background:#eef4ff;border:1px solid #b6d0ff;">' +
+        '<span class="spinner-border spinner-border-sm me-2" role="status"></span>' +
+        'Recherche des annonces similaires en cours… (jusqu\'à ~1 min)' +
+        '</div>';
+    }
+    if (s === 'indisponible') {
+      return '<div class="av-box" style="background:#fff8e6;border:1px solid #ffe08a;">' +
+        '<b>Veille automatique indisponible.</b> Aucune clé de recherche n\'est configurée côté serveur (SEARCH_API_KEY). ' +
+        'Utilisez « Coller une annonce » ou « Importer depuis l\'extension » pour ajouter des comparables manuellement.' +
+        '</div>';
+    }
+    if (s === 'erreur' || s === 'inconnu') {
+      return '<div class="av-box" style="background:#fdecec;border:1px solid #f5b5b5;">' +
+        'Recherche interrompue' + (veilleMem.raison ? ' (' + esc(veilleMem.raison) + ')' : (veilleMem.erreur ? ' (' + esc(veilleMem.erreur) + ')' : '')) + '. ' +
+        '<button class="btn btn-sm btn-outline-primary ms-2" data-action="veille-annonces">Relancer</button></div>';
+    }
+    // terminé
+    var items = veilleItems();
+    var res = veilleMem.resultats || {};
+    var st = res.stats || {};
+    var constat = renderConstatMarche(st, items);
+    if (!items.length) {
+      return constat + '<div class="av-box" style="background:#f4f6fa;">Aucune annonce exploitable trouvée. ' +
+        'Essayez la saisie manuelle, ou relancez avec une commune/quartier plus précis. ' +
+        '<button class="btn btn-sm btn-outline-primary ms-2" data-action="veille-annonces">Relancer</button></div>';
+    }
+    var rows = items.map(function (a, i) {
+      var grpBadge = a.__grp === 'sujet'
+        ? '<span style="background:#dc3545;color:#fff;font-size:.55rem;font-weight:700;border-radius:3px;padding:1px 5px;">BIEN SUJET ?</span>'
+        : a.__grp === 'terrain'
+          ? '<span style="background:#6c757d;color:#fff;font-size:.55rem;font-weight:700;border-radius:3px;padding:1px 5px;">TERRAIN</span>'
+          : '<span style="background:#0d6efd;color:#fff;font-size:.55rem;font-weight:700;border-radius:3px;padding:1px 5px;">ANNONCE</span>';
+      var sim = (a.similarite != null) ? '<span title="Similarité estimée" style="font-weight:700;color:' + (a.similarite >= 60 ? '#198754' : a.similarite >= 40 ? '#b8860b' : '#999') + ';">' + a.similarite + '/100</span>' : '';
+      var pM2 = a.prix_m2 ? fmt(a.prix_m2) + ' €/m²' : (a.prix_m2_terrain ? fmt(a.prix_m2_terrain) + ' €/m² terrain' : '—');
+      var meta = [];
+      if (a.surface_hab) meta.push(fmt(a.surface_hab) + ' m²');
+      if (a.surface_terrain) meta.push('terrain ' + fmt(a.surface_terrain) + ' m²');
+      if (a.chambres) meta.push(a.chambres + ' ch.');
+      if (a.piscine) meta.push('piscine');
+      if (a.vue_mer) meta.push('vue mer');
+      var horsCible = a.hors_cible ? ' <span style="color:#dc3545;font-size:.7rem;" title="Hors cible (pieds dans l\'eau ou prix aberrant)">⚠ hors cible</span>' : '';
+      return '<div style="display:flex;gap:.5rem;align-items:flex-start;padding:.4rem 0;border-top:1px solid #eee;">' +
+        '<button class="btn btn-sm btn-outline-success" data-action="veille-add" data-veille-idx="' + i + '" title="Ajouter aux comparables">+</button>' +
+        '<div style="flex:1;min-width:0;">' +
+          '<div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;">' + grpBadge + sim +
+            '<span style="font-size:.7rem;color:#666;">' + esc(a.source || '') + '</span>' + horsCible + '</div>' +
+          '<div style="font-size:.85rem;">' + (a.prix ? '<b>' + fmt(a.prix) + ' €</b>' : 'prix ?') + ' · ' + pM2 +
+            (meta.length ? ' · ' + esc(meta.join(' · ')) : '') + '</div>' +
+          (a.description_courte ? '<div style="font-size:.72rem;color:#888;">' + esc(a.description_courte) + '</div>' : '') +
+          '<a href="' + esc(a.url) + '" target="_blank" rel="noopener" style="font-size:.7rem;">Voir l\'annonce ↗</a>' +
+        '</div></div>';
+    }).join('');
+    return constat +
+      '<div class="av-box">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.3rem;">' +
+        '<b>' + items.length + ' annonce(s) trouvée(s)</b>' +
+        '<span>' +
+          '<button class="btn btn-sm btn-outline-success" data-action="veille-add-all"><i class="bi bi-plus-lg"></i> Tout ajouter</button> ' +
+          '<button class="btn btn-sm btn-outline-secondary" data-action="veille-clear">Effacer</button> ' +
+          '<button class="btn btn-sm btn-outline-primary" data-action="veille-annonces">Relancer</button>' +
+        '</span>' +
+      '</div>' +
+      '<div class="av-tip" style="margin-bottom:.3rem;">Sources publiques (portails). Vérifiez chaque annonce avant de l\'inclure : l\'extraction automatique peut se tromper.</div>' +
+      rows +
+      '</div>';
+  }
+
+  function renderConstatMarche(st, items) {
+    var pm = st.prix_m2, pt = st.prix_m2_terrain;
+    if (!pm && !pt) return '';
+    function line(lbl, s, unit) {
+      if (!s) return '';
+      return '<div style="font-size:.82rem;">' + lbl + ' : <b>' + fmt(s.mediane) + ' ' + unit + '</b> médian ' +
+        '<span style="color:#888;">(' + fmt(s.min) + '–' + fmt(s.max) + ', n=' + s.n + ')</span></div>';
+    }
+    return '<div class="av-box" style="background:#eaf7ee;border:1px solid #b6e0c2;margin-bottom:.5rem;">' +
+      '<div class="av-box-title">Constat marché (annonces en ligne)</div>' +
+      line('Bâti', pm, '€/m²') + line('Terrain', pt, '€/m²') +
+      '<div class="av-tip" style="margin-top:.3rem;">Prix <b>affichés</b> (annonces), non des prix de vente réalisés (≠ DVF). Ordre de grandeur pour situer le marché, à confronter aux ventes DVF.</div>' +
+      '</div>';
+  }
+
+  // Convertit une annonce trouvée en comparable et l'ajoute (si pas déjà présent via son URL).
+  function addVeilleItem(idx) {
+    var items = veilleItems();
+    var a = items[idx];
+    if (!a) return;
+    var exists = (state.data.comparables || []).some(function (c) { return c.lien && a.url && c.lien === a.url; });
+    if (exists) { toast('Annonce déjà ajoutée', true); return; }
+    state.data.comparables.push(comparableTemplate({
+      nature: 'annonce',
+      source: (a.source || '').replace(/\..*$/, '') || 'Annonce',
+      type: a.type && a.type !== 'bien' ? String(a.type) : '',
+      secteur: a.quartier || a.commune || '',
+      surface: a.surface_hab || (a.nature === 'terrain' ? a.surface_terrain : '') || '',
+      prix: a.prix || '',
+      lien: a.url || '',
+      note: 'Veille auto ' + (a.date_releve || ''),
+      inclus: a.__grp !== 'terrain' && !a.hors_cible,   // terrains et hors-cible non inclus par défaut
+    }));
+    toast('Annonce ajoutée aux comparables');
+    showSection('comparables');
+  }
+
+  function addVeilleAll() {
+    var items = veilleItems();
+    var before = (state.data.comparables || []).length;
+    var existing = {};
+    (state.data.comparables || []).forEach(function (c) { if (c.lien) existing[c.lien] = true; });
+    items.forEach(function (a) {
+      if (!a.url || existing[a.url]) return;
+      existing[a.url] = true;
+      state.data.comparables.push(comparableTemplate({
+        nature: 'annonce',
+        source: (a.source || '').replace(/\..*$/, '') || 'Annonce',
+        type: a.type && a.type !== 'bien' ? String(a.type) : '',
+        secteur: a.quartier || a.commune || '',
+        surface: a.surface_hab || (a.nature === 'terrain' ? a.surface_terrain : '') || '',
+        prix: a.prix || '',
+        lien: a.url || '',
+        note: 'Veille auto ' + (a.date_releve || ''),
+        inclus: a.__grp !== 'terrain' && !a.hors_cible,
+      }));
+    });
+    var added = (state.data.comparables || []).length - before;
+    toast(added + ' annonce(s) ajoutée(s)');
+    showSection('comparables');
   }
 
   // Importe les ventes DVF proches (transactions individuelles de l'étude) comme comparables
