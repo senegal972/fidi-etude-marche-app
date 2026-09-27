@@ -1535,14 +1535,22 @@
       }).join('');
       var titre = isLocCmp ? 'Comparables loyers (VLM)' : 'Analyse comparative de marché (ACM)';
       var sub = isLocCmp ? 'Loyers pratiqués localement (annonces + baux réels), avec ajustements — sert à calibrer la Valeur Locative de Marché' : 'Comparables vendus (DVF) et annonces des portails, avec ajustements';
+      var estTerCmp = isTerrain((d.bien || {}).type);
+      var veilleLbl = estTerCmp ? '🔎 Rechercher des terrains similaires' : '🔎 Rechercher les annonces similaires';
       return head(titre, sub) +
         '<div class="av-tip" style="margin-bottom:.6rem;">Astuce : un <b>ajustement</b> positif si le comparable est <i>meilleur</i> que le bien (on rehausse sa valeur de référence), négatif s\'il est moins bien. Les comparables « inclus » alimentent le €/m² retenu.</div>' +
+        // Deux voies pour collecter les comparables — au choix de l'utilisateur.
+        '<div class="av-box" style="background:#eef4ff;border:1px solid #b6d0ff;margin-bottom:.6rem;padding:.5rem .7rem;">' +
+          '<div style="font-weight:600;font-size:.82rem;color:#1a4b8e;margin-bottom:.2rem;">Deux façons de récupérer les comparables (au choix) :</div>' +
+          '<div style="font-size:.78rem;">1. <b>Automatique</b> — bouton « ' + esc(veilleLbl) + ' » : l\'outil cherche seul en ligne (nécessite la clé de recherche côté serveur).<br/>' +
+          '2. <b>Extension FIDI ACM</b> (gratuite) — vous collectez les annonces depuis SeLoger / LeBonCoin / DomImmo, puis « Importer depuis l\'extension ».</div>' +
+        '</div>' +
         '<div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.6rem;">' +
         (isLocCmp ? '' : '<button class="btn btn-sm btn-outline-success" data-action="import-dvf"><i class="bi bi-download me-1"></i>Importer ventes DVF proches (' + nbDvf + ')</button>') +
         '<button class="av-add" data-listadd="comparables" style="border:1px solid var(--av-blue);border-radius:6px;padding:.25rem .6rem;">+ Ajouter une annonce</button>' +
         '<button class="btn btn-sm btn-outline-secondary" data-action="toggle-paste"><i class="bi bi-clipboard me-1"></i>Coller une annonce</button>' +
         '<button class="btn btn-sm btn-outline-primary" data-action="import-extension"><i class="bi bi-download me-1"></i>Importer depuis l\'extension</button>' +
-        '<button class="btn btn-sm btn-primary" data-action="veille-annonces"><i class="bi bi-search me-1"></i>🔎 Rechercher les annonces similaires</button>' +
+        '<button class="btn btn-sm btn-primary" data-action="veille-annonces"><i class="bi bi-search me-1"></i>' + esc(veilleLbl) + '</button>' +
         '</div>' +
         '<div id="avVeilleBox" style="margin-bottom:.6rem;">' + renderVeilleBox() + '</div>' +
         '<div id="avExtImport" style="display:none;margin-bottom:.6rem;padding:.6rem;background:#f4f6fa;border:1px solid #dee2e6;border-radius:6px;"></div>' +
@@ -2746,8 +2754,9 @@
     }
     if (s === 'indisponible') {
       return '<div class="av-box" style="background:#fff8e6;border:1px solid #ffe08a;">' +
-        '<b>Veille automatique indisponible.</b> Aucune clé de recherche n\'est configurée côté serveur (SEARCH_API_KEY). ' +
-        'Utilisez « Coller une annonce » ou « Importer depuis l\'extension » pour ajouter des comparables manuellement.' +
+        '<b>Recherche automatique non activée.</b> La clé de recherche (SEARCH_API_KEY) n\'est pas encore configurée côté serveur. ' +
+        'En attendant, utilisez l\'<b>extension FIDI ACM</b> (gratuite) via « Importer depuis l\'extension », ou « Coller une annonce ».' +
+        '<div class="small text-muted mt-1">Pour activer la recherche automatique : ajouter la variable SEARCH_API_KEY (Brave Search, palier gratuit) dans Netlify.</div>' +
         '</div>';
     }
     if (s === 'erreur' || s === 'inconnu') {
