@@ -88,6 +88,13 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
 .map-card{background:#fff;border-radius:12px;box-shadow:var(--card-shadow);overflow:hidden;height:100%;}
 .map-card .map-header{background:var(--fidi-blue);color:#fff;padding:.6rem 1rem;font-size:.85rem;font-weight:600;}
 #map{height:320px;}
+/* Plein écran carte (compatible smartphone/tablette/écran — fallback CSS, pas d'API Fullscreen requise) */
+.map-card.map-fs{position:fixed;inset:0;z-index:20060;margin:0;border-radius:0;height:100vh;width:100vw;display:flex;flex-direction:column;background:#fff;}
+.map-card.map-fs #map{flex:1 1 auto;height:auto!important;min-height:0;}
+.map-card.map-fs > :not(.map-header):not(#map){display:none!important;}
+body.map-fs-on{overflow:hidden;}
+.pdf-mode #mapFsBtn{display:none!important;}
+@media print{ #mapFsBtn{display:none!important;} }
 
 /* ─ Chart cards ─────────────────────────── */
 .chart-card{background:#fff;border-radius:12px;box-shadow:var(--card-shadow);padding:1.25rem 1rem;}
@@ -578,8 +585,13 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
     <!-- ROW 1A : Carte pleine largeur -->
     <div class="row g-3 mb-3">
       <div class="col-12">
-        <div class="map-card">
-          <div class="map-header"><i class="bi bi-geo-alt me-1"></i>Localisation · Cadastre & Urbanisme</div>
+        <div class="map-card" id="mapCard">
+          <div class="map-header" style="display:flex;align-items:center;justify-content:space-between;">
+            <span><i class="bi bi-geo-alt me-1"></i>Localisation · Cadastre &amp; Urbanisme</span>
+            <button type="button" id="mapFsBtn" class="btn btn-sm btn-light" onclick="toggleMapFullscreen()" title="Plein écran (carte)" style="padding:.1rem .45rem;line-height:1;">
+              <i class="bi bi-arrows-fullscreen"></i>
+            </button>
+          </div>
           <div id="map"></div>
           <div id="pdfMapNote" class="align-items-center justify-content-center text-muted text-center p-4"
                style="min-height:180px;background:#f8f9fa;border:1px dashed #ced4da;border-radius:6px;">
@@ -2708,6 +2720,23 @@ function renderScore(sc){
 // Fond + calques cadastre/zonage via la Géoplateforme IGN (data.geopf.fr, sans
 // clé) et l'API Carto GPU (apicarto.ign.fr/api/gpu, CORS *). Remplace Google Maps.
 let cadastreLayer = null, zonageLayer = null, parcelleLayer = null, _zonageOn = false, _zonageReq = 0;
+
+// Plein écran de la carte (fallback CSS : fonctionne sur smartphone/tablette/écran, iOS Safari inclus).
+function toggleMapFullscreen(){
+  var card = document.getElementById('mapCard'); if(!card) return;
+  var on = card.classList.toggle('map-fs');
+  document.body.classList.toggle('map-fs-on', on);
+  var btn = document.getElementById('mapFsBtn');
+  if(btn) btn.innerHTML = on ? '<i class="bi bi-fullscreen-exit"></i>' : '<i class="bi bi-arrows-fullscreen"></i>';
+  if(btn) btn.title = on ? 'Quitter le plein écran' : 'Plein écran (carte)';
+  // Leaflet doit recalculer sa taille après le changement de dimensions.
+  setTimeout(function(){ try{ if(mapInstance) mapInstance.invalidateSize(); }catch(e){} }, 120);
+  setTimeout(function(){ try{ if(mapInstance) mapInstance.invalidateSize(); }catch(e){} }, 400);
+}
+// Échap pour quitter le plein écran.
+document.addEventListener('keydown', function(e){
+  if(e.key === 'Escape'){ var card = document.getElementById('mapCard'); if(card && card.classList.contains('map-fs')) toggleMapFullscreen(); }
+});
 
 // Modèle d'URL WMTS Géoplateforme (PM = pseudo-Mercator, tuiles {z}/{x}/{y})
 function geopfWmts(layer, format){
