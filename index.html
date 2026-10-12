@@ -94,9 +94,10 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
 .map-card.map-fs > :not(.map-header):not(#map){display:none!important;}
 body.map-fs-on{overflow:hidden;}
 /* Tableau DPE compact : réduit la taille (−1 pt) et l'espacement pour gagner de la place à l'écran */
-.dpe-compact{font-size:.78rem;}
-.dpe-compact th,.dpe-compact td{padding:.28rem .4rem!important;line-height:1.2;}
-.dpe-compact .badge{font-size:.68rem;padding:.2em .4em;}
+.dpe-compact{font-size:.72rem;}
+.dpe-compact th,.dpe-compact td{padding:.12rem .35rem!important;line-height:1.12;vertical-align:middle;}
+.dpe-compact .badge{font-size:.62rem;padding:.14em .34em;}
+.dpe-compact td.small,.dpe-compact .small{font-size:.68rem;}
 .pdf-mode #mapFsBtn{display:none!important;}
 @media print{ #mapFsBtn{display:none!important;} }
 
@@ -645,7 +646,7 @@ body.map-fs-on{overflow:hidden;}
     </div>
 
     <!-- ROW 1B : Score + KPIs (sous la carte) -->
-    <div class="row g-3 mb-3">
+    <div class="row g-3 mb-3" id="scoreRow">
 
       <!-- Score -->
       <div class="col-12 col-md-5 col-lg-4 col-xl-3">
@@ -2742,6 +2743,23 @@ document.addEventListener('keydown', function(e){
   if(e.key === 'Escape'){ var card = document.getElementById('mapCard'); if(card && card.classList.contains('map-fs')) toggleMapFullscreen(); }
 });
 
+// Réordonnancement des blocs (souhait métier) :
+//  - « Contexte local » remonté AU-DESSUS du bloc Score de potentiel ;
+//  - « Transactions enregistrées » placé JUSTE SOUS « Rendement locatif estimé ».
+(function reorderSections(){
+  function run(){
+    function mv(el, ref, after){ if(el && ref && ref.parentNode){ ref.parentNode.insertBefore(el, after ? ref.nextSibling : ref); } }
+    var scoreRow = document.getElementById('scoreRow');
+    var ctx      = document.getElementById('contexteLocalRow');
+    var rend     = document.getElementById('rendementRow');
+    var trans    = document.getElementById('transProchesRow');
+    if(ctx && scoreRow) mv(ctx, scoreRow, false);   // contexte local avant le score
+    if(trans && rend)   mv(trans, rend, true);       // transactions après le rendement
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run);
+  else run();
+})();
+
 // Modèle d'URL WMTS Géoplateforme (PM = pseudo-Mercator, tuiles {z}/{x}/{y})
 function geopfWmts(layer, format){
   return 'https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile'
@@ -3555,7 +3573,13 @@ function renderBatiment(data){
   }
   const s = data.summary || {};
   // Sections : synthèse + tableau (top 30 plus proches/récents)
-  const top = data.items.slice(0, 30);
+  // Dédoublonnage : même adresse + même date + même conso = doublon ADEME (même diagnostic).
+  const _seenDpe = new Set();
+  const _uniqDpe = (data.items || []).filter(function(it){
+    const k = (it.adresse||'') + '|' + (it.date_dpe||'') + '|' + (it.conso_ef_m2!=null?it.conso_ef_m2:'');
+    if(_seenDpe.has(k)) return false; _seenDpe.add(k); return true;
+  });
+  const top = _uniqDpe.slice(0, 30);
   const distrHtml = (label, dist, palette) => {
     const total = Object.values(dist||{}).reduce((a,b)=>a+b,0);
     if(!total) return '';
@@ -3643,7 +3667,7 @@ function renderBatiment(data){
         <tbody>${rowsHtml}</tbody>
       </table>
     </div>
-    ${data.items.length > 30 ? `<div class="text-muted small text-center">… et ${data.items.length-30} autres diagnostics.</div>` : ''}
+    ${_uniqDpe.length > 30 ? `<div class="text-muted small text-center">… et ${_uniqDpe.length-30} autres diagnostics.</div>` : ''}
   `;
 }
 
