@@ -1955,7 +1955,11 @@ function renderAleasMq(b, lat, lon){
     '<div class="fw-bold mb-2" style="color:#1a3a6e;"><i class="bi bi-exclamation-octagon me-1"></i>Localisation et détails des aléas au point indiqué</div>'+
     '<div class="row g-3 align-items-start">'+
       '<div class="col-md-4">'+
-        (mapImg ? '<img src="'+mapImg+'" alt="Zonage réglementaire PPRN Martinique" style="width:100%;max-width:240px;border:1px solid #cdd6e2;border-radius:8px;" onerror="this.style.display=\'none\'">' : '')+
+        (mapImg ? '<div style="position:relative;display:inline-block;width:100%;max-width:240px;">'+
+          '<img src="'+mapImg+'" alt="Zonage réglementaire PPRN Martinique" style="width:100%;border:1px solid #cdd6e2;border-radius:8px;display:block;" onerror="this.parentNode.style.display=\'none\'">'+
+          '<i class="bi bi-geo-alt-fill" title="Point analysé" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-100%);color:#d6336c;font-size:1.7rem;line-height:1;filter:drop-shadow(0 0 2px #fff) drop-shadow(0 1px 1px #fff);pointer-events:none;"></i>'+
+          '<div class="small text-muted mt-1" style="font-size:.66rem;">📍 point analysé (centre)</div>'+
+        '</div>' : '')+
       '</div>'+
       '<div class="col-md-8">'+
         '<div class="mb-2">'+zonBadge+'</div>'+
@@ -2752,9 +2756,11 @@ document.addEventListener('keydown', function(e){
     var scoreRow = document.getElementById('scoreRow');
     var ctx      = document.getElementById('contexteLocalRow');
     var rend     = document.getElementById('rendementRow');
+    var estim    = document.getElementById('estimationRow');
     var trans    = document.getElementById('transProchesRow');
     if(ctx && scoreRow) mv(ctx, scoreRow, false);   // contexte local avant le score
-    if(trans && rend)   mv(trans, rend, true);       // transactions après le rendement
+    if(rend && estim)   mv(rend, estim, true);       // rendement locatif juste sous l'estimation vénale
+    if(trans && rend)   mv(trans, rend, true);       // transactions juste sous le rendement
   }
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run);
   else run();
@@ -4131,16 +4137,33 @@ function syncEstimationBlue(nature, contenance, vM2, typez){
   d.estimation.valeur_med = med; d.estimation.valeur_min = min; d.estimation.valeur_max = max;
   d.estimation.prix_m2 = vM2; d.estimation.surface = contenance; d.estimation.zonage_nature = nature;
 }
+// Conteneur titré commun aux deux tableaux de décote (encadrement + bordure colorée épaisse).
+function ensureDecotesWrap(anchor){
+  let wrap = document.getElementById('decotesWrap');
+  if(!wrap && anchor && anchor.parentNode){
+    wrap = document.createElement('div');
+    wrap.id = 'decotesWrap'; wrap.className = 'col-12';
+    wrap.innerHTML =
+      '<div class="chart-card" style="border-left:6px solid #198754;">' +
+        '<h6 class="d-flex align-items-center gap-2 mb-2" style="color:#198754;font-weight:700;">' +
+          '<i class="bi bi-rulers"></i>Abattement de contenance / Décotes surfaciques</h6>' +
+        '<div class="row g-3" id="decotesInner"></div>' +
+      '</div>';
+    anchor.parentNode.appendChild(wrap);
+  }
+  return document.getElementById('decotesInner');
+}
 function renderTerrainDecote(e){
   let box = document.getElementById('terrainDecoteBox');
   if(!e || e.prix_m2==null){ if(box) box.style.display='none'; return; }
   if(!box){
     const anchor = document.getElementById('estTypesBody');
     if(!anchor) return;
+    const inner = ensureDecotesWrap(anchor) || anchor.parentNode;
     box = document.createElement('div');
     box.id = 'terrainDecoteBox';
     box.className = 'col-12';
-    anchor.parentNode.appendChild(box);
+    inner.appendChild(box);
   }
   box.style.display = '';
   const nature = terrainNature();
@@ -4571,13 +4594,14 @@ function renderPromoteurBox(e){
   const nat = terrainNature();
   if(nat==='agricole' || nat==='naturel'){ if(box) box.style.display='none'; return; }
   // Ancre : sous le tableau décote particulier si présent, sinon sous estTypesBody
-  const anchor = document.getElementById('terrainDecoteBox') || document.getElementById('estTypesBody');
+  const anchor = document.getElementById('estTypesBody') || document.getElementById('terrainDecoteBox');
   if(!anchor) return;
   if(!box){
+    const inner = ensureDecotesWrap(document.getElementById('estTypesBody')) || anchor.parentNode;
     box = document.createElement('div');
     box.id = 'promoteurBox';
     box.className = 'col-12';
-    anchor.parentNode.appendChild(box);
+    inner.appendChild(box);
   }
   box.style.display = '';
   const alpha = terrainAlpha();
