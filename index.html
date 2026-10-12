@@ -93,6 +93,10 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
 .map-card.map-fs #map{flex:1 1 auto;height:auto!important;min-height:0;}
 .map-card.map-fs > :not(.map-header):not(#map){display:none!important;}
 body.map-fs-on{overflow:hidden;}
+/* Tableau DPE compact : réduit la taille (−1 pt) et l'espacement pour gagner de la place à l'écran */
+.dpe-compact{font-size:.78rem;}
+.dpe-compact th,.dpe-compact td{padding:.28rem .4rem!important;line-height:1.2;}
+.dpe-compact .badge{font-size:.68rem;padding:.2em .4em;}
 .pdf-mode #mapFsBtn{display:none!important;}
 @media print{ #mapFsBtn{display:none!important;} }
 
@@ -3626,7 +3630,7 @@ function renderBatiment(data){
   body.innerHTML = `
     ${synthHtml}
     <div class="table-responsive">
-      <table class="table table-sm table-hover align-middle">
+      <table class="table table-sm table-hover align-middle dpe-compact">
         <thead class="table-light">
           <tr>
             <th>Date DPE</th><th>Adresse</th><th>Type</th>
