@@ -277,6 +277,11 @@
   status = 200
 
 [[redirects]]
+  from   = "/api/notion-delete"
+  to     = "/.netlify/functions/notion-delete"
+  status = 200
+
+[[redirects]]
   from   = "/api/facture"
   to     = "/.netlify/functions/facture"
   status = 200

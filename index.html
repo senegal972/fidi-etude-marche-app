@@ -2260,8 +2260,9 @@ async function openEtudesRecentes(){
       const score = (m.score!=null) ? (m.score+'/100') : '';
       const ref = String(m.ref).replace(/'/g,"\\'");
       const clientBadge = m.client ? '<span class="badge bg-info text-dark ms-1" style="font-size:.65rem;"><i class="bi bi-person me-1"></i>'+escHtml(m.client)+'</span>' : '';
-      return '<div class="d-flex justify-content-between align-items-center border rounded p-2 mb-2">'+
-        '<div><div class="fw-bold small">'+escHtml(m.ref)+clientBadge+'</div>'+
+      return '<div class="d-flex justify-content-between align-items-center border rounded p-2 mb-2" data-etude-ref="'+escHtml(m.ref)+'">'+
+        '<button class="btn btn-sm btn-outline-danger me-2" title="Supprimer cette étude (corbeille Notion)" onclick="supprimerEtude(\''+ref+'\', this)"><i class="bi bi-trash"></i></button>'+
+        '<div class="flex-grow-1"><div class="fw-bold small">'+escHtml(m.ref)+clientBadge+'</div>'+
         '<div class="text-muted" style="font-size:.75rem;">'+escHtml(sub)+'</div>'+
         '<div class="small">'+escHtml(m.adresse||'')+'</div></div>'+
         '<div class="text-end"><div class="small fw-semibold">'+est+'</div>'+
@@ -2272,6 +2273,25 @@ async function openEtudesRecentes(){
     const body = document.getElementById('etudesLibBody');
     if(body) body.innerHTML='<div class="text-danger text-center py-3">Erreur : '+e.message+'</div>';
   }
+}
+
+// Supprime une étude (corbeille Notion) depuis la liste « Études récentes ».
+async function supprimerEtude(ref, btn){
+  if(!confirm('Supprimer définitivement l\'étude « '+ref+' » de la liste ?\n\n(La page est mise à la corbeille Notion — récupérable 30 jours.)')) return;
+  const orig = btn ? btn.innerHTML : '';
+  if(btn){ btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
+  try{
+    const r = await fetch('/api/notion-delete', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'etude', ref:ref})});
+    const j = await r.json().catch(()=>({}));
+    if(j && j.ok){
+      const row = (btn && btn.closest('[data-etude-ref]')) || document.querySelector('[data-etude-ref="'+ref.replace(/"/g,'\\"')+'"]');
+      if(row){ row.style.transition='opacity .25s'; row.style.opacity='0'; setTimeout(()=>{ row.remove();
+        const body = document.getElementById('etudesLibBody');
+        if(body && !body.querySelector('[data-etude-ref]')) body.innerHTML='<div class="text-muted text-center py-3">Aucune étude sauvegardée.</div>';
+      }, 250); }
+    } else if(j && j.configured === false){ alert('Notion non configuré sur ce site.'); if(btn){btn.innerHTML=orig;btn.disabled=false;} }
+    else { alert('Suppression impossible : ' + ((j&&j.error)||'inconnue')); if(btn){btn.innerHTML=orig;btn.disabled=false;} }
+  }catch(e){ alert('Suppression impossible : ' + e.message); if(btn){btn.innerHTML=orig;btn.disabled=false;} }
 }
 
 async function reopenEtude(ref){
