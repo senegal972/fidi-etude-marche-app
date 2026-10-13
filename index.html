@@ -349,6 +349,11 @@ body.map-fs-on{overflow:hidden;}
               <input type="text" class="form-control" id="inputParcelle"
                      placeholder="N° parcelle (ex : 123)" autocomplete="off"/>
             </div>
+            <!-- Parcelles supplémentaires (terrains) : leurs contenances s'ajoutent au total -->
+            <div id="extraParcelles"></div>
+            <button type="button" class="btn btn-sm btn-outline-light py-0 mt-1" id="btnAddParcelle" onclick="addSearchParcelle()">
+              <i class="bi bi-plus-lg"></i> parcelle
+            </button>
             <div class="small mt-1" id="communeMeta" style="color:#ffd54f;"></div>
           </div>
         </div>
@@ -1370,6 +1375,34 @@ function geomCentroid(geom){
 
 // Résout la référence cadastrale → { lat, lon, label } via l'API Carto IGN (sans clé).
 // Sans section/parcelle : analyse au centre de la commune sélectionnée.
+// Parcelles terrain supplémentaires saisies dans le module de recherche (section + n°).
+window.__searchParcelles = window.__searchParcelles || [];
+function renderSearchParcelles(){
+  var host = document.getElementById('extraParcelles'); if(!host) return;
+  host.innerHTML = (window.__searchParcelles||[]).map(function(p,i){
+    return '<div class="d-flex gap-2 mt-1">'
+      + '<input type="text" class="form-control" placeholder="Section" style="max-width:46%;" value="'+(p.section||'')+'" oninput="window.__searchParcelles['+i+'].section=this.value.toUpperCase()"/>'
+      + '<input type="text" class="form-control" placeholder="N° parcelle" value="'+(p.numero||'')+'" oninput="window.__searchParcelles['+i+'].numero=this.value"/>'
+      + '<button type="button" class="btn btn-outline-light px-2" title="Retirer" onclick="delSearchParcelle('+i+')">✕</button>'
+      + '</div>';
+  }).join('');
+}
+function addSearchParcelle(){ window.__searchParcelles.push({section:'',numero:''}); renderSearchParcelles(); }
+function delSearchParcelle(i){ window.__searchParcelles.splice(i,1); renderSearchParcelles(); }
+// Récupère les contenances des parcelles supplémentaires (apicarto via /api/cadastre) → window.__terrainExtra.
+async function fetchExtraParcellesContenances(){
+  window.__terrainExtra = [];
+  if(!selectedCommune) return;
+  for(const xp of (window.__searchParcelles||[])){
+    var sec=(xp.section||'').trim(), nu=(xp.numero||'').trim();
+    if(!sec || !nu) continue;
+    try{
+      const rr = await fetch('/api/cadastre?code_insee='+selectedCommune.code+'&section='+encodeURIComponent(sec)+'&numero='+encodeURIComponent(nu));
+      const dd = await rr.json().catch(()=>({}));
+      if(dd && dd.found && dd.contenance) window.__terrainExtra.push(Math.round(Number(dd.contenance)));
+    }catch(e){ /* parcelle ignorée */ }
+  }
+}
 async function resolveCadastre(){
   if(!selectedCommune){ alert('Sélectionnez une commune dans la liste de suggestions.'); return null; }
   const section  = document.getElementById('inputSection').value.trim().toUpperCase();
@@ -1573,9 +1606,11 @@ async function lancerAnalyse(){
   // Mode adresse postale ou référence cadastrale
   let adresse = document.getElementById('inputAdresse').value.trim();
   let locDirecte = {};
+  window.__terrainExtra = [];   // réinitialise les parcelles supplémentaires à chaque analyse
   if(searchMode() === 'cadastre'){
     const loc = await resolveCadastre();
     if(!loc) return;
+    await fetchExtraParcellesContenances();   // somme des contenances des parcelles supplémentaires
     adresse = loc.label;
     locDirecte = {
       lat: loc.lat, lon: loc.lon,
@@ -4147,7 +4182,6 @@ function ensureDecotesWrap(anchor){
       '<div class="chart-card" style="border-left:6px solid #198754;">' +
         '<h6 class="d-flex align-items-center gap-2 mb-2" style="color:#198754;font-weight:700;">' +
           '<i class="bi bi-rulers"></i>Abattement de contenance / Décotes surfaciques</h6>' +
-        '<div id="decotesParcelles" class="mb-2 p-2 rounded" style="background:#f4faf5;border:1px solid #cfe6d6;"></div>' +
         '<div class="row g-3" id="decotesInner"></div>' +
       '</div>';
     anchor.parentNode.appendChild(wrap);
