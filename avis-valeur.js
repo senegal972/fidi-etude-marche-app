@@ -3267,6 +3267,17 @@
       if (!num(cf.bas)) cfBas = Math.round(cfBas * K);
       if (!num(cf.haut)) cfHau = Math.round(cfHau * K);
     }
+    // ── TERRAIN : la COMPARAISON €/m² subit le MÊME abattement de contenance (+ K opérateur). ──
+    // Sans cela, la méthode comparaison (= €/m² × contenance) resterait au prix d'une petite
+    // parcelle de 1 000 m² et, comme elle pèse lourd dans la synthèse, l'avis surévaluerait un
+    // grand terrain et ignorerait le choix particulier/professionnel. Décoté ici → la synthèse
+    // s'aligne sur les tableaux de l'étude (particulier, puis promoteur via K).
+    var compRefBas = compBas, compRefCen = compCen, compRefHau = compHau; // €/m² marché (petite parcelle), pour l'info
+    if (estTer) {
+      compBas = Math.round(_abat(compBas) * K);
+      compCen = Math.round(_abat(compCen) * K);
+      compHau = Math.round(_abat(compHau) * K);
+    }
     // Base comparaison : terrain → contenance TOTALE ; bâti → SHON autorisée sinon surface habitable.
     var shonIn = estTer ? 0 : num(cad.shonAutorisee);
     var surfaceHabIn = estTer ? contenance : num(b.surfaceCarrez);
@@ -3293,6 +3304,7 @@
       _terr: terr, _estTerrain: estTer, _contenance: contenance,
       _destinataire: strat0.destinataireType || 'particulier', _K: K,
       _abattement: { on: absOn, alpha: alphaC, m2Brut: Math.round(m2Ter), m2Dec: Math.round(m2TerDec) },
+      _compRef: { bas: compRefBas, central: compRefCen, haut: compRefHau },
     };
   }
 
@@ -3337,6 +3349,7 @@
 
       '<div class="av-box"><div class="av-box-title">1. Comparaison — €/m² (base ' + baseLbl + ')</div>' +
         tri3('methodesV2.comparaison.prixM2', '€/m²', inp._autoComparaison ? ('Auto (P25/médiane/P75 des comparables inclus) : ' + fmt(inp.comparaison.bas) + ' / ' + fmt(inp.comparaison.central) + ' / ' + fmt(inp.comparaison.haut) + ' €/m². Renseignez pour forcer.') : 'Valeurs saisies manuellement.') +
+        (inp._estTerrain && inp._abattement && inp._abattement.on ? '<div class="av-tip">Terrain : le €/m² affiché est <b>déjà décoté</b> (abattement de contenance α=' + inp._abattement.alpha + (inp._K !== 1 ? ' × K ' + fmt(inp._K, 2) + ' opérateur' : '') + ') pour ' + fmt(inp._contenance) + ' m² — marché de référence ≈ ' + fmt((inp._compRef || {}).central) + ' €/m² (1 000 m²) → ' + fmt(inp.comparaison.central) + ' €/m². Aligné sur les tableaux de l\'étude (' + (inp._destinataire === 'professionnel' ? 'promoteur' : 'particulier') + ').</div>' : '') +
       '</div>' +
 
       '<div class="av-box"><div class="av-box-title">2. Sol + construction</div>' +
