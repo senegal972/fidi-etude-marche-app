@@ -56,7 +56,9 @@ export const handler = async (event) => {
         const c = centroid(feat.geometry);
         if (c) return resp(200, { found: true, lat: c.lat, lon: c.lon, section: sec, numero: num,
                                   contenance: (feat.properties && feat.properties.contenance != null) ? Number(feat.properties.contenance) : null,
-                                  idu: (feat.properties && feat.properties.idu) || null });
+                                  idu: (feat.properties && feat.properties.idu) || null,
+                                  geometry: feat.geometry || null,
+                                  properties: feat.properties || null });
       }
     }
   }

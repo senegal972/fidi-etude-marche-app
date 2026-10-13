@@ -1392,6 +1392,7 @@ function delSearchParcelle(i){ window.__searchParcelles.splice(i,1); renderSearc
 // Récupère les contenances des parcelles supplémentaires (apicarto via /api/cadastre) → window.__terrainExtra.
 async function fetchExtraParcellesContenances(){
   window.__terrainExtra = [];
+  window.__extraParcFeatures = [];   // géométries des parcelles supplémentaires (tracé carte)
   if(!selectedCommune) return;
   for(const xp of (window.__searchParcelles||[])){
     var sec=(xp.section||'').trim(), nu=(xp.numero||'').trim();
@@ -1400,6 +1401,13 @@ async function fetchExtraParcellesContenances(){
       const rr = await fetch('/api/cadastre?code_insee='+selectedCommune.code+'&section='+encodeURIComponent(sec)+'&numero='+encodeURIComponent(nu));
       const dd = await rr.json().catch(()=>({}));
       if(dd && dd.found && dd.contenance) window.__terrainExtra.push(Math.round(Number(dd.contenance)));
+      if(dd && dd.found && dd.geometry){
+        window.__extraParcFeatures.push({
+          type:'Feature',
+          geometry: dd.geometry,
+          properties: dd.properties || { section: dd.section, numero: dd.numero, contenance: dd.contenance }
+        });
+      }
     }catch(e){ /* parcelle ignorée */ }
   }
 }
@@ -1607,6 +1615,7 @@ async function lancerAnalyse(){
   let adresse = document.getElementById('inputAdresse').value.trim();
   let locDirecte = {};
   window.__terrainExtra = [];   // réinitialise les parcelles supplémentaires à chaque analyse
+  window.__extraParcFeatures = [];
   if(searchMode() === 'cadastre'){
     const loc = await resolveCadastre();
     if(!loc) return;
@@ -2763,7 +2772,29 @@ function renderScore(sc){
 // ─── Carte Leaflet + IGN/Géoportail Urbanisme ────────────────────────────────
 // Fond + calques cadastre/zonage via la Géoplateforme IGN (data.geopf.fr, sans
 // clé) et l'API Carto GPU (apicarto.ign.fr/api/gpu, CORS *). Remplace Google Maps.
-let cadastreLayer = null, zonageLayer = null, parcelleLayer = null, _zonageOn = false, _zonageReq = 0;
+let cadastreLayer = null, zonageLayer = null, parcelleLayer = null, extraParcLayer = null, _zonageOn = false, _zonageReq = 0;
+
+// Trace le contour des parcelles supplémentaires (terrain multi-réf) et recentre
+// la carte sur l'ensemble (parcelle principale + parcelles saisies dans la recherche).
+function drawExtraParcelles(){
+  if(extraParcLayer && mapInstance){ mapInstance.removeLayer(extraParcLayer); extraParcLayer = null; }
+  const feats = (window.__extraParcFeatures || []).filter(function(f){ return f && f.geometry; });
+  if(!feats.length || !mapInstance) return;
+  extraParcLayer = L.geoJSON({ type:'FeatureCollection', features: feats }, {
+    style:{ color:'#8e44ad', weight:3, fillColor:'#8e44ad', fillOpacity:0.14, dashArray:'4 3' },
+    onEachFeature: function(f, lyr){
+      const pp = f.properties || {};
+      const r  = ((pp.section||'')+' '+(pp.numero||'')).trim();
+      lyr.bindPopup('<strong>Parcelle '+escHtml(r)+'</strong>'
+        + (pp.contenance ? '<br>'+Number(pp.contenance).toLocaleString('fr-FR')+' m²' : ''));
+    }
+  }).addTo(mapInstance);
+  try{
+    let b = extraParcLayer.getBounds();
+    if(parcelleLayer){ b = b.extend(parcelleLayer.getBounds()); }
+    mapInstance.fitBounds(b, { maxZoom:18, padding:[40,40] });
+  }catch(e){}
+}
 
 // Plein écran de la carte (fallback CSS : fonctionne sur smartphone/tablette/écran, iOS Safari inclus).
 function toggleMapFullscreen(){
@@ -2892,7 +2923,12 @@ function renderConstructibilite(lat, lon){
   const gpu = window.__fidiGpu || {};
   const z = gpu.zone || {};
   const cp = ((window.__fidiData||{}).localisation||{}).postcode || '';
-  const contenance = gpu.parcelle && Number(gpu.parcelle.contenance);
+  const nbExtra = (window.__extraParcFeatures || window.__terrainExtra || []).length;
+  // Surface = TOTAL des parcelles terrain (principale + supplémentaires) si multi-réf.
+  const contenance = (nbExtra && typeof terrainTotalSurface === 'function' && terrainTotalSurface() > 0)
+    ? terrainTotalSurface()
+    : (gpu.parcelle && Number(gpu.parcelle.contenance));
+  const surfLabel = nbExtra ? 'Surface du terrain (cadastre, '+(nbExtra+1)+' parcelles)' : 'Surface du terrain (cadastre)';
   const R = constructRules(z.typezone, cp);
   // Surface constructible estimée = contenance × emprise médiane
   let surfCons = '';
@@ -2909,7 +2945,7 @@ function renderConstructibilite(lat, lon){
     '<div class="fw-semibold small mb-1" style="color:'+R.color+';"><i class="bi bi-rulers me-1"></i>Règles de constructibilité — '+escHtml(R.label)+'</div>'+
     '<div class="table-responsive"><table class="table table-sm mb-1" style="font-size:.78rem;"><tbody>'+
       '<tr><td style="width:44%;color:#667;">Constructibilité</td><td class="fw-semibold">'+escHtml(R.constructible)+'</td></tr>'+
-      (contenance?'<tr><td style="color:#667;">Surface du terrain (cadastre)</td><td>'+contenance.toLocaleString('fr-FR')+' m²</td></tr>':'')+
+      (contenance?'<tr><td style="color:#667;">'+surfLabel+'</td><td>'+contenance.toLocaleString('fr-FR')+' m²</td></tr>':'')+
       '<tr><td style="color:#667;">Emprise au sol (indicatif)</td><td>'+escHtml(R.emprise)+'</td></tr>'+
       (surfCons?'<tr><td style="color:#667;">Surface constructible estimée</td><td class="fw-semibold" style="color:#1a4b8e;">'+surfCons+'</td></tr>':'')+
       '<tr><td style="color:#667;">Hauteur / étages (indicatif)</td><td>'+escHtml(R.hauteur)+'</td></tr>'+
@@ -3014,6 +3050,25 @@ async function loadGpuInfo(lat, lon){
           // Recentre sur la parcelle si elle tient dans la vue
           try{ mapInstance.fitBounds(parcelleLayer.getBounds(), { maxZoom:18, padding:[40,40] }); }catch(e){}
         }
+        // Parcelles supplémentaires (terrain multi-réf) : tracé + liste + total
+        try { drawExtraParcelles(); } catch(e){}
+        try {
+          const feats = window.__extraParcFeatures || [];
+          if(feats.length){
+            const totMain = Number(p.contenance)||0;
+            let totExtra = 0; const extraRefs = [];
+            feats.forEach(function(ff){
+              const pp = ff.properties||{};
+              totExtra += Number(pp.contenance)||0;
+              extraRefs.push(((pp.section||'')+' '+(pp.numero||'')).trim());
+            });
+            const total = totMain + totExtra;
+            elParc.innerHTML += '<div class="small mt-1" style="color:#8e44ad;">'
+              + '<b>+ '+feats.length+' parcelle'+(feats.length>1?'s':'')+'</b> : '+extraRefs.map(escHtml).join(', ')
+              + '<br><b>Total terrain : '+total.toLocaleString('fr-FR')+' m²</b> '
+              + '<span class="text-muted">(somme des '+(feats.length+1)+' références)</span></div>';
+          }
+        } catch(e){}
       } else {
         elParc.innerHTML = '<span class="text-muted">Parcelle introuvable à ce point.</span>';
       }
@@ -4121,7 +4176,9 @@ function _decoteTableHTML(pRef, sRef, a, FLOOR, opts){
 // Recalcule la valeur du terrain agricole quand on modifie le barème €/m²
 function recalcAgricole(){
   const m2 = parseFloat(document.getElementById('agriM2').value);
-  const contenance = (window.__fidiGpu||{}).parcelle && Number((window.__fidiGpu||{}).parcelle.contenance);
+  const contenance = (typeof terrainTotalSurface === 'function' && terrainTotalSurface() > 0)
+    ? terrainTotalSurface()
+    : ((window.__fidiGpu||{}).parcelle && Number((window.__fidiGpu||{}).parcelle.contenance));
   const out = document.getElementById('agriVal');
   if(out && contenance && isFinite(m2)){
     out.textContent = fmtEur(Math.round(contenance*m2));
@@ -4258,7 +4315,7 @@ function renderTerrainDecote(e){
   const sRef = 1000;
   const pRef = e.prix_m2;              // €/m² médian marché à la surface de référence
   const FLOOR = 2;                      // plancher agricole €/m²
-  const contenanceC = (window.__fidiGpu||{}).parcelle && Number((window.__fidiGpu||{}).parcelle.contenance);
+  const contenanceC = contenance;       // TOTAL des parcelles (principale + supplémentaires)
   box.innerHTML =
     '<div class="border rounded p-2 mt-2" style="border-left:3px solid #198754!important;background:#f8fcf9;">'+
       '<div class="fw-semibold small mb-1" style="color:#198754;"><i class="bi bi-rulers me-1"></i>Décote surfacique terrain (abattement de contenance) — par type</div>'+
@@ -4276,7 +4333,10 @@ function calcTerrainCustom(pRef, sRef, a, floor){
   const vAgri = valeurAgricoleM2('agricole', cp);
   const vOnf = valeurAgricoleM2('naturel', cp);
   const dec = Math.round((1-pBatir/pRef)*100);
-  const contenance = (window.__fidiGpu||{}).parcelle && Number((window.__fidiGpu||{}).parcelle.contenance);
+  // Surface cadastrale de référence = TOTAL des parcelles terrain (principale + supplémentaires).
+  const contenance = (typeof terrainTotalSurface === 'function' && terrainTotalSurface() > 0)
+    ? terrainTotalSurface()
+    : ((window.__fidiGpu||{}).parcelle && Number((window.__fidiGpu||{}).parcelle.contenance));
   const estCadastre = contenance && Math.abs(Math.round(contenance) - Math.round(S)) <= 1;
   const badge = estCadastre ? ' <span class="badge bg-success" style="font-size:.6rem;">surface cadastrale trouvée</span>' : '';
   out.innerHTML = '<div class="p-2 border rounded" style="background:#f6f9f6;'+(estCadastre?'border-color:#198754!important;':'')+'">'+
