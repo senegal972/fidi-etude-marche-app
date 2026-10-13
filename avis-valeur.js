@@ -195,8 +195,9 @@
       strategie: {
         destinataireType: 'particulier', // 'particulier' | 'professionnel' (pilote la décote terrain)
         abattementContenanceOn: true, // applique la grille surfacique (plus le terrain est grand, plus le €/m² baisse)
-        abattementAlpha: 0.20,      // exposant α : €/m² décoté = €/m² × (1000/S)^α (plancher 2 €/m²)
-        promoteurK: 0.62,           // facteur prix opérateur = prix particulier × K (zonage non déterminé)
+        abattementAlpha: 0.20,      // exposant α : €/m² décoté = €/m² × (1000/S)^α (plancher 2 €/m²) — resync depuis le zonage de l'étude
+        _zoneDecote: '',            // libellé de la zone PLU ayant servi à α/K (informatif)
+        promoteurK: 0.62,           // facteur prix opérateur = prix particulier × K — resync depuis le zonage de l'étude
         margeNegoPct: 8.5,          // marge de négociation par défaut — à valider
         prixPresentationManuel: '', // vide → central × (1 + marge), arrondi 50 000 €
         honorairesPct: '', honorairesCharge: 'acquéreur',  // acquéreur | vendeur
@@ -835,6 +836,16 @@
     if (isTerrain(d.bien.type)) {
       var _ct = contenanceTotale(d.cadastre);
       if (_ct > 0) d.bien.surfaceCarrez = String(Math.round(_ct));
+      // Décote terrain alignée sur les tableaux de l'étude : α (abattement de contenance,
+      // fonction de la surface globale) + K (facteur opérateur) dérivés du zonage PLU.
+      // Resynchronisés à chaque ouverture de l'avis (champ piloté par l'étude).
+      d.strategie = d.strategie || {};
+      var _zt = zoneTypeFrom(d);
+      var _cpz = (loc.postcode) || (d.bien && d.bien.cp) || '';
+      d.strategie.abattementContenanceOn = true;
+      d.strategie.abattementAlpha = avisTerrainAlpha(_zt, _cpz);
+      d.strategie.promoteurK = avisPromoteurK(_zt, _cpz);
+      d.strategie._zoneDecote = _zt ? (_zt + ' — ' + zoneLabelFr(_zt)) : zoneLabelFr('');
     }
     // Vigilances / atouts issus du score (rafraîchis)
     var vig = risquesToVigilances(fidi.risques, score.axes);
@@ -852,6 +863,40 @@
     if (z.indexOf('AU') === 0) return 0.40;               // 30–50 %
     if (z.charAt(0) === 'U') return centre ? 0.70 : 0.50; // 60–80 % centre, 40–60 % courant
     return 0;                                             // A / N / inconnu : pas d'estimation auto
+  }
+
+  // ── Grille de décote terrain alignée sur l'étude de marché ──────────────────
+  // Miroir EXACT de index.html (terrainAlpha / promoteurK). α (abattement de
+  // contenance, dépend de la surface via (1000/S)^α) et K (facteur opérateur
+  // promoteur) sont dérivés du zonage PLU, comme dans les tableaux de l'étude.
+  function zoneTypeFrom(d) {
+    var z = String((((window.__fidiGpu || {}).zone) || {}).typezone || '').toUpperCase();
+    if (z) return z;
+    // Avis rouvert hors étude : 1er token du zonage persisté (ex. « UGf1 — … » → « UGF1 »).
+    var s = String((d && ((d.cadastre && d.cadastre.zonage) || (d.bien && d.bien.zonagePlu))) || '').trim().toUpperCase();
+    return s ? s.split(/[\s—–-]/)[0] : '';
+  }
+  function avisTerrainAlpha(z, cp) {
+    z = String(z || '').toUpperCase();
+    if (z.indexOf('AU') === 0) return 0.28;
+    if (z.charAt(0) === 'U') return /^(97200|97110|97300|97400)/.test(String(cp || '')) ? 0.15 : 0.22;
+    if (z.charAt(0) === 'A' || z.charAt(0) === 'N') return 0.35;
+    return 0.25;
+  }
+  function avisPromoteurK(z, cp) {
+    z = String(z || '').toUpperCase();
+    if (z.indexOf('AU') === 0) return 0.60;
+    if (z.charAt(0) === 'U') return /^(97200|97110|97300|97400)/.test(String(cp || '')) ? 0.70 : 0.65;
+    if (z.charAt(0) === 'A' || z.charAt(0) === 'N') return 0.55;
+    return 0.62;
+  }
+  function zoneLabelFr(z) {
+    z = String(z || '').toUpperCase();
+    if (z.indexOf('AU') === 0) return 'zone à urbaniser (AU)';
+    if (z.charAt(0) === 'U') return 'zone urbaine (U)';
+    if (z.charAt(0) === 'A') return 'zone agricole (A)';
+    if (z.charAt(0) === 'N') return 'zone naturelle (N)';
+    return 'zonage non déterminé';
   }
 
   function buildPrefillFromEtude(fidi, inputs) {
@@ -3103,7 +3148,7 @@
             fld('Exposant α (grille surfacique)', 'strategie.abattementAlpha', { type: 'number', step: '0.01', ph: '0.20', tip: '€/m² décoté = €/m² × (1000/S)^α · plancher 2 €/m². 0.15 faible · 0.20 moyen · 0.30 forte décote' }) +
             '<div class="av-field"></div>' +
           '</div>' : '') +
-        (estTerStrat ? '<div class="av-tip"><b>CAS 1 — particulier</b> : abattement de contenance sur le €/m² (grille surfacique α). <b>CAS 2 — professionnel (promoteur)</b> : abattement de contenance <b>puis</b> facteur opérateur K ' + fmt(num(st.promoteurK) || 0.62, 2) + ' (portage, viabilisation, aléas, marge à sa charge). Détail du €/m² décoté dans la section « Fourchette multi-méthodes » → charge foncière.</div>' : '') +
+        (estTerStrat ? '<div class="av-tip">α et K <b>alignés sur les tableaux de l\'étude de marché</b>' + (st._zoneDecote ? ' — ' + esc(st._zoneDecote) : '') + ' (resynchronisés à chaque ouverture). <b>CAS 1 — particulier</b> : abattement de contenance sur le €/m² (grille surfacique α, fonction de la surface globale ' + fmt(contenanceTotale(d.cadastre) || 0) + ' m²). <b>CAS 2 — professionnel (promoteur)</b> : abattement de contenance <b>puis</b> facteur opérateur K ' + fmt(num(st.promoteurK) || 0.62, 2) + ' (portage, viabilisation, aléas, marge à sa charge). Détail du €/m² décoté dans « Fourchette multi-méthodes » → charge foncière.</div>' : '') +
       '</div>' +
 
       '<div class="av-box"><div class="av-box-title">Positionnement (depuis la synthèse : bas ' + fmtE(bas) + ' / central ' + fmtE(central) + ')</div>' +
