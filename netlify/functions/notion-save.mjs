@@ -7,7 +7,7 @@
 
 import {
   DB, P, bigText, jsonResp, hasToken,
-  createPage, updatePage, findByRef, queryDatabase, archivePage,
+  createPage, updatePage, findByRef, queryDatabase, archivePage, ensureProperty,
 } from "./_notion.mjs";
 import { etudeToProps, etudeToAnnees } from "./_etude_fields.mjs";
 
@@ -73,6 +73,15 @@ export const handler = async (event) => {
 
   const databaseId = kind === "avis" ? DB.avis : DB.etude;
   const props = kind === "avis" ? buildAvisProps(b) : etudeToProps(b);
+  // Parcelles terrain multiples : persistées pour la réouverture (carte + total). On
+  // s'assure d'abord que la colonne existe ; si elle ne peut pas être créée (droits),
+  // on n'ajoute pas la propriété (la sauvegarde ne doit jamais échouer pour ça).
+  if (kind === "etude") {
+    try {
+      const ok = await ensureProperty(DB.etude, "Parcelles terrain", { rich_text: {} });
+      if (ok) props["Parcelles terrain"] = P.text(JSON.stringify(Array.isArray(b.terrain_parcelles) ? b.terrain_parcelles : []));
+    } catch (_) { /* best-effort */ }
+  }
 
   try {
     const existingId = await findByRef(databaseId, "Référence", ref);

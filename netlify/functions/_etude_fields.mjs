@@ -306,6 +306,10 @@ export function propsToEtude(p, anneeRows) {
     .filter((a) => a.annee != null)
     .sort((a, b2) => a.annee - b2.annee);
 
+  let terrainParcelles = [];
+  try { terrainParcelles = JSON.parse(txt("Parcelles terrain") || "[]"); } catch { terrainParcelles = []; }
+  if (!Array.isArray(terrainParcelles)) terrainParcelles = [];
+
   const data = {
     localisation,
     commune_info,
@@ -319,6 +323,7 @@ export function propsToEtude(p, anneeRows) {
     estimations,
     type_bien: typeBien,
     surface,
+    terrainParcelles,
     generated_at: txt("Généré le"),
   };
 

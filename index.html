@@ -2224,6 +2224,11 @@ async function saveEtudeCloud(){
     estimation: (d.estimation && d.estimation.valeur_med) || null,
     client: destinataire,
     statut: 'Terminé',
+    // Parcelles terrain supplémentaires (multi-réf) : persistées pour la réouverture (carte + total).
+    terrain_parcelles: (window.__extraParcFeatures || []).map(function(f){
+      var pp = (f && f.properties) || {};
+      return { section: pp.section || '', numero: String(pp.numero || ''), contenance: (pp.contenance != null ? Math.round(Number(pp.contenance)) : null) };
+    }),
     data: { data: d, inputs: augmentedInputs }
   };
   try{
@@ -2307,6 +2312,8 @@ async function reopenEtude(ref){
     document.getElementById('init-panel').classList.add('d-none');
     document.getElementById('loading-panel').classList.add('d-none');
     renderResults(d);
+    // Réhydrate les parcelles terrain multiples (perdues au rechargement) → carte + total + estimation.
+    try { rehydrateTerrainParcelles(d); } catch(e){}
     document.getElementById('results-panel').classList.remove('d-none');
     document.getElementById('btnPrint').classList.remove('d-none');
     document.getElementById('btnPdf').classList.remove('d-none');
@@ -2816,6 +2823,62 @@ function drawExtraParcelles(){
   }catch(e){}
 }
 
+// Met à jour la ligne « Cadastre » (liste des références + total) et redessine les
+// parcelles supplémentaires. Appelée après résolution de la parcelle principale
+// (nouvelle analyse) ET après réhydratation d'une étude rechargée.
+function refreshExtraParcellesUI(){
+  const elParc = document.getElementById('gpuParcelle');
+  const p = (window.__fidiGpu||{}).parcelle || {};
+  if(elParc){ const old = elParc.querySelector('.extra-parc-line'); if(old) old.remove(); }
+  const feats = window.__extraParcFeatures || [];
+  if(elParc && feats.length){
+    let totExtra = 0; const refs = [];
+    feats.forEach(function(ff){ const pp = ff.properties||{}; totExtra += Number(pp.contenance)||0; refs.push(((pp.section||'')+' '+(pp.numero||'')).trim()); });
+    const total = (Number(p.contenance)||0) + totExtra;
+    const div = document.createElement('div');
+    div.className = 'small mt-1 extra-parc-line'; div.style.color = '#8e44ad';
+    div.innerHTML = '<b>+ '+feats.length+' parcelle'+(feats.length>1?'s':'')+'</b> : '+refs.map(escHtml).join(', ')
+      + '<br><b>Total terrain : '+total.toLocaleString('fr-FR')+' m²</b> '
+      + '<span class="text-muted">(somme des '+(feats.length+1)+' références)</span>';
+    elParc.appendChild(div);
+  }
+  try { drawExtraParcelles(); } catch(e){}
+}
+
+// Réhydrate les parcelles supplémentaires d'une étude rechargée (les globales volatiles
+// __searchParcelles / __terrainExtra / __extraParcFeatures sont perdues au rechargement).
+// Re-récupère géométrie + contenance via /api/cadastre (insee de l'étude + section/numéro).
+async function rehydrateTerrainParcelles(d){
+  window.__searchParcelles = []; window.__terrainExtra = []; window.__extraParcFeatures = [];
+  const list = (d && d.terrainParcelles) || [];
+  const insee = (d && d.localisation && d.localisation.citycode) || '';
+  if(!Array.isArray(list) || !list.length) return;
+  window.__searchParcelles = list.map(function(p){ return { section:p.section||'', numero:String(p.numero||'') }; });
+  for(const p of list){
+    const sec=(p.section||'').trim(), nu=String(p.numero||'').trim();
+    if(!sec || !nu){ if(p.contenance) window.__terrainExtra.push(Math.round(Number(p.contenance))); continue; }
+    let done = false;
+    if(insee){
+      try{
+        const rr = await fetch('/api/cadastre?code_insee='+encodeURIComponent(insee)+'&section='+encodeURIComponent(sec)+'&numero='+encodeURIComponent(nu));
+        const dd = await rr.json().catch(()=>({}));
+        if(dd && dd.found){
+          window.__terrainExtra.push(Math.round(Number(dd.contenance || p.contenance || 0)));
+          if(dd.geometry) window.__extraParcFeatures.push({ type:'Feature', geometry:dd.geometry, properties: dd.properties || { section:sec, numero:nu, contenance:dd.contenance } });
+          done = true;
+        }
+      }catch(e){ /* repli ci-dessous */ }
+    }
+    if(!done && p.contenance) window.__terrainExtra.push(Math.round(Number(p.contenance)));
+  }
+  try { refreshExtraParcellesUI(); } catch(e){}
+  try { if(typeof etudeAutoFillContenance === 'function') etudeAutoFillContenance(); } catch(e){}
+  try {
+    const loc = d.localisation || {};
+    if(window.__fidiGpu && window.__fidiGpu.zone && loc.lat && loc.lon) renderConstructibilite(loc.lat, loc.lon);
+  } catch(e){}
+}
+
 // Plein écran de la carte (fallback CSS : fonctionne sur smartphone/tablette/écran, iOS Safari inclus).
 function toggleMapFullscreen(){
   var card = document.getElementById('mapCard'); if(!card) return;
@@ -3071,24 +3134,7 @@ async function loadGpuInfo(lat, lon){
           try{ mapInstance.fitBounds(parcelleLayer.getBounds(), { maxZoom:18, padding:[40,40] }); }catch(e){}
         }
         // Parcelles supplémentaires (terrain multi-réf) : tracé + liste + total
-        try { drawExtraParcelles(); } catch(e){}
-        try {
-          const feats = window.__extraParcFeatures || [];
-          if(feats.length){
-            const totMain = Number(p.contenance)||0;
-            let totExtra = 0; const extraRefs = [];
-            feats.forEach(function(ff){
-              const pp = ff.properties||{};
-              totExtra += Number(pp.contenance)||0;
-              extraRefs.push(((pp.section||'')+' '+(pp.numero||'')).trim());
-            });
-            const total = totMain + totExtra;
-            elParc.innerHTML += '<div class="small mt-1" style="color:#8e44ad;">'
-              + '<b>+ '+feats.length+' parcelle'+(feats.length>1?'s':'')+'</b> : '+extraRefs.map(escHtml).join(', ')
-              + '<br><b>Total terrain : '+total.toLocaleString('fr-FR')+' m²</b> '
-              + '<span class="text-muted">(somme des '+(feats.length+1)+' références)</span></div>';
-          }
-        } catch(e){}
+        try { refreshExtraParcellesUI(); } catch(e){}
       } else {
         elParc.innerHTML = '<span class="text-muted">Parcelle introuvable à ce point.</span>';
       }
@@ -4243,7 +4289,8 @@ function syncEstimationBlue(nature, contenance, vM2, typez){
   const zt = typez ? ' (zone ' + typez + ')' : '';
   const eb = document.getElementById('est-base');
   if(eb) eb.innerHTML = lbl + zt + ' · ' + fmt(contenance) + ' m² · barème ' + vM2.toFixed(2)
-    + ' €/m² <span style="opacity:.8;">— valeur vénale retenue (non constructible, cf. tableau détaillé ci-dessous)</span>';
+    + ' €/m² <span style="opacity:.8;">— valeur vénale retenue (non constructible, cf. tableau détaillé ci-dessous)</span>'
+    + cadRefsSuffixe();
   // Persiste la valeur corrigée pour la réinjection avis de valeur + rapport A4
   const d = window.__fidiData || {}; d.estimation = d.estimation || {};
   d.estimation.valeur_med = med; d.estimation.valeur_min = min; d.estimation.valeur_max = max;
@@ -4385,7 +4432,8 @@ function calcTerrainCustom(pRef, sRef, a, floor){
       var zlbl = (nat === 'constructible') ? 'Terrain à bâtir' : 'Terrain (zonage non déterminé — RNU)';
       var eb = document.getElementById('est-base');
       if(eb) eb.innerHTML = zlbl + ' · ' + fmt(S) + ' m² · ' + pBatir.toFixed(2) + ' €/m² (décote surfacique '
-        + (dec > 0 ? '-' : '+') + Math.abs(dec) + ' %) <span style="opacity:.8;">— valeur vénale retenue du terrain (cf. tableau ci-dessous)</span>';
+        + (dec > 0 ? '-' : '+') + Math.abs(dec) + ' %) <span style="opacity:.8;">— valeur vénale retenue du terrain (cf. tableau ci-dessous)</span>'
+        + cadRefsSuffixe();
       var dd = window.__fidiData || {}; dd.estimation = dd.estimation || {};
       dd.estimation.valeur_med = med; dd.estimation.valeur_min = mn; dd.estimation.valeur_max = mx;
       dd.estimation.prix_m2 = pBatir; dd.estimation.surface = S; dd.estimation.zonage_nature = nat || 'terrain';
@@ -4814,6 +4862,20 @@ function calcPromoteurCustom(pRef, sRef, a, k){
 // Parcelle principale = GPU ; parcelles supplémentaires saisies à la main. Le TOTAL alimente
 // « Surface exacte du terrain » (décote particulier + promoteur) et donc les calculs de l'étude.
 function terrainParcelleBase(){ var p=((window.__fidiGpu||{}).parcelle||{}); return Math.round(Number(p.contenance)||0); }
+// Références cadastrales (principale + supplémentaires) pour l'estimation vénale.
+function cadRefsListe(){
+  var p = ((window.__fidiGpu||{}).parcelle||{});
+  var refs = [];
+  var main = ((p.section||'')+' '+(p.numero||'')).trim(); if(main) refs.push(main);
+  (window.__extraParcFeatures||[]).forEach(function(f){ var pp=(f&&f.properties)||{}; var r=((pp.section||'')+' '+(pp.numero||'')).trim(); if(r) refs.push(r); });
+  return refs;
+}
+function cadRefsSuffixe(){
+  var refs = cadRefsListe(); if(!refs.length) return '';
+  var tot = (typeof terrainTotalSurface==='function' && terrainTotalSurface()>0) ? terrainTotalSurface() : terrainParcelleBase();
+  return '<br><span style="font-size:.95em;">Réf. cadastrale'+(refs.length>1?'s':'')+' : <b>'+refs.map(escHtml).join(', ')+'</b>'
+    + (tot>0 ? ' · surface totale <b>'+tot.toLocaleString('fr-FR')+' m²</b>' : '') + '</span>';
+}
 function terrainTotalSurface(){
   var extra = window.__terrainExtra || [];
   return terrainParcelleBase() + extra.reduce(function(a,b){ return a + (Number(b)||0); }, 0);
