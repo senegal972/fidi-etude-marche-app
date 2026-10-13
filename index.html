@@ -4147,6 +4147,7 @@ function ensureDecotesWrap(anchor){
       '<div class="chart-card" style="border-left:6px solid #198754;">' +
         '<h6 class="d-flex align-items-center gap-2 mb-2" style="color:#198754;font-weight:700;">' +
           '<i class="bi bi-rulers"></i>Abattement de contenance / Décotes surfaciques</h6>' +
+        '<div id="decotesParcelles" class="mb-2 p-2 rounded" style="background:#f4faf5;border:1px solid #cfe6d6;"></div>' +
         '<div class="row g-3" id="decotesInner"></div>' +
       '</div>';
     anchor.parentNode.appendChild(wrap);
@@ -4168,7 +4169,10 @@ function renderTerrainDecote(e){
   box.style.display = '';
   const nature = terrainNature();
   const cp = ((window.__fidiData||{}).localisation||{}).postcode || '';
-  const contenance = (window.__fidiGpu||{}).parcelle && Number((window.__fidiGpu||{}).parcelle.contenance);
+  // Contenance = TOTAL des parcelles terrain (principale GPU + supplémentaires saisies).
+  const contenance = (typeof terrainTotalSurface === 'function' && terrainTotalSurface() > 0)
+    ? terrainTotalSurface()
+    : ((window.__fidiGpu||{}).parcelle && Number((window.__fidiGpu||{}).parcelle.contenance));
 
   // ── Cas TERRAIN AGRICOLE / NATUREL (ONF) : valeur fixe par zone = valeur retenue ──
   if(nature==='agricole' || nature==='naturel'){
@@ -4692,21 +4696,55 @@ function calcPromoteurCustom(pRef, sRef, a, k){
 // Dès que la parcelle est identifiée (recherche réf. cadastre → loadGpuInfo), sa
 // contenance (m²) remplit les 2 champs « Calculer votre surface exacte » et lance
 // les calculs. Recalcule les paramètres depuis les données globales (autonome).
+// ── Références cadastrales TERRAIN multiples : somme des contenances ──────────
+// Parcelle principale = GPU ; parcelles supplémentaires saisies à la main. Le TOTAL alimente
+// « Surface exacte du terrain » (décote particulier + promoteur) et donc les calculs de l'étude.
+function terrainParcelleBase(){ var p=((window.__fidiGpu||{}).parcelle||{}); return Math.round(Number(p.contenance)||0); }
+function terrainTotalSurface(){
+  var extra = window.__terrainExtra || [];
+  return terrainParcelleBase() + extra.reduce(function(a,b){ return a + (Number(b)||0); }, 0);
+}
+function recalcDecotes(){
+  var e = ((window.__fidiData||{}).estimations||{}).terrain;
+  try{ renderTerrainDecote(e); }catch(_){}
+  try{ renderPromoteurBox(e); }catch(_){}
+  renderDecotesParcelles();
+  etudeAutoFillContenance();
+}
+function setTerrainExtra(i, v){ if(!window.__terrainExtra) window.__terrainExtra=[]; window.__terrainExtra[i]=Number(v)||0; recalcDecotes(); }
+function addTerrainExtra(){ if(!window.__terrainExtra) window.__terrainExtra=[]; window.__terrainExtra.push(0); renderDecotesParcelles(); }
+function delTerrainExtra(i){ if(window.__terrainExtra){ window.__terrainExtra.splice(i,1); recalcDecotes(); } }
+function renderDecotesParcelles(){
+  var host = document.getElementById('decotesParcelles'); if(!host) return;
+  var base = terrainParcelleBase();
+  var extra = window.__terrainExtra || (window.__terrainExtra=[]);
+  var total = terrainTotalSurface();
+  var refMain = (((window.__fidiGpu||{}).parcelle||{}).section||'') + ' ' + (((window.__fidiGpu||{}).parcelle||{}).numero||'');
+  host.innerHTML =
+    '<div class="small fw-semibold mb-1" style="color:#198754;">Références cadastrales — terrains (somme des contenances utilisée dans les calculs)</div>' +
+    '<div class="d-flex flex-wrap gap-2 align-items-center">' +
+      '<span class="badge bg-success">Parcelle principale ' + (refMain.trim()?('('+refMain.trim()+') '):'') + ': ' + (base||'—') + ' m²</span>' +
+      extra.map(function(s,i){ return '<span class="badge bg-light text-dark border" style="font-weight:500;">+ <input type="number" min="0" value="'+(s||'')+'" style="width:84px;border:1px solid #cfe6d6;border-radius:4px;" onchange="setTerrainExtra('+i+',this.value)"> m² <a href="#" title="Retirer" onclick="delTerrainExtra('+i+');return false;" style="text-decoration:none;color:#c0392b;">✕</a></span>'; }).join('') +
+      '<button class="btn btn-sm btn-outline-success py-0" onclick="addTerrainExtra()"><i class="bi bi-plus-lg"></i> parcelle</button>' +
+      '<span class="ms-2" style="font-size:.9rem;"><b>Total terrain : ' + total.toLocaleString('fr-FR') + ' m²</b></span>' +
+    '</div>' +
+    (extra.length ? '<div class="small text-muted mt-1">Total = parcelle principale + ' + extra.length + ' parcelle(s) supplémentaire(s). Ce total pré-remplit « Surface exacte du terrain ».</div>' : '');
+}
 function etudeAutoFillContenance(){
-  var gpu = window.__fidiGpu || {};
-  var contenance = gpu.parcelle && Number(gpu.parcelle.contenance);
-  if(!contenance || contenance <= 0) return;
+  var total = terrainTotalSurface();
+  renderDecotesParcelles();
+  if(!total || total <= 0) return;
   var ests = (window.__fidiData||{}).estimations || {};
   var e = ests.terrain;
   if(!e || e.prix_m2 == null) return;
   var pRef = e.prix_m2, sRef = 1000;
   var alpha = terrainAlpha(), K = promoteurK();
-  // Tableau vert (particulier)
+  // Tableau vert (particulier) — pré-rempli avec le TOTAL des parcelles.
   var inT = document.getElementById('terrainCustomSurf');
-  if(inT){ inT.value = Math.round(contenance); calcTerrainCustom(pRef, sRef, alpha.a, 2); }
-  // Tableau bleu (promoteur)
+  if(inT){ inT.value = Math.round(total); calcTerrainCustom(pRef, sRef, alpha.a, 2); }
+  // Tableau bleu (promoteur) — même total.
   var inP = document.getElementById('promoCustomSurf');
-  if(inP){ inP.value = Math.round(contenance); calcPromoteurCustom(pRef, sRef, alpha.a, K.k); }
+  if(inP){ inP.value = Math.round(total); calcPromoteurCustom(pRef, sRef, alpha.a, K.k); }
 }
 
 // ═══ P2 — Partage de l'étude ═════════════════════════════════════════════════
