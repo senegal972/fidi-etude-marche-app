@@ -193,6 +193,8 @@
       },
       // ── Stratégie de prix (LOT F) ────────────────────────────────────────
       strategie: {
+        destinataireType: 'particulier', // 'particulier' | 'professionnel' (pilote la décote terrain)
+        promoteurK: 0.62,           // facteur prix opérateur = prix particulier × K (zonage non déterminé)
         margeNegoPct: 8.5,          // marge de négociation par défaut — à valider
         prixPresentationManuel: '', // vide → central × (1 + marge), arrondi 50 000 €
         honorairesPct: '', honorairesCharge: 'acquéreur',  // acquéreur | vendeur
@@ -3082,8 +3084,19 @@
     var rendementBrut = r.capitalisation.revenuBrut && central ? (r.capitalisation.revenuBrut / central * 100) : 0;
     var cible = rendementBrut > 4.5 ? 'investisseur (rendement brut ' + fmt(rendementBrut, 1) + ' % au central)' : 'résidentiel / résidence secondaire';
 
+    var estTerStrat = isTerrain(b.type);
+    var estPro = (st.destinataireType === 'professionnel');
     return head('Stratégie de prix & coût acquéreur', 'Prix de présentation, objectif de signature, coût global acquéreur et vigilances') +
       '<div class="av-tip" style="margin-bottom:.6rem;">Territoire détecté : <b>' + esc(terr.libelle) + '</b> — droits ' + terr.droits + ' %, émoluments notaire ' + terr.notaire + ' %, TVA honoraires ' + terr.tva + ' %. Hypothèses « à valider ».</div>' +
+
+      '<div class="av-box"><div class="av-box-title">Destinataire de l\'avis</div>' +
+        '<div class="av-grid-3">' +
+          fld('Type de destinataire', 'strategie.destinataireType', { type: 'select', options: ['particulier', 'professionnel'], tip: 'professionnel = promoteur / aménageur → décote opérateur sur le foncier' }) +
+          (estTerStrat ? fld('Facteur opérateur K', 'strategie.promoteurK', { type: 'number', step: '0.01', ph: '0.62', tip: 'prix opérateur = prix particulier × K (terrain, destinataire professionnel)' }) : '<div class="av-field"></div>') +
+          '<div class="av-field"><label>Décote terrain appliquée</label><div class="av-cmp-calc">' + (estTerStrat && estPro ? '× ' + fmt(num(st.promoteurK) || 0.62, 2) + ' (opérateur)' : '—') + '</div></div>' +
+        '</div>' +
+        (estTerStrat && estPro ? '<div class="av-tip">Terrain + destinataire <b>professionnel</b> : la charge foncière (sol + construction) est décotée du facteur opérateur K ' + fmt(num(st.promoteurK) || 0.62, 2) + ' → prix d\'acquisition promoteur (portage, viabilisation, aléas, marge à sa charge).</div>' : (estTerStrat ? '<div class="av-tip">Terrain + destinataire <b>particulier</b> : grille de marché particulier (pas de décote opérateur).</div>' : '')) +
+      '</div>' +
 
       '<div class="av-box"><div class="av-box-title">Positionnement (depuis la synthèse : bas ' + fmtE(bas) + ' / central ' + fmtE(central) + ')</div>' +
         '<div class="av-grid-3">' +
@@ -3182,6 +3195,15 @@
     var cfCen = num(cf.central) || (estTer && m2Ter && contenance ? Math.round(m2Ter * contenance) : 0);
     var cfBas = num(cf.bas) || (estTer && m2TerBas && contenance ? Math.round(m2TerBas * contenance) : 0);
     var cfHau = num(cf.haut) || (estTer && m2TerHau && contenance ? Math.round(m2TerHau * contenance) : 0);
+    // Destinataire PROFESSIONNEL (promoteur/aménageur) : décote opérateur K sur la charge foncière
+    // (prix opérateur = prix particulier × K). Terrain uniquement ; auto seulement si charge fonc. non saisie.
+    var strat0 = data.strategie || {};
+    var K = (estTer && strat0.destinataireType === 'professionnel') ? (num(strat0.promoteurK) || 0.62) : 1;
+    if (K !== 1) {
+      if (!num(cf.central)) cfCen = Math.round(cfCen * K);
+      if (!num(cf.bas)) cfBas = Math.round(cfBas * K);
+      if (!num(cf.haut)) cfHau = Math.round(cfHau * K);
+    }
     // Base comparaison : terrain → contenance TOTALE ; bâti → SHON autorisée sinon surface habitable.
     var shonIn = estTer ? 0 : num(cad.shonAutorisee);
     var surfaceHabIn = estTer ? contenance : num(b.surfaceCarrez);
@@ -3206,6 +3228,7 @@
       methodes: actives,
       _autoComparaison: !(num(comp.prixM2Bas) || num(comp.prixM2Central) || num(comp.prixM2Haut)),
       _terr: terr, _estTerrain: estTer, _contenance: contenance,
+      _destinataire: strat0.destinataireType || 'particulier', _K: K,
     };
   }
 
@@ -4643,6 +4666,8 @@
     }
     var html = '<h1>7 ter. Stratégie de prix et coût global acquéreur</h1>';
     html += '<p>Territoire : <b>' + esc(terr.libelle) + '</b> — droits de mutation ' + terr.droits + ' %, émoluments notaire ' + terr.notaire + ' %, TVA honoraires ' + terr.tva + ' %. Hypothèses « à valider ».</p>';
+    var _destDoc = (st.destinataireType === 'professionnel') ? 'professionnel de l\'immobilier (promoteur / aménageur)' : 'particulier';
+    html += '<p>Destinataire : <b>' + esc(_destDoc) + '</b>.' + ((isTerrain(b.type) && st.destinataireType === 'professionnel') ? ' Terrain avec décote opérateur K = ' + fmt(num(st.promoteurK) || 0.62, 2) + ' appliquée à la charge foncière (prix d\'acquisition promoteur).' : '') + '</p>';
     html += '<table><tbody>' +
       '<tr><td class="lbl">Prix de présentation net vendeur</td><td class="center">' + fmtE(prixPres) + ' <span style="color:#5c6470;">(central + ' + fmt(marge) + ' % de négociation)</span></td></tr>' +
       '<tr><td class="lbl">Objectif de signature (central)</td><td class="center">' + fmtE(syn.central) + '</td></tr>' +
