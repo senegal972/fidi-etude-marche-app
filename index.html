@@ -4721,8 +4721,50 @@ function recapBuildHTML(){
       (aleasHtml ? '<h2>Aléas au point indiqué — zonage réglementaire PPRN</h2><div class="aleas">'+aleasHtml+'</div>' : '')+
       '<div class="foot">Document indicatif établi par OPTIMMO DOM (FIDI Conseil) à partir de données publiques (DVF, GPU/IGN, Géorisques). <b>Ni un avis notarié ni une expertise réglementée.</b> Valeurs à confirmer.</div>'+
     '</div>'+
-    '<script>(function(){var t='+JSON.stringify(recapText())+';var a=document.getElementById("rcWa");if(a)a.href="https://wa.me/?text="+encodeURIComponent(t);var m=document.getElementById("rcMail");if(m)m.href="mailto:?subject="+encodeURIComponent("Étude de marché — Récapitulatif")+"&body="+encodeURIComponent(t);})();<\/script>'+
+    '<script>('+recapPopupInit.toString()+')('+JSON.stringify(recapText())+','+JSON.stringify('Étude de marché — Récapitulatif')+');<\/script>'+
     '</body></html>';
+}
+// Exécutée DANS la fenêtre du récapitulatif (sérialisée par toString : rien ne doit venir de l'extérieur de la fonction).
+// WhatsApp et E-mail ouvrent le message prêt. L'e-mail passe par la messagerie que l'utilisateur choisit (Gmail, Outlook,
+// Yahoo, application du poste, ou copie du texte), jamais par un « mailto: » seul : le poste peut l'envoyer vers une
+// messagerie qui n'est pas la sienne (Orange au lieu de Gmail, constaté le 2026-10-17). Le choix est mémorisé sous la même
+// clé que les relances de factures (fidi:mail:service). Essais : tests/recap-courriel.test.mjs.
+function recapPopupInit(texte, sujet){
+  var wa = document.getElementById('rcWa');
+  if(wa) wa.href = 'https://wa.me/?text=' + encodeURIComponent(texte);
+  var mail = document.getElementById('rcMail');
+  if(!mail) return;
+  var adresse = function(service){
+    var su = encodeURIComponent(sujet), bo = encodeURIComponent(texte);
+    if(service === 'gmail')   return 'https://mail.google.com/mail/?view=cm&fs=1&su=' + su + '&body=' + bo;
+    if(service === 'outlook') return 'https://outlook.live.com/mail/0/deeplink/compose?subject=' + su + '&body=' + bo;
+    if(service === 'yahoo')   return 'https://compose.mail.yahoo.com/?subject=' + su + '&body=' + bo;
+    return 'mailto:?subject=' + su + '&body=' + bo;
+  };
+  var memorise = '';
+  try { memorise = localStorage.getItem('fidi:mail:service') || ''; } catch(e) {}
+  var choix = document.createElement('span');
+  choix.style.cssText = 'display:none;gap:6px;flex-wrap:wrap;align-items:center';
+  [['gmail', 'Gmail'], ['outlook', 'Outlook'], ['yahoo', 'Yahoo'], ['default', 'App par défaut'], ['copier', 'Copier le texte']].forEach(function(o){
+    var b = document.createElement('a');
+    b.className = 'b3';
+    b.textContent = o[1];
+    b.style.cssText = 'cursor:pointer' + (o[0] === memorise ? ';outline:2px solid #e6b53d' : '');
+    b.onclick = function(){
+      if(o[0] === 'copier'){
+        try { navigator.clipboard.writeText(texte); b.textContent = 'Copié ✓'; } catch(e) { b.textContent = 'Copie impossible'; }
+        return;
+      }
+      try { localStorage.setItem('fidi:mail:service', o[0]); } catch(e) {}
+      if(o[0] === 'default') window.location.href = adresse('default');
+      else window.open(adresse(o[0]), '_blank', 'noopener');
+    };
+    choix.appendChild(b);
+  });
+  mail.parentNode.insertBefore(choix, mail.nextSibling);
+  mail.style.cursor = 'pointer';
+  var ouvert = false;
+  mail.onclick = function(){ ouvert = !ouvert; choix.style.display = ouvert ? 'inline-flex' : 'none'; };
 }
 function recapEtudeOpen(){
   if(!window.__fidiData){ alert('Lancez une analyse avant de générer le récapitulatif.'); return; }
@@ -6841,7 +6883,11 @@ window.Compte = (function(){
     } catch(e){ if(msg) msg.innerHTML='<span class="text-danger">Erreur réseau.</span>'; }
   }
   function factRelance(ref){
-    const f = (window._factCache||[]).find(x=>x.ref===ref) || {};
+    // Le dialogue de relance actuel (WhatsApp, e-mail avec choix de la messagerie, enregistrement) est relancerFacture :
+    // cet ancien chemin lui est délégué, pour ne plus jamais ouvrir un « mailto: » seul.
+    const fac = (window._factCache||[]).find(x=>x.ref===ref);
+    if(fac && typeof window.relancerFacture === 'function'){ window.relancerFacture(fac, loadFactAdmin); return; }
+    const f = fac || {};
     const origin = location.origin;
     let lien = f.jeton ? origin+'/l/'+f.jeton : (f.delivery_url||'');
     if(lien) lien += (lien.indexOf('?')>=0?'&':'?')+'pay=1'; // force le module CB/PayPal (facture impayée)
@@ -6879,10 +6925,10 @@ window.Compte = (function(){
     if(canal === 'whatsapp' && ctx.tel){
       window.open('https://wa.me/'+ctx.tel+'?text='+encodeURIComponent(ctx.msg), '_blank');
     } else if(canal === 'email' && ctx.email){
-      // mailto: → ouvre Gmail/Outlook/Mail selon le gestionnaire par défaut du poste
-      window.location.href = 'mailto:'+encodeURIComponent(ctx.email)
-        + '?subject='+encodeURIComponent('Rappel — Facture '+ref+' en attente de règlement')
-        + '&body='+encodeURIComponent(ctx.msg);
+      // Jamais de « mailto: » seul (le poste peut l'envoyer vers une autre messagerie que celle de l'utilisateur) :
+      // le dialogue de relance actuel demande la messagerie et enregistre la relance.
+      const fac = (window._factCache||[]).find(x=>x.ref===ref);
+      if(fac && typeof window.relancerFacture === 'function'){ window.relancerFacture(fac, loadFactAdmin); return; }
     }
     // Enregistre la relance dans Notion (compteur) — sans envoi serveur
     try {
