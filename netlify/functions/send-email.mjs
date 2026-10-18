@@ -14,6 +14,8 @@
 //   3. Ajouter RESEND_API_KEY dans les variables Netlify (clé « Sending access », secrète)
 //   4. RESEND_FROM = "FIDI Conseil <contact@mail.fidiconseil.com>" : adresse d'un domaine
 //      vérifié (la valeur par défaut plus bas est sur la racine, non vérifiée chez Resend)
+//   5. Optionnel : RESEND_REPLY_TO (défaut contact@fidiconseil.com) : adresse où arrivent
+//      les réponses des clients ; l'expéditeur, sur mail.fidiconseil.com, n'a pas de boîte
 
 import { currentUser } from "./_auth.mjs";
 
@@ -93,6 +95,8 @@ export async function envoyerEmail(b) {
     to: [to],
     subject,
     html: htmlBody,
+    // Les réponses des clients vont dans la vraie boîte : l'expéditeur n'en a pas.
+    reply_to: process.env.RESEND_REPLY_TO || "contact@fidiconseil.com",
   };
 
   // Pièces jointes : tableau b.attachments [{ filename, content(base64) }]

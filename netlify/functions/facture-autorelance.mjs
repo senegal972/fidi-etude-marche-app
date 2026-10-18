@@ -39,7 +39,7 @@ async function sendResend({ to, subject, lien, message }) {
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to: [to], subject, html }),
+      body: JSON.stringify({ from, to: [to], subject, html, reply_to: process.env.RESEND_REPLY_TO || "contact@fidiconseil.com" }),
     });
     const j = await r.json().catch(() => ({}));
     return r.ok ? { ok: true, id: j.id } : { ok: false, error: j.message || ("HTTP " + r.status) };
