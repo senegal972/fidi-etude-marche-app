@@ -7,6 +7,7 @@
 import { DB, P, hasToken, updatePage, createPage, jsonResp } from "./_notion.mjs";
 import { paypalConfigured, captureOrder } from "./_paypal.mjs";
 import { findFactureByToken, factureFromPage, factureHtmlUrl, reqOrigin } from "./_facture.mjs";
+import { envoyerEmail } from "./send-email.mjs";
 
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return jsonResp(200, {});
@@ -89,12 +90,10 @@ export const handler = async (event) => {
         lien: deliveryUrl || facture_url,
         message: `Votre paiement de ${paid.toFixed(2)} € a bien été reçu. Cliquez ci-dessous pour accéder à votre ${kind} et à votre facture acquittée.`,
       };
-      // Fire-and-forget (pas d'await pour ne pas ralentir la réponse au client)
-      fetch(`${origin}/.netlify/functions/send-email`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }).catch(() => {});
+      // Fire-and-forget (pas d'await pour ne pas ralentir la réponse au client).
+      // Appel direct du cœur d'envoi : la route /api/send-email exige une session, et ici
+      // le paiement vient d'être vérifié (jeton de facture + commande PayPal concordants).
+      envoyerEmail(payload).catch(() => {});
     }
 
     return jsonResp(200, {

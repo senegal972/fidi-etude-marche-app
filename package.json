@@ -8,7 +8,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node --test tests/functions.test.mjs tests/annonces.test.mjs tests/avis-marigot.test.mjs tests/recap-courriel.test.mjs",
+    "test": "node --test tests/functions.test.mjs tests/annonces.test.mjs tests/avis-marigot.test.mjs tests/recap-courriel.test.mjs tests/send-email-auth.test.mjs",
     "test:marigot": "node tests/avis-marigot.test.mjs"
   },
   "dependencies": {

@@ -1,11 +1,21 @@
 // Netlify Function — Envoi email avec PDF en pièce jointe via Resend API
 // POST /api/send-email  body: { to, subject, pdf_b64, filename, kind, titre }
 //
+// ACCÈS RÉSERVÉ : session d'un utilisateur actif (cookie fidi_session). Vérifié AVANT tout
+// le reste, même avant de regarder la clé Resend. Sans cette garde, la clé Resend ferait de
+// cette route publique un relais d'e-mails ouvert à tout Internet (hameçonnage au nom de
+// FIDI, quota Resend épuisé, réputation du domaine d'envoi abîmée). Les envois faits par le
+// serveur lui-même (facture-pay-capture, après vérification du paiement) appellent
+// envoyerEmail() directement, sans passer par cette route.
+//
 // Prérequis :
 //   1. Créer un compte sur resend.com (gratuit — 100 emails/jour)
-//   2. Vérifier le domaine fidiconseil.com (ajouter les DNS records Resend)
-//   3. Ajouter RESEND_API_KEY dans les variables Netlify
-//   4. Optionnel : RESEND_FROM = "FIDI Conseil <contact@fidiconseil.com>"
+//   2. Vérifier le domaine d'envoi chez Resend (ici mail.fidiconseil.com, pas la racine)
+//   3. Ajouter RESEND_API_KEY dans les variables Netlify (clé « Sending access », secrète)
+//   4. RESEND_FROM = "FIDI Conseil <contact@mail.fidiconseil.com>" : adresse d'un domaine
+//      vérifié (la valeur par défaut plus bas est sur la racine, non vérifiée chez Resend)
+
+import { currentUser } from "./_auth.mjs";
 
 const CORS = {
   "Content-Type": "application/json; charset=utf-8",
@@ -23,10 +33,9 @@ function escHtml(s) {
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
-export const handler = async (event) => {
-  if (event.httpMethod === "OPTIONS") return jsonResp(200, {});
-  if (event.httpMethod !== "POST") return jsonResp(405, { error: "POST requis" });
-
+// Cœur de l'envoi (Resend). AUCUN contrôle d'accès ici : l'appelant doit l'avoir fait
+// (handler plus bas : session d'un utilisateur actif ; facture-pay-capture : paiement vérifié).
+export async function envoyerEmail(b) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
     return jsonResp(503, {
@@ -34,10 +43,6 @@ export const handler = async (event) => {
       not_configured: true,
     });
   }
-
-  let b = {};
-  try { b = JSON.parse(event.body || "{}"); }
-  catch { return jsonResp(400, { error: "JSON invalide" }); }
 
   const to = (b.to || "").trim().toLowerCase();
   if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(to)) {
@@ -132,4 +137,24 @@ export const handler = async (event) => {
   } catch (e) {
     return jsonResp(500, { error: "Erreur réseau : " + e.message });
   }
+}
+
+export const handler = async (event) => {
+  if (event.httpMethod === "OPTIONS") return jsonResp(200, {});
+  if (event.httpMethod !== "POST") return jsonResp(405, { error: "POST requis" });
+
+  // Garde d'accès : un compte actif, relu dans Notion. Un jeton valide d'un autre usage
+  // (lien d'inscription, sans e-mail de compte) ne donne rien. Fermé par défaut : sans
+  // JWT_SECRET, aucun jeton n'est valide ; si Notion ne répond pas, rien ne part.
+  let moi = null;
+  try { moi = await currentUser(event); }
+  catch { return jsonResp(503, { error: "Vérification de la connexion impossible, réessayez." }); }
+  if (!moi) return jsonResp(401, { error: "Connexion requise pour envoyer un e-mail." });
+
+  let b = {};
+  try { b = JSON.parse(event.body || "{}"); }
+  catch { return jsonResp(400, { error: "JSON invalide" }); }
+  if (!b || typeof b !== "object") b = {};
+
+  return envoyerEmail(b);
 };
