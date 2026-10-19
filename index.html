@@ -5558,29 +5558,32 @@ function fidiSharePdf(opts){
     '<div class="modal-header" style="background:#1a3a6e;color:#fff;"><h5 class="modal-title"><i class="bi bi-share me-2"></i>Partager — '+kindH+'</h5>'+
     '<button type="button" class="btn-close" style="filter:invert(1)" data-bs-dismiss="modal"></button></div>'+
     '<div class="modal-body" id="shareBody">'+
-      // ÉTAPE 1 — impression PDF (rendu exact à l'écran)
-      '<div class="border rounded p-2 mb-2">'+
-        '<div class="fw-semibold small mb-1"><span class="badge bg-primary me-1">1</span>Générer le PDF (rendu identique à l\'écran)</div>'+
-        '<button class="btn btn-primary btn-sm w-100" onclick="fidiPrintExact()"><i class="bi bi-printer me-1"></i>Imprimer / Enregistrer en PDF</button>'+
-        '<div class="text-muted mt-1" style="font-size:.72rem;">Dans la fenêtre d\'impression, choisissez <strong>« Enregistrer au format PDF »</strong> comme destination.</div>'+
-      '</div>'+
-      // ÉTAPE 2 — joindre le(s) fichier(s)
-      '<div class="border rounded p-2 mb-2">'+
-        '<div class="fw-semibold small mb-1"><span class="badge bg-primary me-1">2</span>Joindre le(s) fichier(s)</div>'+
-        '<input type="file" multiple id="shareFileInput" class="form-control form-control-sm" onchange="fidiAttach()">'+
-        '<div class="text-muted mt-1" style="font-size:.72rem;">PDF généré + toute pièce complémentaire (disque, Dropbox, Drive). Vous pouvez en ajouter plusieurs.</div>'+
+      // PDF généré automatiquement (rendu serveur identique à l\'écran)
+      '<div id="shareAutoZone" class="border rounded p-2 mb-2">'+
+        '<div id="shareAutoStatus" class="small"><span class="spinner-border spinner-border-sm me-1"></span>Génération du PDF en cours…</div>'+
         '<div id="shareFileList" class="mt-1"></div>'+
+        '<div class="mt-1 d-none" id="shareAddExtra">'+
+          '<label class="btn btn-sm btn-outline-secondary mb-0" style="cursor:pointer;"><i class="bi bi-paperclip me-1"></i>Ajouter une pièce complémentaire'+
+            '<input type="file" multiple id="shareFileInput" class="d-none" onchange="fidiAttach(\'shareFileInput\')"></label>'+
+        '</div>'+
       '</div>'+
-      // ÉTAPE 3 — envoi (visible après pièce jointe)
-      '<div class="border rounded p-2 d-none" id="shareSendZone">'+
-        '<div class="fw-semibold small mb-2"><span class="badge bg-primary me-1">3</span>Envoyer</div>'+
+      // Repli manuel : affiché uniquement si la génération auto échoue
+      '<div class="border rounded p-2 mb-2 d-none" id="shareFallbackZone" style="border-color:#f0ad4e!important;">'+
+        '<div class="fw-semibold small mb-1 text-warning-emphasis"><i class="bi bi-exclamation-triangle me-1" style="color:#f0ad4e;"></i>Génération automatique indisponible — méthode manuelle</div>'+
+        '<button class="btn btn-primary btn-sm w-100 mb-1" onclick="fidiPrintExact()"><i class="bi bi-printer me-1"></i>Imprimer / Enregistrer en PDF</button>'+
+        '<input type="file" multiple id="shareFileInput2" class="form-control form-control-sm" onchange="fidiAttach(\'shareFileInput2\')">'+
+        '<div class="text-muted mt-1" style="font-size:.72rem;">Choisissez « Enregistrer au format PDF », puis joignez le fichier ci-dessus.</div>'+
+      '</div>'+
+      // Envoi — à qui / comment (unique étape visible en temps normal)
+      '<div class="border rounded p-2" id="shareSendZone">'+
+        '<div class="fw-semibold small mb-2"><i class="bi bi-send me-1"></i>À qui / comment envoyer ?</div>'+
         '<div class="input-group input-group-sm mb-2">'+
           '<span class="input-group-text"><i class="bi bi-envelope"></i></span>'+
           '<input type="email" id="emailRecipient" class="form-control" placeholder="destinataire@example.com (pour e-mail)" autocomplete="email">'+
         '</div>'+
         '<div class="d-grid gap-2">'+
-          '<button class="btn btn-success btn-sm" id="shareWaBtn" onclick="fidiSendWhatsapp(\''+kindH+'\',\''+titreH+'\')"><i class="bi bi-whatsapp me-1"></i>Envoyer via WhatsApp</button>'+
-          '<button class="btn btn-info text-white btn-sm" id="shareEmailBtn" onclick="fidiSendEmail(\''+kindH+'\',\''+titreH+'\')"><i class="bi bi-google me-1"></i>Envoyer par e-mail (Gmail)</button>'+
+          '<button class="btn btn-success btn-sm" id="shareWaBtn" onclick="fidiSendWhatsapp(\''+kindH+'\',\''+titreH+'\')" disabled><i class="bi bi-whatsapp me-1"></i>Envoyer via WhatsApp</button>'+
+          '<button class="btn btn-info text-white btn-sm" id="shareEmailBtn" onclick="fidiSendEmail(\''+kindH+'\',\''+titreH+'\')" disabled><i class="bi bi-google me-1"></i>Envoyer par e-mail (Gmail)</button>'+
         '</div>'+
         '<div id="shareSendStatus" class="mt-2"></div>'+
       '</div>'+
@@ -5588,6 +5591,65 @@ function fidiSharePdf(opts){
   const el = document.getElementById('shareModal');
   el.addEventListener('hidden.bs.modal', ()=>el.remove());
   new bootstrap.Modal(el).show();
+  // Génère le PDF automatiquement dès l'ouverture (plus de clic « Imprimer »).
+  fidiAutoGenerate();
+}
+
+// Construit le HTML autonome (rendu identique) selon le type de document, puis
+// RENVOIE un File PDF via le rendu serveur Chromium (/api/pdf-render), ou null si échec.
+function fidiBuildStandaloneHtml(opts){
+  const origin = (location && location.origin) || 'https://fidi-etude-marche-app.netlify.app';
+  if(opts.htmlString){
+    // Avis de valeur : document + feuilles de style de la page (classe .avis-doc).
+    const css = Array.from(document.styleSheets).map(function(s){
+      try { return Array.from(s.cssRules).map(function(r){ return r.cssText; }).join('\n'); }
+      catch(e){ return ''; }
+    }).join('\n');
+    return '<!doctype html><html><head><meta charset="utf-8"><base href="'+origin+'/"><title>'+escHtml(opts.filename||'document')+'</title>'+
+      '<style>'+css+'\nbody{background:#fff;}</style></head><body><div class="avis-doc">'+opts.htmlString+'</div></body></html>';
+  }
+  // Étude de marché : rapport A4 paginé (même moteur que le bouton « PDF haute qualité »).
+  if(window.FidiRapport && typeof FidiRapport.buildHTML === 'function'){
+    const rapportHtml = FidiRapport.buildHTML();
+    if(!rapportHtml) return null;
+    return '<!doctype html><html><head><meta charset="utf-8"><base href="'+origin+'/"><title>Étude de marché — OPTIMMO DOM</title>'+
+      '<style>@page{size:A4;margin:12mm;} html,body{margin:0;padding:0;background:#fff;}</style></head><body><div id="rapportRoot">'+rapportHtml+'</div></body></html>';
+  }
+  return null;
+}
+async function fidiAutoPdfFile(opts){
+  const html = fidiBuildStandaloneHtml(opts);
+  if(!html) return null;
+  try{
+    const r = await fetch('/api/pdf-render', {method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ html: html, filename: opts.filename || 'document.pdf' })});
+    if(!r.ok) return null;
+    const blob = await r.blob();
+    if(!blob || blob.size < 800) return null; // PDF plausible
+    return new File([blob], opts.filename || 'document.pdf', { type:'application/pdf' });
+  }catch(e){ return null; }
+}
+// Lance la génération auto à l'ouverture de la modale de partage.
+async function fidiAutoGenerate(){
+  const opts = window.__fidiShareOpts || {};
+  const statusEl = document.getElementById('shareAutoStatus');
+  const file = await fidiAutoPdfFile(opts);
+  if(file){
+    window.__fidiAttachedFiles = [file];
+    if(statusEl) statusEl.innerHTML = '<span class="text-success fw-semibold"><i class="bi bi-check-circle me-1"></i>PDF généré automatiquement</span> <span class="text-muted">— rendu identique à l\'écran.</span>';
+    const add = document.getElementById('shareAddExtra'); if(add) add.classList.remove('d-none');
+    fidiRenderFileList();
+  } else {
+    if(statusEl) statusEl.innerHTML = '<span class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>Génération automatique indisponible — utilisez la méthode manuelle ci-dessous.</span>';
+    const fb = document.getElementById('shareFallbackZone'); if(fb) fb.classList.remove('d-none');
+  }
+}
+// Active/désactive les boutons d'envoi selon la présence d'au moins un fichier.
+function fidiToggleSend(){
+  const has = (window.__fidiAttachedFiles || []).length > 0;
+  const wa = document.getElementById('shareWaBtn'), em = document.getElementById('shareEmailBtn');
+  if(wa) wa.disabled = !has;
+  if(em) em.disabled = !has;
 }
 
 // ÉTAPE 1 — impression native (rendu strictement identique à l'écran).
@@ -5618,9 +5680,9 @@ function fidiPrintExact(){
   setTimeout(()=>window.print(), 150);
 }
 
-// ÉTAPE 2 — sélection des fichiers à joindre (plusieurs, cumulatifs)
-function fidiAttach(){
-  const input = document.getElementById('shareFileInput');
+// Sélection de pièces complémentaires à joindre (plusieurs, cumulatifs)
+function fidiAttach(inputId){
+  const input = document.getElementById(inputId || 'shareFileInput');
   if(!input || !input.files) return;
   window.__fidiAttachedFiles = window.__fidiAttachedFiles || [];
   const cur = window.__fidiAttachedFiles;
@@ -5640,10 +5702,9 @@ function fidiRemoveFile(i){
 
 function fidiRenderFileList(){
   const listEl = document.getElementById('shareFileList');
-  const zone = document.getElementById('shareSendZone');
   const cur = window.__fidiAttachedFiles || [];
-  if(!listEl) return;
-  if(!cur.length){ listEl.innerHTML=''; if(zone) zone.classList.add('d-none'); return; }
+  if(!listEl){ fidiToggleSend(); return; }
+  if(!cur.length){ listEl.innerHTML=''; fidiToggleSend(); return; }
   const totalKo = Math.round(cur.reduce((s,f)=>s+f.size,0)/1024);
   listEl.innerHTML = cur.map((f,i)=>
     '<div class="d-flex align-items-center justify-content-between small text-success py-1" style="border-bottom:1px solid #eee;">'+
@@ -5651,7 +5712,7 @@ function fidiRenderFileList(){
       '<button class="btn btn-sm btn-link text-danger p-0 ms-2" title="Retirer" onclick="fidiRemoveFile('+i+')"><i class="bi bi-x-lg"></i></button>'+
     '</div>').join('')
     + '<div class="text-muted mt-1" style="font-size:.7rem;">'+cur.length+' fichier'+(cur.length>1?'s':'')+' · '+totalKo+' Ko au total</div>';
-  if(zone) zone.classList.remove('d-none');
+  fidiToggleSend();
 }
 
 // Lit un File en base64 (sans le préfixe data:)
