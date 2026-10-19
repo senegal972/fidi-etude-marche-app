@@ -3052,6 +3052,56 @@ function renderConstructibilite(lat, lon){
   }
 }
 
+// ═══ Usage des sols : DAAF (RPG agricole) + ONF (forêts publiques) ═══════════
+// Nouveaux outils (intégration API DAAF/ONF via la Géoplateforme IGN, sans clé).
+// Utile pour un terrain : confirme un usage agricole déclaré (PAC) ou une forêt
+// publique au point — appui à la qualification du bien et à la décote de zone.
+async function loadDaafOnf(lat, lon){
+  if(!lat || !lon) return;
+  const anchor = document.getElementById('constructInfo');
+  let box = document.getElementById('daafOnfInfo');
+  if(!box){
+    box = document.createElement('div'); box.id='daafOnfInfo'; box.className='mt-2';
+    if(anchor && anchor.parentNode){ anchor.parentNode.insertBefore(box, anchor.nextSibling); }
+    else if(anchor){ anchor.appendChild(box); } else return;
+  }
+  box.innerHTML = '<div class="text-muted small"><span class="spinner-border spinner-border-sm me-1"></span>Usage des sols (DAAF / ONF)…</div>';
+  try{
+    const r = await fetch('/api/daaf-onf?lat='+encodeURIComponent(lat)+'&lon='+encodeURIComponent(lon));
+    if(!r.ok){ box.innerHTML=''; return; }
+    const j = await r.json();
+    window.__fidiDaafOnf = j; // exposé pour le rapport A4
+    renderDaafOnf(j);
+  }catch(e){ box.innerHTML=''; }
+}
+function renderDaafOnf(j){
+  const box = document.getElementById('daafOnfInfo'); if(!box) return;
+  if(!j || (!j.rpg && !j.onf && !j.foret)){
+    box.innerHTML = '<div class="small text-muted"><i class="bi bi-flower1 me-1" style="color:#2e7d32;"></i>'
+      + '<b>Usage des sols (DAAF / ONF)</b> : aucune parcelle agricole déclarée (RPG) ni forêt publique au point analysé.</div>';
+    return;
+  }
+  let rows = '';
+  if(j.rpg){
+    rows += '<tr><td style="width:46%;color:#667;"><i class="bi bi-tree me-1" style="color:#8d6e63;"></i>Usage agricole (RPG / PAC)</td>'
+      + '<td><b>'+escHtml(j.rpg.groupe)+'</b>'
+      + (j.rpg.surface_ha!=null ? ' · '+j.rpg.surface_ha.toLocaleString('fr-FR')+' ha' : '')
+      + (j.rpg.annee ? ' <span class="text-muted">(déclaration '+escHtml(j.rpg.annee)+')</span>' : '') + '</td></tr>';
+  }
+  if(j.onf){
+    rows += '<tr><td style="color:#667;"><i class="bi bi-tree-fill me-1" style="color:#2e7d32;"></i>Forêt publique (ONF)</td>'
+      + '<td><b>'+escHtml(j.onf.nom)+'</b> — '+escHtml(j.onf.type)+'</td></tr>';
+  }
+  if(j.foret){
+    rows += '<tr><td style="color:#667;">Formation végétale (BD Forêt)</td><td>'+escHtml(j.foret.formation)+'</td></tr>';
+  }
+  box.innerHTML =
+    '<div class="fw-semibold small mb-1" style="color:#2e7d32;"><i class="bi bi-flower1 me-1"></i>Usage des sols — DAAF (agriculture) &amp; ONF (forêt)</div>'+
+    '<div class="table-responsive"><table class="table table-sm mb-1" style="font-size:.78rem;"><tbody>'+rows+'</tbody></table></div>'+
+    '<div class="text-muted" style="font-size:.68rem;"><i class="bi bi-info-circle me-1"></i>Sources : RPG (déclarations PAC — DAAF/IGN) et Forêts publiques ONF via la Géoplateforme IGN. '
+    + 'Indicatif : un point hors parcelle déclarée n\'exclut pas un usage agricole ou forestier réel.</div>';
+}
+
 async function loadGpuInfo(lat, lon){
   const box = document.getElementById('gpuInfo');
   const elZone = document.getElementById('gpuZone');
@@ -3073,6 +3123,9 @@ async function loadGpuInfo(lat, lon){
 
   const pt = encodeURIComponent(JSON.stringify({ type:'Point', coordinates:[lon, lat] }));
   window.__fidiGpu = {}; // exposé pour le moteur de rapport A4
+
+  // Usage des sols : DAAF (RPG agricole) + ONF (forêts publiques) au point analysé
+  try { loadDaafOnf(lat, lon); } catch(e){}
 
   // Zonage PLU
   fetch('https://apicarto.ign.fr/api/gpu/zone-urba?geom='+pt)

@@ -153,6 +153,11 @@
   to     = "/.netlify/functions/cadastre"
   status = 200
 
+[[redirects]]
+  from   = "/api/daaf-onf"
+  to     = "/.netlify/functions/daaf-onf"
+  status = 200
+
 # ── Comptes & péage ───────────────────────────────────────────────────────────
 [[redirects]]
   from   = "/api/auth/login"
