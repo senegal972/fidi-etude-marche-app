@@ -3095,9 +3095,16 @@ function renderDaafOnf(j){
   if(j.foret){
     rows += '<tr><td style="color:#667;">Formation végétale (BD Forêt)</td><td>'+escHtml(j.foret.formation)+'</td></tr>';
   }
+  const contraint = !!(j.rpg || j.onf);
+  const verdict = contraint
+    ? '<b>Faisabilité fortement contrainte</b> par le statut agricole / forestier (constructibilité limitée, autorisations requises).'
+    : '<b>Hors parcelle agricole (RPG) et hors forêt publique</b> — aucune contrainte agricole ni forestière à ce titre.';
+  const banner = '<div class="small mt-1 p-2 rounded" style="background:'+(contraint?'#fdecea':'#eafaf1')+';border:1px solid '+(contraint?'#e6a9a1':'#a8e0bf')+';">'
+    + '<span style="color:'+(contraint?'#c0392b':'#198754')+';">'+(contraint?'⚠ ':'✓ ')+'</span>'+verdict+'</div>';
   box.innerHTML =
     '<div class="fw-semibold small mb-1" style="color:#2e7d32;"><i class="bi bi-flower1 me-1"></i>Usage des sols — DAAF (agriculture) &amp; ONF (forêt)</div>'+
     '<div class="table-responsive"><table class="table table-sm mb-1" style="font-size:.78rem;"><tbody>'+rows+'</tbody></table></div>'+
+    banner+
     '<div class="text-muted" style="font-size:.68rem;"><i class="bi bi-info-circle me-1"></i>Sources : RPG (déclarations PAC — DAAF/IGN) et Forêts publiques ONF via la Géoplateforme IGN. '
     + 'Indicatif : un point hors parcelle déclarée n\'exclut pas un usage agricole ou forestier réel.</div>';
 }

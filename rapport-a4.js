@@ -64,25 +64,39 @@
   }
   // Carte statique cadastrale AVEC contour parcelle détouré en rouge (SVG). Pour la
   // page localisation : la parcelle du bien apparaît nettement détourée à l'impression.
-  function staticMapHTML(lat, lon, geometry, maxH) {
+  // BBOX englobant TOUTES les géométries fournies (parcelle principale + supplémentaires).
+  function allGeomsBBox(lat, lon, geoms) {
+    let mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity;
+    const scan = (arr) => {
+      if (typeof arr[0] === 'number') { mnx = Math.min(mnx, arr[0]); mxx = Math.max(mxx, arr[0]); mny = Math.min(mny, arr[1]); mxy = Math.max(mxy, arr[1]); }
+      else arr.forEach(scan);
+    };
+    (geoms || []).forEach(g => { if (g && g.coordinates) scan(g.coordinates); });
+    if (isFinite(mnx)) { const px = (mxx - mnx) * 0.5 || 0.001, py = (mxy - mny) * 0.5 || 0.001; return [mnx - px, mny - py, mxx + px, mxy + py]; }
+    const dLat = 0.0035, dLon = dLat / Math.cos(lat * Math.PI / 180);
+    return [lon - dLon, lat - dLat, lon + dLon, lat + dLat];
+  }
+  function staticMapHTML(lat, lon, geometry, maxH, extraGeoms) {
     const W = 1100, H = 640;
-    const bb = parcelleBBox(lat, lon, geometry);
+    const extras = (extraGeoms || []).filter(g => g && g.coordinates);
+    const bb = allGeomsBBox(lat, lon, [geometry].concat(extras).filter(Boolean));
     const wms = 'https://data.geopf.fr/wms-r/wms?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap'
       + '&LAYERS=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2,CADASTRALPARCELS.PARCELLAIRE_EXPRESS&STYLES=,&CRS=EPSG:4326'
       + '&BBOX=' + [bb[1], bb[0], bb[3], bb[2]].map(v => v.toFixed(6)).join(',')
       + '&WIDTH=' + W + '&HEIGHT=' + H + '&FORMAT=image/png';
     const url = '/api/img-proxy?url=' + encodeURIComponent(wms);
     const proj = (lo, la) => [(lo - bb[0]) / (bb[2] - bb[0]) * W, (bb[3] - la) / (bb[3] - bb[1]) * H];
-    let polys = '';
-    if (geometry && geometry.coordinates) {
-      const rings = geometry.type === 'MultiPolygon'
-        ? geometry.coordinates.reduce((a, p) => a.concat(p), [])
-        : geometry.coordinates;
-      rings.forEach(ring => {
+    const drawGeom = (g, fill, stroke) => {
+      if (!g || !g.coordinates) return '';
+      const rings = g.type === 'MultiPolygon' ? g.coordinates.reduce((a, p) => a.concat(p), []) : g.coordinates;
+      return rings.map(ring => {
         const pts = ring.map(c => { const p = proj(c[0], c[1]); return p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' ');
-        polys += '<polygon points="' + pts + '" fill="rgba(214,51,108,.18)" stroke="#d6336c" stroke-width="4"/>';
-      });
-    }
+        return '<polygon points="' + pts + '" fill="' + fill + '" stroke="' + stroke + '" stroke-width="4"/>';
+      }).join('');
+    };
+    // Parcelle principale en rose, parcelles supplémentaires en violet.
+    let polys = drawGeom(geometry, 'rgba(214,51,108,.18)', '#d6336c');
+    extras.forEach(g => { polys += drawGeom(g, 'rgba(142,68,173,.16)', '#8e44ad'); });
     const style = 'width:100%;max-height:' + (maxH || '95mm') + ';object-fit:cover;border:1pt solid #d8dee8;border-radius:2mm;display:block;';
     return '<div style="position:relative;">'
       + '<img class="rpt-chart" style="' + style + '" src="' + url + '" alt="Plan cadastral — parcelle détourée">'
@@ -398,24 +412,92 @@
       + footer(6, 8, ref) + '</div>';
   }
 
+  // Analyse faisabilité/contraintes à partir de l'usage des sols DAAF (RPG) + ONF.
+  function daafOnfAnalyse(j) {
+    const rpg = j && j.rpg, onf = j && j.onf;
+    const contraintes = [];
+    if (rpg) {
+      contraintes.push('Parcelle <strong>agricole déclarée (PAC — RPG)</strong>' + (rpg.annee ? ' en ' + esc(rpg.annee) : '') + ' : culture « ' + esc(rpg.groupe) + ' »' + (rpg.surface_ha != null ? ' sur ' + rpg.surface_ha.toLocaleString('fr-FR') + ' ha' : '') + '.');
+      contraintes.push('Terrain vraisemblablement en <strong>zone agricole (A) du PLU</strong> : constructibilité limitée aux bâtiments nécessaires à l\'exploitation agricole.');
+      contraintes.push('Changement de destination, défrichement ou urbanisation <strong>soumis à autorisation</strong> et peu probable à court terme ; la valeur se rapproche du <strong>marché agricole</strong>.');
+      contraintes.push('Possible <strong>bail rural</strong> en cours : vérifier l\'occupation et le statut du fermage avant toute transaction.');
+    }
+    if (onf) {
+      contraintes.push('Située en <strong>' + esc(onf.type) + '</strong>' + (onf.nom ? ' (' + esc(onf.nom) + ')' : '') + ' — <strong>régime forestier</strong> (Code forestier).');
+      contraintes.push('Terrain <strong>quasi inconstructible</strong> ; tout défrichement est <strong>soumis à autorisation préfectorale</strong> et la gestion relève de l\'ONF.');
+    }
+    const contraint = !!(rpg || onf);
+    const verdict = contraint
+      ? 'Faisabilité d\'un projet immobilier <strong>fortement contrainte</strong> par le statut agricole / forestier du terrain.'
+      : 'Terrain <strong>hors parcelle agricole déclarée (RPG)</strong> et <strong>hors forêt publique</strong> : <strong>aucune contrainte agricole ni forestière</strong> identifiée à ce titre. Faisabilité non restreinte par ces régimes (vérifier le PLU et les servitudes par ailleurs).';
+    return { contraint, verdict, contraintes, rpg, onf };
+  }
+
+  // Bloc graphique « Usage des sols — DAAF & ONF » pour le rapport A4.
+  function daafOnfBlock() {
+    const j = window.__fidiDaafOnf;
+    if (!j) return ''; // donnée non chargée (analyse ancienne / hors ligne)
+    const a = daafOnfAnalyse(j);
+    const agriOn = !!a.rpg, foretOn = !!a.onf;
+    const pill = (on, onTxt, offTxt, col) =>
+      '<span style="display:inline-block;padding:1mm 3mm;border-radius:3mm;font-size:8pt;font-weight:700;color:#fff;background:' + (on ? col : '#9aa3ad') + ';">' + (on ? onTxt : offTxt) + '</span>';
+    const card = (title, icon, pillHtml, detail, col) =>
+      '<td style="width:50%;vertical-align:top;padding:2.5mm;border:1pt solid #e2e7ef;border-left:3pt solid ' + col + ';border-radius:2mm;">'
+      + '<div style="font-size:8pt;color:#6a7385;font-weight:600;">' + icon + ' ' + title + '</div>'
+      + '<div style="margin:1.5mm 0;">' + pillHtml + '</div>'
+      + '<div style="font-size:8.5pt;">' + detail + '</div></td>';
+    const agriDetail = agriOn
+      ? '<strong>' + esc(a.rpg.groupe) + '</strong>' + (a.rpg.surface_ha != null ? ' · ' + a.rpg.surface_ha.toLocaleString('fr-FR') + ' ha' : '') + (a.rpg.annee ? ' <span style="color:#6a7385;">(' + esc(a.rpg.annee) + ')</span>' : '')
+      : '<span style="color:#6a7385;">Aucune déclaration PAC au point analysé.</span>';
+    const foretDetail = foretOn
+      ? '<strong>' + esc(a.onf.nom) + '</strong><br><span style="font-size:7.5pt;color:#6a7385;">' + esc(a.onf.type) + '</span>'
+      : '<span style="color:#6a7385;">Hors forêt publique (ONF).</span>';
+    const banner = '<div style="margin-top:2mm;padding:2.5mm 3mm;border-radius:2mm;font-size:8.5pt;'
+      + 'background:' + (a.contraint ? '#fdecea' : '#eafaf1') + ';border:1pt solid ' + (a.contraint ? '#e6a9a1' : '#a8e0bf') + ';">'
+      + '<strong style="color:' + (a.contraint ? '#c0392b' : '#198754') + ';">' + (a.contraint ? '⚠ Contraintes' : '✓ Faisabilité') + ' — </strong>' + a.verdict
+      + (a.contraintes.length ? '<ul style="margin:1.5mm 0 0;padding-left:5mm;">' + a.contraintes.map(c => '<li style="margin-bottom:.8mm;">' + c + '</li>').join('') + '</ul>' : '')
+      + '</div>';
+    return '<div class="rpt-block rpt-sec"><h3>Usage des sols — DAAF (agriculture) &amp; ONF (forêt)</h3>'
+      + '<table style="width:100%;border-collapse:separate;border-spacing:2mm 0;"><tbody><tr>'
+      + card('Agriculture (RPG / PAC)', '🌾', pill(agriOn, 'Parcelle agricole déclarée', 'Hors RPG', '#8d6e63'), agriDetail, '#8d6e63')
+      + card('Forêt publique (ONF)', '🌲', pill(foretOn, 'Forêt publique', 'Hors forêt publique', '#2e7d32'), foretDetail, '#2e7d32')
+      + '</tr></tbody></table>'
+      + banner
+      + '<div class="rpt-note">Sources : RPG (déclarations PAC — DAAF/IGN) et Forêts publiques ONF via la Géoplateforme IGN. Analyse indicative : un point hors parcelle déclarée n\'exclut pas un usage réel ; vérifier le règlement du PLU et les servitudes.</div></div>';
+  }
+
   function localisationPage(d, ref) {
     const loc = d.localisation || {};
     const gpu = window.__fidiGpu || {};
     const z = gpu.zone, p = gpu.parcelle;
-    // Carte cadastrale AVEC parcelle détourée en rouge (SVG) — centrée sur la parcelle
-    const mapImg = (loc.lat && loc.lon) ? staticMapHTML(loc.lat, loc.lon, gpu.parcelleGeom, '95mm') : '';
+    // Parcelles supplémentaires (terrain multi-réf) : tracées en violet + sommées.
+    const extraFeats = (window.__extraParcFeatures || []).filter(f => f && (f.geometry || f.properties));
+    const extraGeoms = extraFeats.map(f => f.geometry).filter(Boolean);
+    // Carte cadastrale AVEC toutes les parcelles détourées (principale rose + supplémentaires violet)
+    const mapImg = (loc.lat && loc.lon) ? staticMapHTML(loc.lat, loc.lon, gpu.parcelleGeom, '95mm', extraGeoms) : '';
+    // Lignes « parcelles supplémentaires » + « surface totale » si multi-réf.
+    let extraRows = '';
+    if (extraFeats.length) {
+      const refs = extraFeats.map(f => { const pp = f.properties || {}; return ((pp.section || '') + ' ' + (pp.numero || '')).trim(); }).filter(Boolean);
+      const extraSum = extraFeats.reduce((s, f) => s + (Number((f.properties || {}).contenance) || 0), 0);
+      const total = (Number(p && p.contenance) || 0) + extraSum;
+      extraRows = '<tr><td>Parcelles supplémentaires</td><td><span style="color:#8e44ad;font-weight:600;">' + esc(refs.join(', ')) + '</span> (' + extraFeats.length + ')</td></tr>'
+        + '<tr><td>Surface totale terrain</td><td><strong>' + num(total) + ' m²</strong> <span style="color:#6a7385;">(somme des ' + (extraFeats.length + 1) + ' parcelles)</span></td></tr>';
+    }
     return '<div class="rpt-page">'
       + '<h2>5 · Localisation, cadastre & urbanisme</h2>'
       + '<div class="rpt-block rpt-sec">' + mapImg + '</div>'
       + '<div class="rpt-block rpt-sec"><table><tbody>'
       + '<tr><td style="width:38mm;">Adresse analysée</td><td><strong>' + esc(loc.label || '—') + '</strong></td></tr>'
       + '<tr><td>Commune</td><td>' + esc(loc.city || '—') + ' (' + esc(loc.citycode || '') + ')</td></tr>'
-      + (p ? '<tr><td>Référence cadastrale</td><td><strong>' + esc((p.section || '') + ' ' + (p.numero || '')) + '</strong>'
+      + (p ? '<tr><td>Référence cadastrale' + (extraFeats.length ? ' principale' : '') + '</td><td><strong>' + esc((p.section || '') + ' ' + (p.numero || '')) + '</strong>'
         + (p.contenance ? ' · contenance ' + num(p.contenance) + ' m²' : '') + '</td></tr>' : '')
+      + extraRows
       + (z ? '<tr><td>Zonage PLU</td><td><strong>' + esc(z.libelle || '') + '</strong>' + (z.libelong ? ' — ' + esc(z.libelong) : '') + (z.typezone ? ' (type ' + esc(z.typezone) + ')' : '') + '</td></tr>'
         : '<tr><td>Zonage PLU</td><td>Document d\'urbanisme non numérisé sur le GPU pour cette commune.</td></tr>')
       + '</tbody></table>'
       + '<div class="rpt-note">Sources : IGN Géoplateforme, Géoportail de l\'Urbanisme, cadastre Etalab.</div></div>'
+      + daafOnfBlock()
       + footer(7, 8, ref) + '</div>';
   }
 
