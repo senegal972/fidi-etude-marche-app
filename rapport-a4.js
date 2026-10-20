@@ -466,6 +466,41 @@
       + '<div class="rpt-note">Sources : RPG (déclarations PAC — DAAF/IGN) et Forêts publiques ONF via la Géoplateforme IGN. Analyse indicative : un point hors parcelle déclarée n\'exclut pas un usage réel ; vérifier le règlement du PLU et les servitudes.</div></div>';
   }
 
+  // Bloc « Localisation et détails des aléas au point indiqué » pour le rapport A4.
+  // Reprend les données exposées par l'écran (window.__fidiAleas) : carte PPRN972
+  // (Martinique) ou tableau Géorisques (métropole / repli). Masqué si absent.
+  function aleasBlock() {
+    const a = window.__fidiAleas;
+    if (!a) return '';
+    if (a.source === 'mq') {
+      const zb = a.reglemente
+        ? '<span style="display:inline-block;padding:1mm 3mm;border-radius:3mm;font-size:8pt;font-weight:700;color:#4a4238;background:#f0d98c;">Zone réglementée ' + esc(a.zoneCode || '') + '</span>'
+        : '<span style="display:inline-block;padding:1mm 3mm;border-radius:3mm;font-size:8pt;font-weight:700;color:#fff;background:#198754;">Hors zonage réglementaire au point</span>';
+      const rows = (a.aleas && a.aleas.length)
+        ? a.aleas.map(x => '<tr><td>' + esc(x.label) + '</td><td style="text-align:center;"><span style="color:#c0392b;font-weight:700;">' + esc(x.niveau || 'Concerné') + '</span></td></tr>').join('')
+        : '<tr><td colspan="2" style="color:#6a7385;">Aucun aléa cartographié à ce point.</td></tr>';
+      // Marqueur central en SVG (survit au rendu PDF, contrairement aux icônes webfont).
+      const marker = '<svg viewBox="0 0 24 24" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-100%);width:6mm;height:6mm;"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z" fill="#d6336c" stroke="#fff" stroke-width="1.5"/><circle cx="12" cy="9" r="2.5" fill="#fff"/></svg>';
+      const mapCell = a.mapImg
+        ? '<td style="width:58mm;vertical-align:top;padding-right:3mm;"><div style="position:relative;width:54mm;"><img src="' + esc(a.mapImg) + '" alt="Zonage PPRN au point" style="width:100%;border:1pt solid #cdd6e2;border-radius:2mm;display:block;">' + marker + '</div><div style="font-size:7pt;color:#6a7385;margin-top:1mm;">\u{1F4CD} point analysé (centre)</div></td>'
+        : '';
+      return '<div class="rpt-block rpt-sec"><h3>Localisation et détails des aléas au point indiqué</h3>'
+        + '<table style="width:100%;"><tbody><tr>' + mapCell
+        + '<td style="vertical-align:top;"><div style="margin-bottom:2mm;">' + zb + '</div>'
+        + '<table><thead><tr><th>Aléa</th><th style="text-align:center;">Niveau au point</th></tr></thead><tbody>' + rows + '</tbody></table></td>'
+        + '</tr></tbody></table>'
+        + '<div class="rpt-note">Source officielle : PPRN Martinique (préfecture 972). Détail au point indiqué (non à la parcelle entière). Un PPR approuvé par arrêté préfectoral est une servitude d\'utilité publique opposable ; seul le document original approuvé fait foi.</div></div>';
+    }
+    // Géorisques (métropole / repli)
+    const rows = (a.aleas || []).map(x =>
+      '<tr><td>' + esc(x.label) + '</td><td style="text-align:center;">' + (x.present ? '<span style="color:#c0392b;font-weight:700;">Présent</span>' : '<span style="color:#9aa3ad;">—</span>') + '</td><td style="font-size:8pt;color:#6a7385;">' + esc(x.precision || '') + '</td></tr>').join('');
+    const chips = (a.chips && a.chips.length) ? '<div style="margin-top:2mm;font-size:8pt;">' + a.chips.map(c => '<span style="display:inline-block;padding:.6mm 2mm;margin-right:1.5mm;border-radius:2mm;background:#eef2f7;">' + esc(c) + '</span>').join('') + '</div>' : '';
+    return '<div class="rpt-block rpt-sec"><h3>Localisation et détails des aléas au point indiqué</h3>'
+      + '<table><thead><tr><th>Aléa</th><th style="text-align:center;">Au point</th><th>Précision</th></tr></thead><tbody>' + rows + '</tbody></table>'
+      + chips
+      + '<div class="rpt-note">Source : Géorisques (BRGM / MTE). Détail au point indiqué.</div></div>';
+  }
+
   function localisationPage(d, ref) {
     const loc = d.localisation || {};
     const gpu = window.__fidiGpu || {};
@@ -498,6 +533,7 @@
       + '</tbody></table>'
       + '<div class="rpt-note">Sources : IGN Géoplateforme, Géoportail de l\'Urbanisme, cadastre Etalab.</div></div>'
       + daafOnfBlock()
+      + aleasBlock()
       + footer(7, 8, ref) + '</div>';
   }
 

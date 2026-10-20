@@ -1994,6 +1994,9 @@ function renderAleasMq(b, lat, lon){
   var zonBadge = b.reglemente
     ? '<span class="badge bg-warning text-dark">Zone réglementée '+esc(z.code||'')+'</span>'
     : '<span class="badge bg-success">Hors zonage réglementaire à ce point</span>';
+  // Exposé pour le rapport A4 (PDF).
+  window.__fidiAleas = { source:'mq', reglemente:!!b.reglemente, zoneCode:(z.code||''), mapImg:mapImg,
+    aleas: aleas.map(function(a){ return { label:a.label, niveau:a.niveau_label||'Concerné' }; }) };
   wrap.classList.remove('d-none');
   wrap.innerHTML =
     '<div class="fw-bold mb-2" style="color:#1a3a6e;"><i class="bi bi-exclamation-octagon me-1"></i>Localisation et détails des aléas au point indiqué</div>'+
@@ -2055,6 +2058,10 @@ async function renderAleasGeorisques(lat, lon){
   if(ssp) chips.push(ssp+' site(s) pollué(s)');
   if(icpe) chips.push(icpe+' ICPE');
   var lienGr='https://www.georisques.gouv.fr/mes-risques/connaitre-les-risques-pres-de-chez-moi';
+  // Exposé pour le rapport A4 (PDF).
+  window.__fidiAleas = { source:'georisques',
+    aleas: aleas.map(function(a){ return { label:a[0], present:!!a[1], precision:a[2]||'' }; }),
+    chips: chips.slice() };
   wrap.classList.remove('d-none');
   wrap.innerHTML =
     '<div class="fw-bold mb-2" style="color:#1a3a6e;"><i class="bi bi-exclamation-octagon me-1"></i>Localisation et détails des aléas au point indiqué</div>'+
