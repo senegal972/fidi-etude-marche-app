@@ -2,6 +2,7 @@
 // GET /api/notion-list?kind=avis|etude&limit=20
 
 import { DB, jsonResp, hasToken, queryDatabase, readBigText } from "./_notion.mjs";
+import { factureLockMap } from "./_facture.mjs";
 
 function summarize(kind, page) {
   const p = page.properties || {};
@@ -44,11 +45,21 @@ export const handler = async (event) => {
   const databaseId = kind === "etude" ? DB.etude : DB.avis;
 
   try {
-    const data = await queryDatabase(databaseId, {
-      sorts: [{ property: "Date", direction: "descending" }],
-      page_size: limit,
+    const [data, lockMap] = await Promise.all([
+      queryDatabase(databaseId, {
+        sorts: [{ property: "Date", direction: "descending" }],
+        page_size: limit,
+      }),
+      factureLockMap(100), // { ref -> { locked, paye, raison } } via la base Factures
+    ]);
+    // verrou = dossier envoyé/payé → non supprimable (icône rouge côté client).
+    const items = (data.results || []).map((pg) => {
+      const it = summarize(kind, pg);
+      const lk = lockMap[it.ref];
+      it.verrou = !!(lk && lk.locked);
+      it.verrou_raison = lk ? lk.raison : "";
+      return it;
     });
-    const items = (data.results || []).map((pg) => summarize(kind, pg));
     return jsonResp(200, { kind, count: items.length, items });
   } catch (e) {
     return jsonResp(e.status || 500, { error: e.message, notion: e.notion || null });

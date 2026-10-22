@@ -253,6 +253,7 @@ body.map-fs-on{overflow:hidden;}
     <div class="brand-sub">Immobilier · Données publiques françaises</div>
   </div>
   <div class="d-flex gap-2 align-items-center flex-wrap">
+    <span class="badge-gov" id="appVersionBadge" title="Chargement version…" style="cursor:help;"><i class="bi bi-tag me-1"></i><span id="appVersionLabel">v…</span></span>
     <span class="badge-gov" title="Données publiques françaises"><i class="bi bi-database me-1"></i>data.gouv.fr</span>
     <span class="badge bg-warning text-dark d-none" id="creditsPill" title="Crédits d'analyse restants" style="font-size:.72rem;">
       <i class="bi bi-coin me-1"></i><span id="creditsVal">0</span> crédits
@@ -2272,8 +2273,13 @@ async function openEtudesRecentes(){
       const score = (m.score!=null) ? (m.score+'/100') : '';
       const ref = String(m.ref).replace(/'/g,"\\'");
       const clientBadge = m.client ? '<span class="badge bg-info text-dark ms-1" style="font-size:.65rem;"><i class="bi bi-person me-1"></i>'+escHtml(m.client)+'</span>' : '';
+      const verrou = !!m.verrou;
+      const dot = '<span class="me-2" title="'+(verrou?('Dossier '+escHtml(m.verrou_raison||'envoyé')+' — non supprimable'):'Supprimable')+'" style="color:'+(verrou?'#c0392b':'#198754')+';font-size:1.15rem;line-height:1;">●</span>';
+      const delBtn = verrou
+        ? '<button class="btn btn-sm btn-outline-secondary me-2" disabled title="Dossier '+escHtml(m.verrou_raison||'envoyé')+' — suppression interdite"><i class="bi bi-lock-fill"></i></button>'
+        : '<button class="btn btn-sm btn-outline-danger me-2" title="Supprimer cette étude (corbeille Notion)" onclick="supprimerEtude(\''+ref+'\', this)"><i class="bi bi-trash"></i></button>';
       return '<div class="d-flex justify-content-between align-items-center border rounded p-2 mb-2" data-etude-ref="'+escHtml(m.ref)+'">'+
-        '<button class="btn btn-sm btn-outline-danger me-2" title="Supprimer cette étude (corbeille Notion)" onclick="supprimerEtude(\''+ref+'\', this)"><i class="bi bi-trash"></i></button>'+
+        dot + delBtn +
         '<div class="flex-grow-1"><div class="fw-bold small">'+escHtml(m.ref)+clientBadge+'</div>'+
         '<div class="text-muted" style="font-size:.75rem;">'+escHtml(sub)+'</div>'+
         '<div class="small">'+escHtml(m.adresse||'')+'</div></div>'+
@@ -7277,6 +7283,46 @@ window.Presentation = (function(){
   }
   return { open, share };
 })();
+
+// ─── Convention FIDI : affichage version + build date ────────────────────────
+(function loadAppVersion(){
+  fetch('/VERSION.json', {cache:'no-store'})
+    .then(r => r.ok ? r.json() : null)
+    .then(v => {
+      if(!v) return;
+      window.APP_VERSION = v.version || 'dev';
+      const label = document.getElementById('appVersionLabel');
+      const badge = document.getElementById('appVersionBadge');
+      if(label) label.textContent = 'v' + (v.version || '—');
+      if(badge){
+        const d = v.build_date ? new Date(v.build_date) : null;
+        const dateStr = d && !isNaN(d) ?
+          d.toLocaleDateString('fr-FR',{day:'2-digit',month:'short',year:'numeric'}) + ' ' +
+          d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : (v.build_date||'');
+        badge.title = 'Build : ' + dateStr + (v.build_label ? ' — ' + v.build_label : '');
+      }
+      // Footer version
+      const footer = document.getElementById('appVersionFooter');
+      if(footer){
+        const d = v.build_date ? new Date(v.build_date) : null;
+        const dateStr = d && !isNaN(d) ?
+          d.toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'}) + ' à ' +
+          d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : (v.build_date||'—');
+        footer.innerHTML =
+          '<i class="bi bi-tag me-1"></i><strong>' + (v.name||'App') + '</strong> ' +
+          '— version <strong>' + (v.version||'—') + '</strong> · build ' + dateStr +
+          (v.build_label ? ' · <em>' + v.build_label + '</em>' : '') +
+          ' · <a href="/VERSION.json" target="_blank" class="text-muted">VERSION.json</a>';
+      }
+    })
+    .catch(()=>{});
+})();
 </script>
+
+<!-- Footer version FIDI (convention : toutes apps) -->
+<div id="appVersionFooter" class="text-center text-muted small py-3 mt-3"
+     style="border-top:1px solid #e9ecef;background:#fff;">
+  <i class="bi bi-hourglass-split me-1"></i>Chargement de la version…
+</div>
 </body>
 </html>

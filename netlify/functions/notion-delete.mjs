@@ -5,6 +5,7 @@
 // Elle disparaît des listes (notion-list filtre les pages archivées côté API).
 
 import { DB, jsonResp, hasToken, findByRef, archivePage } from "./_notion.mjs";
+import { factureLockForRef } from "./_facture.mjs";
 
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return jsonResp(200, {});
@@ -22,6 +23,19 @@ export const handler = async (event) => {
 
   const databaseId = kind === "etude" ? DB.etude : DB.avis;
   try {
+    // Verrou : interdit de supprimer un dossier déjà envoyé ou payé (vérif serveur,
+    // même si le client a tenté de contourner le bouton grisé).
+    const lock = await factureLockForRef(ref);
+    if (lock.locked) {
+      return jsonResp(409, {
+        error: lock.raison === "payé"
+          ? `Suppression interdite : le dossier « ${ref} » a été payé.`
+          : lock.raison === "vérification facture impossible"
+            ? `Suppression impossible : vérification de la facturation indisponible, réessayez.`
+            : `Suppression interdite : le dossier « ${ref} » a déjà été envoyé / facturé.`,
+        locked: true, raison: lock.raison || "envoyé",
+      });
+    }
     const pageId = await findByRef(databaseId, "Référence", ref);
     if (!pageId) return jsonResp(404, { error: `Dossier introuvable : ${ref}` });
     await archivePage(pageId);

@@ -3838,12 +3838,39 @@
         var sub = [(m.type_bien || ''), (m.commune || ''), (m.date || '')].filter(Boolean).join(' · ');
         var val = m.valeur ? (Number(m.valeur).toLocaleString('fr-FR') + ' €') : '—';
         var r = String(m.ref).replace(/'/g, "\\'");
-        return '<div class="av-lib-item">' +
-          '<div class="av-lib-info"><div class="av-lib-ref">' + esc(m.ref) + '</div>' +
+        var verrou = !!m.verrou;
+        var dot = '<span title="' + (verrou ? ('Dossier ' + esc(m.verrou_raison || 'envoyé') + ' — non supprimable') : 'Supprimable') + '" style="color:' + (verrou ? '#c0392b' : '#198754') + ';font-size:1.1rem;line-height:1;margin-right:.4rem;">●</span>';
+        var delB = verrou
+          ? '<button class="btn btn-sm btn-outline-secondary" disabled title="Dossier ' + esc(m.verrou_raison || 'envoyé') + ' — suppression interdite"><i class="bi bi-lock-fill"></i></button>'
+          : '<button class="btn btn-sm btn-outline-danger" title="Supprimer (corbeille Notion)" onclick="AvisValeur.cloudDelete(\'' + r + '\', this)"><i class="bi bi-trash"></i></button>';
+        return '<div class="av-lib-item" data-avis-ref="' + esc(m.ref) + '">' +
+          '<div class="av-lib-info"><div class="av-lib-ref">' + dot + esc(m.ref) + '</div>' +
           '<div class="av-lib-sub">' + esc(sub) + '</div><div class="av-lib-val">' + val + '</div></div>' +
-          '<div class="av-lib-act"><button class="btn btn-sm btn-primary" onclick="AvisValeur.cloudOpen(\'' + r + '\')">Ouvrir</button></div></div>';
+          '<div class="av-lib-act">' + delB + '<button class="btn btn-sm btn-primary ms-1" onclick="AvisValeur.cloudOpen(\'' + r + '\')">Ouvrir</button></div></div>';
       }).join('');
     });
+  }
+  // Suppression d'un avis cloud (corbeille Notion). Bloquée serveur si envoyé/payé (409).
+  function cloudDelete(ref, btn) {
+    if (!confirm('Supprimer l\'avis « ' + ref + ' » ?\n\n(Page mise à la corbeille Notion — récupérable 30 jours.)')) return;
+    var orig = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '…'; }
+    fetch('/api/notion-delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'avis', ref: ref }) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (res.ok && res.j && res.j.ok) {
+          var row = btn && btn.closest('[data-avis-ref]');
+          if (row) {
+            row.style.transition = 'opacity .25s'; row.style.opacity = '0';
+            setTimeout(function () { row.remove(); var body = document.getElementById('avisCloudBody'); if (body && !body.querySelector('[data-avis-ref]')) body.innerHTML = '<div class="av-tip" style="padding:1rem;text-align:center;">Aucun dossier dans Notion.</div>'; }, 250);
+          }
+          toast('Avis supprimé');
+        } else {
+          alert((res.j && res.j.error) || 'Suppression impossible.');
+          if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+        }
+      })
+      .catch(function () { alert('Suppression impossible : réseau.'); if (btn) { btn.disabled = false; btn.innerHTML = orig; } });
   }
   function doLoad() {
     var sel = document.getElementById('avSavedSelect'); var ref = sel && sel.value;
@@ -5463,5 +5490,5 @@
     }
   }
 
-  window.AvisValeur = { open: open, openLibrary: openLibrary, listAvis: avisList, cloud: doCloud, cloudOpen: cloudOpen, partager: doPartager, facturer: doFacturer, _compute: compute, _prefill: buildPrefillFromEtude };
+  window.AvisValeur = { open: open, openLibrary: openLibrary, listAvis: avisList, cloud: doCloud, cloudOpen: cloudOpen, cloudDelete: cloudDelete, partager: doPartager, facturer: doFacturer, _compute: compute, _prefill: buildPrefillFromEtude };
 })();

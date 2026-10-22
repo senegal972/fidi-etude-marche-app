@@ -64,3 +64,54 @@ export function reqOrigin(event) {
   const proto = h["x-forwarded-proto"] || "https";
   return host ? `${proto}://${host}` : "";
 }
+
+// ─── Verrou suppression ───────────────────────────────────────────────────────
+// Un dossier (avis ou étude) déjà ENVOYÉ ou PAYÉ ne doit jamais être supprimé.
+// Source fiable : la base Factures (DB.facture), liée par « Référence dossier ».
+// Statuts facture : Brouillon (ni envoyé) · À payer (envoyé, en attente) · Payée · Annulée.
+// Verrouillé si une facture ACTIVE (À payer ou Payée) existe pour la référence.
+function _refDossierOf(pg) {
+  return (pg.properties?.["Référence dossier"]?.rich_text || []).map((t) => t.plain_text || "").join("").trim();
+}
+function _statutOf(pg) {
+  return pg.properties?.["Statut"]?.select?.name || "";
+}
+
+// Vérifie une référence précise (guard serveur de suppression). Fail-closed : en cas
+// d'erreur de requête, on verrouille (on ne supprime pas par défaut un dossier à risque).
+export async function factureLockForRef(ref) {
+  const t = String(ref || "").trim();
+  if (!t) return { locked: false };
+  try {
+    const res = await queryDatabase(DB.facture, {
+      filter: { property: "Référence dossier", rich_text: { equals: t } },
+      page_size: 20,
+    });
+    const actifs = (res.results || []).map(_statutOf).filter((s) => s && s !== "Annulée" && s !== "Brouillon");
+    const paye = actifs.includes("Payée");
+    return { locked: actifs.length > 0, paye, raison: paye ? "payé" : (actifs.length ? "envoyé" : "") };
+  } catch {
+    return { locked: true, raison: "vérification facture impossible", error: true };
+  }
+}
+
+// Carte { ref -> { locked, paye, raison } } pour annoter une liste (1 seule requête).
+export async function factureLockMap(limit = 100) {
+  const map = {};
+  try {
+    const res = await queryDatabase(DB.facture, {
+      sorts: [{ property: "Date", direction: "descending" }],
+      page_size: Math.min(limit, 100),
+    });
+    (res.results || []).forEach((pg) => {
+      const ref = _refDossierOf(pg);
+      const st = _statutOf(pg);
+      if (!ref || st === "Annulée" || st === "Brouillon") return;
+      const paye = st === "Payée";
+      const prev = map[ref];
+      map[ref] = { locked: true, paye: paye || !!(prev && prev.paye) };
+      map[ref].raison = map[ref].paye ? "payé" : "envoyé";
+    });
+  } catch { /* best-effort : liste non verrouillée si la base facture est indisponible */ }
+  return map;
+}
