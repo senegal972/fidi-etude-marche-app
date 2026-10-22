@@ -3279,18 +3279,25 @@
       compHau = Math.round(_abat(compHau) * K);
     }
     // Base comparaison : terrain → contenance TOTALE ; bâti → SHON autorisée sinon surface habitable.
-    var shonIn = estTer ? 0 : num(cad.shonAutorisee);
+    // APPARTEMENT = lot de copropriété : la SHON/SHOB et le terrain de l'IMMEUBLE entier
+    // (injectés depuis l'étude) ne représentent PAS le lot. Les neutraliser, sinon :
+    //  - la méthode Sol+construction (SHOB immeuble × coût) gonfle la synthèse (>1 M€),
+    //  - la base de comparaison prendrait la SHON immeuble au lieu de la surface Carrez du lot.
+    // Sol+construction ne s'active alors que sur saisie manuelle (charge foncière / forfait).
+    var estAppart = /appart/i.test(String(b.type || ''));
+    var shonIn = (estTer || estAppart) ? 0 : num(cad.shonAutorisee);
+    var shobForSC = estAppart ? 0 : num(cad.shobAutorisee);
     var surfaceHabIn = estTer ? contenance : num(b.surfaceCarrez);
     var nbLots = (mv.lots || []).length;
     // Activation auto : une méthode sans donnée ne tire pas la synthèse vers 0.
     // Override manuel possible via methodesV2.methodes (case cochée dans la pondération future).
     var actives = (mv.methodes && typeof mv.methodes === 'object') ? mv.methodes : {
       comparaison: compCen > 0,
-      solConstruction: (cfCen > 0 || num(cad.shobAutorisee) > 0 || num(sc.forfait) > 0),
+      solConstruction: (cfCen > 0 || shobForSC > 0 || num(sc.forfait) > 0),
       capitalisation: nbLots > 0,
     };
     return {
-      shon: shonIn, shob: num(cad.shobAutorisee), surfaceHab: surfaceHabIn,
+      shon: shonIn, shob: shobForSC, surfaceHab: surfaceHabIn,
       comparaison: { bas: compBas, central: compCen, haut: compHau },
       chargeFonciere: { bas: cfBas, central: cfCen, haut: cfHau },
       coutShonM2: coutS, coutAnnexesM2: coutA, forfait: num(sc.forfait), vetustePct: vet,
@@ -4688,7 +4695,9 @@
     var syn = r.synthese;
     if (!(syn.central > 0)) return '';
     var b = data.bien, cad = data.cadastre || {};
-    var terrain = contenanceTotale(cad) || num(b.surfaceCarrez);
+    // Appartement : ni terrain ni SHOB d'immeuble propres au lot → tuiles neutralisées.
+    var estApp = /appart/i.test(String((b || {}).type || ''));
+    var terrain = estApp ? 0 : (contenanceTotale(cad) || num(b.surfaceCarrez));
     // 4 tuiles
     function tile(lbl, val) {
       return '<td style="border:.4pt solid #bfbfbf;padding:8pt;text-align:center;width:25%;">' +
@@ -4700,7 +4709,7 @@
     var html = '<h1>5 ter. Synthèse multi-méthodes (fourchette)</h1>';
     html += '<table style="margin-bottom:8pt;"><tr>' +
       tile('Terrain', terrain ? fmt(terrain) + ' m²' : '—') +
-      tile('SHOB / SHON', (num(cad.shobAutorisee) || '—') + ' / ' + (num(cad.shonAutorisee) || '—')) +
+      tile('SHOB / SHON', estApp ? '—' : ((num(cad.shobAutorisee) || '—') + ' / ' + (num(cad.shonAutorisee) || '—'))) +
       tile('Valeur vénale (central)', fmtE(syn.central)) +
       tile('Prix de présentation', fmtE(prixPres)) +
       '</tr></table>';
