@@ -180,6 +180,7 @@
       // ── Méthodes v2 en fourchette (LOT E) ────────────────────────────────
       methodesV2: {
         actif: false,   // opt-in : n'affecte l'affichage que si activé (rétrocompat)
+        baseEval: 'auto', // base d'évaluation : auto | bati (appartement/lot) | terrain | deux
         comparaison: { prixM2Bas: '', prixM2Central: '', prixM2Haut: '' },   // vide → auto (P25/médiane/P75 comparables)
         solConstruction: {
           chargeFonciere: { bas: '', central: '', haut: '' },  // totaux € (vide → médiane comparables terrains × contenance)
@@ -3278,26 +3279,38 @@
       compCen = Math.round(_abat(compCen) * K);
       compHau = Math.round(_abat(compHau) * K);
     }
-    // Base comparaison : terrain → contenance TOTALE ; bâti → SHON autorisée sinon surface habitable.
-    // APPARTEMENT = lot de copropriété : la SHON/SHOB et le terrain de l'IMMEUBLE entier
-    // (injectés depuis l'étude) ne représentent PAS le lot. Les neutraliser, sinon :
-    //  - la méthode Sol+construction (SHOB immeuble × coût) gonfle la synthèse (>1 M€),
-    //  - la base de comparaison prendrait la SHON immeuble au lieu de la surface Carrez du lot.
-    // Sol+construction ne s'active alors que sur saisie manuelle (charge foncière / forfait).
+    // ── Base d'évaluation : BÂTI (lot) vs TERRAIN ──────────────────────────────
+    // Un APPARTEMENT est un lot de copropriété : la SHON/SHOB et le terrain de l'IMMEUBLE
+    // entier (injectés depuis l'étude) ne lui appartiennent pas. Travailler sur le terrain
+    // n'a alors aucun sens et gonfle la synthèse (Sol+construction = SHOB immeuble × coût).
+    // Choix utilisateur (methodesV2.baseEval) :
+    //   'auto'    → appartement = bâti (lot) ; terrain à bâtir = terrain ; autres = défaut
+    //   'bati'    → forcer bâti (lot) : terrain/SHOB d'immeuble ignorés
+    //   'terrain' → forcer terrain
+    //   'deux'    → bâti + terrain
     var estAppart = /appart/i.test(String(b.type || ''));
-    var shonIn = (estTer || estAppart) ? 0 : num(cad.shonAutorisee);
-    var shobForSC = estAppart ? 0 : num(cad.shobAutorisee);
+    var baseEval = String(mv.baseEval || 'auto');
+    var forceBati = baseEval === 'bati' || (baseEval === 'auto' && estAppart);
+    var lesDeux = baseEval === 'deux';
+    var forceTerrain = baseEval === 'terrain';
+    var terrainOff = forceBati && !lesDeux && !forceTerrain; // neutralise terrain/SHOB
+    var shonIn = (estTer || terrainOff) ? 0 : num(cad.shonAutorisee);
+    var shobForSC = terrainOff ? 0 : num(cad.shobAutorisee);
     var surfaceHabIn = estTer ? contenance : num(b.surfaceCarrez);
     var nbLots = (mv.lots || []).length;
     // Activation auto : une méthode sans donnée ne tire pas la synthèse vers 0.
-    // Override manuel possible via methodesV2.methodes (case cochée dans la pondération future).
-    var actives = (mv.methodes && typeof mv.methodes === 'object') ? mv.methodes : {
+    // Override manuel possible via methodesV2.methodes (case cochée dans la pondération).
+    var actives = (mv.methodes && typeof mv.methodes === 'object') ? Object.assign({}, mv.methodes) : {
       comparaison: compCen > 0,
       solConstruction: (cfCen > 0 || shobForSC > 0 || num(sc.forfait) > 0),
       capitalisation: nbLots > 0,
     };
+    // Base bâti (lot) : la méthode terrain (Sol+construction) est forcée inactive même si
+    // une sélection manuelle antérieure l'avait cochée.
+    if (terrainOff) actives.solConstruction = false;
     return {
       shon: shonIn, shob: shobForSC, surfaceHab: surfaceHabIn,
+      _baseEval: baseEval, _terrainOff: terrainOff, _estAppart: estAppart,
       comparaison: { bas: compBas, central: compCen, haut: compHau },
       chargeFonciere: { bas: cfBas, central: cfCen, haut: cfHau },
       coutShonM2: coutS, coutAnnexesM2: coutA, forfait: num(sc.forfait), vetustePct: vet,
@@ -3353,6 +3366,19 @@
     var baseLbl = inp._estTerrain ? ('terrain — contenance totale ' + fmt(r.comparaison.base) + ' m²') : (esc(r.comparaison.baseType) + ' ' + fmt(r.comparaison.base) + ' m²');
     return head('Fourchette multi-méthodes', 'Comparaison · Sol + construction · Capitalisation → synthèse bas / central / haut') +
       '<div class="av-tip" style="margin-bottom:.6rem;">Méthode d\'aide à la décision (ni notaire ni expert). Base de la comparaison : <b>' + (inp._estTerrain ? 'contenance totale du terrain' : 'SHON autorisée si renseignée, sinon surface habitable') + '</b>. Champs vides = auto (comparables inclus + <b>profil territoire ' + esc(_terrLbl) + '</b>).</div>' +
+
+      // Base d'évaluation : bâti (lot) vs terrain — pilote l'activation de « Sol + construction ».
+      '<div class="av-box"><div class="av-box-title">Base d\'évaluation</div>' +
+        '<div class="av-grid-2">' +
+          '<div class="av-field"><label>Évaluer sur</label><select data-p="methodesV2.baseEval">' +
+            ['auto|Automatique', 'bati|Appartement / bâti (lot)', 'terrain|Terrain', 'deux|Les deux (bâti + terrain)'].map(function (o) { var v = o.split('|'); return '<option value="' + v[0] + '"' + ((inp._baseEval || 'auto') === v[0] ? ' selected' : '') + '>' + v[1] + '</option>'; }).join('') +
+          '</select></div>' +
+          '<div class="av-field"><label>Base retenue (calcul)</label><div class="av-cmp-calc">' + (inp._terrainOff ? 'Bâti / lot — terrain ignoré' : (inp._baseEval === 'deux' ? 'Bâti + terrain' : (inp._estTerrain ? 'Terrain' : 'Bâti'))) + '</div></div>' +
+        '</div>' +
+        (inp._estAppart
+          ? '<div class="av-tip"><b>Copropriété (appartement)</b> : par défaut l\'évaluation porte sur le <b>lot</b> (surface Carrez), pas sur le terrain ni la SHOB de l\'immeuble — « Sol + construction » est désactivée. Choisissez « Terrain » ou « Les deux » uniquement si pertinent.</div>'
+          : '<div class="av-tip">Terrain à bâtir → « Terrain ». Bien bâti sur sa propre parcelle → « Les deux » combine bâti et foncier.</div>') +
+      '</div>' +
 
       '<div class="av-box"><div class="av-box-title">1. Comparaison — €/m² (base ' + baseLbl + ')</div>' +
         tri3('methodesV2.comparaison.prixM2', '€/m²', inp._autoComparaison ? ('Auto (P25/médiane/P75 des comparables inclus) : ' + fmt(inp.comparaison.bas) + ' / ' + fmt(inp.comparaison.central) + ' / ' + fmt(inp.comparaison.haut) + ' €/m². Renseignez pour forcer.') : 'Valeurs saisies manuellement.') +
@@ -4691,13 +4717,14 @@
     if (!mv) return '';
     var hasData = (data.comparables || []).length || (mv.lots || []).length || num((data.cadastre || {}).shonAutorisee);
     if (!hasData) return '';
-    var r = CALC.calculerMethodes(buildV2Input(data));
+    var inpF = buildV2Input(data);
+    var r = CALC.calculerMethodes(inpF);
     var syn = r.synthese;
     if (!(syn.central > 0)) return '';
     var b = data.bien, cad = data.cadastre || {};
-    // Appartement : ni terrain ni SHOB d'immeuble propres au lot → tuiles neutralisées.
-    var estApp = /appart/i.test(String((b || {}).type || ''));
-    var terrain = estApp ? 0 : (contenanceTotale(cad) || num(b.surfaceCarrez));
+    // Base bâti (lot / appartement) : ni terrain ni SHOB d'immeuble → tuiles neutralisées.
+    var terrainOffF = !!inpF._terrainOff;
+    var terrain = terrainOffF ? 0 : (contenanceTotale(cad) || num(b.surfaceCarrez));
     // 4 tuiles
     function tile(lbl, val) {
       return '<td style="border:.4pt solid #bfbfbf;padding:8pt;text-align:center;width:25%;">' +
@@ -4709,7 +4736,7 @@
     var html = '<h1>5 ter. Synthèse multi-méthodes (fourchette)</h1>';
     html += '<table style="margin-bottom:8pt;"><tr>' +
       tile('Terrain', terrain ? fmt(terrain) + ' m²' : '—') +
-      tile('SHOB / SHON', estApp ? '—' : ((num(cad.shobAutorisee) || '—') + ' / ' + (num(cad.shonAutorisee) || '—'))) +
+      tile('SHOB / SHON', terrainOffF ? '—' : ((num(cad.shobAutorisee) || '—') + ' / ' + (num(cad.shonAutorisee) || '—'))) +
       tile('Valeur vénale (central)', fmtE(syn.central)) +
       tile('Prix de présentation', fmtE(prixPres)) +
       '</tr></table>';
