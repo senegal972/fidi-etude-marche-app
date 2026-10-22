@@ -110,6 +110,33 @@ export function readBigText(prop) {
   return prop.rich_text.map((t) => t.plain_text ?? t.text?.content ?? "").join("");
 }
 
+// ─── Blob JSON volumineux (avis) : gzip si nécessaire pour tenir sous la limite
+// Notion (une propriété rich_text = 100 blocs × 2000 car. ≈ 200 000 car. max).
+// Au-delà, le JSON brut (ex. avis avec nombreux comparables) faisait échouer la
+// sauvegarde en 400 silencieux. On compresse en « GZ:<base64> » si > 180 000 car.
+import zlib from "node:zlib";
+export function packBig(obj) {
+  const raw = typeof obj === "string" ? obj : JSON.stringify(obj || {});
+  let payload = raw;
+  if (raw.length > 180000) {
+    try { payload = "GZ:" + zlib.gzipSync(Buffer.from(raw, "utf8")).toString("base64"); }
+    catch { payload = raw; }
+  }
+  const prop = bigText(payload);
+  // Garde-fou absolu : ne jamais dépasser 100 blocs (sinon 400 Notion).
+  if (prop.rich_text.length > 100) prop.rich_text = prop.rich_text.slice(0, 100);
+  return prop;
+}
+export function unpackBig(prop) {
+  const s = readBigText(prop);
+  if (!s) return "";
+  if (s.startsWith("GZ:")) {
+    try { return zlib.gunzipSync(Buffer.from(s.slice(3), "base64")).toString("utf8"); }
+    catch { return ""; }
+  }
+  return s;
+}
+
 export async function createPage(databaseId, properties) {
   return notionFetch("/pages", "POST", { parent: { database_id: databaseId }, properties });
 }

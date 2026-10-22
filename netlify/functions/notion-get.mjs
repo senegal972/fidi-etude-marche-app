@@ -6,7 +6,7 @@
 // « Donnees JSON » pour les études enregistrées avant la refonte (rétro-compat).
 
 import {
-  DB, jsonResp, hasToken, queryDatabase, readBigText, readText, readNumber,
+  DB, jsonResp, hasToken, queryDatabase, readBigText, unpackBig, readText, readNumber,
 } from "./_notion.mjs";
 import { propsToEtude } from "./_etude_fields.mjs";
 
@@ -28,7 +28,7 @@ async function rebuildEtude(page) {
     return { parsed: propsToEtude(p, annees), source: "champs" };
   }
   // Repli legacy : ancien blob JSON
-  const jsonStr = readBigText(p["Donnees JSON"]);
+  const jsonStr = unpackBig(p["Donnees JSON"]);
   let parsed = null;
   try { parsed = jsonStr ? JSON.parse(jsonStr) : null; } catch { parsed = null; }
   return { parsed, source: jsonStr ? "blob" : "vide" };
@@ -62,7 +62,7 @@ export const handler = async (event) => {
     if (kind === "etude") {
       ({ parsed, source } = await rebuildEtude(page));
     } else {
-      const jsonStr = readBigText(p["Donnees JSON"]);
+      const jsonStr = unpackBig(p["Donnees JSON"]);
       try { parsed = jsonStr ? JSON.parse(jsonStr) : null; } catch { parsed = null; }
       source = jsonStr ? "blob" : "vide";
     }

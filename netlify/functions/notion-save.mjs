@@ -6,7 +6,7 @@
 // « Prix DVF par année ». Aucun blob JSON n'est écrit pour les études.
 
 import {
-  DB, P, bigText, jsonResp, hasToken,
+  DB, P, bigText, packBig, jsonResp, hasToken,
   createPage, updatePage, findByRef, queryDatabase, archivePage, ensureProperty,
 } from "./_notion.mjs";
 import { etudeToProps, etudeToAnnees } from "./_etude_fields.mjs";
@@ -28,7 +28,7 @@ function buildAvisProps(b) {
     "Honoraires":       P.number(b.honoraires),
     "Statut facture":   P.select(b.statut_facture || "Non facturé"),
     "Lien partage":     P.url(b.lien_partage),
-    "Donnees JSON":     bigText(typeof b.data === "string" ? b.data : JSON.stringify(b.data || {})),
+    "Donnees JSON":     packBig(b.data),
   };
 }
 
