@@ -2393,7 +2393,7 @@
       '<div class="modal-footer" style="justify-content:space-between;flex-wrap:wrap;gap:.5rem;">' +
       '<div class="av-live" id="avLive"></div>' +
       '<div class="d-flex gap-1 flex-wrap align-items-center">' +
-      '<select id="avSavedSelect" class="form-select form-select-sm" style="width:auto;min-width:140px;"><option value="">— Avis sauvegardés —</option></select>' +
+      '<select id="avSavedSelect" class="form-select form-select-sm" style="width:auto;min-width:240px;max-width:360px;" title="Avis sauvegardés (n° · réf · nom · date)"><option value="">— Avis sauvegardés —</option></select>' +
       '<button class="btn btn-sm btn-outline-secondary" data-action="load" title="Charger l\'avis sélectionné"><i class="bi bi-folder2-open"></i></button>' +
       '<button class="btn btn-sm btn-outline-danger" data-action="delete" title="Supprimer l\'avis sélectionné"><i class="bi bi-trash"></i></button>' +
       '<button class="btn btn-sm btn-outline-secondary" data-action="new"><i class="bi bi-plus-lg me-1"></i>Nouveau</button>' +
@@ -3660,10 +3660,15 @@
     var sel = document.getElementById('avSavedSelect');
     if (!sel) return;
     var metas = avisList();
+    function dmy(s) { var d = s ? new Date(s) : null; return (d && !isNaN(d)) ? d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : (s || ''); }
     sel.innerHTML = '<option value="">— Avis sauvegardés (' + metas.length + ') —</option>' +
-      metas.map(function (m) {
-        var lbl = m.ref + (m.client ? ' — ' + m.client : '') + (m.commune ? ' · ' + m.commune : '') + (m.valeur ? ' · ' + m.valeur : '');
-        return '<option value="' + esc(m.ref) + '">' + esc(lbl) + '</option>';
+      metas.map(function (m, i) {
+        // Reconnaissance : n° · réf · nom (client, sinon type + commune) · date · valeur.
+        var nom = m.client || [m.type, m.commune].filter(Boolean).join(' ') || 'Sans nom';
+        var parts = ['#' + (i + 1), m.ref, nom];
+        if (m.date) parts.push(dmy(m.date));
+        if (m.valeur) parts.push(m.valeur);
+        return '<option value="' + esc(m.ref) + '">' + esc(parts.join(' · ')) + '</option>';
       }).join('');
   }
 
