@@ -7334,7 +7334,9 @@ window.Presentation = (function(){
     window.__fidiVersion = v;
     var label = document.getElementById('appVersionLabel');
     var badge = document.getElementById('appVersionBadge');
-    if(label) label.textContent = 'v' + (v.version || '—');
+    var dd = v.build_date ? new Date(v.build_date) : null;
+    var dShort = (dd && !isNaN(dd)) ? dd.toLocaleDateString('fr-FR', {day:'2-digit', month:'short', year:'numeric'}) : '';
+    if(label) label.textContent = 'v' + (v.version || '—') + (dShort ? ' (' + dShort + ')' : '');
     if(badge) badge.title = 'Build : ' + fmtBuild(v) + (v.build_label ? ' — ' + v.build_label : '');
     var footer = document.getElementById('appVersionFooter');
     if(footer){
