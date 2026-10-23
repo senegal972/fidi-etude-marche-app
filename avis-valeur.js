@@ -3663,9 +3663,11 @@
     function dmy(s) { var d = s ? new Date(s) : null; return (d && !isNaN(d)) ? d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : (s || ''); }
     sel.innerHTML = '<option value="">— Avis sauvegardés (' + metas.length + ') —</option>' +
       metas.map(function (m, i) {
-        // Reconnaissance : n° · réf · nom (client, sinon type + commune) · date · valeur.
-        var nom = m.client || [m.type, m.commune].filter(Boolean).join(' ') || 'Sans nom';
-        var parts = ['#' + (i + 1), m.ref, nom];
+        // Numéro chronologique : le plus récent porte le plus grand numéro.
+        // Libellé reconnaissable : n° · nom (destinataire, sinon type + commune) · réf · date · valeur.
+        var n = metas.length - i;
+        var nom = m.client || [m.type, m.commune].filter(Boolean).join(' ') || 'Sans destinataire';
+        var parts = ['#' + n, nom, m.ref];
         if (m.date) parts.push(dmy(m.date));
         if (m.valeur) parts.push(m.valeur);
         return '<option value="' + esc(m.ref) + '">' + esc(parts.join(' · ')) + '</option>';
@@ -3805,12 +3807,21 @@
     }
   }
 
+  // Base du nom de fichier avis : inclut le destinataire (client) pour différencier les PDF.
+  function avisFileBase() {
+    var d = state.data || {};
+    var client = ((d.metadata && d.metadata.client) || '').trim();
+    var ref = (d.metadata && d.metadata.ref) || 'nouveau';
+    return ['Avis_de_valeur', client, ref].filter(Boolean).join('_')
+      .replace(/[^a-zA-Z0-9]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').slice(0, 90);
+  }
+
   function doPartager() {
     var ref = (state.data && state.data.metadata && state.data.metadata.ref || '').trim();
     if (!ref) { toast('Sauvegardez d\'abord l\'avis pour le partager', true); return; }
     var d = state.data;
     var titre = (d.bien && d.bien.adresse) ? d.bien.adresse : ref;
-    var filename = 'Avis_de_valeur_' + String(ref).replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 50) + '.pdf';
+    var filename = avisFileBase() + '.pdf';
     try { cloudSaveAvis(ref); } catch (e) {} // synchro Notion en arrière-plan
     // Génère un PDF autonome de l'avis (lisible sans accès à l'app)
     if (typeof window.fidiSharePdf === 'function') {
@@ -3848,8 +3859,9 @@
       });
       function dmy(s) { var d = s ? new Date(s) : null; return (d && !isNaN(d)) ? d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) : (s || '—'); }
       body.innerHTML = sorted.map(function (m, i) {
-        var n = i + 1;
-        var meta = [(m.type_bien || ''), (m.commune || '')].filter(Boolean).join(' · ');
+        var n = sorted.length - i; // le plus récent porte le plus grand numéro
+        var nom = (m.client || '').trim();
+        var meta = [nom, (m.type_bien || ''), (m.commune || '')].filter(Boolean).join(' · ');
         var val = m.valeur ? (Number(m.valeur).toLocaleString('fr-FR') + ' €') : '—';
         var r = String(m.ref).replace(/'/g, "\\'");
         var verrou = !!m.verrou;
@@ -3905,7 +3917,7 @@
     var blob = new Blob(['﻿', html], { type: 'application/msword;charset=utf-8' });
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
-    a.href = url; a.download = 'Avis_de_valeur_' + (state.data.metadata.ref || 'nouveau') + '.doc';
+    a.href = url; a.download = avisFileBase() + '.doc';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
     toast('Document Word exporté');
@@ -3951,7 +3963,7 @@
     // Édition d'un avis de valeur = acte facturé : débit d'un crédit (sauf admin/
     // illimité, péage inactif, ou ré-édition du même document). Bloque si épuisé.
     if (window.Compte && !(await window.Compte.consume('avis', ref))) return;
-    var filename = 'Avis_de_valeur_' + String(ref).replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 50);
+    var filename = avisFileBase();
     var pr = document.getElementById('avisPrintRoot');
     pr.innerHTML = '<div class="avis-doc">' + buildAvisDocHTML(state.data, compute(state.data)) + '</div>';
     var origTitle = document.title;
@@ -3971,7 +3983,7 @@
   async function doExportPdfServer() {
     var ref = (state.data && state.data.metadata && state.data.metadata.ref) || 'rapport';
     if (window.Compte && !(await window.Compte.consume('avis', ref))) return;
-    var filename = 'Avis_de_valeur_' + String(ref).replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 50) + '.pdf';
+    var filename = avisFileBase() + '.pdf';
     var body = '<div class="avis-doc">' + buildAvisDocHTML(state.data, compute(state.data)) + '</div>';
     var css = Array.from(document.styleSheets).map(function (s) {
       try { return Array.from(s.cssRules).map(function (r) { return r.cssText; }).join('\n'); }

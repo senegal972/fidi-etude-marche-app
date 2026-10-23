@@ -1861,6 +1861,15 @@ function etudeStaticMapUrl(lat, lon){
   return _wmsUrl(_parcelleBBox(lat, lon, (window.__fidiGpu||{}).parcelleGeom), 760, 500);
 }
 
+// Base du nom de fichier étude : inclut le destinataire (champ inputDestinataire) + la commune.
+function etudeFileBase(){
+  var d = window.__fidiData || {}, loc = d.localisation || {}, inp = window.__fidiInputs || {};
+  var dest = ''; try { dest = (document.getElementById('inputDestinataire') || {}).value || ''; } catch(e){}
+  dest = String(dest).trim();
+  var base = loc.city || loc.label || inp.adresse || 'etude';
+  return ['Etude_marche', dest, base].filter(Boolean).join('_')
+    .replace(/[^a-zA-Z0-9]+/g,'_').replace(/_+/g,'_').replace(/^_|_$/g,'').slice(0,90) || 'Etude_marche';
+}
 async function exportPdfServeur(){
   if(!window.__fidiData){ alert('Lancez une analyse avant de générer le PDF.'); return; }
   // STRATÉGIE : utiliser LE MÊME moteur que le PDF navigateur (FidiRapport = rapport A4
@@ -1885,7 +1894,7 @@ async function exportPdfServeur(){
   try {
     var r = await fetch('/api/pdf-render', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ html: html, filename: 'fidi-etude-'+Date.now()+'.pdf' })
+      body: JSON.stringify({ html: html, filename: etudeFileBase()+'.pdf' })
     });
     if(!r.ok){
       var t = await r.text();
@@ -1895,7 +1904,7 @@ async function exportPdfServeur(){
     }
     var blob = await r.blob();
     var url = URL.createObjectURL(blob);
-    var a = document.createElement('a'); a.href = url; a.download = 'fidi-etude.pdf'; document.body.appendChild(a); a.click(); a.remove();
+    var a = document.createElement('a'); a.href = url; a.download = etudeFileBase()+'.pdf'; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
   } catch(e){
     alert('Erreur réseau : '+e.message+'\n\nFallback impression navigateur.');
@@ -5053,7 +5062,7 @@ async function partagerEtude(){
   const ref = currentEtudeRef();
   const loc = d.localisation || {};
   const titre = loc.label || loc.city || ref;
-  const filename = 'Etude_marche_' + String(loc.city || ref).replace(/[^a-zA-Z0-9]+/g,'_').slice(0,50) + '.pdf';
+  const filename = etudeFileBase() + '.pdf';
   fidiSharePdf({ element: document.getElementById('results-panel'), filename, titre, kind:'Étude de marché' });
 }
 
@@ -5690,6 +5699,20 @@ function fidiStackModal(el){
         var still = Array.from(document.querySelectorAll('.modal.show'));
         var top = still[still.length-1];
         if(top){ var inst = bootstrap.Modal.getInstance(top); if(inst && inst._focustrap){ try{ inst._focustrap.activate(); }catch(e){} } }
+        // Bootstrap retire à tort le backdrop ET modal-open du parent quand on ferme une
+        // modale empilée → la modale parente reste ouverte mais sans fond et le corps perd
+        // modal-open (peut bloquer/décaler les clics). On restaure.
+        if(still.length){
+          document.body.classList.add('modal-open');
+          if(!document.querySelector('.modal-backdrop')){
+            var bd = document.createElement('div');
+            bd.className = 'modal-backdrop fade show';
+            document.body.appendChild(bd);
+          }
+        } else {
+          document.querySelectorAll('.modal-backdrop').forEach(function(b){ b.remove(); });
+          document.body.classList.remove('modal-open');
+        }
       }, { once:true });
     }catch(e){}
   });
