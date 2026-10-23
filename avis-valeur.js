@@ -2369,7 +2369,8 @@
       '<div class="modal fade" id="avisModal" tabindex="-1" aria-hidden="true">' +
       '<div class="modal-dialog modal-fullscreen modal-dialog-scrollable">' +
       '<div class="modal-content">' +
-      '<div class="modal-header"><div><h5 class="modal-title">Avis de valeur<small>FIDI · document professionnel</small></h5></div>' +
+      '<div class="modal-header"><div><h5 class="modal-title">Avis de valeur<small>FIDI · document professionnel</small></h5>' +
+        '<span id="avisVersionBadge" class="small" style="color:#9fb4d6;font-size:.7rem;"></span></div>' +
       // Toggle Vente / Location
       '<div class="btn-group btn-group-sm ms-auto me-2" role="group" aria-label="Nature">' +
         '<button type="button" class="btn ' + (natureCourante()==='vente'?'btn-warning':'btn-outline-warning') + '" data-avnature="vente" title="Avis vente (valeur vénale)"><i class="bi bi-house-check me-1"></i>Vente</button>' +
@@ -5427,7 +5428,20 @@
     if (natureDemande) buildModal();
     showSection(state.section);
     state.modal.show();
+    try { if (typeof window.fidiRefreshAvisVersion === 'function') window.fidiRefreshAvisVersion(); } catch (e) {}
   }
+
+  // Affiche la version/date de build dans l'en-tête de l'avis (parité avec l'étude).
+  window.fidiRefreshAvisVersion = function () {
+    var el = document.getElementById('avisVersionBadge');
+    if (!el) return;
+    var v = window.__fidiVersion;
+    if (!v || !v.version) { el.textContent = ''; return; }
+    var d = v.build_date ? new Date(v.build_date) : null;
+    var ds = (d && !isNaN(d)) ? d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+    el.innerHTML = '<i class="bi bi-tag me-1"></i>v' + v.version + (ds ? ' · ' + ds : '');
+    el.title = v.build_label || '';
+  };
 
   // Dialogue léger : Vente ou Location ?
   function askNatureAvis() {

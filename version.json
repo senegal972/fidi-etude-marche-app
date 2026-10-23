@@ -1,0 +1,12 @@
+{
+  "name":        "FIDI · Étude de Marché & Avis de valeur",
+  "version":     "1.3.0",
+  "build_date":  "2026-10-22T12:00:00+01:00",
+  "build_label": "Avis multi-méthodes (base bâti/terrain) · DAAF/ONF · partage PDF auto · suppression avis/études",
+  "changelog": [
+    "1.3.0 — Avis : base d'évaluation bâti/terrain (appartement cohérent) · sauvegarde cloud gzip · suppression avis + verrou envoyé/payé · partage PDF auto · DAAF/ONF (RPG + forêts ONF) + aléas PPRN dans le PDF",
+    "1.2.0 — ONF, RPG, Natura 2000, ZNIEFF, APPB, archéologie, MH, littoral + SIG DOM",
+    "1.1.0 — GPU IGN (PLU/SUP) + contexte DOM + 7 modules data.gouv étendus",
+    "1.0.0 — Base DVF + DPE + Géorisques + score 5 axes"
+  ]
+}

@@ -7286,36 +7286,62 @@ window.Presentation = (function(){
 
 // ─── Convention FIDI : affichage version + build date ────────────────────────
 (function loadAppVersion(){
-  fetch('/VERSION.json', {cache:'no-store'})
-    .then(r => r.ok ? r.json() : null)
-    .then(v => {
-      if(!v) return;
-      window.APP_VERSION = v.version || 'dev';
-      const label = document.getElementById('appVersionLabel');
-      const badge = document.getElementById('appVersionBadge');
-      if(label) label.textContent = 'v' + (v.version || '—');
-      if(badge){
-        const d = v.build_date ? new Date(v.build_date) : null;
-        const dateStr = d && !isNaN(d) ?
-          d.toLocaleDateString('fr-FR',{day:'2-digit',month:'short',year:'numeric'}) + ' ' +
-          d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : (v.build_date||'');
-        badge.title = 'Build : ' + dateStr + (v.build_label ? ' — ' + v.build_label : '');
-      }
-      // Footer version
-      const footer = document.getElementById('appVersionFooter');
-      if(footer){
-        const d = v.build_date ? new Date(v.build_date) : null;
-        const dateStr = d && !isNaN(d) ?
-          d.toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'}) + ' à ' +
-          d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : (v.build_date||'—');
-        footer.innerHTML =
-          '<i class="bi bi-tag me-1"></i><strong>' + (v.name||'App') + '</strong> ' +
-          '— version <strong>' + (v.version||'—') + '</strong> · build ' + dateStr +
-          (v.build_label ? ' · <em>' + v.build_label + '</em>' : '') +
-          ' · <a href="/VERSION.json" target="_blank" class="text-muted">VERSION.json</a>';
-      }
-    })
-    .catch(()=>{});
+  var LOADED = null; // version actuellement chargée (celle qui tourne)
+  function fetchVersion(){
+    return fetch('/version.json?ts=' + Date.now(), {cache:'no-store'})
+      .then(function(r){
+        var ct = (r.headers.get('content-type') || '');
+        if(!r.ok || ct.indexOf('json') < 0) return null; // 404 → fallback HTML : on ignore
+        return r.json().catch(function(){ return null; });
+      })
+      .catch(function(){ return null; });
+  }
+  function fmtBuild(v, long){
+    var d = v.build_date ? new Date(v.build_date) : null;
+    if(!(d && !isNaN(d))) return v.build_date || '—';
+    return d.toLocaleDateString('fr-FR', long ? {day:'2-digit',month:'long',year:'numeric'} : {day:'2-digit',month:'short',year:'numeric'})
+      + ' ' + d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+  }
+  function applyVersion(v){
+    window.APP_VERSION = v.version || 'dev';
+    window.__fidiVersion = v;
+    var label = document.getElementById('appVersionLabel');
+    var badge = document.getElementById('appVersionBadge');
+    if(label) label.textContent = 'v' + (v.version || '—');
+    if(badge) badge.title = 'Build : ' + fmtBuild(v) + (v.build_label ? ' — ' + v.build_label : '');
+    var footer = document.getElementById('appVersionFooter');
+    if(footer){
+      footer.innerHTML =
+        '<i class="bi bi-tag me-1"></i><strong>' + (v.name||'App') + '</strong> — version <strong>' +
+        (v.version||'—') + '</strong> · build ' + fmtBuild(v, true) +
+        (v.build_label ? ' · <em>' + v.build_label + '</em>' : '') +
+        ' · <a href="/version.json" target="_blank" class="text-muted">version.json</a>';
+    }
+    // Met à jour l'en-tête de l'avis de valeur s'il est ouvert.
+    try { if(typeof window.fidiRefreshAvisVersion === 'function') window.fidiRefreshAvisVersion(); } catch(e){}
+  }
+  function showUpdateBanner(newV){
+    if(document.getElementById('fidiUpdateBanner')) return;
+    var b = document.createElement('div');
+    b.id = 'fidiUpdateBanner';
+    b.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:40000;background:#1a3a6e;color:#fff;padding:.6rem 1rem;border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.35);display:flex;align-items:center;gap:.7rem;font-size:.9rem;max-width:94%;flex-wrap:wrap;justify-content:center;';
+    b.innerHTML = '<i class="bi bi-arrow-repeat"></i><span>Nouvelle version <strong>v' + (newV.version||'') + '</strong> disponible.</span>' +
+      '<button class="btn btn-sm btn-warning fw-semibold" onclick="location.reload(true)">Mettre à jour</button>' +
+      '<button class="btn btn-sm btn-outline-light" onclick="var e=document.getElementById(\'fidiUpdateBanner\');if(e)e.remove();">Plus tard</button>';
+    document.body.appendChild(b);
+  }
+  function checkUpdate(){
+    fetchVersion().then(function(v){
+      if(!v || !v.version) return;
+      if(LOADED && v.version !== LOADED) showUpdateBanner(v);
+    });
+  }
+  // Chargement initial de la version qui tourne.
+  fetchVersion().then(function(v){ if(v && v.version){ LOADED = v.version; applyVersion(v); } });
+  // Détection auto des mises à jour : au retour sur l'app + toutes les 15 min.
+  document.addEventListener('visibilitychange', function(){ if(!document.hidden) checkUpdate(); });
+  window.addEventListener('focus', checkUpdate);
+  setInterval(checkUpdate, 15 * 60 * 1000);
 })();
 </script>
 
