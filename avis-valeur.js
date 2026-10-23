@@ -3835,8 +3835,16 @@
         body.innerHTML = '<div class="alert alert-warning small mb-0">Notion non configuré sur ce site.</div>'; return;
       }
       if (!items.length) { body.innerHTML = '<div class="av-tip" style="padding:1rem;text-align:center;">Aucun dossier dans Notion pour le moment.</div>'; return; }
-      body.innerHTML = items.map(function (m) {
-        var sub = [(m.type_bien || ''), (m.commune || ''), (m.date || '')].filter(Boolean).join(' · ');
+      // Tri chronologique (date décroissante, réf. décroissante en cas d'égalité) puis numérotation.
+      var sorted = items.slice().sort(function (a, b) {
+        var da = a.date || '', db = b.date || '';
+        if (da !== db) return da < db ? 1 : -1;
+        return String(b.ref || '').localeCompare(String(a.ref || ''), 'fr', { numeric: true });
+      });
+      function dmy(s) { var d = s ? new Date(s) : null; return (d && !isNaN(d)) ? d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) : (s || '—'); }
+      body.innerHTML = sorted.map(function (m, i) {
+        var n = i + 1;
+        var meta = [(m.type_bien || ''), (m.commune || '')].filter(Boolean).join(' · ');
         var val = m.valeur ? (Number(m.valeur).toLocaleString('fr-FR') + ' €') : '—';
         var r = String(m.ref).replace(/'/g, "\\'");
         var verrou = !!m.verrou;
@@ -3845,8 +3853,10 @@
           ? '<button class="btn btn-sm btn-outline-secondary" disabled title="Dossier ' + esc(m.verrou_raison || 'envoyé') + ' — suppression interdite"><i class="bi bi-lock-fill"></i></button>'
           : '<button class="btn btn-sm btn-outline-danger" title="Supprimer (corbeille Notion)" onclick="AvisValeur.cloudDelete(\'' + r + '\', this)"><i class="bi bi-trash"></i></button>';
         return '<div class="av-lib-item" data-avis-ref="' + esc(m.ref) + '">' +
-          '<div class="av-lib-info"><div class="av-lib-ref">' + dot + esc(m.ref) + '</div>' +
-          '<div class="av-lib-sub">' + esc(sub) + '</div><div class="av-lib-val">' + val + '</div></div>' +
+          '<div class="av-lib-info"><div class="av-lib-ref">' + dot +
+            '<span class="text-muted me-1" style="font-variant-numeric:tabular-nums;">#' + n + '</span>' + esc(m.ref) +
+            '<span class="badge bg-light text-dark ms-2" style="font-weight:600;"><i class="bi bi-calendar3 me-1"></i>' + dmy(m.date) + '</span></div>' +
+          '<div class="av-lib-sub">' + esc(meta) + '</div><div class="av-lib-val">' + val + '</div></div>' +
           '<div class="av-lib-act">' + delB + '<button class="btn btn-sm btn-primary ms-1" onclick="AvisValeur.cloudOpen(\'' + r + '\')">Ouvrir</button></div></div>';
       }).join('');
     });
@@ -5421,12 +5431,21 @@
     // RESYNC ÉTUDE : à chaque ouverture (y compris avis sauvegardé rechargé), on réassigne les
     // champs à badge « étude » (localisation & risques, cadastre, droits à bâtir, zonage) depuis
     // l'étude de marché courante, pour qu'ils ne restent jamais vides/périmés.
-    if (window.__fidiData) { try { injectEtudeGeoCadastre(state.data, window.__fidiData, window.__fidiInputs); } catch (e) {} }
+    // Ne resynchronise la géo/cadastre de l'ÉTUDE courante que si l'avis lui appartient
+    // (ou avis neuf prérempli). Sinon un avis rouvert depuis le cloud / une autre étude
+    // se ferait écraser sa localisation/cadastre par l'étude chargée (données faussées).
+    var _sameEtude = state.data && state.data.__srcKey && state.data.__srcKey === freshKey;
+    if (window.__fidiData && (!refDemande || _sameEtude)) {
+      try { injectEtudeGeoCadastre(state.data, window.__fidiData, window.__fidiInputs); } catch (e) {}
+    }
     refreshSavedSelect();
     state._crmRefreshed = false; // ré-autorise un refresh CRM à chaque ouverture de modale
     // Refresh header (toggle vente/loc) : rebuild rapide de la modale si nature a changé
     if (natureDemande) buildModal();
-    showSection(state.section);
+    // Rendu protégé : un avis ancien aux données partielles s'ouvre quand même (dégradé)
+    // au lieu d'échouer silencieusement (« l'avis ne s'ouvre pas »).
+    try { showSection(state.section); }
+    catch (e) { try { console.error('[avis] rendu partiel :', e); } catch (_) {} toast('Avis ouvert (données partielles)', true); }
     state.modal.show();
     try { if (typeof window.fidiRefreshAvisVersion === 'function') window.fidiRefreshAvisVersion(); } catch (e) {}
   }

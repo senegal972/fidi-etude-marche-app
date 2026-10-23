@@ -5131,6 +5131,7 @@ function proposerFacture(kind){
     '</div></div></div>';
   const el = document.getElementById('factureModal');
   el.addEventListener('hidden.bs.modal', ()=>el.remove());
+  fidiStackModal(el); // facture ouverte par-dessus l'avis : la placer au-dessus (clics accessibles)
   const pr = document.getElementById('factPayReq');
   if(pr) pr.addEventListener('change', ()=>{ const h=document.getElementById('factPayHint');
     if(h) h.textContent = pr.checked ? 'Le client règle en ligne (carte / PayPal) avant de recevoir la facture et le document.'
@@ -5663,9 +5664,35 @@ function fidiSharePdf(opts){
     '</div></div></div></div>';
   const el = document.getElementById('shareModal');
   el.addEventListener('hidden.bs.modal', ()=>el.remove());
+  fidiStackModal(el); // partage ouvert par-dessus l'avis : le placer au-dessus
   new bootstrap.Modal(el).show();
   // Génère le PDF automatiquement dès l'ouverture (plus de clic « Imprimer »).
   fidiAutoGenerate();
+}
+
+// Empilement de modales Bootstrap : place la dernière modale (et son backdrop) AU-DESSUS
+// des modales déjà ouvertes et désactive le piège de focus parent. Sans ça, une modale
+// ouverte par-dessus une autre (Facturer / Partager depuis l'avis) a ses boutons et champs
+// bloqués par le backdrop/focus-trap de la modale parente (« bouton inaccessible »).
+function fidiStackModal(el){
+  if(!el) return;
+  el.addEventListener('shown.bs.modal', function(){
+    try{
+      var opened = Array.from(document.querySelectorAll('.modal.show'));
+      if(opened.length < 2) return;
+      var base = 1060 + opened.length*20;
+      el.style.zIndex = base;
+      var bds = document.querySelectorAll('.modal-backdrop');
+      var bd = bds[bds.length-1];
+      if(bd) bd.style.zIndex = base - 10;
+      opened.forEach(function(o){ if(o!==el){ var inst = bootstrap.Modal.getInstance(o); if(inst && inst._focustrap){ try{ inst._focustrap.deactivate(); }catch(e){} } } });
+      el.addEventListener('hidden.bs.modal', function(){
+        var still = Array.from(document.querySelectorAll('.modal.show'));
+        var top = still[still.length-1];
+        if(top){ var inst = bootstrap.Modal.getInstance(top); if(inst && inst._focustrap){ try{ inst._focustrap.activate(); }catch(e){} } }
+      }, { once:true });
+    }catch(e){}
+  });
 }
 
 // Construit le HTML autonome (rendu identique) selon le type de document, puis
