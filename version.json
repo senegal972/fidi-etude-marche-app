@@ -1,9 +1,10 @@
 {
   "name": "FIDI · Étude de Marché & Avis de valeur",
-  "version": "1.3.5",
-  "build_date": "2026-10-23T18:30:00+01:00",
-  "build_label": "Coût démolition par défaut relevé (180/250 DOM €/m², sourcé 2025-2026)",
+  "version": "1.3.6",
+  "build_date": "2026-10-24T10:00:00+01:00",
+  "build_label": "Ré-ajout « Bâti vétuste résiduel — plus-value » (sur demande)",
   "changelog": [
+    "1.3.6 — Module bâti : ré-ajout de l'option « Bâti vétuste résiduel — plus-value » (valeur résiduelle du bâti debout = surface × prix neuf × (1−vétusté%)), titre élargi",
     "1.3.5 — Module bâti : coût démolition par défaut relevé à 180 €/m² métropole / 250 €/m² DOM (était 150/210), aligné sur les barèmes 2025-2026 (100–200 standard, 150–300 avec amiante/plomb ; sources travaux.com, lamaisonsaintgobain). Éditable.",
     "1.3.4 — Module bâti existant : titre « Surcoût résiduel de la valeur du bâti existant (ruine / à détruire) » + retrait de l'option « bâti vétuste résiduel » (traité via la décote d'état)",
     "1.3.3 — Étude : encadré décotes surfaciques masquable (exclu de l'impression/PDF quand masqué), masqué par défaut sous 1000 m² · nouvelle option « État & vétusté du bien » = décote d'état appliquée à la valeur vénale (grille d'expertise), exclusive du cas « bâtiment en ruine / à détruire »",
