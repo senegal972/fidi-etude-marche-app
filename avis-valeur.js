@@ -2399,6 +2399,7 @@
       '<button class="btn btn-sm btn-outline-secondary" data-action="new"><i class="bi bi-plus-lg me-1"></i>Nouveau</button>' +
       '<button class="btn btn-sm btn-outline-primary" data-action="prefill" title="Re-remplir depuis l\'étude en cours"><i class="bi bi-magic me-1"></i>Pré-remplir</button>' +
       '<button class="btn btn-sm btn-outline-success" data-action="save"><i class="bi bi-save me-1"></i>Sauvegarder</button>' +
+      '<span id="avAutoSaveTag" class="small text-success" style="font-size:.68rem;white-space:nowrap;" title="Enregistrement automatique local à chaque modification"></span>' +
       '<button class="btn btn-sm btn-outline-info" data-action="cloud" title="Mes dossiers sauvegardés dans Notion">☁️ Cloud</button>' +
       '<button class="btn btn-sm btn-outline-secondary" data-action="partager" title="Partager cet avis"><i class="bi bi-share me-1"></i>Partager</button>' +
       '<button class="btn btn-sm btn-outline-warning" data-action="facturer" title="Facturer & envoyer cet avis"><i class="bi bi-receipt me-1"></i>Facturer</button>' +
@@ -2466,10 +2467,14 @@
     modalEl.addEventListener('input', onInput);
     modalEl.addEventListener('change', onInput);
     modalEl.addEventListener('click', onClick);
-    // Fermeture de la modale avis → le garde-fou repasse au contexte étude.
+    // Fermeture de la modale avis → flush autosave + le garde-fou repasse au contexte étude.
     modalEl.addEventListener('hidden.bs.modal', function () {
+      try { avisAutoSaveNow(); } catch (e) {}
       if (window.FidiGuard && window.FidiGuard.saveHandler === fidiAvisGuardSave) window.FidiGuard.saveHandler = null;
     });
+    // Flush synchrone avant fermeture d'onglet / mise en arrière-plan (anti-perte des 600ms).
+    window.addEventListener('pagehide', function () { try { avisAutoSaveNow(); } catch (e) {} });
+    window.addEventListener('beforeunload', function () { try { avisAutoSaveNow(); } catch (e) {} });
     state.built = true;
   }
 
@@ -2560,8 +2565,10 @@
     }
     var isCb = el.type === 'checkbox';
     var val = isCb ? el.checked : el.value;
-    // Toute édition de l'avis marque des données non sauvegardées (garde-fou sortie).
+    // Toute édition de l'avis marque des données non sauvegardées (garde-fou sortie)
+    // ET déclenche l'autosave local temps réel (anti-perte).
     if (window.FidiGuard) { window.FidiGuard.setDirty(); window.FidiGuard.saveHandler = fidiAvisGuardSave; }
+    scheduleAvisAutoSave();
     if (el.dataset.p) setPath(state.data, el.dataset.p, val);
     else if (el.dataset.list) { var arr = getPath(state.data, el.dataset.list); arr[+el.dataset.idx][el.dataset.key] = val; }
     else if (el.dataset.simplelist) { getPath(state.data, el.dataset.simplelist)[+el.dataset.idx] = val; }
@@ -3733,6 +3740,27 @@
   }
   // Sauvegarde appelée par le garde-fou sortie (bouton « Enregistrer » de la modale de sortie).
   function fidiAvisGuardSave() { try { doSave(); } catch (e) {} return Promise.resolve(); }
+
+  // ── Autosave LOCAL temps réel ───────────────────────────────────────────────
+  // Chaque édition persiste l'avis dans localStorage (anti-perte sur ce poste), sans
+  // attendre « Sauvegarder ». La synchro CLOUD (Notion) reste manuelle (Sauvegarder / Partager).
+  var _avisAutoTimer = null;
+  function avisAutoSaveNow() {
+    try {
+      var ref = (state.data && state.data.metadata && state.data.metadata.ref || '').trim();
+      if (!ref) return false; // pas de référence → rien à clé-stocker
+      localStorage.setItem(AVIS_PREFIX + ref, JSON.stringify(state.data));
+      try { localStorage.setItem('fidi:avis:last', ref); } catch (e) {}
+      if (window.FidiGuard) FidiGuard.setClean(); // données en sécurité en local
+      var tag = document.getElementById('avAutoSaveTag');
+      if (tag) { tag.textContent = '✓ enregistré ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }); }
+      return true;
+    } catch (e) { return false; }
+  }
+  function scheduleAvisAutoSave() {
+    if (_avisAutoTimer) clearTimeout(_avisAutoTimer);
+    _avisAutoTimer = setTimeout(avisAutoSaveNow, 600);
+  }
 
   // ── Synchronisation Notion (cloud) ──────────────────────────
   function cloudSaveAvis(ref) {

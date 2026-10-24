@@ -1,9 +1,10 @@
 {
   "name": "FIDI · Étude de Marché & Avis de valeur",
-  "version": "1.3.8",
-  "build_date": "2026-10-24T14:00:00+01:00",
-  "build_label": "Garde-fou sortie étendu à l'avis (fermeture/retour → rester/enregistrer/quitter si non sauvegardé)",
+  "version": "1.3.9",
+  "build_date": "2026-10-24T16:00:00+01:00",
+  "build_label": "Avis : autosave local temps réel à chaque édition (anti-perte)",
   "changelog": [
+    "1.3.9 — Avis de valeur : enregistrement automatique LOCAL (localStorage) à chaque modification + flush à la fermeture (onglet/modale). La synchro cloud (Notion) reste au clic Sauvegarder / Partager. Indicateur « ✓ enregistré HH:MM » dans la barre.",
     "1.3.8 — Garde-fou sortie câblé pour l'avis de valeur : toute édition marque des données non sauvegardées → à la fermeture d'onglet (dialogue natif) ou au bouton Retour (modale Rester / Enregistrer / Quitter). Aucun blocage si rien n'a été modifié.",
     "1.3.7 — Module bâti : mémo sous les boutons expliquant succinctement chaque cas (À démolir = retiré ; Gros œuvre récupérable = ajouté ; Bâti vétuste résiduel = ajoute une valeur quand le bâti n'est pas compté dans la base)",
     "1.3.6 — Module bâti : ré-ajout de l'option « Bâti vétuste résiduel — plus-value » (valeur résiduelle du bâti debout = surface × prix neuf × (1−vétusté%)), titre élargi",
