@@ -1,9 +1,10 @@
 {
   "name": "FIDI · Étude de Marché & Avis de valeur",
-  "version": "1.3.9",
-  "build_date": "2026-10-24T16:00:00+01:00",
-  "build_label": "Avis : autosave local temps réel à chaque édition (anti-perte)",
+  "version": "1.4.0",
+  "build_date": "2026-10-24T18:00:00+01:00",
+  "build_label": "Décotes surfaciques masquées auto pour bâti (maison/appartement) ; visibles pour terrain ≥1000 m²",
   "changelog": [
+    "1.4.0 — Décotes surfaciques : masquage automatique selon le type de bien — visible uniquement pour un TERRAIN d'au moins 1000 m² ; masqué d'office pour maison/appartement/local (et terrain <1000 m²). Toujours modifiable via le bouton.",
     "1.3.9 — Avis de valeur : enregistrement automatique LOCAL (localStorage) à chaque modification + flush à la fermeture (onglet/modale). La synchro cloud (Notion) reste au clic Sauvegarder / Partager. Indicateur « ✓ enregistré HH:MM » dans la barre.",
     "1.3.8 — Garde-fou sortie câblé pour l'avis de valeur : toute édition marque des données non sauvegardées → à la fermeture d'onglet (dialogue natif) ou au bouton Retour (modale Rester / Enregistrer / Quitter). Aucun blocage si rien n'a été modifié.",
     "1.3.7 — Module bâti : mémo sous les boutons expliquant succinctement chaque cas (À démolir = retiré ; Gros œuvre récupérable = ajouté ; Bâti vétuste résiduel = ajoute une valeur quand le bâti n'est pas compté dans la base)",

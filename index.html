@@ -4440,11 +4440,17 @@ function renderTerrainDecote(e){
     ? terrainTotalSurface()
     : ((window.__fidiGpu||{}).parcelle && Number((window.__fidiGpu||{}).parcelle.contenance));
 
-  // Défaut d'affichage : la section décotes est MASQUÉE si le terrain fait moins de 1000 m²
-  // (abattement de contenance peu pertinent sous le seuil). Modifiable via le bouton.
-  if(window.__fidiDecotesHidden === undefined && contenance){
-    window.__fidiDecotesHidden = (contenance < 1000);
+  // Défaut d'affichage selon le TYPE DE BIEN :
+  //  - TERRAIN d'au moins 1000 m² → section VISIBLE (abattement de contenance pertinent)
+  //  - maison / appartement / local (bâti) → section MASQUÉE automatiquement
+  //  - terrain < 1000 m² → masquée (seuil peu pertinent)
+  // Modifiable ensuite via le bouton Afficher/Masquer.
+  if(window.__fidiDecotesHidden === undefined){
+    var _tb = String((window.__fidiData && window.__fidiData.type_bien) || (window.__fidiInputs && window.__fidiInputs.typeBien) || '').toLowerCase();
+    var _estTerrain = _tb.indexOf('terrain') >= 0;
+    window.__fidiDecotesHidden = !(_estTerrain && contenance && contenance >= 1000);
   }
+  try { applyDecotesVisibility(); } catch(e){} // applique l'état après avoir fixé le défaut
 
   // ── Cas TERRAIN AGRICOLE / NATUREL (ONF) : valeur fixe par zone = valeur retenue ──
   if(nature==='agricole' || nature==='naturel'){
