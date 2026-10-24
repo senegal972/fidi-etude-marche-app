@@ -178,6 +178,7 @@
     return { k: 0.62, lbl: 'zonage indéterminé' };
   }
   function decotesPage(d, ref) {
+    if (window.__fidiDecotesHidden) return ''; // section masquée → exclue du PDF
     const ests = d.estimations || {};
     const e = ests.terrain;
     if (!e || e.prix_m2 == null) return ''; // uniquement si estimation terrain

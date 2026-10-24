@@ -99,7 +99,7 @@ body.map-fs-on{overflow:hidden;}
 .dpe-compact .badge{font-size:.62rem;padding:.14em .34em;}
 .dpe-compact td.small,.dpe-compact .small{font-size:.68rem;}
 .pdf-mode #mapFsBtn{display:none!important;}
-@media print{ #mapFsBtn{display:none!important;} }
+@media print{ #mapFsBtn{display:none!important;} .no-print{display:none!important;} .decotes-collapsed{display:none!important;} }
 
 /* ─ Chart cards ─────────────────────────── */
 .chart-card{background:#fff;border-radius:12px;box-shadow:var(--card-shadow);padding:1.25rem 1rem;}
@@ -1617,6 +1617,7 @@ async function lancerAnalyse(){
   let locDirecte = {};
   window.__terrainExtra = [];   // réinitialise les parcelles supplémentaires à chaque analyse
   window.__extraParcFeatures = [];
+  window.__fidiDecotesHidden = undefined; // ré-évalue la règle < 1000 m² à chaque analyse
   if(searchMode() === 'cadastre'){
     const loc = await resolveCadastre();
     if(!loc) return;
@@ -4387,12 +4388,32 @@ function ensureDecotesWrap(anchor){
     wrap.innerHTML =
       '<div class="chart-card" style="border-left:6px solid #198754;">' +
         '<h6 class="d-flex align-items-center gap-2 mb-2" style="color:#198754;font-weight:700;">' +
-          '<i class="bi bi-rulers"></i>Abattement de contenance / Décotes surfaciques</h6>' +
+          '<i class="bi bi-rulers"></i>Abattement de contenance / Décotes surfaciques' +
+          '<button type="button" class="btn btn-sm btn-outline-success ms-auto py-0 px-2 no-print" id="decotesToggle" onclick="toggleDecotes()" style="font-weight:600;font-size:.72rem;"><i class="bi bi-eye-slash me-1"></i>Masquer</button>' +
+        '</h6>' +
+        '<div class="small text-muted mb-2 d-none no-print" id="decotesHiddenNote"><i class="bi bi-eye-slash me-1"></i>Section masquée — non imprimée et absente du PDF. Cliquez « Afficher » pour l\'inclure.</div>' +
         '<div class="row g-3" id="decotesInner"></div>' +
       '</div>';
     anchor.parentNode.appendChild(wrap);
   }
+  applyDecotesVisibility();
   return document.getElementById('decotesInner');
+}
+// Applique l'état afficher/masquer de la section décotes (écran + exclusion impression/PDF).
+function applyDecotesVisibility(){
+  var wrap = document.getElementById('decotesWrap'); if(!wrap) return;
+  var hidden = !!window.__fidiDecotesHidden;
+  var inner = document.getElementById('decotesInner');
+  var note  = document.getElementById('decotesHiddenNote');
+  var btn   = document.getElementById('decotesToggle');
+  wrap.classList.toggle('decotes-collapsed', hidden);
+  if(inner) inner.style.display = hidden ? 'none' : '';
+  if(note)  note.classList.toggle('d-none', !hidden);
+  if(btn)   btn.innerHTML = hidden ? '<i class="bi bi-eye me-1"></i>Afficher' : '<i class="bi bi-eye-slash me-1"></i>Masquer';
+}
+function toggleDecotes(){
+  window.__fidiDecotesHidden = !window.__fidiDecotesHidden;
+  applyDecotesVisibility();
 }
 function renderTerrainDecote(e){
   let box = document.getElementById('terrainDecoteBox');
@@ -4413,6 +4434,12 @@ function renderTerrainDecote(e){
   const contenance = (typeof terrainTotalSurface === 'function' && terrainTotalSurface() > 0)
     ? terrainTotalSurface()
     : ((window.__fidiGpu||{}).parcelle && Number((window.__fidiGpu||{}).parcelle.contenance));
+
+  // Défaut d'affichage : la section décotes est MASQUÉE si le terrain fait moins de 1000 m²
+  // (abattement de contenance peu pertinent sous le seuil). Modifiable via le bouton.
+  if(window.__fidiDecotesHidden === undefined && contenance){
+    window.__fidiDecotesHidden = (contenance < 1000);
+  }
 
   // ── Cas TERRAIN AGRICOLE / NATUREL (ONF) : valeur fixe par zone = valeur retenue ──
   if(nature==='agricole' || nature==='naturel'){
