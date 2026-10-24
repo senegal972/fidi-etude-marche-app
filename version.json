@@ -1,9 +1,10 @@
 {
   "name": "FIDI · Étude de Marché & Avis de valeur",
-  "version": "1.3.6",
-  "build_date": "2026-10-24T10:00:00+01:00",
-  "build_label": "Ré-ajout « Bâti vétuste résiduel — plus-value » (sur demande)",
+  "version": "1.3.7",
+  "build_date": "2026-10-24T11:30:00+01:00",
+  "build_label": "Mémo explicatif des 3 cas (À démolir / Gros œuvre / Bâti vétuste résiduel)",
   "changelog": [
+    "1.3.7 — Module bâti : mémo sous les boutons expliquant succinctement chaque cas (À démolir = retiré ; Gros œuvre récupérable = ajouté ; Bâti vétuste résiduel = ajoute une valeur quand le bâti n'est pas compté dans la base)",
     "1.3.6 — Module bâti : ré-ajout de l'option « Bâti vétuste résiduel — plus-value » (valeur résiduelle du bâti debout = surface × prix neuf × (1−vétusté%)), titre élargi",
     "1.3.5 — Module bâti : coût démolition par défaut relevé à 180 €/m² métropole / 250 €/m² DOM (était 150/210), aligné sur les barèmes 2025-2026 (100–200 standard, 150–300 avec amiante/plomb ; sources travaux.com, lamaisonsaintgobain). Éditable.",
     "1.3.4 — Module bâti existant : titre « Surcoût résiduel de la valeur du bâti existant (ruine / à détruire) » + retrait de l'option « bâti vétuste résiduel » (traité via la décote d'état)",

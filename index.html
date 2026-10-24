@@ -4650,6 +4650,11 @@ function ruineOpen(){
         '<button class="btn btn-sm btn-success" onclick="ruineApply(1)"><i class="bi bi-plus-lg"></i> Ajouter à l\'estimation</button>'+
         '<button class="btn btn-sm btn-outline-danger" onclick="ruineApply(0)"><i class="bi bi-x-lg"></i> Retirer</button>'+
       '</div>'+
+      '<div class="text-muted mt-2" style="font-size:.66rem;line-height:1.4;">'+
+        '<b>À démolir</b> : coût de démolition <b>retiré</b> de la valeur (bâti sans valeur, à raser).<br>'+
+        '<b>Gros œuvre récupérable</b> : valeur du gros œuvre réutilisable <b>ajoutée</b> (structure conservée).<br>'+
+        '<b>Bâti vétuste résiduel</b> : <b>ajoute</b> une valeur quand le bâti n\'est pas compté dans la base (bâti debout, déprécié).'+
+      '</div>'+
       '<div class="text-muted mt-1" style="font-size:.66rem;">Barèmes indicatifs France (démolition 100–200 €/m² standard (moy. ~165), 150–300 avec amiante/plomb ; gros œuvre récupérable ≈ 40–50 % du neuf). '+(dom?'Majoration DOM (~×1,4) appliquée par défaut. ':'')+'À ajuster librement. Ni notaire ni expert — valeur à dire d\'expert / devis.</div>'+
     '</div>';
 }
