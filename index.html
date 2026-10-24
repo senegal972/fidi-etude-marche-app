@@ -820,12 +820,17 @@ body.map-fs-on{overflow:hidden;}
             <button type="button" class="btn btn-sm btn-light" style="font-weight:600;" onclick="ruineOpen()">
               <i class="bi bi-bricks me-1"></i>Bâtiment en ruine / à détruire / vétuste…
             </button>
+            <button type="button" class="btn btn-sm btn-light" style="font-weight:600;" onclick="etatOpen()" title="Décote d'état / vétusté (grille d'expertise) — bâti sans démolition">
+              <i class="bi bi-clipboard2-check me-1"></i>État &amp; vétusté du bien…
+            </button>
             <button type="button" class="btn btn-sm btn-warning" style="font-weight:600;" onclick="recapEtudeOpen()" title="Générer un récapitulatif A4 (synthèse, estimation, transactions, constructibilité, carte) à envoyer / imprimer">
               <i class="bi bi-file-earmark-text me-1"></i>Récapitulatif de l'étude (A4)
             </button>
             <span id="ruineAppliedTag" class="ms-2 small fw-semibold" style="color:#ffd54f;"></span>
+            <span id="etatAppliedTag" class="ms-2 small fw-semibold" style="color:#ffd54f;"></span>
           </div>
           <div id="ruinePanel" class="mt-2 d-none" style="clear:both;"></div>
+          <div id="etatPanel" class="mt-2 d-none" style="clear:both;"></div>
         </div>
       </div>
       <!-- Estimations par type : Maison / Appartement / Terrain -->
@@ -4602,13 +4607,19 @@ function ruineApply(add){
   setB('est-valeur', med); setB('est-med', med); setB('est-min', mn); setB('est-max', mx);
   var tag=document.getElementById('ruineAppliedTag');
   if(tag) tag.textContent = applied ? ('bâti '+(applied>0?'+':'−')+fmt(Math.abs(applied))+' € inclus') : '';
+  // EXCLUSIVITÉ : retire la décote d'état (les deux ne se cumulent pas).
+  window.__etatDecotePct = 0;
+  var etag=document.getElementById('etatAppliedTag'); if(etag) etag.textContent='';
   var dd=window.__fidiData||{}; dd.estimation=dd.estimation||{};
-  dd.estimation.ruine_delta=applied; dd.estimation.valeur_med=med; dd.estimation.valeur_min=mn; dd.estimation.valeur_max=mx;
+  dd.estimation.ruine_delta=applied; dd.estimation.etat_decote_pct=0;
+  dd.estimation.valeur_med=med; dd.estimation.valeur_min=mn; dd.estimation.valeur_max=mx;
   if(window.__ruineLast) window.__ruineLast.applied = !!applied; // trace l'état pour le récap
 }
 function ruineReset(){ window.__estBase=null; window.__ruineDelta=0; window.__ruineAppliedDelta=0; window.__ruineLast=null;
   var t=document.getElementById('ruineAppliedTag'); if(t) t.textContent='';
-  var p=document.getElementById('ruinePanel'); if(p){ p.classList.add('d-none'); p.innerHTML=''; } }
+  var p=document.getElementById('ruinePanel'); if(p){ p.classList.add('d-none'); p.innerHTML=''; }
+  try { etatReset(); } catch(e){} // réinitialise aussi la décote d'état (exclusive)
+}
 function ruineOpen(){
   var p = document.getElementById('ruinePanel'); if(!p) return;
   if(!p.classList.contains('d-none')){ p.classList.add('d-none'); return; }
@@ -4641,6 +4652,63 @@ function ruineOpen(){
       '</div>'+
       '<div class="text-muted mt-1" style="font-size:.66rem;">Barèmes indicatifs France (démolition 100–250 €/m² selon matériau, +amiante/plomb ; gros œuvre récupérable ≈ 40–50 % du neuf). '+(dom?'Majoration DOM (~×1,4) appliquée par défaut. ':'')+'À ajuster librement. Ni notaire ni expert — valeur à dire d\'expert / devis.</div>'+
     '</div>';
+}
+
+// ═══ État & vétusté : décote d'état (grille d'expertise) appliquée à la valeur vénale ═══
+// EXCLUSIF du cas « bâtiment en ruine / à détruire ». Pour un bâti sans démolition.
+function etatReset(){
+  window.__etatDecotePct = 0;
+  var t=document.getElementById('etatAppliedTag'); if(t) t.textContent='';
+  var p=document.getElementById('etatPanel'); if(p){ p.classList.add('d-none'); p.innerHTML=''; }
+}
+function etatOpen(){
+  var p = document.getElementById('etatPanel'); if(!p) return;
+  if(!p.classList.contains('d-none')){ p.classList.add('d-none'); return; }
+  var rp=document.getElementById('ruinePanel'); if(rp) rp.classList.add('d-none'); // un seul panneau ouvert
+  p.classList.remove('d-none');
+  p.innerHTML =
+    '<div class="p-2 rounded" style="background:#fff;color:#213547;">'+
+      '<div class="fw-semibold mb-1" style="font-size:.85rem;">Décote d\'état / vétusté — grille d\'expertise</div>'+
+      '<div class="small text-muted mb-2">Pour un bâti <b>sans démolition ni gros œuvre</b> : applique une décote d\'état à la valeur vénale (même logique que l\'avis de valeur). <b>Exclusif</b> du cas « ruine / à détruire ».</div>'+
+      '<div class="row g-2 align-items-end">'+
+        '<div class="col-7 col-md-7"><label class="form-label small mb-0">Niveau d\'état</label>'+
+          '<select id="etatGrille" class="form-select form-select-sm" onchange="var e=document.getElementById(\'etatPct\');if(e)e.value=this.value;">'+
+            '<option value="0">Neuf / récent — 0 %</option>'+
+            '<option value="5">Bon état — 5 %</option>'+
+            '<option value="10" selected>État d\'usage / à rafraîchir — 10 %</option>'+
+            '<option value="20">Travaux à prévoir — 20 %</option>'+
+            '<option value="30">Vétuste (hors gros œuvre) — 30 %</option>'+
+            '<option value="40">Très vétuste — 40 %</option>'+
+          '</select></div>'+
+        '<div class="col-5 col-md-3"><label class="form-label small mb-0">Décote %</label>'+
+          '<input type="number" id="etatPct" class="form-control form-control-sm" value="10" min="0" max="90"></div>'+
+      '</div>'+
+      '<div class="d-flex flex-wrap gap-2 align-items-center mt-2">'+
+        '<button class="btn btn-sm btn-success" onclick="etatApply(1)"><i class="bi bi-percent me-1"></i>Appliquer la décote</button>'+
+        '<button class="btn btn-sm btn-outline-danger" onclick="etatApply(0)"><i class="bi bi-x-lg"></i> Retirer</button>'+
+        '<span id="etatResult" class="small fw-semibold"></span>'+
+      '</div>'+
+      '<div class="text-muted mt-1" style="font-size:.66rem;">Décote d\'état indicative appliquée à la fourchette vénale (bornes basse/médiane/haute). Ni notaire ni expert.</div>'+
+    '</div>';
+}
+function etatApply(apply){
+  if(!window.__estBase){ window.__estBase = { med: ruineParse('est-med'), min: ruineParse('est-min'), max: ruineParse('est-max') }; }
+  if(!(window.__estBase.med>0)){ var r=document.getElementById('etatResult'); if(r) r.innerHTML='<span class="text-danger">Estimation vénale non renseignée.</span>'; return; }
+  var pct = apply ? Math.max(0, Math.min(90, Number((document.getElementById('etatPct')||{}).value)||0)) : 0;
+  window.__etatDecotePct = pct;
+  // EXCLUSIVITÉ : retire toute moins/plus-value « ruine ».
+  window.__ruineAppliedDelta = 0;
+  if(window.__ruineLast) window.__ruineLast.applied = false;
+  var rtag=document.getElementById('ruineAppliedTag'); if(rtag) rtag.textContent='';
+  var f = 1 - pct/100;
+  var med=Math.round(window.__estBase.med*f), mn=Math.round(window.__estBase.min*f), mx=Math.round(window.__estBase.max*f);
+  var setB=function(id,v){ var el=document.getElementById(id); if(el) el.textContent=fmtEur(v); };
+  setB('est-valeur', med); setB('est-med', med); setB('est-min', mn); setB('est-max', mx);
+  var tag=document.getElementById('etatAppliedTag'); if(tag) tag.textContent = pct ? ('décote état −'+pct+' % incluse') : '';
+  var res=document.getElementById('etatResult'); if(res) res.innerHTML = pct ? ('<span style="color:#b02a37;">−'+pct+' % → '+fmtEur(med)+'</span>') : 'Décote retirée.';
+  var dd=window.__fidiData||{}; dd.estimation=dd.estimation||{};
+  dd.estimation.etat_decote_pct=pct; dd.estimation.ruine_delta=0;
+  dd.estimation.valeur_med=med; dd.estimation.valeur_min=mn; dd.estimation.valeur_max=mx;
 }
 
 // ═══ Récapitulatif de l'étude — 1 page A4 (synthèse, estimation, transactions,
