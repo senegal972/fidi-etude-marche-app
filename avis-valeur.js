@@ -2466,6 +2466,10 @@
     modalEl.addEventListener('input', onInput);
     modalEl.addEventListener('change', onInput);
     modalEl.addEventListener('click', onClick);
+    // Fermeture de la modale avis → le garde-fou repasse au contexte étude.
+    modalEl.addEventListener('hidden.bs.modal', function () {
+      if (window.FidiGuard && window.FidiGuard.saveHandler === fidiAvisGuardSave) window.FidiGuard.saveHandler = null;
+    });
     state.built = true;
   }
 
@@ -2556,6 +2560,8 @@
     }
     var isCb = el.type === 'checkbox';
     var val = isCb ? el.checked : el.value;
+    // Toute édition de l'avis marque des données non sauvegardées (garde-fou sortie).
+    if (window.FidiGuard) { window.FidiGuard.setDirty(); window.FidiGuard.saveHandler = fidiAvisGuardSave; }
     if (el.dataset.p) setPath(state.data, el.dataset.p, val);
     else if (el.dataset.list) { var arr = getPath(state.data, el.dataset.list); arr[+el.dataset.idx][el.dataset.key] = val; }
     else if (el.dataset.simplelist) { getPath(state.data, el.dataset.simplelist)[+el.dataset.idx] = val; }
@@ -3720,10 +3726,13 @@
       localStorage.setItem(AVIS_PREFIX + ref, JSON.stringify(state.data));
       try { localStorage.setItem('fidi:avis:last', ref); } catch (e) {}
       refreshSavedSelect(); toast('Avis sauvegardé');
+      if (window.FidiGuard) FidiGuard.setClean(); // données à jour → plus de garde-fou
     }
     catch (e) { toast('Erreur de sauvegarde', true); }
     cloudSaveAvis(ref); // synchro Notion en arrière-plan (best-effort)
   }
+  // Sauvegarde appelée par le garde-fou sortie (bouton « Enregistrer » de la modale de sortie).
+  function fidiAvisGuardSave() { try { doSave(); } catch (e) {} return Promise.resolve(); }
 
   // ── Synchronisation Notion (cloud) ──────────────────────────
   function cloudSaveAvis(ref) {
