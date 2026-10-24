@@ -4627,7 +4627,7 @@ function ruineOpen(){
   p.classList.remove('d-none');
   p.innerHTML =
     '<div class="p-2 rounded" style="background:#fff;color:#213547;">'+
-      '<div class="fw-semibold mb-1" style="font-size:.85rem;">Valeur du bâti existant (ruine / à détruire / vétuste)</div>'+
+      '<div class="fw-semibold mb-1" style="font-size:.85rem;">Surcoût résiduel de la valeur du bâti existant ( ruine / à détruire )</div>'+
       '<div class="row g-2 align-items-end">'+
         '<div class="col-6 col-md-3"><label class="form-label small mb-0">Surface bâtie (m²)</label>'+
           '<input type="number" id="ruineSurf" class="form-control form-control-sm" min="1" placeholder="ex : 90"></div>'+
@@ -4635,7 +4635,6 @@ function ruineOpen(){
           '<select id="ruineMode" class="form-select form-select-sm" onchange="ruineModeChange()">'+
             '<option value="demo">À démolir — moins-value</option>'+
             '<option value="recup">Gros œuvre récupérable — plus-value</option>'+
-            '<option value="vetuste">Bâti vétuste résiduel — plus-value</option>'+
           '</select></div>'+
         '<div class="col-6 col-md-3"><label class="form-label small mb-0" id="ruineTauxLbl">Coût démolition (€/m²)</label>'+
           '<input type="number" id="ruineTaux" class="form-control form-control-sm" value="'+(dom?210:150)+'"></div>'+

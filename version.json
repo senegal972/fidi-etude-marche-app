@@ -1,9 +1,10 @@
 {
-  "name":        "FIDI · Étude de Marché & Avis de valeur",
-  "version":     "1.3.3",
-  "build_date":  "2026-10-23T15:00:00+01:00",
-  "build_label": "Décotes surfaciques masquables (défaut <1000 m²) · option décote d'état/vétusté (exclusive du cas ruine)",
+  "name": "FIDI · Étude de Marché & Avis de valeur",
+  "version": "1.3.4",
+  "build_date": "2026-10-23T17:30:00+01:00",
+  "build_label": "Module ruine : libellé « surcoût résiduel » + retrait du cas vétuste résiduel",
   "changelog": [
+    "1.3.4 — Module bâti existant : titre « Surcoût résiduel de la valeur du bâti existant (ruine / à détruire) » + retrait de l'option « bâti vétuste résiduel » (traité via la décote d'état)",
     "1.3.3 — Étude : encadré décotes surfaciques masquable (exclu de l'impression/PDF quand masqué), masqué par défaut sous 1000 m² · nouvelle option « État & vétusté du bien » = décote d'état appliquée à la valeur vénale (grille d'expertise), exclusive du cas « bâtiment en ruine / à détruire »",
     "1.3.2 —Noms de fichiers PDF (avis & étude) incluent le destinataire · numérotation : le plus récent porte le plus grand n° · dropdown « Avis sauvegardés » affiche le nom du destinataire en 1er · correction backdrop/modal-open après fermeture d'une modale empilée (interactivité boutons footer)",
     "1.3.1 —Badge version + date (étude & avis) + détection auto de mise à jour · liste avis triée/numérotée/datée + ouverture robuste · boutons Facturer/Partager accessibles (modales empilées) · dropdown « Avis sauvegardés » explicite (n° · réf · nom · date)",
