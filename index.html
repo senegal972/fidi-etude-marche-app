@@ -4573,7 +4573,7 @@ function ruineModeChange(){
   var showVet = (m==='vetuste');
   if(vet) vet.style.display = showVet ? '' : 'none';
   if(vlbl) vlbl.style.display = showVet ? '' : 'none';
-  if(m==='demo'){ if(lbl) lbl.textContent='Coût démolition (€/m²)'; if(taux) taux.value = dom?210:150; }
+  if(m==='demo'){ if(lbl) lbl.textContent='Coût démolition (€/m²)'; if(taux) taux.value = dom?250:180; }
   else if(m==='recup'){ if(lbl) lbl.textContent='Valeur récup. (€/m²)'; if(taux) taux.value = dom?300:250; }
   else { if(lbl) lbl.textContent='Prix bâti neuf (€/m²)'; if(taux) taux.value = dom?1600:1400; }
 }
@@ -4637,7 +4637,7 @@ function ruineOpen(){
             '<option value="recup">Gros œuvre récupérable — plus-value</option>'+
           '</select></div>'+
         '<div class="col-6 col-md-3"><label class="form-label small mb-0" id="ruineTauxLbl">Coût démolition (€/m²)</label>'+
-          '<input type="number" id="ruineTaux" class="form-control form-control-sm" value="'+(dom?210:150)+'"></div>'+
+          '<input type="number" id="ruineTaux" class="form-control form-control-sm" value="'+(dom?250:180)+'"></div>'+
         '<div class="col-6 col-md-2"><label class="form-label small mb-0" id="ruineVetLbl" style="display:none;">Vétusté %</label>'+
           '<input type="number" id="ruineVet" class="form-control form-control-sm" value="70" min="0" max="100" style="display:none;"></div>'+
       '</div>'+
@@ -4649,7 +4649,7 @@ function ruineOpen(){
         '<button class="btn btn-sm btn-success" onclick="ruineApply(1)"><i class="bi bi-plus-lg"></i> Ajouter à l\'estimation</button>'+
         '<button class="btn btn-sm btn-outline-danger" onclick="ruineApply(0)"><i class="bi bi-x-lg"></i> Retirer</button>'+
       '</div>'+
-      '<div class="text-muted mt-1" style="font-size:.66rem;">Barèmes indicatifs France (démolition 100–250 €/m² selon matériau, +amiante/plomb ; gros œuvre récupérable ≈ 40–50 % du neuf). '+(dom?'Majoration DOM (~×1,4) appliquée par défaut. ':'')+'À ajuster librement. Ni notaire ni expert — valeur à dire d\'expert / devis.</div>'+
+      '<div class="text-muted mt-1" style="font-size:.66rem;">Barèmes indicatifs France (démolition 100–200 €/m² standard (moy. ~165), 150–300 avec amiante/plomb ; gros œuvre récupérable ≈ 40–50 % du neuf). '+(dom?'Majoration DOM (~×1,4) appliquée par défaut. ':'')+'À ajuster librement. Ni notaire ni expert — valeur à dire d\'expert / devis.</div>'+
     '</div>';
 }
 
