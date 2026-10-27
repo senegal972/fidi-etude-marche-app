@@ -2401,6 +2401,7 @@
       '<button class="btn btn-sm btn-outline-success" data-action="save"><i class="bi bi-save me-1"></i>Sauvegarder</button>' +
       '<span id="avAutoSaveTag" class="small text-success" style="font-size:.68rem;white-space:nowrap;" title="Enregistrement automatique local à chaque modification"></span>' +
       '<button class="btn btn-sm btn-outline-info" data-action="cloud" title="Mes dossiers sauvegardés dans Notion">☁️ Cloud</button>' +
+      '<button class="btn btn-sm btn-outline-secondary" data-action="history" title="Versions antérieures (10 dernières, restaurables)"><i class="bi bi-clock-history me-1"></i>Versions</button>' +
       '<button class="btn btn-sm btn-outline-secondary" data-action="partager" title="Partager cet avis"><i class="bi bi-share me-1"></i>Partager</button>' +
       '<button class="btn btn-sm btn-outline-warning" data-action="facturer" title="Facturer & envoyer cet avis"><i class="bi bi-receipt me-1"></i>Facturer</button>' +
       '<button class="btn btn-sm btn-outline-dark" data-action="toggle-preview"><i class="bi bi-eye me-1"></i>Aperçu</button>' +
@@ -2655,6 +2656,7 @@
     else if (a === 'prefill') doPrefill();
     else if (a === 'save') doSave();
     else if (a === 'cloud') doCloud();
+    else if (a === 'history') doHistory();
     else if (a === 'partager') doPartager();
     else if (a === 'facturer') doFacturer();
     else if (a === 'load') doLoad();
@@ -3735,12 +3737,74 @@
       try { localStorage.setItem('fidi:avis:last', ref); } catch (e) {}
       refreshSavedSelect(); toast('Avis sauvegardé');
       if (window.FidiGuard) FidiGuard.setClean(); // données à jour → plus de garde-fou
+      avisPushHistory(ref); // historique local : 10 dernières versions (rotation)
     }
     catch (e) { toast('Erreur de sauvegarde', true); }
     cloudSaveAvis(ref); // synchro Notion en arrière-plan (best-effort)
   }
   // Sauvegarde appelée par le garde-fou sortie (bouton « Enregistrer » de la modale de sortie).
   function fidiAvisGuardSave() { try { doSave(); } catch (e) {} return Promise.resolve(); }
+
+  // ── Historique local : 10 dernières versions par avis (rotation, anti-perte) ────
+  function histKey(ref) { return AVIS_PREFIX + ref + '::hist'; }
+  function avisPushHistory(ref) {
+    if (!ref) return;
+    try {
+      var snap = JSON.stringify(state.data);
+      var arr = [];
+      try { arr = JSON.parse(localStorage.getItem(histKey(ref)) || '[]'); } catch (e) { arr = []; }
+      if (!Array.isArray(arr)) arr = [];
+      if (arr.length && arr[0].d === snap) return; // identique à la dernière → pas de doublon
+      arr.unshift({ ts: Date.now(), d: snap });
+      arr = arr.slice(0, 10); // ne garde que les 10 dernières, les plus anciennes sont supprimées
+      try { localStorage.setItem(histKey(ref), JSON.stringify(arr)); }
+      catch (e) { while (arr.length > 1) { arr.pop(); try { localStorage.setItem(histKey(ref), JSON.stringify(arr)); break; } catch (_) {} } }
+    } catch (e) {}
+  }
+  function doHistory() {
+    var ref = (state.data && state.data.metadata && state.data.metadata.ref || '').trim();
+    if (!ref) { toast('Référence requise', true); return; }
+    var arr = [];
+    try { arr = JSON.parse(localStorage.getItem(histKey(ref)) || '[]'); } catch (e) { arr = []; }
+    if (typeof bootstrap === 'undefined') { alert('Bootstrap non chargé.'); return; }
+    var root = document.getElementById('avisHistRoot');
+    if (!root) { root = document.createElement('div'); root.id = 'avisHistRoot'; document.body.appendChild(root); }
+    var rows = arr.length ? arr.map(function (v, i) {
+      var dt = new Date(v.ts);
+      var lbl = (!isNaN(dt) ? dt.toLocaleString('fr-FR') : '—');
+      var val = '';
+      try { var dd = JSON.parse(v.d); var c = compute(dd); if (c.voccBas && c.voccHaut) val = fmt(c.voccBas) + ' – ' + fmt(c.voccHaut) + ' €'; } catch (e) {}
+      return '<div class="av-lib-item"><div class="av-lib-info">' +
+        '<div class="av-lib-ref">Version ' + (i === 0 ? 'la plus récente' : '−' + i) + '</div>' +
+        '<div class="av-lib-sub">' + esc(lbl) + (val ? ' · ' + esc(val) : '') + '</div></div>' +
+        '<div class="av-lib-act"><button class="btn btn-sm btn-primary" onclick="AvisValeur.histRestore(' + i + ')">Restaurer</button></div></div>';
+    }).join('') : '<div class="av-tip" style="padding:1rem;text-align:center;">Aucune version antérieure enregistrée pour cet avis.</div>';
+    root.innerHTML = '<div class="modal fade" id="avisHistModal" tabindex="-1"><div class="modal-dialog modal-dialog-scrollable"><div class="modal-content">' +
+      '<div class="modal-header" style="background:#1a3a6e;color:#fff;"><h5 class="modal-title"><i class="bi bi-clock-history me-2"></i>Versions antérieures — ' + esc(ref) + '</h5>' +
+      '<button type="button" class="btn-close" style="filter:invert(1)" data-bs-dismiss="modal"></button></div>' +
+      '<div class="modal-body"><div class="av-tip" style="margin-bottom:.6rem;">10 dernières versions enregistrées localement (à chaque Sauvegarder). Restaurer remplace l\'avis courant.</div>' + rows + '</div>' +
+      '</div></div></div>';
+    var el = document.getElementById('avisHistModal');
+    el.addEventListener('hidden.bs.modal', function () { el.remove(); });
+    fidiStackModal(el);
+    new bootstrap.Modal(el).show();
+  }
+  function histRestore(i) {
+    var ref = (state.data && state.data.metadata && state.data.metadata.ref || '').trim();
+    var arr = [];
+    try { arr = JSON.parse(localStorage.getItem(histKey(ref)) || '[]'); } catch (e) { arr = []; }
+    var v = arr[i]; if (!v) { toast('Version introuvable', true); return; }
+    if (!confirm('Restaurer cette version ? L\'avis courant sera remplacé (la version actuelle reste dans l\'historique).')) return;
+    try {
+      avisPushHistory(ref); // sauve l'état courant avant de restaurer
+      state.data = ensureExpertBlock(JSON.parse(v.d));
+      state.data.__saved = true;
+      try { localStorage.setItem(AVIS_PREFIX + ref, JSON.stringify(state.data)); } catch (e) {}
+      var m = document.getElementById('avisHistModal'); if (m) { var bm = bootstrap.Modal.getInstance(m); if (bm) bm.hide(); }
+      showSection(state.section || 'metadata');
+      toast('Version restaurée');
+    } catch (e) { toast('Restauration impossible', true); }
+  }
 
   // ── Autosave LOCAL temps réel ───────────────────────────────────────────────
   // Chaque édition persiste l'avis dans localStorage (anti-perte sur ce poste), sans
@@ -5610,5 +5674,5 @@
     }
   }
 
-  window.AvisValeur = { open: open, openLibrary: openLibrary, listAvis: avisList, cloud: doCloud, cloudOpen: cloudOpen, cloudDelete: cloudDelete, partager: doPartager, facturer: doFacturer, _compute: compute, _prefill: buildPrefillFromEtude };
+  window.AvisValeur = { open: open, openLibrary: openLibrary, listAvis: avisList, cloud: doCloud, cloudOpen: cloudOpen, cloudDelete: cloudDelete, histRestore: histRestore, partager: doPartager, facturer: doFacturer, _compute: compute, _prefill: buildPrefillFromEtude };
 })();
