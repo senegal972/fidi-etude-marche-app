@@ -3722,6 +3722,7 @@
     showSection(state.section); toast('Pré-rempli depuis l\'étude');
   }
   function doSave() {
+    if (state._cloudReloadPending) { toast('Chargement cloud en cours — patientez avant d\'enregistrer', true); return; }
     var ref = (state.data.metadata.ref || '').trim();
     if (!ref) { toast('Référence requise', true); return; }
     // Rattache l'avis à l'étude courante (pour la reprise automatique) + marque comme sauvegardé.
@@ -3747,6 +3748,7 @@
   var _avisAutoTimer = null;
   function avisAutoSaveNow() {
     try {
+      if (state._cloudReloadPending) return false; // repli cloud en cours → ne pas écraser
       var ref = (state.data && state.data.metadata && state.data.metadata.ref || '').trim();
       if (!ref) return false; // pas de référence → rien à clé-stocker
       localStorage.setItem(AVIS_PREFIX + ref, JSON.stringify(state.data));
@@ -3758,6 +3760,7 @@
     } catch (e) { return false; }
   }
   function scheduleAvisAutoSave() {
+    if (state._cloudReloadPending) return; // repli cloud en cours → pas d'autosave
     if (_avisAutoTimer) clearTimeout(_avisAutoTimer);
     _avisAutoTimer = setTimeout(avisAutoSaveNow, 600);
   }
@@ -5467,6 +5470,12 @@
         state.section = 'metadata';
         refDemande = state.data.metadata.ref;   // marque comme chargé → évite le prefill destructif
         toast('Avis rechargé : ' + state.data.metadata.ref);
+      } else if (sref) {
+        // Pas trouvé en local : l'avis existe peut-être dans le CLOUD (autre poste / stockage
+        // effacé). On programme un repli cloud et on BLOQUE autosave + sauvegarde d'ici là,
+        // pour qu'un avis vierge n'écrase pas la version cloud (même référence stable).
+        state._pendingCloudRef = sref;
+        state._cloudReloadPending = true;
       }
     }
 
@@ -5502,6 +5511,30 @@
     catch (e) { try { console.error('[avis] rendu partiel :', e); } catch (_) {} toast('Avis ouvert (données partielles)', true); }
     state.modal.show();
     try { if (typeof window.fidiRefreshAvisVersion === 'function') window.fidiRefreshAvisVersion(); } catch (e) {}
+    // Repli cloud : si l'avis de cette étude n'était pas en local, on tente de le récupérer
+    // dans Notion (évite d'afficher un avis vierge et d'écraser la version cloud).
+    if (state._pendingCloudRef) { var _pr = state._pendingCloudRef; state._pendingCloudRef = null; cloudReloadByRef(_pr); }
+  }
+
+  // Récupère un avis dans le cloud par sa référence (repli quand le local est absent).
+  function cloudReloadByRef(ref) {
+    toast('Recherche de l\'avis dans le cloud…');
+    fetch('/api/notion-get?kind=avis&ref=' + encodeURIComponent(ref))
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        state._cloudReloadPending = false;
+        if (j && j.data) {
+          state.data = ensureExpertBlock(j.data);
+          state.data.__saved = true;
+          try { localStorage.setItem(AVIS_PREFIX + ref, JSON.stringify(state.data)); localStorage.setItem('fidi:avis:last', ref); } catch (e) {}
+          if (window.__fidiData) { try { injectEtudeGeoCadastre(state.data, window.__fidiData, window.__fidiInputs); } catch (e) {} }
+          refreshSavedSelect();
+          try { showSection(state.section || 'metadata'); } catch (e) {}
+          toast('☁️ Avis récupéré depuis le cloud : ' + ref);
+        }
+        // sinon : pas dans le cloud → l'avis vierge reste (nouvel avis pour cette étude)
+      })
+      .catch(function () { state._cloudReloadPending = false; });
   }
 
   // Affiche la version/date de build dans l'en-tête de l'avis (parité avec l'étude).
