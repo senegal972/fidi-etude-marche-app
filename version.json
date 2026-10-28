@@ -1,9 +1,10 @@
 {
   "name": "FIDI · Étude de Marché & Avis de valeur",
-  "version": "1.4.2",
-  "build_date": "2026-10-26T13:00:00+01:00",
-  "build_label": "Avis : historique local 10 versions + restauration (revenir en arrière)",
+  "version": "1.4.3",
+  "build_date": "2026-10-28T10:00:00+01:00",
+  "build_label": "Avis : export/import sauvegarde JSON (à déposer dans le dossier du bien)",
   "changelog": [
+    "1.4.3 — Avis : boutons Export / Import — exporte la sauvegarde complète en .json (à déposer dans le dossier du bien sur le PC) et réimporte une sauvegarde pour restaurer. Complète l'historique local 10 versions.",
     "1.4.2 — Avis : historique local des 10 dernières versions (à chaque Sauvegarder, rotation automatique) + bouton « Versions » pour restaurer une version antérieure. Avant, aucune version n'était conservée.",
     "1.4.1 — Avis : à la réouverture depuis l'étude, si l'avis n'est pas en local on le récupère dans le cloud (Notion) ; autosave et Sauvegarder bloqués tant que le repli cloud n'a pas répondu → un avis vierge ne peut plus écraser la version cloud (même référence stable)",
     "1.4.0 — Décotes surfaciques : masquage automatique selon le type de bien — visible uniquement pour un TERRAIN d'au moins 1000 m² ; masqué d'office pour maison/appartement/local (et terrain <1000 m²). Toujours modifiable via le bouton.",

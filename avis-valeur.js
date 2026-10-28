@@ -2402,6 +2402,8 @@
       '<span id="avAutoSaveTag" class="small text-success" style="font-size:.68rem;white-space:nowrap;" title="Enregistrement automatique local à chaque modification"></span>' +
       '<button class="btn btn-sm btn-outline-info" data-action="cloud" title="Mes dossiers sauvegardés dans Notion">☁️ Cloud</button>' +
       '<button class="btn btn-sm btn-outline-secondary" data-action="history" title="Versions antérieures (10 dernières, restaurables)"><i class="bi bi-clock-history me-1"></i>Versions</button>' +
+      '<button class="btn btn-sm btn-outline-secondary" data-action="export-json" title="Exporter la sauvegarde (.json) à déposer dans le dossier du bien"><i class="bi bi-download me-1"></i>Export</button>' +
+      '<label class="btn btn-sm btn-outline-secondary mb-0" style="cursor:pointer;" title="Importer une sauvegarde (.json)"><i class="bi bi-upload me-1"></i>Import<input type="file" accept="application/json,.json" data-action="import-json" class="d-none"/></label>' +
       '<button class="btn btn-sm btn-outline-secondary" data-action="partager" title="Partager cet avis"><i class="bi bi-share me-1"></i>Partager</button>' +
       '<button class="btn btn-sm btn-outline-warning" data-action="facturer" title="Facturer & envoyer cet avis"><i class="bi bi-receipt me-1"></i>Facturer</button>' +
       '<button class="btn btn-sm btn-outline-dark" data-action="toggle-preview"><i class="bi bi-eye me-1"></i>Aperçu</button>' +
@@ -2490,6 +2492,10 @@
     }
     if (el.type === 'file' && el.dataset.action === 'cadastre-pdf') {
       if (e.type === 'change') importCadastrePdf(el.files && el.files[0]);
+      return;
+    }
+    if (el.type === 'file' && el.dataset.action === 'import-json') {
+      if (e.type === 'change') { avisImportJson(el.files && el.files[0]); el.value = ''; }
       return;
     }
     // Sélecteur client (destinataire)
@@ -2657,6 +2663,7 @@
     else if (a === 'save') doSave();
     else if (a === 'cloud') doCloud();
     else if (a === 'history') doHistory();
+    else if (a === 'export-json') avisExportJson();
     else if (a === 'partager') doPartager();
     else if (a === 'facturer') doFacturer();
     else if (a === 'load') doLoad();
@@ -3760,6 +3767,46 @@
       try { localStorage.setItem(histKey(ref), JSON.stringify(arr)); }
       catch (e) { while (arr.length > 1) { arr.pop(); try { localStorage.setItem(histKey(ref), JSON.stringify(arr)); break; } catch (_) {} } }
     } catch (e) {}
+  }
+  // ── Sauvegarde fichier (export/import JSON) — à déposer dans le dossier du bien ──
+  function avisExportJson() {
+    try {
+      var meta = (state.data && state.data.metadata) || {};
+      var ref = (meta.ref || 'avis').trim();
+      var client = (meta.client || '').trim();
+      var base = ['Avis', client, ref].filter(Boolean).join('_').replace(/[^a-zA-Z0-9]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'Avis';
+      var s = new Date();
+      var p2 = function (n) { return String(n).padStart(2, '0'); };
+      var stamp = s.getFullYear() + p2(s.getMonth() + 1) + p2(s.getDate()) + '_' + p2(s.getHours()) + p2(s.getMinutes());
+      var payload = { _fidi: 'avis', app_version: (window.APP_VERSION || ''), ref: ref, exportedAt: s.toISOString(), data: state.data };
+      var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a'); a.href = url; a.download = base + '_' + stamp + '.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+      toast('Sauvegarde exportée — déposez le .json dans le dossier du bien');
+    } catch (e) { toast('Export impossible : ' + e.message, true); }
+  }
+  function avisImportJson(file) {
+    if (!file) return;
+    var r = new FileReader();
+    r.onload = function () {
+      try {
+        var j = JSON.parse(r.result);
+        var d = (j && j.data) ? j.data : j; // tolère un JSON de données brut
+        if (!d || typeof d !== 'object' || !d.metadata) { toast('Fichier de sauvegarde invalide', true); return; }
+        if (!confirm('Importer cette sauvegarde ? L\'avis courant sera remplacé (il est d\'abord ajouté à l\'historique).')) return;
+        try { var cur = (state.data && state.data.metadata && state.data.metadata.ref || '').trim(); if (cur) avisPushHistory(cur); } catch (e) {}
+        state.data = ensureExpertBlock(d);
+        state.data.__saved = true;
+        var ref = (state.data.metadata && state.data.metadata.ref || '').trim();
+        if (ref) { try { localStorage.setItem(AVIS_PREFIX + ref, JSON.stringify(state.data)); } catch (e) {} }
+        refreshSavedSelect();
+        showSection('metadata');
+        toast('Sauvegarde importée : ' + ref);
+      } catch (e) { toast('Import impossible : ' + e.message, true); }
+    };
+    r.readAsText(file);
   }
   function doHistory() {
     var ref = (state.data && state.data.metadata && state.data.metadata.ref || '').trim();
