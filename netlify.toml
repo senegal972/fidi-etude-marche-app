@@ -10,6 +10,9 @@
 [functions."analyse"]
   timeout = 26
 
+[functions."plu-regle"]
+  timeout = 24
+
 [functions."batiment"]
   timeout = 20
 
@@ -380,6 +383,11 @@
 [[redirects]]
   from   = "/api/plu-doc"
   to     = "/.netlify/functions/plu-doc"
+  status = 200
+
+[[redirects]]
+  from   = "/api/plu-regle"
+  to     = "/.netlify/functions/plu-regle"
   status = 200
 
 [[redirects]]

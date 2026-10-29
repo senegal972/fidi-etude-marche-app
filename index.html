@@ -534,6 +534,11 @@ body.map-fs-on{overflow:hidden;}
           <button class="btn btn-outline-secondary" type="button" onclick="etudeSaveClient()" title="Mémoriser ce client"><i class="bi bi-person-plus"></i></button>
         </div>
 
+        <!-- Actualiser : recalcule constructibilité / règlement PLU / enrichissements avec la dernière version — SANS sauvegarder (sauvegarde manuelle). -->
+        <button class="btn btn-sm btn-outline-success" id="btnActualiserEtude" onclick="actualiserEtude()" title="Actualiser cette étude (règlement PLU, constructibilité, enrichissements) avec la dernière version de l'application — ne sauvegarde pas : cliquez ensuite Sauvegarder pour conserver.">
+          <i class="bi bi-arrow-clockwise me-1"></i>Actualiser
+        </button>
+
         <!-- 3 actions primaires (visibles) -->
         <button class="btn btn-sm btn-outline-info" id="btnSaveEtude" onclick="saveEtudeCloud()" title="Sauvegarder cette étude dans Notion">
           <i class="bi bi-cloud-arrow-up me-1"></i>Sauvegarder
@@ -2353,6 +2358,52 @@ async function reopenEtude(ref){
   }catch(e){ alert('Réouverture impossible : ' + e.message); }
 }
 
+// Actualise l'étude affichée (constructibilité, règlement PLU, enrichissements)
+// avec la dernière version de l'app — SANS sauvegarder et SANS re-consommer de
+// crédit (ne rappelle pas /api/analyse ; ne touche pas aux données de marché).
+// La sauvegarde reste manuelle (bouton Sauvegarder).
+function actualiserEtude(){
+  const d = window.__fidiData;
+  const btn = document.getElementById('btnActualiserEtude');
+  if(!d || !d.localisation){ alert('Aucune étude chargée à actualiser.'); return; }
+  const inputs = window.__fidiInputs || {};
+  const orig = btn ? btn.innerHTML : '';
+  if(btn){ btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Actualisation…'; }
+  try{
+    // Re-rend tout le panneau (carte, KPI, constructibilité, GPU, aléas) avec le code courant.
+    renderResults(d);
+    try { rehydrateTerrainParcelles(d); } catch(e){}
+    // Relance les enrichissements asynchrones dépendants de la localisation.
+    try { loadTransactionsAsync(d.localisation, inputs.perimetre || 'rayon_1km'); } catch(e){}
+    try { loadBatimentAsync(d.localisation); } catch(e){}
+    try { loadLoyersAsync(d.localisation, d); } catch(e){}
+    try { loadContexteLocalAsync(d.localisation, d.commune_info || {}); } catch(e){}
+    // Données modifiées en mémoire → garde-fou + invite à sauvegarder manuellement.
+    if(window.FidiGuard) FidiGuard.setDirty();
+    etudeFlash('Étude actualisée (règlement PLU & constructibilité rafraîchis). <b>Non sauvegardée</b> — cliquez « Sauvegarder » pour conserver.', 'ok');
+  }catch(e){
+    etudeFlash('Actualisation partielle : ' + (e && e.message ? e.message : 'erreur'), 'warn');
+  }finally{
+    if(btn){ btn.disabled = false; btn.innerHTML = orig || '<i class="bi bi-arrow-clockwise me-1"></i>Actualiser'; }
+  }
+}
+
+// Petit bandeau de statut transitoire en haut du panneau résultats (sans dépendance).
+function etudeFlash(html, kind){
+  let el = document.getElementById('etudeFlash');
+  const panel = document.getElementById('results-panel');
+  if(!panel) return;
+  if(!el){ el = document.createElement('div'); el.id='etudeFlash'; panel.insertBefore(el, panel.firstChild); }
+  const bg = kind==='warn' ? '#fff3cd' : '#eafaf1';
+  const bd = kind==='warn' ? '#ffe08a' : '#a8e0bf';
+  const cl = kind==='warn' ? '#8a6d3b' : '#1a6b3a';
+  el.className = 'no-print';
+  el.style.cssText = 'background:'+bg+';border:1px solid '+bd+';color:'+cl+';border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:.82rem;';
+  el.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>' + html;
+  clearTimeout(window.__etudeFlashT);
+  window.__etudeFlashT = setTimeout(()=>{ if(el) el.remove(); }, 9000);
+}
+
 // ─── Rendement locatif estimé (Carte des loyers) ─────────────────────────────
 async function loadLoyersAsync(loc, d){
   const row = document.getElementById('rendementRow');
@@ -3057,9 +3108,9 @@ function renderConstructibilite(lat, lon){
     '<div class="table-responsive"><table class="table table-sm mb-1" style="font-size:.78rem;"><tbody>'+
       '<tr><td style="width:44%;color:#667;">Constructibilité</td><td class="fw-semibold">'+escHtml(R.constructible)+'</td></tr>'+
       (contenance?'<tr><td style="color:#667;">'+surfLabel+'</td><td>'+contenance.toLocaleString('fr-FR')+' m²</td></tr>':'')+
-      '<tr><td style="color:#667;">Emprise au sol (indicatif)</td><td>'+escHtml(R.emprise)+'</td></tr>'+
-      (surfCons?'<tr><td style="color:#667;">Surface constructible estimée</td><td class="fw-semibold" style="color:#1a4b8e;">'+surfCons+'</td></tr>':'')+
-      '<tr><td style="color:#667;">Hauteur / étages (indicatif)</td><td>'+escHtml(R.hauteur)+'</td></tr>'+
+      '<tr><td style="color:#667;"><span id="cEmpriseLbl">Emprise au sol (indicatif)</span></td><td id="cEmpriseVal">'+escHtml(R.emprise)+'</td></tr>'+
+      (contenance?'<tr><td style="color:#667;">Surface constructible estimée</td><td class="fw-semibold" style="color:#1a4b8e;" id="cSurfConsVal">'+(surfCons||'—')+'</td></tr>':'')+
+      '<tr><td style="color:#667;"><span id="cHautLbl">Hauteur / étages (indicatif)</span></td><td id="cHautVal">'+escHtml(R.hauteur)+'</td></tr>'+
       '<tr><td style="color:#667;">Limites séparatives / recul</td><td>'+escHtml(R.recul)+'</td></tr>'+
     '</tbody></table></div>'+
     '<div id="constructServit" class="small text-muted"></div>'+
@@ -3069,6 +3120,12 @@ function renderConstructibilite(lat, lon){
     '</div>';
   // Lien DIRECT vers le règlement écrit (PDF) de la parcelle + carte GPU (API /api/plu-doc).
   try { loadPluDoc(lat, lon, gpuCarte); } catch(e){}
+  // Emprise au sol / hauteur RÉELLES lues dans le règlement écrit (API /api/plu-regle) :
+  // corrige l'estimation par gabarit (ex. UGf1 Fort-de-France = 30 %, pas ~70 %).
+  try {
+    const zoneCode = (z.libelle || z.libelong || z.typezone || '').trim();
+    if(lat && lon && zoneCode) loadPluRegle(lat, lon, zoneCode, contenance);
+  } catch(e){}
   // Servitudes / prescriptions réelles (API urbanisme) — enrichit si dispo
   if(lat && lon){
     fetch('/api/urbanisme?lat='+lat+'&lon='+lon).then(r=>r.ok?r.json():null).then(u=>{
@@ -3115,6 +3172,42 @@ function loadPluDoc(lat, lon, gpuCarte){
       el.innerHTML = html;
     })
     .catch(()=>{});
+}
+
+// Emprise au sol / hauteur RÉELLES de la zone, lues dans le règlement écrit du
+// PLU (API /api/plu-regle, extraction PDF). Corrige l'estimation par gabarit.
+// Best-effort : si non trouvé, on garde les valeurs indicatives.
+function loadPluRegle(lat, lon, zone, contenance){
+  const empVal = document.getElementById('cEmpriseVal');
+  if(empVal) empVal.innerHTML = escHtml(empVal.textContent) + ' <span class="text-muted" style="font-size:.9em;">(lecture du règlement…)</span>';
+  fetch('/api/plu-regle?lat='+encodeURIComponent(lat)+'&lon='+encodeURIComponent(lon)+'&zone='+encodeURIComponent(zone))
+    .then(r=>r.ok?r.json():null)
+    .then(d=>{
+      window.__fidiPluRegle = d || null; // exposé pour le rapport A4
+      const empLbl = document.getElementById('cEmpriseLbl');
+      const hautLbl = document.getElementById('cHautLbl');
+      const hautVal = document.getElementById('cHautVal');
+      const surfVal = document.getElementById('cSurfConsVal');
+      if(!d || !d.found){
+        // Restaure l'affichage indicatif (retire « lecture… »).
+        if(empVal){ const t=empVal.textContent.replace(/\s*\(lecture.*$/,''); empVal.textContent=t; }
+        return;
+      }
+      const tag = ' <span class="badge" style="background:#e7f5ec;color:#1a6b3a;font-weight:600;font-size:.62rem;" title="Valeur lue automatiquement dans le règlement écrit du PLU — à vérifier">règlement</span>';
+      if(d.emprise_txt && empVal){
+        empVal.innerHTML = '<span class="fw-semibold" style="color:#1a6b3a;">'+escHtml(d.emprise_txt)+'</span>'+tag;
+        if(empLbl) empLbl.textContent = 'Emprise au sol (zone '+zone+')';
+        if(d.emprise_pct && contenance && surfVal){
+          const s = Math.round(contenance * d.emprise_pct/100);
+          surfVal.innerHTML = s.toLocaleString('fr-FR')+' m² <span class="text-muted" style="font-size:.85em;">(emprise '+d.emprise_pct+' %, règlement)</span>';
+        }
+      }
+      if(d.hauteur_txt && hautVal){
+        hautVal.innerHTML = '<span class="fw-semibold" style="color:#1a6b3a;">'+escHtml(d.hauteur_txt)+'</span>'+tag;
+        if(hautLbl) hautLbl.textContent = 'Hauteur (zone '+zone+')';
+      }
+    })
+    .catch(()=>{ if(empVal){ empVal.textContent = empVal.textContent.replace(/\s*\(lecture.*$/,''); } });
 }
 
 // ═══ Usage des sols : DAAF (RPG agricole) + ONF (forêts publiques) ═══════════

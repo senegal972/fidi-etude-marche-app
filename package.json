@@ -12,8 +12,9 @@
     "test:marigot": "node tests/avis-marigot.test.mjs"
   },
   "dependencies": {
-    "@netlify/blobs": "^8.1.0",
+    "@netlify/blobs": "^8.2.0",
     "@sparticuz/chromium": "^131.0.1",
-    "puppeteer-core": "^23.11.1"
+    "puppeteer-core": "^23.11.1",
+    "unpdf": "^2.0.0"
   }
 }
