@@ -378,6 +378,11 @@
   status = 200
 
 [[redirects]]
+  from   = "/api/plu-doc"
+  to     = "/.netlify/functions/plu-doc"
+  status = 200
+
+[[redirects]]
   from   = "/api/pdf-render"
   to     = "/.netlify/functions/pdf-render"
   status = 200

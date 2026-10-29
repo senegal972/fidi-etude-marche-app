@@ -1,9 +1,10 @@
 {
   "name": "FIDI · Étude de Marché & Avis de valeur",
-  "version": "1.4.3",
-  "build_date": "2026-10-28T10:00:00+01:00",
-  "build_label": "Avis : export/import sauvegarde JSON (à déposer dans le dossier du bien)",
+  "version": "1.4.4",
+  "build_date": "2026-10-29T08:00:00+01:00",
+  "build_label": "Étude : lien DIRECT vers le règlement écrit du PLU (PDF) de la parcelle",
   "changelog": [
+    "1.4.4 — Étude · constructibilité : lien DIRECT et vérifié vers le règlement écrit du PLU (PDF) de la parcelle, + lien carte Géoportail-Urbanisme centré/marqué sur la parcelle (nouvelle API /api/plu-doc : apicarto gpu/document → pièces GPU). Remplace l'ancienne consigne « cliquer la parcelle → télécharger ». Les valeurs emprise/hauteur du tableau restent indicatives et clairement signalées : les valeurs réelles sont dans le règlement lié (ex. Fort-de-France UGf1 : emprise au sol 30 %, hauteur R+1, et non ~70 %).",
     "1.4.3 — Avis : boutons Export / Import — exporte la sauvegarde complète en .json (à déposer dans le dossier du bien sur le PC) et réimporte une sauvegarde pour restaurer. Complète l'historique local 10 versions.",
     "1.4.2 — Avis : historique local des 10 dernières versions (à chaque Sauvegarder, rotation automatique) + bouton « Versions » pour restaurer une version antérieure. Avant, aucune version n'était conservée.",
     "1.4.1 — Avis : à la réouverture depuis l'étude, si l'avis n'est pas en local on le récupère dans le cloud (Notion) ; autosave et Sauvegarder bloqués tant que le repli cloud n'a pas répondu → un avis vierge ne peut plus écraser la version cloud (même référence stable)",

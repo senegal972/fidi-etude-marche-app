@@ -3050,7 +3050,7 @@ function renderConstructibilite(lat, lon){
   // Lien règlement PLU : carte GPU centrée sur la parcelle (URL vérifiée). L'utilisateur
   // clique la parcelle → le panneau latéral affiche le règlement de zone téléchargeable (PDF).
   // (Le GPU n'expose pas d'URL directe fiable vers le PDF sans passer par la carte.)
-  const gpuCarte = (lat&&lon) ? 'https://www.geoportail-urbanisme.gouv.fr/map/#tile=1&lon='+lon+'&lat='+lat+'&zoom=18' : '#';
+  const gpuCarte = (lat&&lon) ? 'https://www.geoportail-urbanisme.gouv.fr/map/#tile=1&lon='+lon+'&lat='+lat+'&zoom=18&mlon='+lon+'&mlat='+lat : '#';
   box.classList.remove('d-none');
   box.innerHTML =
     '<div class="fw-semibold small mb-1" style="color:'+R.color+';"><i class="bi bi-rulers me-1"></i>Règles de constructibilité — '+escHtml(R.label)+'</div>'+
@@ -3063,10 +3063,12 @@ function renderConstructibilite(lat, lon){
       '<tr><td style="color:#667;">Limites séparatives / recul</td><td>'+escHtml(R.recul)+'</td></tr>'+
     '</tbody></table></div>'+
     '<div id="constructServit" class="small text-muted"></div>'+
+    '<div id="pluDocLinks" class="mt-1"></div>'+
     '<div class="text-muted mt-1" style="font-size:.68rem;">'+
-      '<i class="bi bi-exclamation-triangle me-1" style="color:#fd7e14;"></i><b>Valeurs indicatives</b> par type de zone. Les règles exactes (emprise, hauteur, reculs, CES, stationnement) figurent dans le <b>règlement écrit du PLU</b>.<br>'+
-      '<a href="'+gpuCarte+'" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right me-1"></i>Ouvrir le PLU sur le Géoportail → cliquer la parcelle → télécharger le règlement (PDF)</a>'+
+      '<i class="bi bi-exclamation-triangle me-1" style="color:#fd7e14;"></i>Le tableau ci-dessus donne des <b>valeurs indicatives</b> par type de zone. Les règles exactes (emprise au sol, hauteur, reculs, CES, stationnement) de votre zone figurent dans le <b>règlement écrit du PLU</b> — lien direct ci-dessus quand disponible.'+
     '</div>';
+  // Lien DIRECT vers le règlement écrit (PDF) de la parcelle + carte GPU (API /api/plu-doc).
+  try { loadPluDoc(lat, lon, gpuCarte); } catch(e){}
   // Servitudes / prescriptions réelles (API urbanisme) — enrichit si dispo
   if(lat && lon){
     fetch('/api/urbanisme?lat='+lat+'&lon='+lon).then(r=>r.ok?r.json():null).then(u=>{
@@ -3078,6 +3080,41 @@ function renderConstructibilite(lat, lon){
       if(chips.length) el.innerHTML = '<div class="mt-1"><b>Servitudes / prescriptions au point :</b><br>'+chips.join(' ')+'</div>';
     }).catch(()=>{});
   }
+}
+
+// Lien DIRECT vers le règlement écrit du PLU (PDF) + carte GPU, pour la parcelle.
+// Source : /api/plu-doc (apicarto gpu/document → pièces du Géoportail de l'Urbanisme).
+// Remplace l'ancienne consigne « cliquer la parcelle → télécharger » par le vrai lien.
+function loadPluDoc(lat, lon, gpuCarte){
+  const el = document.getElementById('pluDocLinks'); if(!el) return;
+  const mapLink = gpuCarte || ('https://www.geoportail-urbanisme.gouv.fr/map/#tile=1&lon='+lon+'&lat='+lat+'&zoom=18&mlon='+lon+'&mlat='+lat);
+  // Affichage immédiat du lien carte (toujours valable), le reste s'enrichit après fetch.
+  el.innerHTML = '<a href="'+mapLink+'" target="_blank" rel="noopener" style="font-size:.72rem;"><i class="bi bi-geo-alt me-1"></i>Ouvrir la parcelle sur le Géoportail de l\'Urbanisme</a>';
+  if(!lat || !lon) return;
+  fetch('/api/plu-doc?lat='+encodeURIComponent(lat)+'&lon='+encodeURIComponent(lon))
+    .then(r=>r.ok?r.json():null)
+    .then(d=>{
+      if(!d) return;
+      window.__fidiPluDoc = d; // exposé pour le rapport A4
+      const doc = d.document;
+      const reg = d.reglement_ecrit;
+      let html = '';
+      if(doc){
+        const maj = doc.maj ? (' · MAJ '+String(doc.maj).slice(0,10)) : '';
+        html += '<div style="font-size:.72rem;color:#556;margin-bottom:2px;"><i class="bi bi-file-earmark-text me-1"></i>'
+          + escHtml(doc.type||'PLU')+' — '+escHtml(doc.commune||'')+' ('+escHtml(doc.insee||'')+')'+maj+'</div>';
+      }
+      if(reg && reg.url){
+        html += '<a href="'+reg.url+'" target="_blank" rel="noopener" class="fw-semibold" style="font-size:.78rem;color:#c0392b;">'
+          + '<i class="bi bi-file-earmark-pdf me-1"></i>Règlement écrit du PLU (PDF) — télécharger</a>'
+          + '<div style="font-size:.66rem;color:#8a94a6;">Lire la zone détectée (ex. UGf1) pour l\'emprise au sol, la hauteur et les reculs réels.</div>';
+      } else if(doc){
+        html += '<div style="font-size:.7rem;color:#8a7a2a;"><i class="bi bi-info-circle me-1"></i>Règlement écrit non isolé automatiquement — ouvrir le document sur le Géoportail (lien ci-dessous).</div>';
+      }
+      html += '<div class="mt-1"><a href="'+mapLink+'" target="_blank" rel="noopener" style="font-size:.72rem;"><i class="bi bi-geo-alt me-1"></i>Ouvrir la parcelle sur le Géoportail de l\'Urbanisme</a></div>';
+      el.innerHTML = html;
+    })
+    .catch(()=>{});
 }
 
 // ═══ Usage des sols : DAAF (RPG agricole) + ONF (forêts publiques) ═══════════
