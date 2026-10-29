@@ -1043,18 +1043,27 @@
     // Lieu d'établissement = commune du bien évalué (souhait métier).
     if (loc.city) d.metadata.lieuEtablissement = loc.city;
     var dest = (inputs && inputs.destinataire) ? String(inputs.destinataire).trim() : '';
-    if (dest && !d.metadata.client) {
-      d.metadata.client = dest;
-      // Tente d'apparier un client mémorisé (nom/label) pour compléter les coordonnées.
+    if (dest && !d.metadata.client) d.metadata.client = dest;
+    // Appariement du destinataire à un client mémorisé (local OU cache CRM) pour
+    // compléter les coordonnées. Tolérant : accents, casse, espaces multiples et
+    // suffixe numérique de dédoublonnage (« Dupont 2 »). Ne remplit que les champs
+    // vides — ne JAMAIS écraser une coordonnée déjà saisie.
+    var who = String(d.metadata.client || dest || '').trim();
+    if (who) {
       try {
-        var match = (listClientsMerged() || []).filter(function (c) {
-          var n = String(c.nom || c.label || '').toLowerCase().trim();
-          return n && n === dest.toLowerCase();
-        })[0];
+        var dn = normNom(who);
+        var dnBase = dn.replace(/\s+\d+$/, '');               // retire « …2 » de dédoublonnage
+        var list = listClientsMerged() || [];
+        function _pick(pred) { for (var i = 0; i < list.length; i++) { if (pred(list[i])) return list[i]; } return null; }
+        var match =
+          _pick(function (c) { var n = normNom(c.nom || c.label); return n && (n === dn || n === dnBase); }) ||
+          _pick(function (c) { var n = normNom(c.nom || c.label); return n && dnBase && (n.indexOf(dnBase) === 0 || dnBase.indexOf(n) === 0); }) ||
+          _pick(function (c) { var n = normNom(c.label || c.nom); return n && dnBase && n.indexOf(dnBase) >= 0; });
         if (match) {
-          d.metadata.adresseClient = match.adresse || '';
-          d.metadata.emailClient = match.email || '';
-          d.metadata.telephoneClient = match.telephone || '';
+          if (!d.metadata.adresseClient && match.adresse) d.metadata.adresseClient = match.adresse;
+          if (!d.metadata.emailClient && match.email) d.metadata.emailClient = match.email;
+          if (!d.metadata.telephoneClient && match.telephone) d.metadata.telephoneClient = match.telephone;
+          if (match.type && !d.metadata.destinataireType) d.metadata.destinataireType = (String(match.type).toLowerCase().indexOf('pro') >= 0 ? 'professionnel' : 'particulier');
         }
       } catch (e) {}
     }

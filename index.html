@@ -642,7 +642,7 @@ body.map-fs-on{overflow:hidden;}
             <!-- Enrichissement local — Géorisques + ONF + IDG régionales -->
             <div id="enrichLocalWrap" class="mt-3 pt-3 border-top">
               <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
-                <button class="btn btn-sm btn-outline-danger" type="button" id="btnEnrich" onclick="etudeEnrichToggle()">
+                <button class="btn btn-sm btn-outline-danger" type="button" id="btnEnrich" onclick="etudeEnrichToggle()" title="IDG = Infrastructure de Données Géographiques (SIG régional de la collectivité : GéoMartinique, KaruGéo, GéoGuyane)">
                   <i class="bi bi-shield-exclamation me-1"></i>Enrichir : Géorisques + ONF + IDG régionale
                 </button>
                 <span class="small text-muted">Actif automatiquement. Cliquez pour masquer (exclure de l'impression).</span>
@@ -2178,6 +2178,17 @@ async function etudeEnrichirLocal(){
         note = note.replace(/(https?:\/\/[^\s)]+)/g, '<a href="$1" target="_blank" rel="noopener">consulter le portail régional ↗</a>');
         body = '<span class="text-muted small"><i class="bi bi-info-circle me-1"></i>'+note+'</span>';
       }
+      // Liens cliquables : consulter la RÉFÉRENCE CADASTRALE au point exact.
+      // IDG = Infrastructure de Données Géographiques (SIG régional de la collectivité).
+      var idgReg = /Martinique/i.test(r.data.source||'') ? ['GéoMartinique','https://www.geomartinique.fr']
+        : /KaruG|Guadeloupe/i.test(r.data.source||'') ? ['KaruGéo','https://www.karugeo.fr']
+        : /Guyane/i.test(r.data.source||'') ? ['GéoGuyane','https://www.geoguyane.fr']
+        : ['Portail régional',''];
+      var geoportailUrl = 'https://www.geoportail.gouv.fr/carte?c='+lon+','+lat+'&z=19&l0=CADASTRALPARCELS.PARCELLAIRE_EXPRESS::GEOPORTAIL:OGC:WMTS(1)&permalink=yes';
+      body += '<div class="mt-2 pt-1 d-flex flex-wrap gap-2" style="font-size:.66rem;border-top:1px dashed #cdd6e6;">'+
+        '<a href="'+geoportailUrl+'" target="_blank" rel="noopener"><i class="bi bi-geo-alt me-1"></i>Voir la référence cadastrale au point ↗</a>'+
+        (idgReg[1]?'<a href="'+idgReg[1]+'" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right me-1"></i>'+idgReg[0]+' (IDG régionale) ↗</a>':'')+
+      '</div>';
     }
     // Interprétation courte par bloc
     var interp = '';
@@ -5137,7 +5148,13 @@ function renderPromoteurBox(e){
   const FLOOR = 1; // plancher opérateur plus bas (1 €/m² — négociation agricole)
   const calcPart = (S) => Math.max(2, pRef * Math.pow(sRef / S, alpha.a));   // prix particulier décoté
   const calcPro  = (S) => Math.max(FLOOR, calcPart(S) * K.k);               // prix promoteur
-  const sizes = [2500, 5000, 10000, 30000, 50000, 100000];
+  // Surface du terrain : plafonne l'échelle à 2 500 m² pour un petit terrain
+  // (≤ 2 500 m²) — rien au-dessus de 2 500 n'est affiché (idem tableau particulier).
+  const surfProm = (typeof terrainTotalSurface === 'function' && terrainTotalSurface() > 0)
+    ? terrainTotalSurface()
+    : ((window.__fidiGpu||{}).parcelle && Number((window.__fidiGpu||{}).parcelle.contenance)) || 0;
+  let sizes = [2500, 5000, 10000, 30000, 50000, 100000];
+  if(surfProm && surfProm <= 2500) sizes = [2500];
   const rows = sizes.map(S => {
     const pPart = calcPart(S);
     const pPro = calcPro(S);
@@ -6902,9 +6919,9 @@ window.Compte = (function(){
       html += '<div class="border rounded p-2 mb-3" style="background:#f5f1e8;border-left:3px solid #b87333!important;">'+
         '<div class="fw-semibold small mb-2"><i class="bi bi-magic me-1" style="color:#b87333;"></i>Recalcul global — prix par crédit de base, par module :</div>'+
         '<div class="d-flex flex-wrap gap-3 align-items-end mb-2">'+
-          '<div><label class="small text-muted d-block">Avis de valeur</label><input type="number" step="0.01" id="bulkBaseAvis" class="form-control form-control-sm" value="50" style="max-width:110px;" oninput="Compte.bulkSyncCumul()"> €/cr</div>'+
-          '<div><label class="small text-muted d-block">Études de marché</label><input type="number" step="0.01" id="bulkBaseEtude" class="form-control form-control-sm" value="37.5" style="max-width:110px;" oninput="Compte.bulkSyncCumul()"> €/cr</div>'+
-          '<div><label class="small text-muted d-block">Cumulatif <span style="font-size:.65rem;">(moyenne, éditable)</span></label><input type="number" step="0.01" id="bulkBaseCumul" class="form-control form-control-sm" value="43.75" style="max-width:110px;"> €/cr</div>'+
+          '<div><label class="small text-muted d-block">Avis de valeur</label><input type="number" step="0.01" id="bulkBaseAvis" class="form-control form-control-sm" value="45" style="max-width:110px;" oninput="Compte.bulkSyncCumul()"> €/cr</div>'+
+          '<div><label class="small text-muted d-block">Études de marché</label><input type="number" step="0.01" id="bulkBaseEtude" class="form-control form-control-sm" value="45" style="max-width:110px;" oninput="Compte.bulkSyncCumul()"> €/cr</div>'+
+          '<div><label class="small text-muted d-block">Cumulatif <span style="font-size:.65rem;">(moyenne, éditable)</span></label><input type="number" step="0.01" id="bulkBaseCumul" class="form-control form-control-sm" value="45" style="max-width:110px;"> €/cr</div>'+
           '<button class="btn btn-sm btn-outline-secondary" onclick="Compte.bulkRecalc(true)"><i class="bi bi-eye me-1"></i>Simuler</button>'+
           '<button class="btn btn-sm btn-primary" onclick="Compte.bulkRecalc(false)"><i class="bi bi-check-lg me-1"></i>Appliquer à la grille « '+esc(sel)+' »</button>'+
         '</div>'+
@@ -7485,26 +7502,25 @@ window.Compte = (function(){
 <div id="presModalRoot"></div>
 <script>
 window.Presentation = (function(){
-  // Bases tarifaires par module (2 crédits = prix Starter, souhait métier FIDI) :
-  //   Avis de Valeur    : 50,00 € / crédit  → Starter 2 cr = 100 €
-  //   Études de Marché  : 37,50 € / crédit  → Starter 2 cr =  75 €
-  //   Cumulatif         : 43,75 € / crédit  (moyenne des 2 modules) → Starter 2 cr = 88 €
-  // Prix TTC = round(crédits × prix_crédit) ; prix_crédit = round(base × (1 − économie%) × 100)/100.
+  // Base tarifaire UNIFORME : 45,00 € / crédit — identique pour l'étude de marché
+  // ET l'avis de valeur. Crédits vendus par 2 → pack Starter (2 crédits) = 90 € TTC
+  // (souhait métier FIDI, 2026-10-28). La grille cumulative reste au même tarif.
+  // Prix TTC = round(crédits × prix_crédit) ; prix_crédit = round(45 × (1 − économie%) × 100)/100.
   // Courbe d'économie par palier conservée : 0 / 12 / 20 / 27 / 33 / 42 / 49 %.
   const GRIDS = {
-    'Études de Marché': { entree:'dès 2 crédits à 75 € TTC (37,50 € / crédit)', rows:[
-      ['Starter',2,'75 €','37,50 €','—'],['Essentiel ★',5,'165 €','33,00 €','-12 %'],
-      ['Pro',10,'300 €','30,00 €','-20 %'],['Business',20,'548 €','27,38 €','-27 %'],
-      ['Premium',50,'1 257 €','25,13 €','-33 %'],['Enterprise',100,'2 175 €','21,75 €','-42 %']]},
-    'Avis de Valeur': { entree:'dès 2 crédits à 100 € TTC (50 € / crédit)', rows:[
-      ['Starter',2,'100 €','50,00 €','—'],['Essentiel ★',5,'220 €','44,00 €','-12 %'],
-      ['Pro',10,'400 €','40,00 €','-20 %'],['Business',20,'730 €','36,50 €','-27 %'],
-      ['Premium',50,'1 675 €','33,50 €','-33 %'],['Enterprise',100,'2 900 €','29,00 €','-42 %']]},
-    'Cumulatif (offre phare)': { entree:'crédits universels — études OU avis — 43,75 € / crédit (moyenne des 2 modules)', rows:[
-      ['Starter',2,'88 €','43,75 €','—'],['Essentiel',5,'193 €','38,50 €','-12 %'],
-      ['Pro ★',10,'350 €','35,00 €','-20 %'],['Business',20,'639 €','31,94 €','-27 %'],
-      ['Premium',50,'1 466 €','29,31 €','-33 %'],['Enterprise',100,'2 538 €','25,38 €','-42 %'],
-      ['Platinum',200,'4 462 €','22,31 €','-49 %']]},
+    'Études de Marché': { entree:'dès 2 crédits à 90 € TTC (45 € / crédit)', rows:[
+      ['Starter',2,'90 €','45,00 €','—'],['Essentiel ★',5,'198 €','39,60 €','-12 %'],
+      ['Pro',10,'360 €','36,00 €','-20 %'],['Business',20,'657 €','32,85 €','-27 %'],
+      ['Premium',50,'1 508 €','30,15 €','-33 %'],['Enterprise',100,'2 610 €','26,10 €','-42 %']]},
+    'Avis de Valeur': { entree:'dès 2 crédits à 90 € TTC (45 € / crédit)', rows:[
+      ['Starter',2,'90 €','45,00 €','—'],['Essentiel ★',5,'198 €','39,60 €','-12 %'],
+      ['Pro',10,'360 €','36,00 €','-20 %'],['Business',20,'657 €','32,85 €','-27 %'],
+      ['Premium',50,'1 508 €','30,15 €','-33 %'],['Enterprise',100,'2 610 €','26,10 €','-42 %']]},
+    'Cumulatif (offre phare)': { entree:'crédits universels — études OU avis — 45 € / crédit (tarif unique)', rows:[
+      ['Starter',2,'90 €','45,00 €','—'],['Essentiel',5,'198 €','39,60 €','-12 %'],
+      ['Pro ★',10,'360 €','36,00 €','-20 %'],['Business',20,'657 €','32,85 €','-27 %'],
+      ['Premium',50,'1 508 €','30,15 €','-33 %'],['Enterprise',100,'2 610 €','26,10 €','-42 %'],
+      ['Platinum',200,'4 590 €','22,95 €','-49 %']]},
   };
   const DOM = [['Martinique (972)','3 154 €/m²','Marché en croissance constante'],
     ['Guadeloupe (971)','3 612 €/m²','Forte demande résidentielle'],
