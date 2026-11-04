@@ -4,6 +4,8 @@
 // contexte, localisation, mentions). Chaque bloc est insécable ; chaque
 // section démarre sur une nouvelle page. Branché sur tous les boutons
 // d'impression : le navigateur imprime CE document, pas la page écran.
+// Règle d'impression d'un module : il doit être AFFICHÉ à l'écran (bouton ou
+// condition) ET coché dans le dialogue d'impression. Voir MODULES.
 // Sources de données : window.__fidiData / __fidiInputs / __fidiTrans /
 // __fidiCtx / __fidiLoyers / __fidiGpu (posées par index.html).
 // ═══════════════════════════════════════════════════════════════════════════
@@ -152,13 +154,49 @@
 #rapportRoot .score-wrap{ display:flex; align-items:center; gap:6mm; }
 #rapportRoot .axes td{ font-size:8pt; }
 #rapportRoot .dpe-bar{ display:flex; height:7mm; border-radius:1.5mm; overflow:hidden; font-size:7pt; color:#fff; text-align:center; }
+/* Blocs repris de l'écran : styles autonomes */
+#rapportRoot .rpt-clone{ font-size:8.5pt; }
+#rapportRoot .rpt-clone a{ color:#1a4b8e; text-decoration:none; }
+#rapportRoot .rpt-clone .row{ display:flex; flex-wrap:wrap; gap:2mm; margin:0; }
+#rapportRoot .rpt-clone [class*="col-"]{ flex:1 1 30%; width:auto!important; max-width:none; min-width:0; padding:0; }
+#rapportRoot .rpt-clone .col-12:not([class*="col-md"]):not([class*="col-lg"]){ flex-basis:100%; }
+#rapportRoot .rpt-clone .col-lg-7{ flex:1 1 56%; }
+#rapportRoot .rpt-clone .col-lg-5{ flex:1 1 38%; }
+#rapportRoot .rpt-clone svg{ break-inside:avoid; }
+#rapportRoot .rpt-clone .d-flex{ display:flex; flex-wrap:wrap; gap:2mm; }
+#rapportRoot .rpt-clone .d-none{ display:none; }
+#rapportRoot .rpt-clone .table-responsive{ overflow:visible; max-height:none!important; }
+#rapportRoot .rpt-clone .small{ font-size:8pt; }
+#rapportRoot .rpt-clone .fw-bold,#rapportRoot .rpt-clone .fw-semibold{ font-weight:700; }
+#rapportRoot .rpt-clone .text-muted{ color:#6a7385; }
+#rapportRoot .rpt-clone .text-end{ text-align:right; }
+#rapportRoot .rpt-clone .text-center{ text-align:center; }
+#rapportRoot .rpt-clone .text-success{ color:#198754; }
+#rapportRoot .rpt-clone .text-danger{ color:#c0392b; }
+#rapportRoot .rpt-clone .text-primary{ color:#1a4b8e; }
+#rapportRoot .rpt-clone .text-warning{ color:#b8860b; }
+#rapportRoot .rpt-clone .text-info{ color:#0b7285; }
+#rapportRoot .rpt-clone .border{ border:.75pt solid #d8dee8; }
+#rapportRoot .rpt-clone .rounded{ border-radius:1.5mm; }
+#rapportRoot .rpt-clone .p-2{ padding:2mm; }
+#rapportRoot .rpt-clone .mt-1,#rapportRoot .rpt-clone .mt-2{ margin-top:1.5mm; }
+#rapportRoot .rpt-clone .mb-1,#rapportRoot .rpt-clone .mb-2{ margin-bottom:1.5mm; }
+#rapportRoot .rpt-clone .badge{ display:inline-block; padding:.5pt 4pt; border-radius:3pt; font-size:7pt; font-weight:600; color:#fff; background:#6a7385; }
+#rapportRoot .rpt-clone .bg-warning{ background:#ffc107!important; color:#222; }
+#rapportRoot .rpt-clone .bg-danger{ background:#c0392b!important; }
+#rapportRoot .rpt-clone .bg-success{ background:#198754!important; }
+#rapportRoot .rpt-clone .bg-info{ background:#0dcaf0!important; color:#222; }
+#rapportRoot .rpt-clone .bg-primary{ background:#1a4b8e!important; }
+#rapportRoot .rpt-clone .bg-secondary{ background:#6a7385!important; }
+#rapportRoot .rpt-clone .bg-light{ background:#eef2f7!important; color:#222; }
+#rapportRoot .rpt-clone svg{ max-height:95mm; }
 `;
 
   // ── Sections ───────────────────────────────────────────────────────────────
   function footer(page, total, ref) {
     const soc = societe();
     return '<div class="rpt-foot"><span>' + esc(soc.nom) + ' · ' + esc(soc.email) + '</span>'
-      + '<span>' + esc(ref || '') + '</span><span>Page ' + page + ' / ' + total + '</span></div>';
+      + '<span>' + esc(ref || '') + '</span><span>Section ' + page + ' / ' + total + '</span></div>';
   }
 
   // ── Décotes surfaciques terrain (particulier + promoteur) ────────────────────
@@ -178,7 +216,6 @@
     return { k: 0.62, lbl: 'zonage indéterminé' };
   }
   function decotesPage(d, ref) {
-    if (window.__fidiDecotesHidden) return ''; // section masquée → exclue du PDF
     const ests = d.estimations || {};
     const e = ests.terrain;
     if (!e || e.prix_m2 == null) return ''; // uniquement si estimation terrain
@@ -188,7 +225,12 @@
     const sRef = 1000, pRef = e.prix_m2;
     const calcPart = (S) => Math.max(2, pRef * Math.pow(sRef / S, alpha.a));
     const calcPro = (S) => Math.max(1, calcPart(S) * K.k);
-    const sizes = [500, 1000, 2500, 5000, 10000, 30000, 50000];
+    // Mêmes règles qu'à l'écran : terrain ≤ 2 500 m² → rien au-dessus de 2 500 m².
+    let surf = 0;
+    try { surf = (typeof window.terrainTotalSurface === 'function' && window.terrainTotalSurface()) || 0; } catch (err) {}
+    if (!surf) surf = Number(((window.__fidiGpu || {}).parcelle || {}).contenance) || 0;
+    const petit = surf > 0 && surf <= 2500;
+    const sizes = petit ? [500, 1000, 2500] : [500, 1000, 2500, 5000, 10000, 30000, 50000];
     const rowsPart = sizes.map(S => {
       const p = calcPart(S), dc = Math.round((1 - p / pRef) * 100);
       const lbl = dc === 0 ? 'réf.' : (dc > 0 ? '-' + dc + ' %' : '+' + Math.abs(dc) + ' %');
@@ -198,16 +240,17 @@
       const pp = calcPart(S), pr = calcPro(S), dc = Math.round((1 - pr / pRef) * 100);
       return '<tr><td class="txt-r">' + num(S) + ' m²</td><td class="txt-r" style="color:#6a7385;">' + dec2(pp) + ' €/m²</td><td class="txt-r"><strong style="color:#1a3a6e;">' + dec2(pr) + ' €/m²</strong></td><td class="txt-r">-' + dc + ' %</td><td class="txt-r"><strong>' + eur(pr * S) + '</strong></td></tr>';
     }).join('');
-    return '<div class="rpt-page">'
-      + '<h2>3 · Décote surfacique du terrain</h2>'
-      + '<div class="rpt-block rpt-sec"><h3>Marché particuliers — abattement de contenance</h3>'
+    // Terrain agricole / naturel : l'écran n'affiche ni grille promoteur ni décote retenue.
+    const nature = (typeof window.terrainNature === 'function') ? window.terrainNature() : '';
+    if (nature === 'agricole' || nature === 'naturel') return cloneBloc('terrainDecoteBox');
+    const avecPromoteur = estAffiche('promoteurBox');
+    return '<div class="rpt-block rpt-sec"><h3>Marché particuliers — abattement de contenance</h3>'
       + '<p style="font-size:8pt;color:#6a7385;">Formule : prix/m² = ' + eur(pRef) + ' × (1 000 ÷ surface)<sup>' + alpha.a + '</sup> — coefficient α = ' + alpha.a + ' (' + alpha.lbl + '). Un grand terrain vaut moins au m² qu\'un petit (abattement de contenance, usage expertise foncière).</p>'
       + '<table><thead><tr><th class="txt-r">Surface</th><th class="txt-r">Prix/m² ajusté</th><th class="txt-r">Décote</th><th class="txt-r">Valeur estimée</th></tr></thead><tbody>' + rowsPart + '</tbody></table></div>'
-      + '<div class="rpt-block rpt-sec"><h3>Marché professionnels — décote promoteur / aménageur</h3>'
+      + (!avecPromoteur ? '' : '<div class="rpt-block rpt-sec"><h3>Marché professionnels — décote promoteur / aménageur</h3>'
       + '<p style="font-size:8pt;color:#6a7385;">Prix opérateur = prix particulier décoté × K = ' + K.k + ' (' + K.lbl + '). Abattement opérateur (portage, viabilisation, aléas, marge) à la charge de l\'acquéreur professionnel.</p>'
       + '<table><thead><tr><th class="txt-r">Surface</th><th class="txt-r">Prix particulier</th><th class="txt-r">Prix promoteur</th><th class="txt-r">Décote totale</th><th class="txt-r">Valeur opérateur</th></tr></thead><tbody>' + rowsPro + '</tbody></table>'
-      + '<div class="rpt-note">Base de négociation : l\'offre d\'ouverture d\'un promoteur se situe souvent 10-15 % sous ces valeurs. Méthodologie : Charte de l\'Expertise en Évaluation Immobilière · Fiche DGFiP 3035.</div></div>'
-      + footer(3, 8, ref) + '</div>';
+      + '<div class="rpt-note">Base de négociation : l\'offre d\'ouverture d\'un promoteur se situe souvent 10-15 % sous ces valeurs. Méthodologie : Charte de l\'Expertise en Évaluation Immobilière · Fiche DGFiP 3035.</div></div>');
   }
 
   function coverPage(d, inputs, ref) {
@@ -294,13 +337,14 @@
     if (cards) estTypes = '<div class="rpt-block rpt-sec"><h3>Estimation vénale par type de bien</h3><div class="rpt-kpis">' + cards + '</div>'
       + '<div class="rpt-note">Le type analysé utilise la surface saisie ; les autres une surface standard (maison 100 m², appartement 70 m², terrain 500 m²).</div></div>';
 
-    return '<div class="rpt-page">'
-      + '<h2>1 · Synthèse & potentiel</h2>'
-      + '<div class="score-wrap rpt-block rpt-sec">' + scoreGaugeSvg(sc)
-      + '<div style="flex:1;"><div style="font-size:12pt;font-weight:800;color:' + (sc.couleur || '#1a3a6e') + ';">Potentiel : ' + esc(sc.verdict || '—') + '</div>'
-      + '<table class="axes"><tbody>' + axes + '</tbody></table></div></div>'
-      + kpis + estHtml + estTypes + narratif
-      + footer(2, 8, ref) + '</div>';
+    return (imprime('score')
+        ? '<div class="score-wrap rpt-block rpt-sec">' + scoreGaugeSvg(sc)
+          + '<div style="flex:1;"><div style="font-size:12pt;font-weight:800;color:' + (sc.couleur || '#1a3a6e') + ';">Potentiel : ' + esc(sc.verdict || '—') + '</div>'
+          + '<table class="axes"><tbody>' + axes + '</tbody></table></div></div>' + kpis
+        : '')
+      + (imprime('estimation') ? estHtml : '')
+      + (imprime('esttypes') ? estTypes : '')
+      + (imprime('synthese') ? narratif : '');
   }
 
   function marchePage(d, ref) {
@@ -311,16 +355,15 @@
       + '<td class="txt-r">' + num(r.nb_appart) + '</td><td class="txt-r">' + (r.prix_m2_appart != null ? eur(r.prix_m2_appart) : '—') + '</td>'
       + '<td class="txt-r">' + num(r.nb_terrain) + '</td><td class="txt-r">' + (r.prix_m2_terrain != null ? eur(r.prix_m2_terrain) : '—') + '</td></tr>'
     ).join('');
-    return '<div class="rpt-page">'
-      + '<h2>2 · Marché immobilier local (DVF)</h2>'
-      + '<div class="rpt-cols rpt-sec"><div class="rpt-block"><h3>Évolution des prix au m²</h3>' + chartImg('prixChart', 'Évolution des prix') + '</div>'
-      + '<div class="rpt-block"><h3>Volume de transactions</h3>' + chartImg('transChart', 'Transactions par an') + '</div></div>'
-      + '<div class="rpt-block"><h3>Détail par année</h3>'
+    return (imprime('graphiques')
+        ? '<div class="rpt-cols rpt-sec"><div class="rpt-block"><h3>Évolution des prix au m²</h3>' + chartImg('prixChart', 'Évolution des prix') + '</div>'
+          + '<div class="rpt-block"><h3>Volume de transactions</h3>' + chartImg('transChart', 'Transactions par an') + '</div></div>'
+        : '')
+      + (!imprime('dvf') ? '' : '<div class="rpt-block"><h3>Détail par année</h3>'
       + '<table><thead><tr><th>Année</th><th class="txt-r">Ventes</th><th class="txt-r">Maisons</th><th class="txt-r">€/m² maison</th>'
       + '<th class="txt-r">Apparts</th><th class="txt-r">€/m² appart</th><th class="txt-r">Terrains</th><th class="txt-r">€/m² terrain</th></tr></thead>'
       + '<tbody>' + rows + '</tbody></table>'
-      + '<div class="rpt-note">Source : Demandes de valeurs foncières (DVF), mutations regroupées, prix médians sur ventes mono-bien.</div></div>'
-      + footer(4, 8, ref) + '</div>';
+      + '<div class="rpt-note">Source : Demandes de valeurs foncières (DVF), mutations regroupées, prix médians sur ventes mono-bien.</div></div>');
   }
 
   function transactionsPage(d, ref) {
@@ -337,14 +380,11 @@
         + '<td class="txt-r">' + dist + '</td></tr>';
     }).join('');
     if (!all.length) return '';
-    return '<div class="rpt-page">'
-      + '<h2>3 · Transactions de référence (' + num(all.length) + ' ventes)</h2>'
-      + '<table><thead><tr><th>Date</th><th>Adresse</th><th>Type</th><th class="txt-r">Bâti m²</th>'
+    return '<table><thead><tr><th>Date</th><th>Adresse</th><th>Type</th><th class="txt-r">Bâti m²</th>'
       + '<th class="txt-r">Terrain m²</th><th class="txt-r">Prix</th><th class="txt-r">€/m²</th><th class="txt-r">Dist.</th></tr></thead>'
       + '<tbody>' + rows + '</tbody></table>'
       + (all.length > MAXROWS ? '<div class="rpt-note">' + num(all.length - MAXROWS) + ' transactions supplémentaires disponibles dans l\'application.</div>' : '')
-      + '<div class="rpt-note">* vente portant sur plusieurs biens : prix global, €/m² non significatif. Source DVF Etalab.</div>'
-      + footer(5, 8, ref) + '</div>';
+      + '<div class="rpt-note">* vente portant sur plusieurs biens : prix global, €/m² non significatif. Source DVF Etalab.</div>';
   }
 
   function contextePage(d, ref) {
@@ -407,10 +447,11 @@
         + '</div></div>';
     }
 
-    return '<div class="rpt-page">'
-      + '<h2>4 · Contexte local</h2>'
-      + cols + loyHtml + dpeBar + risquesHtml
-      + footer(6, 8, ref) + '</div>';
+    return (imprime('contexte') ? cols : '')
+      + (imprime('rendement') ? loyHtml : '')
+      + (imprime('dpe') ? dpeBar : '')
+      + (imprime('territoire') ? cloneBloc('territoireContainer', 'Contexte territorial') : '')
+      + (imprime('risques') ? risquesHtml : '');
   }
 
   // Analyse faisabilité/contraintes à partir de l'usage des sols DAAF (RPG) + ONF.
@@ -520,9 +561,7 @@
       extraRows = '<tr><td>Parcelles supplémentaires</td><td><span style="color:#8e44ad;font-weight:600;">' + esc(refs.join(', ')) + '</span> (' + extraFeats.length + ')</td></tr>'
         + '<tr><td>Surface totale terrain</td><td><strong>' + num(total) + ' m²</strong> <span style="color:#6a7385;">(somme des ' + (extraFeats.length + 1) + ' parcelles)</span></td></tr>';
     }
-    return '<div class="rpt-page">'
-      + '<h2>5 · Localisation, cadastre & urbanisme</h2>'
-      + '<div class="rpt-block rpt-sec">' + mapImg + '</div>'
+    return (!imprime('localisation') ? '' : '<div class="rpt-block rpt-sec">' + mapImg + '</div>'
       + '<div class="rpt-block rpt-sec"><table><tbody>'
       + '<tr><td style="width:38mm;">Adresse analysée</td><td><strong>' + esc(loc.label || '—') + '</strong></td></tr>'
       + '<tr><td>Commune</td><td>' + esc(loc.city || '—') + ' (' + esc(loc.citycode || '') + ')</td></tr>'
@@ -532,16 +571,14 @@
       + (z ? '<tr><td>Zonage PLU</td><td><strong>' + esc(z.libelle || '') + '</strong>' + (z.libelong ? ' — ' + esc(z.libelong) : '') + (z.typezone ? ' (type ' + esc(z.typezone) + ')' : '') + '</td></tr>'
         : '<tr><td>Zonage PLU</td><td>Document d\'urbanisme non numérisé sur le GPU pour cette commune.</td></tr>')
       + '</tbody></table>'
-      + '<div class="rpt-note">Sources : IGN Géoplateforme, Géoportail de l\'Urbanisme, cadastre Etalab.</div></div>'
-      + daafOnfBlock()
-      + aleasBlock()
-      + footer(7, 8, ref) + '</div>';
+      + '<div class="rpt-note">Sources : IGN Géoplateforme, Géoportail de l\'Urbanisme, cadastre Etalab.</div></div>')
+      + (imprime('enrichissement') ? cloneBloc('enrichLocalOut', 'Enrichissement : Géorisques + ONF + IDG régionale') : '')
+      + (imprime('usagesols') ? daafOnfBlock() : '')
+      + (imprime('aleas') ? aleasBlock() : '');
   }
 
   function mentionsPage(ref) {
-    return '<div class="rpt-page">'
-      + '<h2>6 · Méthodologie, sources & mentions</h2>'
-      + '<div class="rpt-block rpt-sec"><h3>Méthodologie</h3>'
+    return '<div class="rpt-block rpt-sec"><h3>Méthodologie</h3>'
       + '<p>Les prix médians au m² sont calculés à partir des mutations DVF regroupées par vente (une mutation = une vente), en excluant les ventes multi-biens dont le prix global ne permet pas un prix unitaire fiable. Les estimations vénales résultent du produit surface × prix médian local, encadré d\'une fourchette de −15 % à +20 % reflétant l\'état et la situation du bien. Le score de potentiel agrège cinq axes notés sur 20 : activité du marché, tendance des prix, attractivité, parc énergétique et risques.</p></div>'
       + '<div class="rpt-block rpt-sec"><h3>Sources officielles</h3><table><tbody>'
       + '<tr><td>Transactions immobilières</td><td>DVF — Demandes de valeurs foncières (Etalab / DGFiP)</td></tr>'
@@ -555,8 +592,98 @@
       + '</tbody></table></div>'
       + '<div class="rpt-block rpt-sec"><h3>Mentions</h3>'
       + '<p style="font-size:8pt;color:#6a7385;">Ce document est une étude indicative établie à partir de données publiques. Il ne constitue ni une expertise immobilière au sens de la charte de l\'expertise, ni un avis de valeur opposable. ' + esc(societe().nom) + ' ne saurait être tenu responsable des décisions prises sur la seule base de ce document.</p>'
-      + '<p style="margin-top:6mm;"><strong>' + esc(societe().nom) + '</strong> · Martinique · ' + esc(societe().email) + '</p></div>'
-      + footer(8, 8, ref) + '</div>';
+      + '<p style="margin-top:6mm;"><strong>' + esc(societe().nom) + '</strong> · Martinique · ' + esc(societe().email) + '</p></div>';
+  }
+
+  // ── Modules : affichés à l'écran et cochés = imprimés ────────────────────
+  // « el » : conteneur écran. Masqué (bouton, option, gabarit, condition) = non imprimable.
+  const MODULES = [
+    { key: 'note', label: "Note / origine de l'étude", test: () => noteActive(), motif: 'case « Imprimer » de la note non cochée' },
+    { key: 'score', label: 'Score de potentiel & indicateurs', el: 'scoreRow' },
+    { key: 'estimation', label: 'Estimation vénale du bien', el: 'estimationRow' },
+    { key: 'esttypes', label: 'Estimation vénale par type de bien', el: 'estTypesWrap' },
+    { key: 'synthese', label: 'Synthèse de marché', el: 'syntheseRow' },
+    { key: 'decotes', label: 'Abattement de contenance / Décotes surfaciques', el: 'decotesInner', motif: 'masqué : bouton « Afficher » de la section' },
+    { key: 'constructibilite', label: 'Règles de constructibilité', el: 'constructInfo' },
+    { key: 'implantation', label: 'Potentiel constructible & implantation', el: 'implantationBody', motif: 'masqué : bouton « Afficher » du module' },
+    { key: 'graphiques', label: 'Graphiques : prix au m² & volume de transactions', el: 'prixChart' },
+    { key: 'dvf', label: 'Données DVF détaillées par année', el: 'dvfTable' },
+    { key: 'comparables', label: 'Meilleures ventes comparables', el: 'topComparBody', root: 'topComparRow' },
+    { key: 'sections', label: 'Synthèse des prix par section cadastrale', el: 'synthSectionTable', root: 'synthSectionRow' },
+    { key: 'transactions', label: 'Transactions enregistrées', el: 'transProchesRow' },
+    { key: 'rendement', label: 'Rendement locatif estimé', el: 'rendementRow' },
+    { key: 'contexte', label: 'Contexte local : fiscalité, vacance, sécurité', el: 'contexteLocalRow' },
+    { key: 'dpe', label: 'Distribution DPE', el: 'dpeContainer' },
+    { key: 'territoire', label: 'Contexte territorial', el: 'territoireContainer' },
+    { key: 'risques', label: 'Risques naturels (Géorisques)', el: 'risquesContainer' },
+    { key: 'localisation', label: 'Localisation · Cadastre & Urbanisme', el: 'mapCard' },
+    { key: 'enrichissement', label: 'Enrichissement : Géorisques + ONF + IDG régionale', el: 'enrichLocalOut', motif: 'masqué : bouton « Enrichir »' },
+    { key: 'usagesols', label: 'Usage des sols : DAAF & ONF', el: 'daafOnfInfo' },
+    { key: 'aleas', label: 'Localisation et détails des aléas', el: 'aleasPprWrap' },
+    { key: 'bati', label: 'Caractéristiques du bâti (DPE détaillés)', el: 'batimentBody', root: 'batimentSection' },
+    { key: 'permis', label: 'Permis de construire & logements neufs', el: 'permisBody', root: 'permisSection' },
+    { key: 'finance', label: 'Santé financière', el: 'financeBody', root: 'financeSection' },
+    { key: 'entreprise', label: "Vérifications légales d'entreprise", el: 'entrepriseBody', root: 'entrepriseSection' },
+    { key: 'methodo', label: 'Méthodologie, sources & mentions', test: () => true },
+  ];
+  function estAffiche(id) {
+    const el = document.getElementById(id);
+    return !!(el && el.getClientRects().length > 0);
+  }
+  function noteActive() {
+    const cb = document.getElementById('etudeNotePrint'), ta = document.getElementById('etudeNote');
+    return !!(cb && cb.checked && ta && ta.value.trim());
+  }
+  function exclusions() {
+    const d = window.__fidiData || {};
+    if (!d.impression_exclus) d.impression_exclus = {};
+    return d.impression_exclus;
+  }
+  function moduleAffiche(m) {
+    if (m.test) return m.test();
+    return estAffiche(m.root || m.el) && estAffiche(m.el);
+  }
+  function moduleEnChargement(m) {
+    const el = m.el && document.getElementById(m.el);
+    return !!(el && moduleAffiche(m) && el.querySelector('.spinner-border'));
+  }
+  function imprime(key) {
+    const m = MODULES.find((x) => x.key === key);
+    if (!m || !moduleAffiche(m) || moduleEnChargement(m)) return false;
+    return !exclusions()[key];
+  }
+  function listeModules() {
+    return MODULES.map((m) => ({
+      key: m.key, label: m.label, motif: m.motif || '',
+      affiche: moduleAffiche(m), chargement: moduleEnChargement(m), exclu: !!exclusions()[m.key],
+    }));
+  }
+  function setExclu(key, exclu) {
+    const x = exclusions();
+    if (exclu) x[key] = true; else delete x[key];
+    if (window.FidiGuard) window.FidiGuard.setDirty();
+  }
+
+  // Bloc repris tel qu'affiché à l'écran : sans boutons, icônes ni champs de saisie.
+  function cloneHTML(id) {
+    const el = document.getElementById(id);
+    if (!el) return '';
+    const c = el.cloneNode(true);
+    c.querySelectorAll('input,select,textarea').forEach((f) => {
+      if (f.type === 'checkbox' || f.type === 'radio') { f.remove(); return; }
+      const v = f.tagName === 'SELECT' ? (f.options[f.selectedIndex] ? f.options[f.selectedIndex].text : '') : f.value;
+      const span = document.createElement('b');
+      span.textContent = v;
+      f.replaceWith(span);
+    });
+    c.querySelectorAll('button,script,canvas,.no-print,.bi,.spinner-border,.dropdown-menu,[data-bs-toggle]').forEach((x) => x.remove());
+    c.querySelectorAll('[id]').forEach((x) => x.removeAttribute('id'));
+    return c.innerHTML;
+  }
+  function cloneBloc(id, titre) {
+    const html = cloneHTML(id);
+    if (!html.replace(/<[^>]*>/g, '').trim() && !/<svg/i.test(html)) return '';
+    return '<div class="rpt-sec rpt-clone">' + (titre ? '<h3>' + esc(titre) + '</h3>' : '') + html + '</div>';
   }
 
   // ── Assemblage & impression ────────────────────────────────────────────────
@@ -566,15 +693,33 @@
     const inputs = window.__fidiInputs || {};
     const ref = (typeof window.etudeRef === 'function' || typeof etudeRef === 'function')
       ? (window.etudeRef || etudeRef)(d, inputs) : '';
+    const note = imprime('note')
+      ? '<div class="rpt-block rpt-sec"><h3>Note</h3><p>' + esc(document.getElementById('etudeNote').value) + '</p></div>' : '';
+    const decotes = imprime('decotes') ? decotesPage(d, ref) : '';
+    const potentiel = (imprime('constructibilite') ? cloneBloc('constructInfo', 'Règles de constructibilité') : '')
+      + (imprime('implantation') ? cloneBloc('implantationBody', "Surface de plancher & schéma d'implantation") : '');
+    const comparables = (imprime('comparables') ? cloneBloc('topComparBody', 'Meilleures ventes comparables') : '')
+      + (imprime('sections') ? cloneBloc('synthSectionTable', 'Synthèse des prix par section cadastrale') : '');
+    const complements = (imprime('bati') ? cloneBloc('batimentBody', 'Caractéristiques du bâti — diagnostics DPE détaillés') : '')
+      + (imprime('permis') ? cloneBloc('permisBody', 'Permis de construire & logements neufs') : '')
+      + (imprime('finance') ? cloneBloc('financeBody', 'Santé financière') : '')
+      + (imprime('entreprise') ? cloneBloc('entrepriseBody', "Vérifications légales d'entreprise") : '');
+    const nbTrans = (window.__fidiTrans || window.__fidiTransactions || []).length;
+    const sections = [
+      ['Synthèse & potentiel', note + synthesePage(d, inputs, ref)],
+      ['Décote surfacique du terrain', decotes],
+      ['Potentiel constructible', potentiel],
+      ['Marché immobilier local (DVF)', marchePage(d, ref)],
+      ['Transactions de référence' + (nbTrans ? ' (' + num(nbTrans) + ' ventes)' : ''), comparables + (imprime('transactions') ? transactionsPage(d, ref) : '')],
+      ['Contexte local', contextePage(d, ref)],
+      ['Localisation, cadastre & urbanisme', localisationPage(d, ref)],
+      ['Compléments', complements],
+      ['Méthodologie, sources & mentions', imprime('methodo') ? mentionsPage(ref) : ''],
+    ].filter((x) => String(x[1]).replace(/<[^>]*>/g, '').trim() || /<(img|svg)/i.test(x[1]));
+    const total = sections.length;
     return '<style>' + RPT_CSS + '</style>'
       + coverPage(d, inputs, ref)
-      + synthesePage(d, inputs, ref)
-      + decotesPage(d, ref)          // décotes terrain (particulier + promoteur) si terrain
-      + marchePage(d, ref)
-      + transactionsPage(d, ref)
-      + contextePage(d, ref)
-      + localisationPage(d, ref)
-      + mentionsPage(ref);
+      + sections.map((x, i) => '<div class="rpt-page"><h2>' + (i + 1) + ' · ' + esc(x[0]) + '</h2>' + x[1] + footer(i + 1, total, ref) + '</div>').join('');
   }
 
   // Attend le chargement des images du rapport (carte statique, graphiques)
@@ -606,5 +751,5 @@
     setTimeout(() => window.print(), 120);
   }
 
-  window.FidiRapport = { print: printRapport, buildHTML: buildRapportHTML };
+  window.FidiRapport = { print: printRapport, buildHTML: buildRapportHTML, modules: listeModules, setExclu };
 })();

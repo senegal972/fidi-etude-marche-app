@@ -237,7 +237,7 @@ body.map-fs-on{overflow:hidden;}
 #rapportRoot{display:none;}
 @media print{
   body.rapport-printing > *:not(#rapportRoot){display:none!important;}
-  body.rapport-printing #rapportRoot{display:block!important;}
+  body.rapport-printing #rapportRoot{display:block!important;zoom:var(--print-scale,1);}
   body.rapport-printing{background:#fff!important;}
   body.share-printing > *:not(#sharePrintRoot){display:none!important;}
   body.share-printing #sharePrintRoot{display:block!important;}
@@ -652,6 +652,20 @@ body.map-fs-on{overflow:hidden;}
             <!-- Localisation et détails des aléas au point indiqué (zonage réglementaire PPR) -->
             <div id="aleasPprWrap" class="mt-3 pt-3 border-top d-none"></div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Kit d'implantation (implantation.js) : bouton manuel. Affiché = imprimé ; masqué = non imprimé. -->
+    <div class="row g-3 mb-3 d-none" id="implantationRow">
+      <div class="col-12">
+        <div class="chart-card" style="border-left:4px solid #1a4b8e;">
+          <h6 class="d-flex align-items-center flex-wrap gap-2 mb-2">
+            <i class="bi bi-bounding-box me-1" style="color:#1a4b8e;"></i>Potentiel constructible — surface de plancher &amp; implantation
+            <button type="button" class="btn btn-sm btn-outline-primary ms-auto py-0 px-2 no-print" id="btnImplantation" onclick="FidiImplantation.toggle()" style="font-size:.74rem;"><i class="bi bi-eye me-1"></i>Afficher (et imprimer)</button>
+          </h6>
+          <div class="small text-muted no-print" id="implantationNote"><i class="bi bi-eye-slash me-1"></i>Module masqué : il ne sera pas imprimé. Cliquez « Afficher » pour le calculer et l'inclure.</div>
+          <div id="implantationBody" class="d-none"></div>
         </div>
       </div>
     </div>
@@ -1514,9 +1528,9 @@ function exportPdf(){
     alert('Lancez une analyse avant d\'imprimer.');
     return;
   }
-  // Ouvre le sélecteur d'échelle ; le débit du crédit n'intervient qu'à la
-  // confirmation d'impression (annuler = aucun crédit consommé).
-  openPrintDialog();
+  // Ouvre le choix des modules et de l'échelle ; le débit du crédit n'intervient qu'à
+  // la confirmation d'impression (annuler = aucun crédit consommé).
+  openPrintDialog('navigateur');
 }
 
 // ─── Impression PDF avec échelle réglable ─────────────────────────────────────
@@ -1532,30 +1546,56 @@ function setPrintScale(v){
 function closePrintDialog(){
   const d = document.getElementById('printScaleDialog'); if(d) d.remove();
 }
-function openPrintDialog(){
+// Liste des modules : coché = imprimé. Un module masqué à l'écran (bouton ou condition)
+// reste grisé et n'est pas imprimé : la règle « non affiché = non imprimé » ne change pas.
+function printModulesHtml(){
+  if(!window.FidiRapport || !FidiRapport.modules) return '';
+  const lignes = FidiRapport.modules().map(m => {
+    const actif = m.affiche && !m.chargement;
+    const etat = m.chargement ? 'chargement en cours' : (m.affiche ? '' : (m.motif || 'non affiché : non imprimé'));
+    return '<label style="display:flex;align-items:center;gap:8px;padding:3px 2px;font-size:.84rem;'+(actif?'':'color:#9aa3ad;')+'">'
+      + '<input type="checkbox" class="print-mod" data-mod="'+m.key+'"'+(actif?(m.exclu?'':' checked'):' disabled')+' onchange="FidiRapport.setExclu(this.dataset.mod,!this.checked)">'
+      + '<span style="flex:1;">'+escHtml(m.label)+'</span>'
+      + (etat?'<span style="font-size:.72rem;">'+escHtml(etat)+'</span>':'')
+      + '</label>';
+  }).join('');
+  return '<div style="display:flex;align-items:center;justify-content:space-between;margin:0 0 4px;">'
+      + '<span style="font-size:.8rem;color:#556;font-weight:600;">Modules à imprimer</span>'
+      + '<span style="font-size:.76rem;"><a href="#" onclick="printModulesTous(true);return false;">Tout cocher</a> · <a href="#" onclick="printModulesTous(false);return false;">Tout décocher</a></span>'
+    + '</div>'
+    + '<div style="border:1px solid #e2e7ef;border-radius:8px;padding:6px 10px;max-height:44vh;overflow:auto;margin-bottom:12px;">'+lignes+'</div>';
+}
+function printModulesTous(oui){
+  document.querySelectorAll('#printScaleDialog .print-mod:not(:disabled)').forEach(c => { c.checked = oui; FidiRapport.setExclu(c.dataset.mod, !oui); });
+}
+function openPrintDialog(mode){
   closePrintDialog();
+  const serveur = mode === 'serveur';
   let saved = 100; try{ saved = parseInt(localStorage.getItem('fidiPrintScale'))||100; }catch(_){}
   const d = document.createElement('div');
   d.id = 'printScaleDialog';
   d.style.cssText = 'position:fixed;inset:0;z-index:20000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;';
   d.innerHTML =
-    '<div style="background:#fff;border-radius:12px;max-width:420px;width:92%;padding:22px 24px;box-shadow:0 12px 40px rgba(0,0,0,.3);font-family:inherit;">'
-    + '<h5 style="margin:0 0 6px;font-weight:700;color:#1a2233;"><i class="bi bi-file-earmark-pdf me-1"></i>Éditer le PDF</h5>'
-    + '<p style="font-size:.85rem;color:#556;margin:0 0 14px;">Réglez l\'échelle pour faire tenir le document sans couper les blocs. '
-      + 'Dans la fenêtre d\'impression, choisissez <b>« Enregistrer au format PDF »</b>.</p>'
-    + '<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">'
+    '<div style="background:#fff;border-radius:12px;max-width:500px;width:92%;max-height:94vh;overflow:auto;padding:22px 24px;box-shadow:0 12px 40px rgba(0,0,0,.3);font-family:inherit;">'
+    + '<h5 style="margin:0 0 6px;font-weight:700;color:#1a2233;"><i class="bi bi-file-earmark-pdf me-1"></i>'+(serveur?'PDF haute qualité':'Éditer le PDF')+'</h5>'
+    + '<p style="font-size:.85rem;color:#556;margin:0 0 12px;">Décochez ce que vous ne voulez pas imprimer.'
+      + (serveur?'':' Dans la fenêtre d\'impression, choisissez <b>« Enregistrer au format PDF »</b>.')+'</p>'
+    + printModulesHtml()
+    + (serveur?'':'<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">'
       + '<span style="font-size:.8rem;color:#556;">Échelle</span>'
       + '<input id="printScaleRange" type="range" min="50" max="100" step="5" value="'+saved+'" '
         + 'oninput="setPrintScale(this.value)" style="flex:1;">'
       + '<span id="printScaleVal" style="font-weight:600;min-width:48px;text-align:right;">'+saved+' %</span>'
-    + '</div>'
-    + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">'
+    + '</div>')
+    + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">'
       + '<button class="btn btn-sm btn-outline-secondary" onclick="closePrintDialog()">Annuler</button>'
-      + '<button class="btn btn-sm btn-danger" onclick="confirmPrint()"><i class="bi bi-printer me-1"></i>Imprimer / PDF</button>'
+      + (serveur
+        ? '<button class="btn btn-sm btn-success" onclick="closePrintDialog();genererPdfServeur()"><i class="bi bi-file-earmark-pdf-fill me-1"></i>Générer le PDF</button>'
+        : '<button class="btn btn-sm btn-danger" onclick="confirmPrint()"><i class="bi bi-printer me-1"></i>Imprimer / PDF</button>')
     + '</div></div>';
   document.body.appendChild(d);
   d.addEventListener('click', e => { if(e.target === d) closePrintDialog(); });
-  setPrintScale(saved);
+  if(!serveur) setPrintScale(saved);
 }
 async function confirmPrint(){
   // Débit d'un crédit (acte facturé) — sauf admin/illimité, péage inactif ou
@@ -1881,8 +1921,11 @@ function etudeFileBase(){
   return ['Etude_marche', dest, base].filter(Boolean).join('_')
     .replace(/[^a-zA-Z0-9]+/g,'_').replace(/_+/g,'_').replace(/^_|_$/g,'').slice(0,90) || 'Etude_marche';
 }
-async function exportPdfServeur(){
+function exportPdfServeur(){
   if(!window.__fidiData){ alert('Lancez une analyse avant de générer le PDF.'); return; }
+  openPrintDialog('serveur');
+}
+async function genererPdfServeur(){
   // STRATÉGIE : utiliser LE MÊME moteur que le PDF navigateur (FidiRapport = rapport A4
   // paginé, propre, condensé). On récupère son HTML et on l'envoie à /api/pdf-render.
   if(!window.FidiRapport || typeof FidiRapport.buildHTML !== 'function'){
@@ -1899,7 +1942,8 @@ async function exportPdfServeur(){
     '<style>@page{size:A4;margin:12mm;} html,body{margin:0;padding:0;background:#fff;}</style>' +
     '</head><body><div id="rapportRoot">'+rapportHtml+'</div></body></html>';
 
-  var btn = event && event.target ? event.target.closest('a,button') : null;
+  // Le bouton d'origine est dans le menu « … » : indicateur de génération sur ce menu.
+  var btn = document.getElementById('ddResBar');
   var orig = btn ? btn.innerHTML : '';
   if(btn){ btn.style.pointerEvents='none'; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Génération…'; }
   try {
@@ -2175,6 +2219,8 @@ async function etudeEnrichirLocal(){
       else {
         // Rend cliquables les URLs présentes dans la note (portail régional GéoMartinique/KaruGéo/GéoGuyane)
         var note = r.data.note || 'Aucune couche réglementaire spécifique de la collectivité à ce point (les données nationales GPU/Géorisques restent applicables).';
+        // Message technique du service (imprimé dans le rapport) : formulation pour le lecteur.
+        if(/couche accessible/i.test(note)) note = 'Données régionales non disponibles en ligne pour ce point (les données nationales GPU/Géorisques restent applicables).';
         note = note.replace(/(https?:\/\/[^\s)]+)/g, '<a href="$1" target="_blank" rel="noopener">consulter le portail régional ↗</a>');
         body = '<span class="text-muted small"><i class="bi bi-info-circle me-1"></i>'+note+'</span>';
       }
@@ -2217,7 +2263,7 @@ async function etudeEnrichirLocal(){
   if(isMq){
     refs.unshift(['DAAF Martinique — géoportail agricole/forestier/foncier','https://daaf.martinique.agriculture.gouv.fr']);
     refs.push(['DEAL Martinique — urbanisme & environnement','https://www.martinique.developpement-durable.gouv.fr']);
-    refs.push(['GéoMartinique — SIG territorial','https://www.geo.martinique.fr']);
+    refs.push(['GéoMartinique — SIG territorial','https://www.geomartinique.fr']);
   } else if(isGp){
     refs.unshift(['DAAF Guadeloupe — agricole/forestier/foncier','https://daaf.guadeloupe.agriculture.gouv.fr']);
     refs.push(['DEAL Guadeloupe — urbanisme & environnement','https://www.guadeloupe.developpement-durable.gouv.fr']);
@@ -2353,6 +2399,7 @@ async function reopenEtude(ref){
     const inputs = stored.inputs || {};
     window.__fidiData = d;
     window.__fidiInputs = inputs;
+    window.__fidiDecotesHidden = undefined; // l'affichage de l'étude précédente ne se reporte pas
     document.getElementById('init-panel').classList.add('d-none');
     document.getElementById('loading-panel').classList.add('d-none');
     renderResults(d);
@@ -2917,6 +2964,7 @@ function drawExtraParcelles(){
 // parcelles supplémentaires. Appelée après résolution de la parcelle principale
 // (nouvelle analyse) ET après réhydratation d'une étude rechargée.
 function refreshExtraParcellesUI(){
+  if(window.FidiImplantation) try{ FidiImplantation.refresh(); }catch(e){}
   const elParc = document.getElementById('gpuParcelle');
   const p = (window.__fidiGpu||{}).parcelle || {};
   if(elParc){ const old = elParc.querySelector('.extra-parc-line'); if(old) old.remove(); }
@@ -3115,22 +3163,25 @@ function renderConstructibilite(lat, lon){
   const gpuCarte = (lat&&lon) ? 'https://www.geoportail-urbanisme.gouv.fr/map/#tile=1&lon='+lon+'&lat='+lat+'&zoom=18&mlon='+lon+'&mlat='+lat : '#';
   box.classList.remove('d-none');
   box.innerHTML =
-    '<div class="fw-semibold small mb-1" style="color:'+R.color+';"><i class="bi bi-rulers me-1"></i>Règles de constructibilité — '+escHtml(R.label)+'</div>'+
+    '<div class="fw-semibold small mb-1" id="cTitre" style="color:'+R.color+';"><i class="bi bi-rulers me-1"></i>Règles de constructibilité — '+escHtml(R.label)+'</div>'+
     '<div class="table-responsive"><table class="table table-sm mb-1" style="font-size:.78rem;"><tbody>'+
-      '<tr><td style="width:44%;color:#667;">Constructibilité</td><td class="fw-semibold">'+escHtml(R.constructible)+'</td></tr>'+
+      '<tr><td style="width:44%;color:#667;">Constructibilité</td><td class="fw-semibold" id="cConstrVal">'+escHtml(R.constructible)+'</td></tr>'+
       (contenance?'<tr><td style="color:#667;">'+surfLabel+'</td><td>'+contenance.toLocaleString('fr-FR')+' m²</td></tr>':'')+
       '<tr><td style="color:#667;"><span id="cEmpriseLbl">Emprise au sol (indicatif)</span></td><td id="cEmpriseVal">'+escHtml(R.emprise)+'</td></tr>'+
       (contenance?'<tr><td style="color:#667;">Surface constructible estimée</td><td class="fw-semibold" style="color:#1a4b8e;" id="cSurfConsVal">'+(surfCons||'—')+'</td></tr>':'')+
       '<tr><td style="color:#667;"><span id="cHautLbl">Hauteur / étages (indicatif)</span></td><td id="cHautVal">'+escHtml(R.hauteur)+'</td></tr>'+
-      '<tr><td style="color:#667;">Limites séparatives / recul</td><td>'+escHtml(R.recul)+'</td></tr>'+
+      '<tr id="cReculRow"><td style="color:#667;"><span id="cReculLbl">Limites séparatives / recul (indicatif)</span></td><td id="cReculVal">'+escHtml(R.recul)+'</td></tr>'+
+      (contenance?'<tr><td style="color:#667;">Surface de plancher réalisable (ex-SHON)</td><td id="cSdpVal">—</td></tr>':'')+
     '</tbody></table></div>'+
+    '<div id="cReglesPlus" class="small"></div>'+
     '<div id="constructServit" class="small text-muted"></div>'+
     '<div id="pluDocLinks" class="mt-1"></div>'+
     '<div class="text-muted mt-1" style="font-size:.68rem;">'+
-      '<i class="bi bi-exclamation-triangle me-1" style="color:#fd7e14;"></i>Le tableau ci-dessus donne des <b>valeurs indicatives</b> par type de zone. Les règles exactes (emprise au sol, hauteur, reculs, CES, stationnement) de votre zone figurent dans le <b>règlement écrit du PLU</b> — lien direct ci-dessus quand disponible.'+
+      '<i class="bi bi-exclamation-triangle me-1" style="color:#fd7e14;"></i>Les lignes marquées <b>règlement</b> sont lues automatiquement dans le règlement écrit du PLU, avec la page citée : à vérifier. Les autres lignes donnent des <b>valeurs indicatives</b> par type de zone.'+
     '</div>';
   // Lien DIRECT vers le règlement écrit (PDF) de la parcelle + carte GPU (API /api/plu-doc).
   try { loadPluDoc(lat, lon, gpuCarte); } catch(e){}
+  if(window.FidiImplantation) try{ FidiImplantation.refresh(); }catch(e){}
   // Emprise au sol / hauteur RÉELLES lues dans le règlement écrit (API /api/plu-regle) :
   // corrige l'estimation par gabarit (ex. UGf1 Fort-de-France = 30 %, pas ~70 %).
   try {
@@ -3191,10 +3242,16 @@ function loadPluDoc(lat, lon, gpuCarte){
 function loadPluRegle(lat, lon, zone, contenance){
   const empVal = document.getElementById('cEmpriseVal');
   if(empVal) empVal.innerHTML = escHtml(empVal.textContent) + ' <span class="text-muted" style="font-size:.9em;">(lecture du règlement…)</span>';
-  fetch('/api/plu-regle?lat='+encodeURIComponent(lat)+'&lon='+encodeURIComponent(lon)+'&zone='+encodeURIComponent(zone))
+  // Requête de cette étude uniquement : une réponse tardive d'une autre étude est ignorée.
+  const clef = lat+'|'+lon+'|'+zone;
+  if(window.__fidiPluRegleClef !== clef){ window.__fidiPluRegle = null; window.__fidiPluRegleClef = clef; }
+  // « v=2 » : réponse enrichie (reculs, pages) ; évite l'ancienne réponse en cache navigateur.
+  fetch('/api/plu-regle?v=2&lat='+encodeURIComponent(lat)+'&lon='+encodeURIComponent(lon)+'&zone='+encodeURIComponent(zone))
     .then(r=>r.ok?r.json():null)
     .then(d=>{
+      if(window.__fidiPluRegleClef !== clef) return;
       window.__fidiPluRegle = d || null; // exposé pour le rapport A4
+      if(window.FidiImplantation) try{ FidiImplantation.refresh(); }catch(e){}
       const empLbl = document.getElementById('cEmpriseLbl');
       const hautLbl = document.getElementById('cHautLbl');
       const hautVal = document.getElementById('cHautVal');
@@ -3204,7 +3261,27 @@ function loadPluRegle(lat, lon, zone, contenance){
         if(empVal){ const t=empVal.textContent.replace(/\s*\(lecture.*$/,''); empVal.textContent=t; }
         return;
       }
-      const tag = ' <span class="badge" style="background:#e7f5ec;color:#1a6b3a;font-weight:600;font-size:.62rem;" title="Valeur lue automatiquement dans le règlement écrit du PLU — à vérifier">règlement</span>';
+      const regles = d.regles || {};
+      // Règlement lu : le libellé générique (« urbaine dense, densité forte ») céderait à tort.
+      const cTitre = document.getElementById('cTitre'), cConstr = document.getElementById('cConstrVal');
+      if(cTitre) cTitre.innerHTML = '<i class="bi bi-rulers me-1"></i>Règles de constructibilité — zone '+escHtml(zone);
+      if(cConstr && /^U/i.test(zone)) cConstr.textContent = 'Constructible selon le règlement de la zone';
+      // Badge « règlement » : renvoie à la page citée du PDF, la citation s'affiche au survol.
+      const tagDe = (x)=>{
+        const page = x && x.page;
+        const cite = (x && x.citation) ? ' — « '+x.citation+' »' : '';
+        const titre = 'Lu automatiquement dans le règlement écrit du PLU, à vérifier'+cite;
+        const label = 'règlement'+(page?' p. '+page:'');
+        const style = 'background:#e7f5ec;color:#1a6b3a;font-weight:600;font-size:.62rem;text-decoration:none;';
+        return ' <a class="badge" style="'+style+'"'+(page&&d.reglement_url?' href="'+escHtml(d.reglement_url)+'#page='+page+'" target="_blank" rel="noopener"':'')+' title="'+escHtml(titre)+'">'+label+'</a>';
+      };
+      const tag = tagDe(regles.emprise);
+      if(regles.emprise && regles.emprise.ambigu && empVal){
+        empVal.innerHTML = 'Plusieurs valeurs selon le quartier : <b>'+regles.emprise.valeurs.join(' %, ')+' %</b>'+tag;
+        if(empLbl) empLbl.textContent = 'Emprise au sol (zone '+zone+')';
+      } else if(!d.emprise_txt && empVal){
+        empVal.textContent = empVal.textContent.replace(/\s*\(lecture.*$/,'');
+      }
       if(d.emprise_txt && empVal){
         empVal.innerHTML = '<span class="fw-semibold" style="color:#1a6b3a;">'+escHtml(d.emprise_txt)+'</span>'+tag;
         if(empLbl) empLbl.textContent = 'Emprise au sol (zone '+zone+')';
@@ -3214,9 +3291,36 @@ function loadPluRegle(lat, lon, zone, contenance){
         }
       }
       if(d.hauteur_txt && hautVal){
-        hautVal.innerHTML = '<span class="fw-semibold" style="color:#1a6b3a;">'+escHtml(d.hauteur_txt)+'</span>'+tag;
+        hautVal.innerHTML = '<span class="fw-semibold" style="color:#1a6b3a;">'+escHtml(d.hauteur_txt)+'</span>'+tagDe(regles.hauteur);
         if(hautLbl) hautLbl.textContent = 'Hauteur (zone '+zone+')';
       }
+      // Reculs : voie et limites séparatives.
+      const phraseRecul = (x)=>{
+        if(!x) return '';
+        const morceaux = [];
+        if(x.m != null) morceaux.push(String(x.m).replace('.',',')+' m minimum');
+        if(x.formule) morceaux.push('H/2'+(x.m != null ? '' : ' (selon la hauteur)'));
+        if(x.maximum) morceaux.push('retrait plafonné');
+        if(x.en_limite) morceaux.push('implantation en limite ou à l\'alignement possible selon conditions');
+        if(x.reference) morceaux.push('depuis l\''+x.reference);
+        return morceaux.join(' · ');
+      };
+      const reculVal = document.getElementById('cReculVal'), reculLbl = document.getElementById('cReculLbl');
+      if(reculVal && (regles.recul_voie || regles.recul_limites)){
+        const lignes = [];
+        if(regles.recul_voie) lignes.push('<b>Voie :</b> '+escHtml(phraseRecul(regles.recul_voie))+tagDe(regles.recul_voie));
+        if(regles.recul_limites) lignes.push('<b>Limites :</b> '+escHtml(phraseRecul(regles.recul_limites))+tagDe(regles.recul_limites));
+        reculVal.innerHTML = lignes.join('<br>');
+        if(reculLbl) reculLbl.textContent = 'Reculs (zone '+zone+')';
+      }
+      // Compléments lus : écart entre bâtiments, pleine terre, stationnement.
+      const plus = [];
+      if(regles.entre_batiments && (regles.entre_batiments.m != null || regles.entre_batiments.formule)) plus.push('<b>Entre bâtiments :</b> '+escHtml(phraseRecul(regles.entre_batiments))+tagDe(regles.entre_batiments));
+      if(regles.pleine_terre && regles.pleine_terre.pct != null) plus.push('<b>Pleine terre / espaces verts :</b> '+regles.pleine_terre.pct+' %'+tagDe(regles.pleine_terre));
+      if(regles.stationnement) plus.push('<b>Stationnement :</b> voir la règle'+tagDe(regles.stationnement));
+      const elPlus = document.getElementById('cReglesPlus');
+      if(elPlus) elPlus.innerHTML = plus.length ? '<div style="font-size:.74rem;line-height:1.7;">'+plus.join(' &nbsp;·&nbsp; ')+'</div>' : '';
+      if(window.FidiImplantation) try{ FidiImplantation.refresh(); }catch(e){}
     })
     .catch(()=>{ if(empVal){ empVal.textContent = empVal.textContent.replace(/\s*\(lecture.*$/,''); } });
 }
@@ -3317,6 +3421,13 @@ async function loadGpuInfo(lat, lon){
           + (p.libelong?` — ${escHtml(p.libelong)}`:'')
           + (p.typezone?` <span class="text-muted">(type ${escHtml(p.typezone)})</span>`:'');
         renderConstructibilite(lat, lon); // rubrique règles de construction
+        // α et K des décotes dépendent de la zone : recalcul si le cadastre a répondu avant elle.
+        try {
+          const estZ = (window.__fidiData||{}).estimations || {};
+          if(typeof renderTerrainDecote==='function') renderTerrainDecote(estZ.terrain);
+          if(typeof renderPromoteurBox==='function') renderPromoteurBox(estZ.terrain);
+          if(typeof etudeAutoFillContenance==='function') etudeAutoFillContenance();
+        } catch(e){}
       } else {
         elZone.innerHTML = '<span class="text-muted">Aucun document d\'urbanisme numérisé à ce point (commune non couverte par le GPU).</span>';
         renderConstructibilite(lat, lon); // affiche quand même le cadre indicatif
@@ -4558,6 +4669,7 @@ function applyDecotesVisibility(){
   if(btn)   btn.innerHTML = hidden ? '<i class="bi bi-eye me-1"></i>Afficher' : '<i class="bi bi-eye-slash me-1"></i>Masquer';
 }
 function toggleDecotes(){
+  window.__fidiDecotesAttente = false; // choix manuel : plus de bascule automatique
   window.__fidiDecotesHidden = !window.__fidiDecotesHidden;
   applyDecotesVisibility();
 }
@@ -4586,10 +4698,13 @@ function renderTerrainDecote(e){
   //  - maison / appartement / local (bâti) → section MASQUÉE automatiquement
   //  - terrain < 1000 m² → masquée (seuil peu pertinent)
   // Modifiable ensuite via le bouton Afficher/Masquer.
-  if(window.__fidiDecotesHidden === undefined){
+  // La contenance arrive après le premier rendu : tant qu'elle est inconnue pour un terrain,
+  // le choix reste « en attente » et se refait au rendu suivant (sinon masqué à tort).
+  if(window.__fidiDecotesHidden === undefined || window.__fidiDecotesAttente){
     var _tb = String((window.__fidiData && window.__fidiData.type_bien) || (window.__fidiInputs && window.__fidiInputs.typeBien) || '').toLowerCase();
     var _estTerrain = _tb.indexOf('terrain') >= 0;
     window.__fidiDecotesHidden = !(_estTerrain && contenance && contenance >= 1000);
+    window.__fidiDecotesAttente = _estTerrain && !contenance;
   }
   try { applyDecotesVisibility(); } catch(e){} // applique l'état après avoir fixé le défaut
 
@@ -5258,6 +5373,7 @@ function terrainTotalSurface(){
   return terrainParcelleBase() + extra.reduce(function(a,b){ return a + (Number(b)||0); }, 0);
 }
 function recalcDecotes(){
+  if(window.FidiImplantation) try{ FidiImplantation.refresh(); }catch(_){}
   var e = ((window.__fidiData||{}).estimations||{}).terrain;
   try{ renderTerrainDecote(e); }catch(_){}
   try{ renderPromoteurBox(e); }catch(_){}
@@ -5499,7 +5615,7 @@ function emailComposeUrl(service, to, subject, body){
     case 'gmail':   return 'https://mail.google.com/mail/?view=cm&fs=1&to='+t+'&su='+s+'&body='+b;
     case 'outlook': return 'https://outlook.live.com/mail/0/deeplink/compose?to='+t+'&subject='+s+'&body='+b;
     case 'yahoo':   return 'https://compose.mail.yahoo.com/?to='+t+'&subject='+s+'&body='+b;
-    case 'orange':  return 'https://webmail.orange.fr/'; // Orange n'a pas de compose deep-link fiable
+    case 'orange':  return 'https://mail.orange.fr/'; // Orange n'a pas de compose deep-link fiable
     default:        return 'mailto:'+t+'?subject='+s+'&body='+b; // app par défaut du poste
   }
 }
@@ -6226,6 +6342,7 @@ function copyShareUrl(){
 </script>
 
 <!-- Moteur de rapport A4 (impression documentaire paginée) -->
+<script src="/implantation.js" defer></script>
 <script src="/rapport-a4.js" defer></script>
 <!-- Garde-fou sortie (Windows/Android) : évite la perte de données -->
 <script src="/guard-exit.js" defer></script>

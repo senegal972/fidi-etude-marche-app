@@ -1,14 +1,15 @@
 // Netlify Function — Règles de zone lues DANS le règlement écrit du PLU (PDF)
 // GET /api/plu-regle?lat=X&lon=Y&zone=UGf1
 // Télécharge le règlement écrit de la parcelle, en extrait le texte (unpdf) et
-// renvoie l'emprise au sol et la hauteur RÉELLES de la zone détectée.
-// Best-effort : renvoie found:false si le motif n'est pas reconnu (le client
-// retombe alors sur l'estimation indicative par type de zone). Jamais injecté
-// en dur côté rapport sans mention « lu dans le règlement ».
+// renvoie les règles RÉELLES de la zone : emprise au sol, hauteur, reculs, distance
+// entre bâtiments, pleine terre, stationnement — chacune avec sa citation et sa page.
+// Best-effort : renvoie found:false si rien n'est reconnu (le client retombe alors
+// sur l'estimation indicative par type de zone). Jamais présenté sans « à vérifier ».
 //
-// Chaîne : apicarto gpu/document → pièces GPU → PDF règlement écrit → texte.
+// Chaîne : apicarto gpu/document → pièces GPU → PDF règlement écrit → texte → _plu_regles.
 
 import { extractText, getDocumentProxy } from "unpdf";
+import { parseZoneRules } from "./_plu_regles.mjs";
 
 const TIMEOUT_MS = 10000;
 const PDF_TIMEOUT_MS = 20000;
@@ -46,43 +47,6 @@ function isReglementEcrit(f) {
   return /_reglement_\d{6,}\.pdf$/.test(n) && !/pprn|rlp/.test(n);
 }
 
-// Emprise au sol (%) de la zone : cherche chaque occurrence du code de zone
-// puis, dans une fenêtre, « emprise au sol … limitée à X % ».
-function empriseForZone(text, zone) {
-  const T = text.toUpperCase();
-  const z = zone.toUpperCase();
-  let i = -1;
-  while ((i = T.indexOf(z, i + 1)) >= 0) {
-    const win = text.slice(i, i + 320).replace(/\s+/g, " ");
-    const m = win.match(/emprise au sol[\s\S]{0,90}?limit[ée]+e?\s*à\s*(\d+(?:[.,]\d+)?)\s*%/i);
-    if (m) return { pct: parseFloat(m[1].replace(",", ".")), txt: m[1].replace(",", ".") + " %" };
-  }
-  return null;
-}
-
-// Hauteur de la zone : bloc « Secteur <code> » (ou secteur parent sans suffixe
-// chiffré) → « hauteur à l'égout … X m » (+ hauteur totale si présente).
-function hauteurForZone(text, zone) {
-  const T = text.toUpperCase();
-  const candidates = [zone.toUpperCase(), zone.toUpperCase().replace(/\d+$/, "")];
-  for (const code of candidates) {
-    for (const kw of ["SECTEUR " + code, "SOUS-SECTEUR " + code, code]) {
-      const start = T.lastIndexOf(kw);
-      if (start < 0) continue;
-      const block = text.slice(start, start + 600).replace(/\s+/g, " ");
-      const eg = block.match(/hauteur\s+à\s+l.égout[\s\S]{0,60}?(\d+(?:[.,]\d+)?)\s*m(?:è|e)tres?/i);
-      const tot = block.match(/hauteur\s+totale[\s\S]{0,60}?(\d+(?:[.,]\d+)?)\s*m(?:è|e)tres?/i);
-      if (eg || tot) {
-        const parts = [];
-        if (eg) parts.push("égout " + eg[1].replace(",", ".") + " m");
-        if (tot) parts.push("total " + tot[1].replace(",", ".") + " m");
-        return { txt: parts.join(" / "), egout_m: eg ? parseFloat(eg[1].replace(",", ".")) : null };
-      }
-    }
-  }
-  return null;
-}
-
 async function fetchPdfBytes(url, ms = PDF_TIMEOUT_MS) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);
@@ -118,28 +82,32 @@ export const handler = async (event) => {
     if (!reg) return j(200, { ok: true, found: false, note: "Règlement écrit non identifié.", document: { id, commune: p.grid_title } });
 
     const url = fileUrl(id, reg.name);
-    let text = "";
+    let pages = [];
     try {
       const bytes = await fetchPdfBytes(url);
       const pdf = await getDocumentProxy(bytes);
-      const r = await extractText(pdf, { mergePages: true });
-      text = (r && r.text) || "";
+      const r = await extractText(pdf, { mergePages: false });
+      pages = (r && r.text) || [];
     } catch (e) {
       return j(200, { ok: true, found: false, reglement_url: url, note: "Lecture PDF impossible : " + e.message });
     }
 
-    const emprise = empriseForZone(text, zone);
-    const hauteur = hauteurForZone(text, zone);
-    const found = !!(emprise || hauteur);
+    const regles = parseZoneRules(pages, zone);
+    const emprise = regles.emprise;
+    const hauteur = regles.hauteur;
+    const found = !!(emprise || hauteur || regles.recul_voie || regles.recul_limites);
 
     return j(200, {
       ok: true,
       found,
       zone,
-      emprise_pct: emprise ? emprise.pct : null,
-      emprise_txt: emprise ? emprise.txt : null,
+      // Champs historiques (rapport, anciennes versions du client).
+      emprise_pct: emprise && emprise.pct != null ? emprise.pct : null,
+      emprise_txt: emprise && emprise.pct != null ? emprise.pct + " %" : (emprise && emprise.non_reglemente ? "non réglementée" : null),
       hauteur_txt: hauteur ? hauteur.txt : null,
       hauteur_egout_m: hauteur ? hauteur.egout_m : null,
+      regles,
+      nb_pages: pages.length,
       reglement_url: url,
       document: { id, commune: p.grid_title || "", insee: p.grid_name || "", maj: p.gpu_timestamp || "" },
       source: "Règlement écrit du PLU (lecture automatique — à vérifier)",
