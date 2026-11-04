@@ -189,7 +189,8 @@
 #rapportRoot .rpt-clone .bg-primary{ background:#1a4b8e!important; }
 #rapportRoot .rpt-clone .bg-secondary{ background:#6a7385!important; }
 #rapportRoot .rpt-clone .bg-light{ background:#eef2f7!important; color:#222; }
-#rapportRoot .rpt-clone svg{ max-height:95mm; }
+#rapportRoot .rpt-clone svg{ max-height:72mm; }
+#rapportRoot .rpt-foot{ break-before:avoid; page-break-before:avoid; }
 `;
 
   // ── Sections ───────────────────────────────────────────────────────────────
@@ -696,7 +697,7 @@
     const note = imprime('note')
       ? '<div class="rpt-block rpt-sec"><h3>Note</h3><p>' + esc(document.getElementById('etudeNote').value) + '</p></div>' : '';
     const decotes = imprime('decotes') ? decotesPage(d, ref) : '';
-    const potentiel = (imprime('constructibilite') ? cloneBloc('constructInfo', 'Règles de constructibilité') : '')
+    const potentiel = (imprime('constructibilite') ? cloneBloc('constructInfo') : '')
       + (imprime('implantation') ? cloneBloc('implantationBody', "Surface de plancher & schéma d'implantation") : '');
     const comparables = (imprime('comparables') ? cloneBloc('topComparBody', 'Meilleures ventes comparables') : '')
       + (imprime('sections') ? cloneBloc('synthSectionTable', 'Synthèse des prix par section cadastrale') : '');
