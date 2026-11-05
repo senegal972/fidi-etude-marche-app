@@ -1,12 +1,14 @@
-// Netlify Function — Débit d'un crédit à l'ÉDITION d'un document (étude/avis).
-// POST /api/consume { kind: "etude"|"avis", ref }
+// Netlify Function — Débit d'un crédit à l'ÉDITION d'un document hors PDF serveur :
+// impression navigateur et facturation. Le PDF serveur débite lui-même (pdf-render.mjs).
+// POST /api/consume { kind: "etude"|"avis", cle, ref }
 //
 // C'est l'acte facturé : produire/imprimer un livrable = 1 crédit.
-// Ré-éditer le MÊME document (même réf que la dernière éditée) est gratuit.
+// La règle, ré-édition gratuite comprise, est dans _edition.mjs.
 // Les admins et comptes « Illimité » ne consomment jamais. Sans péage : gratuit.
 
 import { hasToken } from "./_notion.mjs";
-import { authResp, currentUser, paywallOn, isUnlimited, setCredits, startNewCycle } from "./_auth.mjs";
+import { authResp, currentUser } from "./_auth.mjs";
+import { deciderEdition, editionFacturable, enregistrerEdition, lireDoc } from "./_edition.mjs";
 
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return authResp(200, {});
@@ -18,30 +20,26 @@ export const handler = async (event) => {
   if (!found) return authResp(401, { error: "Connexion requise.", need_auth: true });
 
   let b; try { b = JSON.parse(event.body || "{}"); } catch { return authResp(400, { error: "Corps JSON invalide" }); }
-  const kind = (b.kind || "").toLowerCase();
-  const ref = String(b.ref || "").trim();
-
-  // Péage inactif → édition libre.
-  if (!paywallOn()) return authResp(200, { ok: true, facture: false, raison: "peage_inactif", credits: found.user.credits });
-  // Accès illimité (admin / partenaire) → jamais débité.
-  if (isUnlimited(found.user)) return authResp(200, { ok: true, facture: false, raison: "illimite", illimite: true });
+  const doc = lireDoc(b);
+  if (editionFacturable(found.user) && !doc) {
+    return authResp(400, { error: "Document non identifié. Rechargez la page puis réessayez." });
+  }
 
   try {
-    // Ré-édition du même document → gratuit.
-    if (ref && ref === found.user.derniereRef) {
-      return authResp(200, { ok: true, facture: false, raison: "deja_edite", credits: found.user.credits });
-    }
-    if (found.user.credits < 1) {
+    const decision = await deciderEdition(found, doc);
+    if (decision.mode === "refus") {
       return authResp(402, { error: "Crédits épuisés. Rechargez pour éditer ce document.", credits: 0, need_credits: true });
     }
-    const restants = found.user.credits - 1;
-    await setCredits(found.page.id, restants);
-    await startNewCycle(found.page.id, ref); // nouveau cycle : compteur d'essais remis à zéro
+    const res = await enregistrerEdition(found, decision, doc);
+    if (!res.facture) {
+      return authResp(200, { ok: true, facture: false, raison: res.raison, credits: res.credits, illimite: res.raison === "illimite" || undefined });
+    }
     return authResp(200, {
-      ok: true, facture: true, kind, ref,
-      credits_restants: restants, recherches_utilisees: 0,
+      ok: true, facture: true, kind: doc.kind, ref: doc.ref,
+      credits_restants: res.credits, recherches_utilisees: 0,
     });
   } catch (e) {
+    if (e.status === 402) return authResp(402, { error: e.message, credits: 0, need_credits: true });
     return authResp(e.status || 500, { error: e.message });
   }
 };

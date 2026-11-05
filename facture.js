@@ -99,6 +99,7 @@
       : (String(dm.type_libelle || dm.source || 'Prestation').slice(0, 60));
     var d = window.__fidiData, inputs = window.__fidiInputs || {};
     var adresse = '', ref = '', client = '', email = '', telephone = '', htmlString = '';
+    var doc = null;   // identité du document livré (débit du crédit), absente pour une prestation externe
     if (dm) {
       var dc = dm.client || {};
       client = dc.nom || ''; email = dc.email || ''; telephone = dc.telephone || '';
@@ -107,13 +108,15 @@
       var loc = d.localisation || {};
       adresse = loc.label || inputs.adresse || loc.city || '';
       ref = typeof window.etudeRef === 'function' ? window.etudeRef(d, inputs) : '';
+      doc = typeof window.etudeDoc === 'function' ? window.etudeDoc() : null;
     } else if (kind === 'avis' && window.__factureAvisCtx) {
       var c = window.__factureAvisCtx;
       client = c.client || ''; email = c.email || ''; telephone = c.telephone || '';
       adresse = c.adresse || c.commune || ''; ref = c.ref || ''; htmlString = c.htmlString || '';
+      doc = c.doc || null;
       window.__factureAvisCtx = null;
     }
-    window.__factCtx = { kind: kind, label: label, ref: ref, client: client, email: email, telephone: telephone, adresse: adresse, htmlString: htmlString,
+    window.__factCtx = { kind: kind, label: label, ref: ref, client: client, email: email, telephone: telephone, adresse: adresse, htmlString: htmlString, doc: doc,
                          externe: !!dm, source: dm ? String(dm.source || '').slice(0, 60) : '', origine: dm ? dm._origine || '' : '',
                          lienDocument: dm ? String(dm.lien_document || '') : '' };
     window.__factRemise = null;
@@ -457,13 +460,25 @@
     if (($('factCanEmail') || {}).checked) canal.push('Email');
     if (($('factCanWa') || {}).checked) canal.push('WhatsApp');
     var libelle = libelleCourt(calc, ctx.label);
-    if (btn) btn.disabled = true;
-    setStatus('<div class="alert alert-info py-2 small mb-0"><span class="spinner-border spinner-border-sm me-1"></span>Génération du document…</div>');
 
-    // Prestation d'une autre application : pas de document de l'étude à joindre (lien éventuel fourni par elle).
-    var genDoc = ctx.kind === 'prestation' ? Promise.resolve(ctx.lienDocument || '')
-      : typeof window.factGenDocLink === 'function' ? window.factGenDocLink(ctx) : Promise.resolve('');
-    Promise.resolve(genDoc).catch(function () { return ''; }).then(function (lienDoc) {
+    // Le document livré au client (étude, avis) est un acte facturé, comme l'impression :
+    // 1 crédit, sauf si ce document a déjà été édité. Une prestation externe ne livre pas de document.
+    var C = window.Compte;
+    var droit = (C && ctx.doc && ctx.kind !== 'prestation')
+      ? (C.confirmerCredit('Générer le document à livrer : 1 crédit, sauf s\'il a déjà été édité. Continuer ?')
+          ? C.consume(ctx.doc.kind, ctx.doc.ref, ctx.doc.cle) : Promise.resolve(false))
+      : Promise.resolve(true);
+
+    Promise.resolve(droit).then(function (autorise) {
+      if (!autorise) return null;
+      if (btn) btn.disabled = true;
+      setStatus('<div class="alert alert-info py-2 small mb-0"><span class="spinner-border spinner-border-sm me-1"></span>Génération du document…</div>');
+      // Prestation d'une autre application : pas de document de l'étude à joindre (lien éventuel fourni par elle).
+      var genDoc = ctx.kind === 'prestation' ? Promise.resolve(ctx.lienDocument || '')
+        : typeof window.factGenDocLink === 'function' ? window.factGenDocLink(ctx) : Promise.resolve('');
+      return Promise.resolve(genDoc).catch(function () { return ''; });
+    }).then(function (lienDoc) {
+      if (lienDoc === null) return;   // crédit refusé ou annulé : rien n'est créé
       setStatus(lienDoc
         ? '<div class="alert alert-info py-2 small mb-0"><span class="spinner-border spinner-border-sm me-1"></span>Création de la facture…</div>'
         : '<div class="alert alert-warning py-2 small mb-0"><i class="bi bi-exclamation-triangle me-1"></i>Document non joint automatiquement ; la facture est créée quand même.</div>');

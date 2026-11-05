@@ -188,7 +188,7 @@ test("waitForImages : s'arrête quand les images sont finies, et à la date limi
 
 test("garde-fou : aucune promesse attendue dans la page, JavaScript y étant coupé", () => {
   const src = readFileSync(new URL("../netlify/functions/pdf-render.mjs", import.meta.url), "utf8");
-  assert.match(src, /await waitForImages\(page\)/);
+  assert.match(src, /await waitForImages\(page\b/);
   assert.doesNotMatch(src, /addEventListener|new Promise/);
 });
 

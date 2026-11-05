@@ -238,6 +238,9 @@ body.map-fs-on{overflow:hidden;}
   body.rapport-printing{background:#fff!important;}
   body.share-printing > *:not(#sharePrintRoot){display:none!important;}
   body.share-printing #sharePrintRoot{display:block!important;}
+  /* Péage actif : Ctrl+P n'imprime pas l'écran, seuls les boutons d'édition produisent un document. */
+  body.peage-actif:not(.rapport-printing):not(.share-printing):not(.avis-print) > *{display:none!important;}
+  body.peage-actif:not(.rapport-printing):not(.share-printing):not(.avis-print)::before{content:"Pour imprimer ce document, utilisez le bouton Imprimer / PDF de l'application.";display:block;font-size:14pt;padding:20mm;}
 }
 </style>
 <!-- Charte de marque : couleurs posées avant le premier affichage (module « Mise en page ») -->
@@ -1722,7 +1725,8 @@ function openPrintDialog(mode){
 async function confirmPrint(){
   // Débit d'un crédit (acte facturé) — sauf admin/illimité, péage inactif ou
   // ré-édition du même document. Bloque si crédits épuisés.
-  if(window.Compte && !(await Compte.consume('etude', currentEtudeRef()))){ closePrintDialog(); return; }
+  const doc = etudeDoc();
+  if(window.Compte && !(await Compte.consume(doc.kind, doc.ref, doc.cle))){ closePrintDialog(); return; }
   closePrintDialog();
   // Rapport A4 paginé (couverture, sections, tableaux insécables)
   if(window.FidiRapport){ setTimeout(()=>FidiRapport.print(), 120); return; }
@@ -2057,9 +2061,6 @@ async function genererPdfServeur(){
   }
   var rapportHtml = FidiRapport.buildHTML();
   if(!rapportHtml){ alert('Lancez une analyse avant de générer le PDF.'); return; }
-  // Même acte facturé que le PDF navigateur : 1 crédit, sauf ré-édition du même document.
-  if(window.Compte && !(await Compte.consume('etude', currentEtudeRef()))) return;
-
   var origin = (location && location.origin) || 'https://fidi-etude-marche-app.netlify.app';
   // Le HTML FidiRapport cible #rapportRoot dans son CSS → on enveloppe dans cet id.
   var html = '<!doctype html><html><head><meta charset="utf-8"><base href="'+origin+'/">' +
@@ -2074,8 +2075,12 @@ async function genererPdfServeur(){
   try {
     var r = await fetch('/api/pdf-render', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ html: html, filename: etudeFileBase()+'.pdf' })
+      // Même acte facturé que le PDF navigateur : le serveur débite 1 crédit après un rendu
+      // réussi, sauf ré-édition du même document.
+      body: JSON.stringify({ html: html, filename: etudeFileBase()+'.pdf', doc: etudeDoc() })
     });
+    const etat = window.Compte ? Compte.renduPdf(r) : (r.ok ? 'ok' : 'echec');
+    if(etat === 'bloque') return;
     if(!r.ok){
       var t = await r.text();
       alert('Rendu PDF serveur échoué (HTTP '+r.status+') — fallback impression navigateur.\n\n'+t.slice(0,300));
@@ -5661,20 +5666,40 @@ function currentEtudeRef(){
   return etudeRef(d, window.__fidiInputs || {});
 }
 
+// Identité du document pour la facturation (distincte de la réf affichée, qui ne contient ni
+// adresse ni parcelle et change chaque jour). Même étude, même destinataire = même clé.
+function etudeDocCle(){
+  const d = window.__fidiData;
+  if(!d) return '';
+  const inputs = window.__fidiInputs || {}, loc = d.localisation || {};
+  const arrondi = (v)=> v==null ? '' : Number(v).toFixed(5);
+  const parcelles = (window.__extraParcFeatures || []).map(function(f){
+    const p = (f && f.properties) || {}; return (p.section||'')+(p.numero||'');
+  }).sort().join(',');
+  const dest = ((document.getElementById('inputDestinataire')||{}).value || inputs.destinataire || '').trim().toUpperCase();
+  const type = d.type_bien || inputs.typeBien || '';
+  const texte = [inputs.adresse||loc.label||'', type, arrondi(loc.lat), arrondi(loc.lon), parcelles, dest].join('|');
+  let h = 5381;
+  for(let i=0;i<texte.length;i++) h = ((h<<5)+h+texte.charCodeAt(i)) & 0x7fffffff;
+  return 'E-'+(loc.citycode||'XXXXX')+'-'+h.toString(36).toUpperCase();
+}
+function etudeDoc(){
+  return { kind:'etude', ref: currentEtudeRef() || '', cle: etudeDocCle() };
+}
+
 async function partagerEtude(){
   const d = window.__fidiData;
   if(!d){ alert('Lancez une analyse avant de partager.'); return; }
-  // Le partage génère le PDF de l'étude à l'ouverture : même acte facturé que l'impression.
-  // Refus = aucun crédit. Le même document déjà édité reste gratuit.
-  if(!confirm('Partager génère le PDF de l\'étude : 1 crédit, sauf si ce document a déjà été édité. Continuer ?')) return;
+  // Le partage génère le PDF de l'étude à l'ouverture : même acte facturé que l'impression,
+  // débité par le serveur si le rendu réussit. Le même document déjà édité reste gratuit.
+  if(window.Compte && !Compte.confirmerCredit('Partager génère le PDF de l\'étude : 1 crédit, sauf si ce document a déjà été édité. Continuer ?')) return;
   const ref = currentEtudeRef();
-  if(window.Compte && !(await Compte.consume('etude', ref))) return;
   // Sauvegarde en arrière-plan (traçabilité Notion), sans bloquer la génération PDF
   try { saveEtudeCloud(); } catch(e){}
   const loc = d.localisation || {};
   const titre = loc.label || loc.city || ref;
   const filename = etudeFileBase() + '.pdf';
-  fidiSharePdf({ element: document.getElementById('results-panel'), filename, titre, kind:'Étude de marché' });
+  fidiSharePdf({ element: document.getElementById('results-panel'), filename, titre, kind:'Étude de marché', doc: etudeDoc() });
 }
 
 // ═══ Facturer & Envoyer — grille tarifaire + remise (lien / e-mail / WhatsApp) ═══
@@ -6195,18 +6220,24 @@ async function fidiAutoPdfFile(opts){
   if(!html) return null;
   try{
     const r = await fetch('/api/pdf-render', {method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ html: html, filename: opts.filename || 'document.pdf' })});
+      body:JSON.stringify({ html: html, filename: opts.filename || 'document.pdf', doc: opts.doc })});
+    if(window.Compte && Compte.renduPdf(r) === 'bloque') return { bloque:true };
     if(!r.ok) return null;
     const blob = await r.blob();
     if(!blob || blob.size < 800) return null; // PDF plausible
-    return new File([blob], opts.filename || 'document.pdf', { type:'application/pdf' });
+    return { file: new File([blob], opts.filename || 'document.pdf', { type:'application/pdf' }) };
   }catch(e){ return null; }
 }
 // Lance la génération auto à l'ouverture de la modale de partage.
 async function fidiAutoGenerate(){
   const opts = window.__fidiShareOpts || {};
   const statusEl = document.getElementById('shareAutoStatus');
-  const file = await fidiAutoPdfFile(opts);
+  const rendu = await fidiAutoPdfFile(opts);
+  if(rendu && rendu.bloque){
+    if(statusEl) statusEl.innerHTML = '<span class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>PDF non généré : crédits épuisés ou connexion requise.</span>';
+    return;
+  }
+  const file = rendu && rendu.file;
   if(file){
     window.__fidiAttachedFiles = [file];
     if(statusEl) statusEl.innerHTML = '<span class="text-success fw-semibold"><i class="bi bi-check-circle me-1"></i>PDF généré automatiquement</span> <span class="text-muted">— rendu identique à l\'écran.</span>';
@@ -6228,8 +6259,10 @@ function fidiToggleSend(){
 // ÉTAPE 1 — impression native (rendu strictement identique à l'écran).
 // Pour l'avis (htmlString), on injecte le doc dans un conteneur d'impression
 // dédié ; pour l'étude (element=results-panel), l'impression utilise @media print.
-function fidiPrintExact(){
+async function fidiPrintExact(){
   const opts = window.__fidiShareOpts || {};
+  // Secours quand le PDF serveur a échoué : il n'a donc rien débité.
+  if(window.Compte && opts.doc && !(await Compte.consume(opts.doc.kind, opts.doc.ref, opts.doc.cle))) return;
   const modal = document.getElementById('shareModal');
   // Masque la modale pendant l'impression puis la restaure
   if(modal) modal.style.visibility = 'hidden';
@@ -6388,13 +6421,6 @@ async function fidiSendEmail(kind, titre){
   }
 }
 
-// Compat : ancien nom conservé pour avis-valeur.js (signature simplifiée)
-function showShareModal(kind, titre, valeur, url){
-  // Déprécié — redirigé vers la génération PDF de l'étude courante.
-  const el = document.getElementById('results-panel');
-  fidiSharePdf({ element: el, filename: 'FIDI_'+(kind||'document')+'.pdf', titre: titre, kind: kind });
-}
-
 function copyShareUrl(){
   const inp = document.getElementById('shareUrl');
   if(!inp) return;
@@ -6544,6 +6570,7 @@ window.Compte = (function(){
   }
 
   function render(){
+    document.body.classList.toggle('peage-actif', facturable());
     const lbl = document.getElementById('btnCompteLabel');
     const pill = document.getElementById('creditsPill');
     const btnPres = document.getElementById('btnPresentation');
@@ -6554,8 +6581,7 @@ window.Compte = (function(){
       if(lbl) lbl.textContent = state.user.nom || state.user.email;
       if(pill){
         // Pastille crédits : uniquement pour les comptes non illimités quand le péage est actif.
-        const unlimited = state.user.role === 'Administrateur' || state.user.illimite;
-        if(state.paywall && !unlimited){
+        if(facturable()){
           pill.classList.remove('d-none'); document.getElementById('creditsVal').textContent = state.user.credits;
         }else pill.classList.add('d-none');
       }
@@ -6563,6 +6589,14 @@ window.Compte = (function(){
       if(lbl) lbl.textContent = 'Connexion';
       if(pill) pill.classList.add('d-none');
     }
+  }
+
+  // Compte soumis au péage : ni administrateur, ni « Illimité », péage actif.
+  function facturable(){
+    return !!(state.paywall && state.authenticated && state.user && state.user.role !== 'Administrateur' && !state.user.illimite);
+  }
+  function confirmerCredit(message){
+    return !facturable() || confirm(message);
   }
 
   function setCredits(n){
@@ -6574,10 +6608,10 @@ window.Compte = (function(){
 
   // Débit d'un crédit à l'édition d'un document. Retourne true si l'action peut
   // se poursuivre (autorisée / gratuite), false si bloquée (crédits épuisés).
-  async function consume(kind, ref){
+  async function consume(kind, ref, cle){
     if(!state.authenticated){ open(); return false; }
     try{
-      const r = await fetch('/api/consume', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,ref})});
+      const r = await fetch('/api/consume', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,ref,cle})});
       const d = await r.json().catch(()=>({}));
       if(r.status===402 && d.need_credits){
         alert('Crédits épuisés. Rechargez des crédits pour éditer / imprimer ce document.');
@@ -6588,6 +6622,23 @@ window.Compte = (function(){
       if(d.facture && d.credits_restants!=null){ setCredits(d.credits_restants); setRecherches(0); }
       return true;
     }catch(e){ alert('Édition impossible : '+e.message); return false; }
+  }
+
+  // Lit la réponse de /api/pdf-render, qui débite elle-même. 'ok' : PDF reçu ; 'bloque' : le
+  // compte doit agir (aucun secours d'impression) ; 'echec' : rendu raté, rien n'a été débité.
+  function renduPdf(r){
+    if(r.ok){
+      const n = parseInt(r.headers.get('X-Fidi-Credits'), 10);
+      if(r.headers.get('X-Fidi-Facture') === '1' && !isNaN(n)){ setCredits(n); setRecherches(0); }
+      return 'ok';
+    }
+    if(r.status === 402){
+      alert('Crédits épuisés. Rechargez des crédits pour éditer / imprimer ce document.');
+      open();
+      return 'bloque';
+    }
+    if(r.status === 401){ open(); return 'bloque'; }
+    return 'echec';
   }
 
   function modal(){
@@ -7691,7 +7742,7 @@ window.Compte = (function(){
     if(!dryRun){ const box=document.getElementById('offresBox'); if(box) box.dataset.loaded=''; loadOffres(); }
   }
 
-  return { open, doLogin, logout, refresh, setCredits, setRecherches, consume, adminCreate, adminCredit, adminToggle,
+  return { open, doLogin, logout, refresh, setCredits, setRecherches, consume, renduPdf, confirmerCredit, adminCreate, adminCredit, adminToggle,
            adminIllimite, adminQuota, adminDelete, adminReseau, adminTarifGroup, adminRefresh,
            adminEditNom, adminCommission, openFiche, ficheRoleChange, ficheSave, loadFactAdmin, factSaveSeuils, factRelance, relanceVia, factDelete, factFicheClient,
            openRapportCompta, rcSetMonth, rcSetYear, genRapportCompta, factSaveContact,
