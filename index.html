@@ -1934,6 +1934,8 @@ async function genererPdfServeur(){
   }
   var rapportHtml = FidiRapport.buildHTML();
   if(!rapportHtml){ alert('Lancez une analyse avant de générer le PDF.'); return; }
+  // Même acte facturé que le PDF navigateur : 1 crédit, sauf ré-édition du même document.
+  if(window.Compte && !(await Compte.consume('etude', currentEtudeRef()))) return;
 
   var origin = (location && location.origin) || 'https://fidi-etude-marche-app.netlify.app';
   // Le HTML FidiRapport cible #rapportRoot dans son CSS → on enveloppe dans cet id.
@@ -5426,9 +5428,13 @@ function currentEtudeRef(){
 async function partagerEtude(){
   const d = window.__fidiData;
   if(!d){ alert('Lancez une analyse avant de partager.'); return; }
+  // Le partage génère le PDF de l'étude à l'ouverture : même acte facturé que l'impression.
+  // Refus = aucun crédit. Le même document déjà édité reste gratuit.
+  if(!confirm('Partager génère le PDF de l\'étude : 1 crédit, sauf si ce document a déjà été édité. Continuer ?')) return;
+  const ref = currentEtudeRef();
+  if(window.Compte && !(await Compte.consume('etude', ref))) return;
   // Sauvegarde en arrière-plan (traçabilité Notion), sans bloquer la génération PDF
   try { saveEtudeCloud(); } catch(e){}
-  const ref = currentEtudeRef();
   const loc = d.localisation || {};
   const titre = loc.label || loc.city || ref;
   const filename = etudeFileBase() + '.pdf';

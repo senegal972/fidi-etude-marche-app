@@ -30,11 +30,13 @@
       mnx = Math.min(mnx, c[0]); mxx = Math.max(mxx, c[0]); mny = Math.min(mny, c[1]); mxy = Math.max(mxy, c[1]);
     })));
     const lon0 = (mnx + mxx) / 2, lat0 = (mny + mxy) / 2, kx = M_PAR_DEG_LON * Math.cos(lat0 * Math.PI / 180);
-    return polys.map((rs) => {
+    const res = polys.map((rs) => {
       const out = rs.map((r) => r.map((c) => [(c[0] - lon0) * kx, -(c[1] - lat0) * M_PAR_DEG_LAT, c[0], c[1]]));
       out.geom = rs.geom;
       return out;
     });
+    res.geo = { lon0, lat0, kx };
+    return res;
   }
   function distSeg(px, py, a, b) {
     const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy;
@@ -183,6 +185,8 @@
     cotes.forEach((c) => { if (voieCles.has(c.cle)) voie.add(c.id); });
     cotes.forEach((c) => { c.voie = voie.has(c.id); });
     res.noms = p.noms || null;
+    res.couleurs = p.couleurs || null;
+    res.geo = polys ? polys.geo : null;
     const rV = Math.max(0, Number(p.reculVoie) || 0), rL = Math.max(0, Number(p.reculLimites) || 0);
     res.voieInconnue = !cotes.some((c) => voie.has(c.id));
     const reculCote = (c) => c.interne ? 0 : (res.voieInconnue ? Math.max(rV, rL) : (voie.has(c.id) ? rV : rL));
@@ -254,6 +258,19 @@
       res.batiments = b.length > a.length ? b : a;
       res.nb = res.batiments.length;
       res.budget = budget;
+      // Parcelles occupées par chaque bâtiment : plusieurs = bâtiment à cheval sur une limite.
+      const cs = Math.cos(res.angle), sn = Math.sin(res.angle);
+      res.batiments.forEach((b) => {
+        const parcelles = new Set();
+        for (let a = 0; a <= 4; a++) for (let c = 0; c <= 4; c++) {
+          const u = res.origine[0] + (b.i + 0.02 * b.w + 0.96 * b.w * a / 4) * res.cell;
+          const v = res.origine[1] + (b.j + 0.02 * b.h + 0.96 * b.h * c / 4) * res.cell;
+          const x = u * cs - v * sn, y = u * sn + v * cs;
+          polys.forEach((rs) => { if (dansPolygone(x, y, rs)) parcelles.add(rs.geom); });
+        }
+        b.parcelles = Array.from(parcelles);
+      });
+      res.aCheval = res.batiments.map((b, n) => (b.parcelles.length > 1 ? n + 1 : 0)).filter(Boolean);
     }
     delete res._mask;
     return res;
@@ -281,6 +298,134 @@
   }
 
   // ── Dessin SVG (pur) ──────────────────────────────────────────────────────
+  // Place libre pour écrire le nom d'une parcelle : loin des bâtiments et des bords.
+  function placeEtiquette(anneauPx, obstacles) {
+    const xs = anneauPx.map((q) => q[0]), ys = anneauPx.map((q) => q[1]);
+    const mnx = Math.min.apply(null, xs), mxx = Math.max.apply(null, xs), mny = Math.min.apply(null, ys), mxy = Math.max.apply(null, ys);
+    const cx = xs.reduce((s, v) => s + v, 0) / xs.length, cy = ys.reduce((s, v) => s + v, 0) / ys.length;
+    let best = [cx, cy], score = -Infinity;
+    for (let j = 0; j < 16; j++) for (let i = 0; i < 16; i++) {
+      const x = mnx + (i + 0.5) * (mxx - mnx) / 16, y = mny + (j + 0.5) * (mxy - mny) / 16;
+      if (!dansPolygone(x, y, [anneauPx])) continue;
+      let bord = Infinity;
+      for (let k = 0; k < anneauPx.length; k++) bord = Math.min(bord, distSeg(x, y, anneauPx[k], anneauPx[(k + 1) % anneauPx.length]));
+      const obst = obstacles.reduce((m, o) => Math.min(m, Math.hypot(o[0] - x, o[1] - y)), 60);
+      const s = Math.min(obst, 45) + Math.min(bord, 22) - 0.02 * Math.hypot(x - cx, y - cy);
+      if (s > score) { score = s; best = [x, y]; }
+    }
+    return best;
+  }
+  const echapper = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  function texteParcelle(q, lignes, couleur) {
+    return lignes.map((l, i) => '<text x="' + q[0].toFixed(1) + '" y="' + (q[1] + i * 13 - (lignes.length - 1) * 6).toFixed(1) + '" text-anchor="middle" font-size="' + (i ? 10 : 11.5) + '" font-weight="700" fill="' + couleur + '" stroke="#fff" stroke-width="3" paint-order="stroke">' + echapper(l) + '</text>').join('');
+  }
+  function nordEchelle(W, H, s) {
+    const paliers = [5, 10, 20, 50, 100, 200, 500];
+    const lm = paliers.find((v) => v * s >= 60) || 500;
+    return '<g transform="translate(' + (W - 26) + ',38)"><path d="M0 -18 L6 6 L0 2 L-6 6 Z" fill="#47505f"/><text x="0" y="19" text-anchor="middle" font-size="11" font-weight="700" fill="#47505f">N</text></g>'
+      + '<g transform="translate(14,' + (H - 14) + ')"><rect width="' + (lm * s).toFixed(1) + '" height="4" fill="#47505f"/><text x="0" y="-5" font-size="10" fill="#47505f">' + lm + ' m</text></g>';
+  }
+
+  // Plan d'un terrain de plusieurs parcelles. Chaque parcelle garde ses limites, ses reculs
+  // (y compris sur la limite avec sa voisine) et ses bâtiments, tous dans la même couleur.
+  // entries : [{ ref, res, couleur }], res = compute() de la parcelle seule.
+  function planParcelles(entries) {
+    const valides = entries.filter((e) => e.res && e.res.polys);
+    if (!valides.length) return '';
+    const W = 640, H = 430, M = 30;
+    let mnLon = Infinity, mxLon = -Infinity, mnLat = Infinity, mxLat = -Infinity;
+    valides.forEach((e) => e.res.cotes.forEach((c) => [c.a, c.b].forEach((q) => {
+      mnLon = Math.min(mnLon, q[2]); mxLon = Math.max(mxLon, q[2]); mnLat = Math.min(mnLat, q[3]); mxLat = Math.max(mxLat, q[3]);
+    })));
+    const lon0 = (mnLon + mxLon) / 2, lat0 = (mnLat + mxLat) / 2, kx = M_PAR_DEG_LON * Math.cos(lat0 * Math.PI / 180);
+    const metres = (lon, lat) => [(lon - lon0) * kx, -(lat - lat0) * M_PAR_DEG_LAT];
+    const larg = (mxLon - mnLon) * kx, haut = (mxLat - mnLat) * M_PAR_DEG_LAT;
+    const s = Math.min((W - 2 * M) / Math.max(1, larg), (H - 2 * M) / Math.max(1, haut));
+    const ox = (W - larg * s) / 2, oy = (H - haut * s) / 2;
+    const pxM = (m) => [(m[0] + larg / 2) * s + ox, (m[1] + haut / 2) * s + oy];
+    const px = (lon, lat) => pxM(metres(lon, lat));
+    const fx = (q) => q[0].toFixed(1) + ' ' + q[1].toFixed(1);
+    let o = '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;background:#fbfcfe;border:1px solid #dfe5ee;border-radius:6px;font-family:Arial,sans-serif;" role="img" aria-label="Plan des limites et de l\'implantation par parcelle">';
+
+    // Repère de chaque parcelle vers le plan commun.
+    const versPlan = (res) => {
+      const cos = Math.cos(res.angle), sin = Math.sin(res.angle), g = res.geo;
+      return (u, v) => {
+        const x = u * cos - v * sin, y = u * sin + v * cos;
+        return px(x / g.kx + g.lon0, -y / M_PAR_DEG_LAT + g.lat0);
+      };
+    };
+    // Terrain, puis zone après reculs.
+    valides.forEach((e) => {
+      const r = e.res, uv = versPlan(r);
+      r.polys.forEach((rs) => {
+        o += '<path d="' + rs.map((a) => 'M' + a.map((c) => fx(px(c[2], c[3]))).join('L') + 'Z').join('') + '" fill="' + e.couleur + '" fill-opacity=".08" fill-rule="evenodd"/>';
+      });
+      if (r.runs.length) {
+        const [mu, mv] = r.origine, c = r.cell;
+        let d = '';
+        r.runs.forEach((run) => {
+          const u0 = mu + run[0] * c, u1 = mu + (run[0] + run[2]) * c, v0 = mv + run[1] * c, v1 = mv + (run[1] + 1) * c + c * 0.03;
+          d += 'M' + fx(uv(u0, v0)) + 'L' + fx(uv(u1, v0)) + 'L' + fx(uv(u1, v1)) + 'L' + fx(uv(u0, v1)) + 'Z';
+        });
+        o += '<path d="' + d + '" fill="' + e.couleur + '" fill-opacity=".24"/>';
+      }
+    });
+    // Bâtiments, numérotés à la suite d'une parcelle à l'autre.
+    let num = 0;
+    const centres = [];
+    valides.forEach((e) => {
+      const r = e.res, uv = versPlan(r), [mu, mv] = r.origine || [0, 0], c = r.cell;
+      e.premier = num + 1;
+      r.batiments.forEach((b) => {
+        num++;
+        const a = uv(mu + b.i * c, mv + b.j * c), f = uv(mu + (b.i + b.w) * c, mv + b.j * c), g = uv(mu + (b.i + b.w) * c, mv + (b.j + b.h) * c), h = uv(mu + b.i * c, mv + (b.j + b.h) * c);
+        const mid = [(a[0] + g[0]) / 2, (a[1] + g[1]) / 2];
+        centres.push(mid);
+        o += '<path d="M' + fx(a) + 'L' + fx(f) + 'L' + fx(g) + 'L' + fx(h) + 'Z" fill="' + e.couleur + '" fill-opacity=".85" stroke="#0b1a30" stroke-width=".8"/>';
+        o += '<text x="' + mid[0].toFixed(1) + '" y="' + (mid[1] + 4).toFixed(1) + '" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">' + num + '</text>';
+      });
+      e.dernier = num;
+    });
+    // Limites : celles entre deux parcelles ressortent ; les autres gardent la couleur de la parcelle.
+    const tous = [];
+    valides.forEach((e, ei) => e.res.cotes.forEach((c) => {
+      const a = metres(c.a[2], c.a[3]), b = metres(c.b[2], c.b[3]);
+      tous.push({ c, ei, a, b, e });
+    }));
+    tous.forEach((t) => {
+      const mx = (t.a[0] + t.b[0]) / 2, my = (t.a[1] + t.b[1]) / 2;
+      t.commune = tous.some((u) => u.ei !== t.ei && distSeg(mx, my, u.a, u.b) < 0.6);
+    });
+    const dessin = (t) => {
+      const a = pxM(t.a), b = pxM(t.b);
+      const voie = t.c.voie && !t.commune;
+      return '<line x1="' + a[0].toFixed(1) + '" y1="' + a[1].toFixed(1) + '" x2="' + b[0].toFixed(1) + '" y2="' + b[1].toFixed(1) + '" stroke="' + (t.commune ? '#1f2937' : (voie ? '#fd7e14' : t.e.couleur)) + '" stroke-width="' + (voie ? 4.5 : (t.commune ? 3 : 2.5)) + '"/>';
+    };
+    tous.filter((t) => !t.commune).forEach((t) => { o += dessin(t); });
+    tous.filter((t) => t.commune).forEach((t) => { o += dessin(t); });
+    const lgMax = Math.max.apply(null, tous.map((t) => t.c.long).concat(1));
+    const ecrits = [];
+    tous.forEach((t) => {
+      const a = pxM(t.a), b = pxM(t.b), mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+      if (t.c.long >= lgMax * 0.12 && !ecrits.some((q) => Math.hypot(q[0] - mx, q[1] - my) < 8)) {
+        ecrits.push([mx, my]);
+        const nx = -(b[1] - a[1]), ny = b[0] - a[0], nl = Math.hypot(nx, ny) || 1;
+        const sg = t.commune ? 1 : (((mx - W / 2) * nx + (my - H / 2) * ny) >= 0 ? 1 : -1);
+        o += '<text x="' + (mx + sg * nx / nl * 11).toFixed(1) + '" y="' + (my + sg * ny / nl * 11 + 3).toFixed(1) + '" text-anchor="middle" font-size="9.5" fill="#364152" stroke="#fff" stroke-width="2.5" paint-order="stroke">' + t.c.long.toFixed(1).replace('.', ',') + ' m</text>';
+      }
+      if (!t.commune) o += '<line class="impl-cote no-print" data-cle="' + t.c.cle + '" x1="' + a[0].toFixed(1) + '" y1="' + a[1].toFixed(1) + '" x2="' + b[0].toFixed(1) + '" y2="' + b[1].toFixed(1) + '" stroke="transparent" stroke-width="14" style="cursor:pointer;"><title>Cliquer : côté sur voie / limite séparative</title></line>';
+    });
+    // Nom de chaque parcelle et nombre de bâtiments.
+    valides.forEach((e) => {
+      const anneau = e.res.polys[0][0].map((c) => px(c[2], c[3]));
+      const q = placeEtiquette(anneau, centres);
+      const n = e.res.nb;
+      o += texteParcelle(q, n ? [e.ref, n + ' bâtiment' + (n > 1 ? 's' : '')] : [e.ref], e.couleur);
+    });
+    return o + nordEchelle(W, H, s) + '</svg>';
+  }
+
   function svg(res, voieCotes) {
     if (!res.polys) return '';
     const W = 640, H = 430, M = 30;
@@ -300,6 +445,7 @@
       const d = rs.map((r) => 'M' + r.map((c) => fx(px(c[0], c[1]))).join('L') + 'Z').join('');
       o += '<path d="' + d + '" fill="#fbeef3" fill-rule="evenodd" stroke="none"/>';
     });
+    const plusieurs = !!(res.noms && res.noms.length > 1);
     // Zone constructible après reculs
     if (res.runs.length) {
       const [mu, mv] = res.origine, c = res.cell;
@@ -310,6 +456,11 @@
       });
       o += '<path d="' + d + '" fill="#bfe3cd"/>';
     }
+    // Teinte de chaque parcelle par-dessus la zone, pour les distinguer sans masquer les bâtiments.
+    if (plusieurs && res.couleurs) res.polys.forEach((rs) => {
+      const coul = res.couleurs[rs.geom];
+      if (coul) o += '<path d="' + rs.map((r) => 'M' + r.map((c) => fx(px(c[0], c[1]))).join('L') + 'Z').join('') + '" fill="' + coul + '" fill-opacity=".1" fill-rule="evenodd"/>';
+    });
     // Bâtiments
     res.batiments.forEach((b, n) => {
       const [mu, mv] = res.origine, c = res.cell;
@@ -319,10 +470,16 @@
     });
     // Côtés : couleur selon le type, cotes de longueur, zone cliquable
     const lgMax = Math.max.apply(null, res.cotes.map((c) => c.long).concat(1));
+    const ecrits = new Set();
     res.cotes.forEach((c) => {
       const a = px(c.a[0], c.a[1]), b = px(c.b[0], c.b[1]);
-      const col = c.interne ? '#b9a6b0' : (voie.has(c.id) ? '#fd7e14' : '#d6336c');
-      o += '<line x1="' + a[0].toFixed(1) + '" y1="' + a[1].toFixed(1) + '" x2="' + b[0].toFixed(1) + '" y2="' + b[1].toFixed(1) + '" stroke="' + col + '" stroke-width="' + (voie.has(c.id) ? 4.5 : 2.5) + '"' + (c.interne ? ' stroke-dasharray="4 4"' : '') + '/>';
+      const col = c.interne ? '#1f2937' : (voie.has(c.id) ? '#fd7e14' : '#d6336c');
+      o += '<line x1="' + a[0].toFixed(1) + '" y1="' + a[1].toFixed(1) + '" x2="' + b[0].toFixed(1) + '" y2="' + b[1].toFixed(1) + '" stroke="' + col + '" stroke-width="' + (voie.has(c.id) ? 4.5 : 2.5) + '"' + (c.interne ? ' stroke-dasharray="7 4"' : '') + '/>';
+      if (c.interne && c.long >= lgMax * 0.12 && !ecrits.has(c.cle)) {
+        ecrits.add(c.cle);
+        const nx = -(b[1] - a[1]), ny = b[0] - a[0], nl = Math.hypot(nx, ny) || 1;
+        o += '<text x="' + ((a[0] + b[0]) / 2 + nx / nl * 10).toFixed(1) + '" y="' + ((a[1] + b[1]) / 2 + ny / nl * 10 + 3).toFixed(1) + '" text-anchor="middle" font-size="9.5" fill="#1f2937" stroke="#fff" stroke-width="2.5" paint-order="stroke">' + c.long.toFixed(1).replace('.', ',') + ' m</text>';
+      }
       if (!c.interne && c.long >= lgMax * 0.12) {
         const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, cx = W / 2, cy = H / 2;
         const nx = -(b[1] - a[1]), ny = b[0] - a[0], nl = Math.hypot(nx, ny) || 1;
@@ -334,21 +491,17 @@
       }
     });
     // Nom de chaque parcelle, quand le schéma en montre plusieurs.
-    if (res.noms && res.noms.length > 1) {
-      const vus = new Set();
+    if (plusieurs) {
+      const vus = new Set(), [mu, mv] = res.origine || [0, 0], ce = res.cell;
+      const centres = res.batiments.map((b) => uv(mu + (b.i + b.w / 2) * ce, mv + (b.j + b.h / 2) * ce));
       res.polys.forEach((rs) => {
         if (vus.has(rs.geom) || !res.noms[rs.geom]) return;
         vus.add(rs.geom);
-        const pts = rs[0], q = px(pts.reduce((t, c) => t + c[0], 0) / pts.length, pts.reduce((t, c) => t + c[1], 0) / pts.length);
-        o += '<text x="' + q[0].toFixed(1) + '" y="' + q[1].toFixed(1) + '" text-anchor="middle" font-size="11" font-weight="700" fill="#7a1f45" stroke="#fff" stroke-width="3" paint-order="stroke">' + String(res.noms[rs.geom]).replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</text>';
+        const q = placeEtiquette(rs[0].map((c) => px(c[0], c[1])), centres);
+        o += texteParcelle(q, [res.noms[rs.geom]], (res.couleurs && res.couleurs[rs.geom]) || '#7a1f45');
       });
     }
-    // Nord + échelle
-    o += '<g transform="translate(' + (W - 26) + ',38)"><path d="M0 -18 L6 6 L0 2 L-6 6 Z" fill="#47505f"/><text x="0" y="19" text-anchor="middle" font-size="11" font-weight="700" fill="#47505f">N</text></g>';
-    const paliers = [5, 10, 20, 50, 100, 200, 500];
-    const lm = paliers.find((v) => v * s >= 60) || 500;
-    o += '<g transform="translate(14,' + (H - 14) + ')"><rect width="' + (lm * s).toFixed(1) + '" height="4" fill="#47505f"/><text x="0" y="-5" font-size="10" fill="#47505f">' + lm + ' m</text></g>';
-    return o + '</svg>';
+    return o + nordEchelle(W, H, s) + '</svg>';
   }
 
   // ── Valeurs par défaut à partir des règles lues (pur) ─────────────────────
@@ -388,7 +541,7 @@
     };
   }
 
-  const api = { compute, svg, defauts, grouper, agreger, partsZones, pointInterieur, COEF_PLANCHER };
+  const api = { compute, svg, planParcelles, defauts, grouper, agreger, partsZones, pointInterieur, COEF_PLANCHER };
 
   // ── Interface écran ───────────────────────────────────────────────────────
   if (typeof document !== 'undefined') {
@@ -397,6 +550,8 @@
     const m2 = (n) => (n == null || !isFinite(n)) ? '—' : Math.round(n).toLocaleString('fr-FR') + ' m²';
     const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const SANS_CONTOUR = 'Surface saisie sans contour';
+    const PALETTE = ['#1a4b8e', '#b45309', '#0f766e', '#7c3aed', '#be123c', '#4d7c0f', '#0369a1', '#a21caf'];
+    const pastille = (c) => '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:' + c + ';margin-right:5px;vertical-align:-1px;-webkit-print-color-adjust:exact;print-color-adjust:exact;"></span>';
 
     function etat() {
       const d = window.__fidiData; if (!d) return null;
@@ -539,6 +694,7 @@
       const tout = groupe.every((p) => p.contenance > 0);
       return compute(Object.assign({}, P.calc, {
         geoms: geomsG, noms: groupe.filter((p) => p.geom).map((p) => p.ref),
+        couleurs: groupe.filter((p) => p.geom).map((p) => p.couleur),
         contenance: tout ? groupe.reduce((s, p) => s + p.contenance, 0) : 0,
         voieCotes: [], voieCles: st.voieCles,
       }));
@@ -592,7 +748,31 @@
       const aide = res.voieInconnue && Number(P.val.reculVoie) !== Number(P.val.reculLimites)
         ? '<div class="no-print mt-1" style="font-size:.74rem;color:#b45309;"><i class="bi bi-hand-index me-1"></i>Cliquez le ou les côtés sur voie. Tant qu\'aucun n\'est marqué, le plus grand recul s\'applique partout.</div>'
         : '<div class="no-print mt-1 text-muted" style="font-size:.72rem;"><i class="bi bi-hand-index me-1"></i>Cliquez un côté pour le marquer « sur voie ».</div>';
-      return svg(res) + LEGENDE + aide;
+      const plusieurs = res.noms && res.noms.length > 1;
+      const entre = plusieurs ? '<div style="font-size:.72rem;color:#556;margin-top:2px;"><span style="display:inline-block;width:14px;border-top:2.5px dashed #1f2937;vertical-align:middle;"></span> limite entre parcelles, sans recul dans ce projet commun</div>' : '';
+      const cheval = plusieurs && res.aCheval && res.aCheval.length
+        ? '<div class="mt-1" style="font-size:.74rem;color:#7a4b00;">Bâtiment' + (res.aCheval.length > 1 ? 's' : '') + ' ' + res.aCheval.join(', ') + ' à cheval sur une limite de parcelle : cette implantation suppose de traiter les parcelles comme un seul terrain.</div>'
+        : '';
+      return svg(res) + LEGENDE + entre + cheval + aide;
+    }
+    // Plan parcelle par parcelle d'un terrain d'un seul tenant : limites, reculs et bâtiments de chacune.
+    function blocPlan(lot, resultats, parcs) {
+      const entries = lot.map((p) => ({ ref: p.ref, couleur: p.couleur, res: resultats[parcs.indexOf(p)], parcelle: p }));
+      const dessin = planParcelles(entries);
+      const lignes = entries.map((e) => {
+        const P = parametresZone(e.parcelle.zone, e.parcelle.typezone);
+        const nums = e.res.nb ? (e.premier === e.dernier ? 'n° ' + e.premier : 'n° ' + e.premier + ' à ' + e.dernier) : 'aucun';
+        return '<tr><td>' + pastille(e.couleur) + esc(e.ref) + '</td><td class="text-end">' + m2(e.res.constructible_m2) + '</td><td class="text-end">' + (e.res.emprise_m2 != null ? m2(e.res.emprise_m2) : '—') + '</td><td class="text-end">' + nums + '</td><td class="text-end">' + esc(P.val.reculVoie) + ' / ' + esc(P.val.reculLimites) + ' m</td></tr>';
+      }).join('');
+      return '<div class="fw-semibold small mt-3 mb-1" style="color:#1a4b8e;">Plan parcelle par parcelle : ' + esc(lot.map((p) => p.ref).join(' + ')) + '</div>' +
+        '<div class="row g-3"><div class="col-12 col-lg-7">' + dessin +
+        '<div class="d-flex flex-wrap gap-3 mt-1" style="font-size:.72rem;color:#556;">' +
+          '<span><span style="display:inline-block;width:14px;height:3px;background:#1f2937;vertical-align:middle;"></span> limite entre parcelles</span>' +
+          '<span><span style="display:inline-block;width:14px;height:4px;background:#fd7e14;vertical-align:middle;"></span> côté sur voie</span>' +
+          '<span>Teinte claire : recul. Teinte soutenue : zone constructible. Plein : bâtiment.</span>' +
+        '</div></div>' +
+        '<div class="col-12 col-lg-5"><table class="table table-sm mb-2" style="font-size:.74rem;"><thead><tr><th>Parcelle</th><th class="text-end">Après reculs</th><th class="text-end">Emprise</th><th class="text-end">Bâtiments</th><th class="text-end">Recul voie / limites</th></tr></thead><tbody>' + lignes + '</tbody></table>' +
+        '<div class="text-muted" style="font-size:.72rem;">Sur ce plan, chaque parcelle respecte ses propres limites et ses reculs, y compris face à sa voisine. Aucun bâtiment ne franchit une limite.</div></div></div>';
     }
     function tableParametres(zones, multi) {
       const st = etat();
@@ -659,11 +839,11 @@
       if (parcs.some((p) => p.ref === SANS_CONTOUR)) a += alerte('Une surface a été saisie sans référence cadastrale : comptée dans le total, sans schéma ni effet des reculs.');
       return a;
     }
-    function ligneRecap(cle, nom, zone, r, st, fort) {
+    function ligneRecap(cle, nom, zone, r, st, fort, couleur) {
       const actif = st.vue === cle || (!st.vue && cle === 'ensemble');
       const plancher = r.sdp != null ? m2(r.sdp_min) + ' à ' + m2(r.sdp_max) + (r.incomplet ? ' <span class="text-muted">(partiel)</span>' : '') : '—';
       return '<tr' + (cle ? ' data-impl-vue="' + esc(cle) + '" style="cursor:pointer;' + (actif ? 'background:#eef4fb;' : '') + '"' : '') + '>' +
-        '<td>' + (fort ? '<b>' + esc(nom) + '</b>' : esc(nom)) + '</td><td>' + esc(zone) + '</td>' +
+        '<td>' + (couleur ? pastille(couleur) : '') + (fort ? '<b>' + esc(nom) + '</b>' : esc(nom)) + '</td><td>' + esc(zone) + '</td>' +
         '<td class="text-end">' + m2(r.surface) + '</td><td class="text-end">' + m2(r.constructible_m2) + '</td>' +
         '<td class="text-end">' + (r.emprise_m2 != null ? m2(r.emprise_m2) : '—') + '</td>' +
         '<td class="text-end">' + (fort ? '<b>' + plancher + '</b>' : plancher) + '</td>' +
@@ -679,6 +859,7 @@
 
       let parcs = parcellesTerrain();
       if (!parcs.length) parcs = [{ ref: SANS_CONTOUR, geom: null, contenance: surfaceTerrain() }];
+      parcs.forEach((p, i) => { p.couleur = PALETTE[i % PALETTE.length]; });
       preparerZones(parcs);
       habiller(parcs);
       migrerVoies(parcs);
@@ -733,7 +914,7 @@
       const zoneTexte = (p) => p.zoneEtat === 'attente' ? 'lecture…' : ((p.zone || '—') + (p.zoneEtat === 'echec' ? ' (à vérifier)' : ''));
       const zonesEns = zonesDistinctes(parcs);
       let recap = '<table class="table table-sm mb-2" style="font-size:.76rem;"><thead><tr><th>Parcelle</th><th>Zone</th><th class="text-end">Surface</th><th class="text-end">Après reculs</th><th class="text-end">Emprise</th><th class="text-end">Plancher</th><th class="text-end">Bâtiments</th></tr></thead><tbody>' +
-        parcs.map((p, i) => ligneRecap(p.geom ? p.ref : '', p.ref, zoneTexte(p), resParcelles[i], st, false)).join('');
+        parcs.map((p, i) => ligneRecap(p.geom ? p.ref : '', p.ref, zoneTexte(p), resParcelles[i], st, false, p.geom ? p.couleur : '')).join('');
       if (memeLot) recap += ligneRecap('', 'Somme, parcelles traitées séparément', '', sommeSeparee, st, false);
       recap += ligneRecap('ensemble', 'Ensemble du terrain', zonesEns.length === 1 ? (zonesEns[0].zone || '—') : zonesEns.length + ' zones', total, st, true) + '</tbody></table>';
       const nomGroupe = (g) => g.map((p) => p.ref).join(' + ');
@@ -745,13 +926,18 @@
 
       const titre = (t) => '<div class="fw-semibold small mt-2 mb-1" style="color:#1a4b8e;">' + esc(t) + '</div>';
       let schemas = '', visibles = parcs;
+      // Parcelles qui se touchent, quelle que soit leur zone : un plan par terrain d'un seul tenant.
+      const lots = grouper(parcs.filter((p) => p.geom).map((p) => ({ ref: p.ref, geom: p.geom, zone: '' })))
+        .filter((l) => l.length > 1)
+        .map((l) => l.map((x) => parcs.find((p) => p.ref === x.ref)));
+      const plans = lots.map((l) => blocPlan(l, resParcelles, parcs)).join('');
       if (vue === 'ensemble') {
-        if (groupes.length === 1) schemas = unBloc(resGroupes[0], PA(groupes[0]), tableParametres(zonesEns, zonesEns.length > 1));
-        else schemas = groupes.filter((g) => g.some((p) => p.geom)).map((g) => titre((g.length > 1 ? 'Ensemble : ' : 'Parcelle à part : ') + nomGroupe(g)) + unBloc(resGroupes[groupes.indexOf(g)], PA(g))).join('') + '<div class="row g-3 mt-1"><div class="col-12">' + tableParametres(zonesEns, zonesEns.length > 1) + '</div></div>';
+        if (groupes.length === 1) schemas = unBloc(resGroupes[0], PA(groupes[0]), tableParametres(zonesEns, zonesEns.length > 1)) + plans;
+        else schemas = groupes.filter((g) => g.some((p) => p.geom)).map((g) => titre((g.length > 1 ? 'Ensemble : ' : 'Parcelle à part : ') + nomGroupe(g)) + unBloc(resGroupes[groupes.indexOf(g)], PA(g))).join('') + plans + '<div class="row g-3 mt-1"><div class="col-12">' + tableParametres(zonesEns, zonesEns.length > 1) + '</div></div>';
       } else if (vue === 'toutes') {
         const blocs = parcs.map((p, i) => (p.geom ? titre('Parcelle ' + p.ref + ' seule') + unBloc(resParcelles[i], PA([p])) : ''));
         if (memeLot) groupes.forEach((g, i) => { if (g.length > 1) blocs.push(titre('Ensemble : ' + nomGroupe(g)) + unBloc(resGroupes[i], PA(g))); });
-        schemas = blocs.join('') + '<div class="row g-3 mt-1"><div class="col-12">' + tableParametres(zonesEns, zonesEns.length > 1) + '</div></div>';
+        schemas = blocs.join('') + plans + '<div class="row g-3 mt-1"><div class="col-12">' + tableParametres(zonesEns, zonesEns.length > 1) + '</div></div>';
       } else {
         const i = refs.indexOf(vue), p = parcs[i];
         visibles = [p];

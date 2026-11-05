@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 const src = readFileSync(new URL("../implantation.js", import.meta.url), "utf8");
 const window = {};
 new Function("window", "document", src)(window, undefined);
-const { compute, defauts, grouper, agreger, partsZones, pointInterieur, svg } = window.FidiImplantation;
+const { compute, defauts, grouper, agreger, partsZones, pointInterieur, svg, planParcelles } = window.FidiImplantation;
 
 // Rectangle de w × h mètres autour de l'équateur (1 m ≈ constantes du module).
 function rect(w, h, ox = 0, oy = 0) {
@@ -126,6 +126,47 @@ test("zones du PLU : parts de la parcelle et point intérieur", () => {
   proche(parts[0].part, 0.625, 0.08, "25 m sur 40 m");
   const q = pointInterieur(g);
   assert.ok(q[0] > 0 && q[0] < 40 / 111320 && q[1] > 0 && q[1] < 20 / 110540);
+});
+
+test("projet commun : les bâtiments à cheval sur une limite sont repérés", () => {
+  const r = compute({ geoms: [rect(10, 30, 0, 0), rect(10, 30, 10, 0)], noms: ["A", "B"], contenance: 600, emprisePct: 60, reculVoie: 3, reculLimites: 3, niveaux: 1 });
+  assert.ok(r.nb >= 1);
+  assert.ok(r.aCheval.length >= 1, "un bâtiment de 12 × 10 m ne tient qu'à cheval sur la limite");
+  assert.equal(r.batiments[r.aCheval[0] - 1].parcelles.length, 2);
+  const seule = compute({ geoms: [rect(40, 25)], contenance: 1000, emprisePct: 30, reculVoie: 3, reculLimites: 3, niveaux: 1 });
+  assert.deepEqual(seule.aCheval, []);
+});
+
+test("plan par parcelle : limites, couleurs et bâtiments de chacune, dans le même repère", () => {
+  const regles = { emprisePct: 60, reculVoie: 3, reculLimites: 3, niveaux: 1 };
+  const a = compute({ ...regles, geoms: [rect(30, 30, 0, 0)], contenance: 900 });
+  const b = compute({ ...regles, geoms: [rect(30, 30, 30, 0)], contenance: 900 });
+  const entries = [{ ref: "A 1", res: a, couleur: "#111111" }, { ref: "B <2>", res: b, couleur: "#222222" }];
+  const s = planParcelles(entries);
+  assert.ok(s.includes("A 1"));
+  assert.ok(s.includes("B &lt;2&gt;"), "nom échappé");
+  assert.ok(s.includes('fill="#111111"') && s.includes('fill="#222222"'));
+  // 2 × 4 côtés, dont 2 confondus (limite commune) : seuls 6 restent cliquables.
+  assert.equal((s.match(/class="impl-cote/g) || []).length, 6);
+  assert.equal((s.match(/stroke="#1f2937"/g) || []).length, 2, "limite commune dessinée sur les 2 parcelles");
+  // Numérotation à la suite.
+  assert.equal(entries[0].premier, 1);
+  assert.equal(entries[1].premier, a.nb + 1);
+  assert.equal(entries[1].dernier, a.nb + b.nb);
+  // Les bâtiments de A restent dans la moitié ouest du plan, ceux de B dans la moitié est.
+  const paths = [...s.matchAll(/<path d="M([\d.]+) ([\d.]+)[^"]*" fill="(#\d+)" fill-opacity="\.85"/g)];
+  assert.equal(paths.length, a.nb + b.nb);
+  paths.forEach((m) => { assert.ok(m[3] === "#111111" ? Number(m[1]) < 320 : Number(m[1]) > 320, m[0].slice(0, 40)); });
+});
+
+test("plan par parcelle : côté sur voie marqué sur une parcelle", () => {
+  const regles = { emprisePct: 60, reculVoie: 5, reculLimites: 3, niveaux: 1 };
+  const g = rect(30, 30, 0, 0);
+  const sans = compute({ ...regles, geoms: [g], contenance: 900 });
+  const cle = sans.cotes[0].cle;
+  const avec = compute({ ...regles, geoms: [g], contenance: 900, voieCles: [cle] });
+  const s = planParcelles([{ ref: "A", res: avec, couleur: "#111111" }]);
+  assert.equal((s.match(/stroke="#fd7e14"/g) || []).length, 1);
 });
 
 test("emprise inconnue : aucune surface inventée", () => {
