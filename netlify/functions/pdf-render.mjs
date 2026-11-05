@@ -2,27 +2,31 @@
 // POST /api/pdf-render  body: { html, filename?, format?, margin?, landscape? }
 // Renvoie un PDF binaire (application/pdf) → texte vectoriel copiable, images nettes.
 // Solution robuste pour utilisateurs non techniques : plus de bugs html2pdf.js.
+//
+// Session obligatoire, vérifiée avant tout traitement. Les appels viennent de l'application
+// (même origine, cookie fidi_session envoyé d'office) : pas d'en-têtes CORS.
+// Chromium lui-même appelle sans cookie : les images internes passent par /api/img-proxy, public.
 
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
+import { currentUser } from "./_auth.mjs";
+import { installRequestGuard, waitForImages, hardenedArgs } from "./_pdf-guard.mjs";
 
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-
-function errResp(status, msg) {
+function errResp(status, msg, extra = {}) {
   return {
     statusCode: status,
-    headers: { ...CORS, "Content-Type": "application/json; charset=utf-8" },
-    body: JSON.stringify({ error: msg }),
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({ error: msg, ...extra }),
   };
 }
 
 export const handler = async (event) => {
-  if (event.httpMethod === "OPTIONS") return { statusCode: 200, headers: CORS, body: "" };
   if (event.httpMethod !== "POST") return errResp(405, "POST requis");
+
+  let moi;
+  try { moi = await currentUser(event); }
+  catch { return errResp(503, "Vérification de session indisponible. Réessayez."); }
+  if (!moi) return errResp(401, "Connexion requise.", { need_auth: true });
 
   let body;
   try { body = JSON.parse(event.body || "{}"); }
@@ -43,35 +47,20 @@ export const handler = async (event) => {
     execPath = await chromium.executablePath();
     if (!execPath) throw new Error("chromium.executablePath() returned empty — @sparticuz/chromium bundle absent du deploy");
     browser = await puppeteer.launch({
-      args: [...chromium.args, "--no-sandbox", "--disable-setuid-sandbox"],
+      args: hardenedArgs([...chromium.args, "--no-sandbox", "--disable-setuid-sandbox"]),
       defaultViewport: chromium.defaultViewport,
       executablePath: execPath,
       headless: chromium.headless,
     });
     const page = await browser.newPage();
 
-    // Bloque requêtes externes lourdes (fonts déjà inline recommandé côté client)
-    await page.setRequestInterception(true);
-    page.on("request", (req) => {
-      const t = req.resourceType();
-      if (t === "media" || t === "websocket") req.abort();
-      else req.continue();
-    });
+    // JavaScript coupé, ni fichiers locaux ni adresses internes, y compris après redirection.
+    await installRequestGuard(page);
 
     await page.setContent(html, { waitUntil: "networkidle0", timeout: 20000 });
     // Attend explicitement fin de chargement de chaque <img> (Chromium ne considère pas
     // toujours les <img> à src distant comme réseau bloquant → PDF sans images).
-    await page.evaluate(() => Promise.all(
-      Array.from(document.images).map((img) => {
-        if (img.complete && img.naturalWidth > 0) return Promise.resolve();
-        return new Promise((resolve) => {
-          const done = () => resolve();
-          img.addEventListener("load", done, { once: true });
-          img.addEventListener("error", done, { once: true });
-          setTimeout(done, 8000);
-        });
-      })
-    ));
+    await waitForImages(page);
     await page.emulateMediaType("print");
 
     const pdf = await page.pdf({
@@ -88,7 +77,6 @@ export const handler = async (event) => {
     return {
       statusCode: 200,
       headers: {
-        ...CORS,
         "Content-Type": "application/pdf",
         "Content-Disposition": `inline; filename="${filename}"`,
         "Cache-Control": "no-store",
@@ -98,6 +86,7 @@ export const handler = async (event) => {
     };
   } catch (e) {
     if (browser) { try { await browser.close(); } catch {} }
-    return errResp(500, `Rendu PDF échoué : ${e.message} | execPath=${execPath || "(non résolu)"}`);
+    console.error("pdf-render", e.message, "execPath=" + (execPath || "(non résolu)"));
+    return errResp(500, "Rendu PDF échoué.");
   }
 };
