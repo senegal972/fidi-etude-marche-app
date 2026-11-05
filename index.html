@@ -5381,12 +5381,24 @@ function recapPopupInit(texte, sujet){
   var ouvert = false;
   mail.onclick = function(){ ouvert = !ouvert; choix.style.display = ouvert ? 'inline-flex' : 'none'; };
 }
-function recapEtudeOpen(){
-  if(!window.__fidiData){ alert('Lancez une analyse avant de générer le récapitulatif.'); return; }
-  var html = recapBuildHTML();
+// Récapitulatif et PDF du module : extraits de l'étude, gratuits si elle est déjà payée, sinon
+// 1 crédit qui paie aussi l'étude. Le HTML est construit d'abord : une erreur ne coûte rien.
+// La fenêtre s'ouvre avant l'appel réseau, sinon le navigateur la bloquerait, et le débit
+// n'a lieu que si elle a pu s'ouvrir.
+async function ouvrirExtraitEtude(html){
+  if(window.Compte && !Compte.confirmerCredit('Ce document fait partie de l\'étude : gratuit si elle a déjà été payée, sinon 1 crédit. Continuer ?')) return;
   var w = window.open('', '_blank');
   if(!w){ alert('Fenêtre bloquée. Autorisez les pop-ups pour ce site.'); return; }
+  w.document.write('<!DOCTYPE html><html lang="fr"><meta charset="utf-8"><title>Préparation…</title><p style="font-family:sans-serif;padding:24px">Préparation du document…</p></html>');
+  if(window.Compte){
+    var doc = etudeDoc();
+    if(!(await Compte.consume(doc.kind, doc.ref, doc.cle, true))){ w.close(); return; }
+  }
   w.document.open(); w.document.write(html); w.document.close();
+}
+function recapEtudeOpen(){
+  if(!window.__fidiData){ alert('Lancez une analyse avant de générer le récapitulatif.'); return; }
+  return ouvrirExtraitEtude(recapBuildHTML());
 }
 
 // ═══ Potentiel constructible — document A4 du module seul, sur le modèle du récapitulatif :
@@ -5456,9 +5468,7 @@ function _implantationPdfHTML(vue){
 }
 function implantationPdf(vue){
   if(!window.__fidiData || !window.FidiImplantation){ alert('Lancez une analyse avant de générer ce document.'); return; }
-  var w = window.open('', '_blank');
-  if(!w){ alert('Fenêtre bloquée. Autorisez les pop-ups pour ce site.'); return; }
-  w.document.open(); w.document.write(implantationPdfHTML(vue)); w.document.close();
+  return ouvrirExtraitEtude(implantationPdfHTML(vue));
 }
 
 // ═══ Décote surfacique PROMOTEUR — tarification professionnelle ══════════════
@@ -6608,10 +6618,10 @@ window.Compte = (function(){
 
   // Débit d'un crédit à l'édition d'un document. Retourne true si l'action peut
   // se poursuivre (autorisée / gratuite), false si bloquée (crédits épuisés).
-  async function consume(kind, ref, cle){
+  async function consume(kind, ref, cle, extrait){
     if(!state.authenticated){ open(); return false; }
     try{
-      const r = await fetch('/api/consume', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,ref,cle})});
+      const r = await fetch('/api/consume', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,ref,cle,extrait})});
       const d = await r.json().catch(()=>({}));
       if(r.status===402 && d.need_credits){
         alert('Crédits épuisés. Rechargez des crédits pour éditer / imprimer ce document.');

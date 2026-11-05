@@ -42,22 +42,24 @@ async function trouverLigne(userPageId, titre) {
   return data.results?.[0] || null;
 }
 
-function droitOuvert(ligne, maintenant) {
+// Un extrait (récapitulatif, PDF du module d'implantation) reste gratuit pendant la fenêtre,
+// même les rendus épuisés : ouvrir un extrait ne doit pas faire repayer une étude déjà payée.
+function droitOuvert(ligne, maintenant, extrait) {
   const p = ligne.properties || {};
   const debut = Date.parse(p["Débité le"]?.date?.start || "");
   if (!Number.isFinite(debut) || maintenant - debut > REEDITION_JOURS * JOUR_MS) return false;
-  return (readNumber(p["Rendus"]) ?? 0) < REEDITION_RENDUS;
+  return extrait || (readNumber(p["Rendus"]) ?? 0) < REEDITION_RENDUS;
 }
 
 // Décide sans rien écrire : gratuit, à débiter ou refus (0 crédit).
 // `doc` doit être valide dès que editionFacturable(user) est vrai.
-export async function deciderEdition(found, doc, maintenant = Date.now()) {
+export async function deciderEdition(found, doc, maintenant = Date.now(), { extrait = false } = {}) {
   if (!paywallOn()) return { mode: "gratuit", raison: "peage_inactif" };
   if (isUnlimited(found.user)) return { mode: "gratuit", raison: "illimite" };
 
   const titre = titreDoc(doc);
   const ligne = await trouverLigne(found.page.id, titre);
-  if (ligne && droitOuvert(ligne, maintenant)) return { mode: "gratuit", raison: "deja_edite", ligne };
+  if (ligne && droitOuvert(ligne, maintenant, extrait)) return { mode: "gratuit", raison: "deja_edite", ligne, extrait };
   // Débit passé dont l'écriture au journal avait échoué : la dernière clé fait foi.
   if (!ligne && found.user.derniereRef === titre) return { mode: "gratuit", raison: "deja_edite", ligne: null };
   if (found.user.credits < 1) return { mode: "refus" };
@@ -96,7 +98,7 @@ export async function enregistrerEdition(found, decision, doc, maintenant = Date
   const maintenantIso = new Date(maintenant).toISOString();
 
   if (decision.mode === "gratuit") {
-    if (decision.raison === "deja_edite") {
+    if (decision.raison === "deja_edite" && !(decision.extrait && decision.ligne)) {
       try {
         if (decision.ligne) {
           const rendus = readNumber(decision.ligne.properties?.["Rendus"]) ?? 0;

@@ -1,6 +1,7 @@
 // Netlify Function — Débit d'un crédit à l'ÉDITION d'un document hors PDF serveur :
 // impression navigateur et facturation. Le PDF serveur débite lui-même (pdf-render.mjs).
-// POST /api/consume { kind: "etude"|"avis", cle, ref }
+// POST /api/consume { kind: "etude"|"avis", cle, ref, extrait? }
+// extrait: true : récapitulatif ou PDF du module d'implantation, rattachés au crédit de l'étude.
 //
 // C'est l'acte facturé : produire/imprimer un livrable = 1 crédit.
 // La règle, ré-édition gratuite comprise, est dans _edition.mjs.
@@ -26,7 +27,7 @@ export const handler = async (event) => {
   }
 
   try {
-    const decision = await deciderEdition(found, doc);
+    const decision = await deciderEdition(found, doc, Date.now(), { extrait: b.extrait === true });
     if (decision.mode === "refus") {
       return authResp(402, { error: "Crédits épuisés. Rechargez pour éditer ce document.", credits: 0, need_credits: true });
     }

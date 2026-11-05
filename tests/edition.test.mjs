@@ -279,6 +279,51 @@ test("consume : 402 à 0 crédit, 400 sans clé, gratuit sans péage", async () 
   assert.equal(libre.raison, "peage_inactif");
 });
 
+const extrait = (doc) => imprimer({ ...doc, extrait: true });
+
+test("extrait d'une étude non payée : 1 crédit, et l'étude est alors payée", async () => {
+  const a = JSON.parse((await extrait(docA)).body);
+  assert.equal(a.facture, true);
+  assert.equal(u.credits, 1);
+  assert.equal((await rendre(docA)).headers["X-Fidi-Facture"], "0");
+  assert.equal(u.credits, 1);
+});
+
+test("extrait d'une étude déjà payée : gratuit, sans user le droit aux 10 rendus", async () => {
+  await rendre(docA);
+  for (let i = 0; i < REEDITION_RENDUS + 2; i++) {
+    assert.equal(JSON.parse((await extrait(docA)).body).facture, false);
+  }
+  assert.equal(u.credits, 1);
+  assert.equal(lignes[0].properties["Rendus"].number, 1);
+});
+
+test("extrait : reste gratuit quand les 10 rendus de l'étude payée sont épuisés", async () => {
+  await rendre(docA);
+  lignes[0].properties["Rendus"] = { number: REEDITION_RENDUS };
+  assert.equal(JSON.parse((await extrait(docA)).body).facture, false);
+  assert.equal(u.credits, 1);
+});
+
+test("extrait : 1 crédit après 30 jours, et 402 à 0 crédit sur une étude non payée", async () => {
+  await rendre(docA);
+  const vieux = new Date(Date.now() - (REEDITION_JOURS + 1) * 86400000).toISOString();
+  lignes[0].properties["Débité le"] = { date: { start: vieux } };
+  assert.equal(JSON.parse((await extrait(docA)).body).facture, true);
+  assert.equal(u.credits, 0);
+  assert.equal((await extrait(docB)).statusCode, 402);
+});
+
+test("extrait : une autre étude n'est pas couverte, et le drapeau ne touche que consume", async () => {
+  await rendre(docA);
+  assert.equal(JSON.parse((await extrait(docB)).body).facture, true);
+  lignes[0].properties["Rendus"] = { number: REEDITION_RENDUS };
+  u.credits = 1;
+  const body = JSON.stringify({ html: "<p>x</p>", doc: { ...docA, extrait: true } });
+  const r = await traiter({ httpMethod: "POST", headers: entetes, body }, rendreOk);
+  assert.equal(r.headers["X-Fidi-Facture"], "1", "le PDF complet reste plafonné");
+});
+
 test("garde-fou : le débit suit le rendu, et 0 crédit coupe avant Chromium", () => {
   const src = readFileSync(new URL("../netlify/functions/pdf-render.mjs", import.meta.url), "utf8");
   const h = src.slice(src.indexOf("export async function traiter"), src.indexOf("async function rendrePdf"));

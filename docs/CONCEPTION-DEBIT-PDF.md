@@ -164,7 +164,7 @@ Pour fermer vraiment : aperçu partiel à l'écran, données complètes après p
 - **D1 — Ré-édition :** fenêtre de 30 jours et 10 rendus par document ? *Proposé : oui.*
 - **D2 — Partage d'un avis :** payant comme celui d'une étude, avec la même confirmation ? *Proposé : oui. Changement visible pour les utilisateurs.*
 - **D3 — Facturer & envoyer :** débiter ou non ? *Proposé : même règle, le document livré au client est l'acte facturé. Le bouton est-il réservé au personnel FIDI ? `facture.mjs` le dit en commentaire, mais ne vérifie qu'une session.*
-- **D4 — PDF d'implantation et récapitulatif :** restent-ils des extraits gratuits ? *Proposé : gratuits, hors péage. À toi de voir : le module d'implantation a de la valeur.*
+- **D4 — PDF d'implantation et récapitulatif :** *Décidé par l'utilisateur le 2026-11-04 : gratuits si l'étude est déjà payée, sinon 1 crédit, qui paie aussi l'étude.* Même clé de document que l'étude (`etudeDoc`), via `/api/consume` avec `extrait: true`. Un extrait n'use pas les 10 rendus et reste gratuit tant que la fenêtre de 30 jours est ouverte. Limite : la clé venant du navigateur, une clé forgée donne des extraits sans plafond de rendus pendant 30 jours.
 - **D5 — Base « Éditions FIDI » :** création d'accord ? Elle demande une variable `NOTION_DB_EDITIONS`. Je n'ai pas vérifié si `sauvegarde-locale.mjs` l'inclura automatiquement ; à contrôler pour la règle de copie locale.
 
 ## 7. Plan si accepté
