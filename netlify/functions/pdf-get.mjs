@@ -3,23 +3,9 @@
 // Renvoie le PDF (binaire) si présent et non expiré (7 jours).
 // Aucun accès à l'app requis : le destinataire ouvre simplement le lien.
 
-const TTL_MS = 7 * 24 * 3600 * 1000;
+import { getShareStore } from "./_blobs.mjs";
 
-async function getShareStore() {
-  const mod = await import("@netlify/blobs");
-  // Essai 1 : contexte auto-injecté par le runtime Netlify.
-  try {
-    return mod.getStore({ name: "fidi-shared", consistency: "strong" });
-  } catch (e1) {
-    // Essai 2 : credentials explicites (mêmes variables que pdf-share).
-    const siteID = process.env.NETLIFY_SITE_ID;
-    const token  = process.env.NETLIFY_AUTH_TOKEN || process.env.NETLIFY_TOKEN;
-    if (siteID && token) {
-      return mod.getStore({ name: "fidi-shared", siteID, token, consistency: "eventual" });
-    }
-    return null;
-  }
-}
+const TTL_MS = 7 * 24 * 3600 * 1000;
 
 function htmlError(status, message) {
   return {
@@ -43,13 +29,18 @@ export const handler = async (event) => {
   id = String(id || "").replace(/[^a-z0-9]/gi, "");
   if (!id) return htmlError(400, "Identifiant de document manquant.");
 
-  const store = await getShareStore();
-  if (!store) return htmlError(503, "Stockage temporairement indisponible.");
+  let store;
+  try { store = await getShareStore(event); }
+  catch (e) {
+    console.error("[pdf-get] store indisponible :", e.message);
+    return htmlError(503, "Stockage temporairement indisponible.");
+  }
 
   let res;
   try {
     res = await store.getWithMetadata(id, { type: "text" });
   } catch (e) {
+    console.error("[pdf-get] lecture impossible :", e.message);
     return htmlError(500, "Erreur de récupération du document.");
   }
   if (!res || !res.data) return htmlError(404, "Ce lien a expiré ou n'existe pas.");
