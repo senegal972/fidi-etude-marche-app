@@ -109,10 +109,6 @@ export function isUnlimited(user) {
 export function setSearches(pageId, n) {
   return updatePage(pageId, { "Recherches utilisées": P.number(Math.max(0, n)) });
 }
-// Nouveau cycle après édition : remet le compteur à zéro et mémorise la réf éditée.
-export function startNewCycle(pageId, ref) {
-  return updatePage(pageId, { "Recherches utilisées": P.number(0), "Dernière réf éditée": P.text(ref || "") });
-}
 
 export async function findUserByEmail(email) {
   const data = await queryDatabase(DB.users, {

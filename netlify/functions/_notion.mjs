@@ -14,6 +14,7 @@ export const DB = {
   offres:       process.env.NOTION_DB_OFFRES        || "391ec67b0b2e4d2eab82921124bf4ea6",
   paiements:    process.env.NOTION_DB_PAIEMENTS     || "0e270b98a8124bec9d7803f12dfea510",
   tarifs:       process.env.NOTION_DB_TARIFS        || "337ca35d942e45fe819d3ed54473ee93",
+  editions:     process.env.NOTION_DB_EDITIONS      || "4edc84d5778f48608935e5e7cdfc43be",
 };
 
 // Jeton aléatoire non devinable (page de remise publique, liens de paiement).

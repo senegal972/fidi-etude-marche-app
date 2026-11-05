@@ -3959,7 +3959,8 @@
         commune: bien.commune || '',
         ref:    (meta.ref || '').trim(),
         // HTML du document, pour générer automatiquement le PDF de l'avis livré.
-        htmlString: buildAvisDocHTML(d, compute(d))
+        htmlString: buildAvisDocHTML(d, compute(d)),
+        doc: avisDoc()
       };
       window.proposerFacture('avis');
     } else {
@@ -3976,9 +3977,20 @@
       .replace(/[^a-zA-Z0-9]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').slice(0, 90);
   }
 
+  // Identité du document pour la facturation : un même numéro d'avis peut resservir tant
+  // qu'il n'est pas sauvegardé, d'où l'adresse et le client dans la clé.
+  function avisDoc() {
+    var d = state.data || {}, m = d.metadata || {}, b = d.bien || {};
+    var ref = (m.ref || '').trim() || 'rapport';
+    var texte = [ref, b.adresse, b.commune, m.client].map(function (x) { return String(x || '').trim().toLowerCase(); }).join('|');
+    return { kind: 'avis', ref: ref, cle: 'A-' + hashStr(texte).toUpperCase() };
+  }
+
   function doPartager() {
     var ref = (state.data && state.data.metadata && state.data.metadata.ref || '').trim();
     if (!ref) { toast('Sauvegardez d\'abord l\'avis pour le partager', true); return; }
+    // Le partage génère le PDF : acte facturé, débité par le serveur si le rendu réussit.
+    if (window.Compte && !window.Compte.confirmerCredit('Partager génère le PDF de l\'avis : 1 crédit, sauf si ce document a déjà été édité. Continuer ?')) return;
     var d = state.data;
     var titre = (d.bien && d.bien.adresse) ? d.bien.adresse : ref;
     var filename = avisFileBase() + '.pdf';
@@ -3986,7 +3998,7 @@
     // Génère un PDF autonome de l'avis (lisible sans accès à l'app)
     if (typeof window.fidiSharePdf === 'function') {
       var html = '<div class="avis-doc">' + buildAvisDocHTML(d, compute(d)) + '</div>';
-      window.fidiSharePdf({ htmlString: html, filename: filename, titre: titre, kind: 'Avis de valeur' });
+      window.fidiSharePdf({ htmlString: html, filename: filename, titre: titre, kind: 'Avis de valeur', doc: avisDoc() });
     } else {
       toast('Module de partage non disponible (rechargez la page).', true);
     }
@@ -4119,10 +4131,10 @@
     try { localStorage.setItem('fidiPrintScale', pct); } catch (e) {}
   }
   async function doExportPdf() {
-    var ref = (state.data && state.data.metadata && state.data.metadata.ref) || 'rapport';
     // Édition d'un avis de valeur = acte facturé : débit d'un crédit (sauf admin/
     // illimité, péage inactif, ou ré-édition du même document). Bloque si épuisé.
-    if (window.Compte && !(await window.Compte.consume('avis', ref))) return;
+    var doc = avisDoc();
+    if (window.Compte && !(await window.Compte.consume(doc.kind, doc.ref, doc.cle))) return;
     var filename = avisFileBase();
     var pr = document.getElementById('avisPrintRoot');
     pr.innerHTML = '<div class="avis-doc">' + buildAvisDocHTML(state.data, compute(state.data)) + '</div>';
@@ -4140,9 +4152,8 @@
   }
 
   // ── PDF haute qualité via /api/pdf-render (Chromium serverless) ─────────
+  // Le serveur débite le crédit après un rendu réussi.
   async function doExportPdfServer() {
-    var ref = (state.data && state.data.metadata && state.data.metadata.ref) || 'rapport';
-    if (window.Compte && !(await window.Compte.consume('avis', ref))) return;
     var filename = avisFileBase() + '.pdf';
     var body = '<div class="avis-doc">' + buildAvisDocHTML(state.data, compute(state.data)) + '</div>';
     var css = Array.from(document.styleSheets).map(function (s) {
@@ -4158,8 +4169,9 @@
       var r = await fetch('/api/pdf-render', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ html: html, filename: filename }),
+        body: JSON.stringify({ html: html, filename: filename, doc: avisDoc() }),
       });
+      if (window.Compte && window.Compte.renduPdf(r) === 'bloque') return;
       if (!r.ok) {
         var t = await r.text();
         alert('Rendu PDF serveur échoué (HTTP ' + r.status + ')\n\n' + t.slice(0, 400) + '\n\nFallback : impression navigateur.');
