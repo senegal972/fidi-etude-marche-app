@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 const src = readFileSync(new URL("../implantation.js", import.meta.url), "utf8");
 const window = {};
 new Function("window", "document", src)(window, undefined);
-const { compute, defauts } = window.FidiImplantation;
+const { compute, defauts, grouper, agreger, partsZones, pointInterieur, svg } = window.FidiImplantation;
 
 // Rectangle de w × h mètres autour de l'équateur (1 m ≈ constantes du module).
 function rect(w, h, ox = 0, oy = 0) {
@@ -52,6 +52,80 @@ test("deux parcelles contiguës : le côté commun ne compte pas comme limite", 
   const r = compute({ geoms: [rect(20, 20, 0, 0), rect(20, 20, 20, 0)], contenance: 800, emprisePct: 50, reculVoie: 3, reculLimites: 3, niveaux: 1 });
   assert.equal(r.cotes.filter((c) => c.interne).length, 2);
   proche(r.constructible_m2, 34 * 14, 10, "un seul bloc, sans bande au milieu");
+});
+
+test("parcelles côte à côte : l'ensemble gagne la bande de recul que chaque parcelle perd seule", () => {
+  const regles = { emprisePct: 60, reculVoie: 3, reculLimites: 3, niveaux: 2, coef: 1, batiLong: 12, batiLarg: 10, ecart: 4 };
+  const a = rect(15.5, 30, 0, 0), b = rect(15.5, 30, 15.5, 0);
+  const seuleA = compute({ ...regles, geoms: [a], contenance: 465 });
+  const seuleB = compute({ ...regles, geoms: [b], contenance: 465 });
+  const ens = compute({ ...regles, geoms: [a, b], contenance: 930 });
+  proche(seuleA.constructible_m2, 9.5 * 24, 8, "parcelle seule");
+  proche(ens.constructible_m2, 25 * 24, 12, "ensemble");
+  assert.equal(seuleA.nb, 0, "un bâtiment de 10 m n'entre pas dans 9,5 m");
+  assert.equal(seuleB.nb, 0);
+  assert.equal(ens.nb, 2, "le terrain réuni porte 2 bâtiments");
+  const somme = agreger([seuleA, seuleB]);
+  assert.equal(somme.nb, 0);
+  proche(somme.emprise_m2, seuleA.emprise_m2 + seuleB.emprise_m2, 0.01);
+});
+
+test("côté partagé sur une partie seulement : seule cette partie n'est plus une limite", () => {
+  const r = compute({ geoms: [rect(20, 40, 0, 0), rect(20, 20, 20, 0)], contenance: 1200, emprisePct: 50, reculVoie: 3, reculLimites: 3, niveaux: 1 });
+  const internes = r.cotes.filter((c) => c.interne);
+  proche(internes.reduce((s, c) => s + c.long, 0), 40, 0.5, "20 m de chaque côté");
+  // Le long du côté commun, la zone constructible passe ; plus loin, le recul reste dû.
+  proche(r.constructible_m2, 14 * 34 + 20 * 14, 20);
+});
+
+test("unités foncières : contiguës et même zone seulement", () => {
+  const a = { ref: "A", zone: "U1", geom: rect(20, 20, 0, 0) };
+  const b = { ref: "B", zone: "U1", geom: rect(20, 20, 20, 0) };
+  const c = { ref: "C", zone: "U1", geom: rect(20, 20, 200, 0) };
+  const d = { ref: "D", zone: "U2", geom: rect(20, 20, 0, 20) };
+  const noms = (gs) => gs.map((g) => g.map((p) => p.ref).join("+"));
+  assert.deepEqual(noms(grouper([a, b])), ["A+B"]);
+  assert.deepEqual(noms(grouper([a, c])), ["A", "C"], "séparées");
+  assert.deepEqual(noms(grouper([a, d])), ["A", "D"], "zones différentes");
+  assert.deepEqual(noms(grouper([a, b, c, d])), ["A+B", "C", "D"]);
+  assert.deepEqual(noms(grouper([a, { ref: "S", zone: "U1", geom: null }])), ["A", "S"], "sans contour");
+  const coin = { ref: "E", zone: "U1", geom: rect(20, 20, 20, 20) };
+  assert.deepEqual(noms(grouper([a, coin])), ["A", "E"], "un point de contact ne suffit pas");
+});
+
+test("somme : une emprise inconnue rend le total incomplet, sans rien inventer", () => {
+  const ok = compute({ geoms: [rect(40, 25)], contenance: 1000, emprisePct: 30, reculVoie: 3, reculLimites: 3, niveaux: 2, coef: 1 });
+  const inconnu = compute({ geoms: [rect(40, 25, 100, 0)], contenance: 1000, emprisePct: "", reculVoie: 3, reculLimites: 3, niveaux: 3 });
+  const t = agreger([ok, inconnu]);
+  assert.equal(t.incomplet, true);
+  assert.equal(t.surface, 2000);
+  assert.equal(t.emprise_m2, 300);
+  assert.equal(t.niveaux, 2);
+  const rien = agreger([inconnu]);
+  assert.equal(rien.emprise_m2, null);
+  assert.equal(rien.sdp, undefined);
+});
+
+test("côté sur voie : marqué sur une vue, reconnu sur les autres", () => {
+  const a = rect(20, 20, 0, 0), b = rect(20, 20, 20, 0);
+  const base = { emprisePct: 50, reculVoie: 10, reculLimites: 2, niveaux: 1 };
+  const ens = compute({ ...base, geoms: [a, b] });
+  const nord = ens.cotes.find((c) => !c.interne && c.p === 0 && Math.abs(c.a[1] - c.b[1]) < 0.01);
+  const seule = compute({ ...base, geoms: [a], voieCles: [nord.cle] });
+  assert.equal(seule.voieInconnue, false);
+  assert.equal(seule.cotes.filter((c) => c.voie).length, 1);
+  assert.match(svg(seule), new RegExp('data-cle="' + nord.cle + '"'));
+});
+
+test("zones du PLU : parts de la parcelle et point intérieur", () => {
+  const g = rect(40, 20, 0, 0);
+  const z1 = { properties: { libelle: "U1" }, geometry: rect(30, 40, -5, -10) };
+  const z2 = { properties: { libelle: "N" }, geometry: rect(30, 40, 25, -10) };
+  const parts = partsZones(g, [z2, z1]);
+  assert.equal(parts[0].feature.properties.libelle, "U1");
+  proche(parts[0].part, 0.625, 0.08, "25 m sur 40 m");
+  const q = pointInterieur(g);
+  assert.ok(q[0] > 0 && q[0] < 40 / 111320 && q[1] > 0 && q[1] < 20 / 110540);
 });
 
 test("emprise inconnue : aucune surface inventée", () => {

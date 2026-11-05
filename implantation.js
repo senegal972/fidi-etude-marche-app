@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // FIDI · Kit d'implantation — surface de plancher réalisable et schéma indicatif
-// Part du contour cadastral de la (des) parcelle(s) et des règles de zone lues dans
+// Part du contour cadastral de chaque parcelle et des règles de zone lues dans
 // le règlement (/api/plu-regle) : zone constructible après reculs, emprise maximale,
 // surface de plancher, nombre de bâtiments implantables.
 // Le module s'affiche par un bouton manuel. Affiché = imprimé ; masqué = non imprimé.
@@ -19,10 +19,10 @@
   // geoms GeoJSON (Polygon | MultiPolygon) → polygones en mètres, x vers l'est, y vers le sud.
   function toMetres(geoms) {
     const polys = [];
-    (geoms || []).forEach((g) => {
+    (geoms || []).forEach((g, gi) => {
       if (!g || !g.coordinates) return;
       const list = g.type === 'MultiPolygon' ? g.coordinates : [g.coordinates];
-      list.forEach((rings) => polys.push(rings));
+      list.forEach((rings) => { const rs = rings.slice(); rs.geom = gi; polys.push(rs); });
     });
     if (!polys.length) return null;
     let mnx = Infinity, mxx = -Infinity, mny = Infinity, mxy = -Infinity;
@@ -30,7 +30,11 @@
       mnx = Math.min(mnx, c[0]); mxx = Math.max(mxx, c[0]); mny = Math.min(mny, c[1]); mxy = Math.max(mxy, c[1]);
     })));
     const lon0 = (mnx + mxx) / 2, lat0 = (mny + mxy) / 2, kx = M_PAR_DEG_LON * Math.cos(lat0 * Math.PI / 180);
-    return polys.map((rs) => rs.map((r) => r.map((c) => [(c[0] - lon0) * kx, -(c[1] - lat0) * M_PAR_DEG_LAT])));
+    return polys.map((rs) => {
+      const out = rs.map((r) => r.map((c) => [(c[0] - lon0) * kx, -(c[1] - lat0) * M_PAR_DEG_LAT, c[0], c[1]]));
+      out.geom = rs.geom;
+      return out;
+    });
   }
   function distSeg(px, py, a, b) {
     const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy;
@@ -53,18 +57,116 @@
     return dedans;
   }
   // Côtés de parcelle. Un côté commun à deux parcelles du même terrain n'est pas une limite.
+  // Un côté partagé sur une partie seulement est découpé aux sommets de la parcelle voisine.
+  // « cle » situe le côté sur le terrain : la même dans toutes les vues (ensemble, parcelle).
   function listeCotes(polys) {
-    const cotes = [];
+    const bruts = [];
     polys.forEach((rings, p) => rings.forEach((r) => {
       const n = r.length - (r.length > 1 && r[0][0] === r[r.length - 1][0] && r[0][1] === r[r.length - 1][1] ? 1 : 0);
-      for (let i = 0; i < n; i++) cotes.push({ a: r[i], b: r[(i + 1) % n], p, interne: false });
+      for (let i = 0; i < n; i++) bruts.push({ a: r[i], b: r[(i + 1) % n], p });
     }));
+    const cotes = [];
+    bruts.forEach((c) => {
+      const dx = c.b[0] - c.a[0], dy = c.b[1] - c.a[1], l2 = dx * dx + dy * dy;
+      const ts = [0, 1];
+      if (l2) bruts.forEach((o) => {
+        if (o.p === c.p) return;
+        if (distSeg(o.a[0], o.a[1], c.a, c.b) >= 0.6) return;
+        const t = ((o.a[0] - c.a[0]) * dx + (o.a[1] - c.a[1]) * dy) / l2;
+        if (t > 0 && t < 1) ts.push(t);
+      });
+      ts.sort((x, y) => x - y);
+      const at = (t) => [0, 1, 2, 3].map((k) => c.a[k] + (c.b[k] - c.a[k]) * t);
+      for (let i = 0; i + 1 < ts.length; i++) {
+        if ((ts[i + 1] - ts[i]) * Math.sqrt(l2) < 0.05) continue;
+        cotes.push({ a: ts[i] === 0 ? c.a : at(ts[i]), b: ts[i + 1] === 1 ? c.b : at(ts[i + 1]), p: c.p });
+      }
+    });
     cotes.forEach((c) => {
       const mx = (c.a[0] + c.b[0]) / 2, my = (c.a[1] + c.b[1]) / 2;
-      c.interne = cotes.some((o) => o.p !== c.p && distSeg(mx, my, o.a, o.b) < 0.6);
+      c.interne = bruts.some((o) => o.p !== c.p && distSeg(mx, my, o.a, o.b) < 0.6);
       c.long = Math.hypot(c.b[0] - c.a[0], c.b[1] - c.a[1]);
+      c.cle = ((c.a[2] + c.b[2]) / 2).toFixed(6) + ',' + ((c.a[3] + c.b[3]) / 2).toFixed(6);
     });
     return cotes.map((c, id) => Object.assign(c, { id }));
+  }
+
+  // Deux parcelles se touchent-elles sur au moins 1 m ? Un simple point de contact ne compte pas.
+  function contigues(g1, g2) {
+    const polys = toMetres([g1, g2]);
+    if (!polys || polys.length < 2) return false;
+    return listeCotes(polys).filter((c) => c.interne && polys[c.p].geom === 0).reduce((s, c) => s + c.long, 0) >= 1;
+  }
+
+  // Unités foncières : parcelles contiguës ET de même zone. Seules ces parcelles peuvent
+  // porter un projet commun. Deux parcelles séparées ou de zones différentes restent à part.
+  function grouper(parcelles) {
+    const n = parcelles.length, chef = parcelles.map((_, i) => i);
+    const racine = (i) => (chef[i] === i ? i : (chef[i] = racine(chef[i])));
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+      const a = parcelles[i], b = parcelles[j];
+      if (!a.geom || !b.geom || a.zone !== b.zone) continue;
+      if (contigues(a.geom, b.geom)) chef[racine(j)] = racine(i);
+    }
+    const out = new Map();
+    parcelles.forEach((p, i) => { const r = racine(i); if (!out.has(r)) out.set(r, []); out.get(r).push(p); });
+    return Array.from(out.values());
+  }
+
+  // Somme de plusieurs résultats. Une emprise inconnue n'est jamais remplacée par une estimation :
+  // le total est alors marqué « incomplet ».
+  function agreger(resultats) {
+    const somme = (k) => resultats.reduce((s, r) => s + (r[k] != null ? r[k] : 0), 0);
+    const connus = resultats.filter((r) => r.emprise_m2 != null);
+    const res = { polys: null, cotes: [], runs: [], batiments: [], surface: somme('surface'), nb: somme('nb'), agrege: true };
+    res.incomplet = connus.length < resultats.length;
+    res.constructible_m2 = resultats.some((r) => r.constructible_m2 != null) ? somme('constructible_m2') : null;
+    if (connus.length) {
+      ['emprise_max_m2', 'emprise_m2', 'sdp', 'sdp_min', 'sdp_max'].forEach((k) => { res[k] = somme(k); });
+    } else { res.emprise_max_m2 = null; res.emprise_m2 = null; }
+    const niv = new Set(connus.map((r) => r.niveaux));
+    res.niveaux = niv.size === 1 ? connus[0].niveaux : null;
+    res.batiLong = resultats[0] ? resultats[0].batiLong : BATI_LONG;
+    res.batiLarg = resultats[0] ? resultats[0].batiLarg : BATI_LARG;
+    return res;
+  }
+
+  // Points de la parcelle (grille en degrés), pour situer ses zones du PLU.
+  function dansGeom(x, y, g) {
+    const list = g.type === 'MultiPolygon' ? g.coordinates : [g.coordinates];
+    return list.some((rs) => dansPolygone(x, y, rs));
+  }
+  function echantillons(g, cote) {
+    if (!g || !g.coordinates) return [];
+    const list = g.type === 'MultiPolygon' ? g.coordinates : [g.coordinates];
+    let mnx = Infinity, mxx = -Infinity, mny = Infinity, mxy = -Infinity;
+    list.forEach((rs) => rs.forEach((r) => r.forEach((c) => {
+      mnx = Math.min(mnx, c[0]); mxx = Math.max(mxx, c[0]); mny = Math.min(mny, c[1]); mxy = Math.max(mxy, c[1]);
+    })));
+    const n = cote || 15, pts = [];
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+      const x = mnx + (i + 0.5) * (mxx - mnx) / n, y = mny + (j + 0.5) * (mxy - mny) / n;
+      if (dansGeom(x, y, g)) pts.push([x, y]);
+    }
+    return pts;
+  }
+  // Point à l'intérieur de la parcelle, le plus près du centre de ses points.
+  function pointInterieur(g) {
+    const pts = echantillons(g);
+    if (!pts.length) return null;
+    const mx = pts.reduce((s, q) => s + q[0], 0) / pts.length, my = pts.reduce((s, q) => s + q[1], 0) / pts.length;
+    return pts.reduce((a, b) => (Math.hypot(b[0] - mx, b[1] - my) < Math.hypot(a[0] - mx, a[1] - my) ? b : a));
+  }
+  // Parts de la parcelle dans chaque zone du PLU, de la plus grande à la plus petite.
+  function partsZones(g, features) {
+    const pts = echantillons(g);
+    const compte = features.map(() => 0);
+    pts.forEach((q) => {
+      const i = features.findIndex((f) => f && f.geometry && dansGeom(q[0], q[1], f.geometry));
+      if (i >= 0) compte[i]++;
+    });
+    const tot = compte.reduce((s, v) => s + v, 0);
+    return features.map((f, i) => ({ feature: f, part: tot ? compte[i] / tot : 0 })).sort((x, y) => y.part - x.part);
   }
 
   // Calcul complet. p : { geoms, contenance, emprisePct, empriseNonReglementee, reculVoie,
@@ -77,6 +179,10 @@
     const res = { polys, cotes, surface, aireGeom, cell: 0, runs: [], batiments: [], nb: 0, angle: 0, constructible_m2: null, voieInconnue: false };
 
     const voie = new Set(p.voieCotes || []);
+    const voieCles = new Set(p.voieCles || []);
+    cotes.forEach((c) => { if (voieCles.has(c.cle)) voie.add(c.id); });
+    cotes.forEach((c) => { c.voie = voie.has(c.id); });
+    res.noms = p.noms || null;
     const rV = Math.max(0, Number(p.reculVoie) || 0), rL = Math.max(0, Number(p.reculLimites) || 0);
     res.voieInconnue = !cotes.some((c) => voie.has(c.id));
     const reculCote = (c) => c.interne ? 0 : (res.voieInconnue ? Math.max(rV, rL) : (voie.has(c.id) ? rV : rL));
@@ -187,6 +293,7 @@
     const cos = Math.cos(res.angle), sin = Math.sin(res.angle);
     const uv = (u, v) => px(u * cos - v * sin, u * sin + v * cos);
     const voie = new Set(voieCotes || []);
+    res.cotes.forEach((c) => { if (c.voie) voie.add(c.id); });
     let o = '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;background:#fbfcfe;border:1px solid #dfe5ee;border-radius:6px;font-family:Arial,sans-serif;" role="img" aria-label="Schéma indicatif d\'implantation">';
     // Parcelle(s)
     res.polys.forEach((rs) => {
@@ -223,9 +330,19 @@
         o += '<text x="' + (mx + sg * nx / nl * 12).toFixed(1) + '" y="' + (my + sg * ny / nl * 12 + 3).toFixed(1) + '" text-anchor="middle" font-size="10" fill="#47505f">' + c.long.toFixed(1).replace('.', ',') + ' m</text>';
       }
       if (!c.interne) {
-        o += '<line class="impl-cote no-print" data-cote="' + c.id + '" x1="' + a[0].toFixed(1) + '" y1="' + a[1].toFixed(1) + '" x2="' + b[0].toFixed(1) + '" y2="' + b[1].toFixed(1) + '" stroke="transparent" stroke-width="16" style="cursor:pointer;"><title>Cliquer : côté sur voie / limite séparative</title></line>';
+        o += '<line class="impl-cote no-print" data-cle="' + c.cle + '" x1="' + a[0].toFixed(1) + '" y1="' + a[1].toFixed(1) + '" x2="' + b[0].toFixed(1) + '" y2="' + b[1].toFixed(1) + '" stroke="transparent" stroke-width="16" style="cursor:pointer;"><title>Cliquer : côté sur voie / limite séparative</title></line>';
       }
     });
+    // Nom de chaque parcelle, quand le schéma en montre plusieurs.
+    if (res.noms && res.noms.length > 1) {
+      const vus = new Set();
+      res.polys.forEach((rs) => {
+        if (vus.has(rs.geom) || !res.noms[rs.geom]) return;
+        vus.add(rs.geom);
+        const pts = rs[0], q = px(pts.reduce((t, c) => t + c[0], 0) / pts.length, pts.reduce((t, c) => t + c[1], 0) / pts.length);
+        o += '<text x="' + q[0].toFixed(1) + '" y="' + q[1].toFixed(1) + '" text-anchor="middle" font-size="11" font-weight="700" fill="#7a1f45" stroke="#fff" stroke-width="3" paint-order="stroke">' + String(res.noms[rs.geom]).replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</text>';
+      });
+    }
     // Nord + échelle
     o += '<g transform="translate(' + (W - 26) + ',38)"><path d="M0 -18 L6 6 L0 2 L-6 6 Z" fill="#47505f"/><text x="0" y="19" text-anchor="middle" font-size="11" font-weight="700" fill="#47505f">N</text></g>';
     const paliers = [5, 10, 20, 50, 100, 200, 500];
@@ -271,56 +388,286 @@
     };
   }
 
-  const api = { compute, svg, defauts, COEF_PLANCHER };
+  const api = { compute, svg, defauts, grouper, agreger, partsZones, pointInterieur, COEF_PLANCHER };
 
   // ── Interface écran ───────────────────────────────────────────────────────
   if (typeof document !== 'undefined') {
-    const CHAMPS = ['emprisePct', 'reculVoie', 'reculLimites', 'niveaux', 'coef', 'batiLong', 'batiLarg', 'ecart'];
+    const CHAMPS_ZONE = ['emprisePct', 'reculVoie', 'reculLimites', 'niveaux', 'ecart'];
+    const CHAMPS_PROJET = ['coef', 'batiLong', 'batiLarg'];
     const m2 = (n) => (n == null || !isFinite(n)) ? '—' : Math.round(n).toLocaleString('fr-FR') + ' m²';
     const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const SANS_CONTOUR = 'Surface saisie sans contour';
 
     function etat() {
       const d = window.__fidiData; if (!d) return null;
       if (!d.implantation) d.implantation = { visible: false, valeurs: {}, voieCotes: [] };
-      return d.implantation;
-    }
-    function geoms() {
-      const gpu = window.__fidiGpu || {};
-      const extras = (window.__extraParcFeatures || []).map((f) => f && f.geometry).filter(Boolean);
-      return [gpu.parcelleGeom].concat(extras).filter(Boolean);
+      const st = d.implantation;
+      if (!st.valeurs) st.valeurs = {};
+      if (!st.voieCotes) st.voieCotes = [];
+      if (!st.voieCles) st.voieCles = [];
+      if (!st.valeursZones) st.valeursZones = {};
+      return st;
     }
     function surfaceTerrain() {
       try { if (typeof window.terrainTotalSurface === 'function' && window.terrainTotalSurface() > 0) return window.terrainTotalSurface(); } catch (e) {}
       const p = (window.__fidiGpu || {}).parcelle; return p ? Number(p.contenance) || 0 : 0;
     }
-    function natureZone() {
-      try { return typeof window.terrainNature === 'function' ? window.terrainNature() : 'inconnu'; } catch (e) { return 'inconnu'; }
+    const refDe = (o) => (((o && o.section) || '') + ' ' + ((o && o.numero) || '')).trim();
+    const codeZone = (z) => String((z && (z.libelle || z.libelong || z.typezone)) || '').trim();
+    const natureDe = (typezone) => {
+      const t = String(typezone || '').toUpperCase();
+      if (t.startsWith('AU') || t.startsWith('U')) return 'constructible';
+      if (t.startsWith('A')) return 'agricole';
+      if (t.startsWith('N')) return 'naturel';
+      return 'inconnu';
+    };
+
+    // Parcelles du terrain : principale, puis supplémentaires. Une surface saisie à la main,
+    // sans référence, reste comptée, sur une ligne à part et sans contour.
+    function parcellesTerrain() {
+      const gpu = window.__fidiGpu || {};
+      const out = [];
+      if (gpu.parcelle || gpu.parcelleGeom) {
+        out.push({ ref: refDe(gpu.parcelle) || 'Parcelle principale', geom: gpu.parcelleGeom || null, contenance: Number(gpu.parcelle && gpu.parcelle.contenance) || 0, principale: true });
+      }
+      const vues = new Set(out.map((p) => p.ref));
+      (window.__extraParcFeatures || []).forEach((f) => {
+        if (!f || !f.geometry) return;
+        const pp = f.properties || {};
+        const ref = refDe(pp) || 'Parcelle ' + (out.length + 1);
+        if (vues.has(ref)) return;
+        vues.add(ref);
+        out.push({ ref, geom: f.geometry, contenance: Number(pp.contenance) || 0 });
+      });
+      const reste = surfaceTerrain() - out.reduce((s, p) => s + p.contenance, 0);
+      if (reste > 0.5) out.push({ ref: SANS_CONTOUR, geom: null, contenance: reste });
+      return out;
     }
-    function parametres() {
+
+    // ── Zone du PLU et règlement de chaque parcelle (lecture une seule fois) ──
+    const zonesLues = new Map();
+    let reglesLues = new Map(), reglesClef = null;
+    const clefGeom = (g) => JSON.stringify(g.coordinates).slice(0, 200);
+
+    async function lireZone(p, cle) {
+      const fin = (v) => { zonesLues.set(cle, v); if (v.etat === 'ok' && !p.principale) lireRegles(v.code, p.geom); refresh(); };
+      try {
+        const arrondi = (c) => (typeof c[0] === 'number' ? [Number(c[0].toFixed(6)), Number(c[1].toFixed(6))] : c.map(arrondi));
+        let geom = JSON.stringify({ type: p.geom.type, coordinates: arrondi(p.geom.coordinates) });
+        if (encodeURIComponent(geom).length > 6000) {
+          const q = pointInterieur(p.geom);
+          if (!q) { fin({ etat: 'echec' }); return; }
+          geom = JSON.stringify({ type: 'Point', coordinates: q });
+        }
+        const r = await fetch('https://apicarto.ign.fr/api/gpu/zone-urba?geom=' + encodeURIComponent(geom));
+        const fc = r.ok ? await r.json() : null;
+        const feats = (fc && fc.features) || [];
+        if (!feats.length) { fin({ etat: 'echec' }); return; }
+        const parts = feats.length > 1 ? partsZones(p.geom, feats) : [{ feature: feats[0], part: 1 }];
+        const pr = parts[0].feature.properties || {};
+        fin({
+          etat: 'ok', code: codeZone(pr), typezone: pr.typezone || '',
+          autres: parts.slice(1).filter((x) => x.part >= 0.05).map((x) => ({ code: codeZone(x.feature.properties), part: x.part })),
+          part: parts[0].part,
+        });
+      } catch (e) { fin({ etat: 'echec' }); }
+    }
+    function lireRegles(code, geom) {
+      const principale = codeZone((window.__fidiGpu || {}).zone);
+      if (!code || code === principale || reglesLues.has(code)) return;
+      const q = pointInterieur(geom);
+      if (!q) { reglesLues.set(code, { etat: 'echec' }); return; }
+      const carte = reglesLues;
+      carte.set(code, { etat: 'attente' });
+      fetch('/api/plu-regle?v=2&lat=' + encodeURIComponent(q[1]) + '&lon=' + encodeURIComponent(q[0]) + '&zone=' + encodeURIComponent(code))
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null)
+        .then((d) => { carte.set(code, { etat: d ? 'ok' : 'echec', data: d }); refresh(); });
+    }
+    function preparerZones(parcs) {
+      if (reglesClef !== window.__fidiPluRegleClef) { reglesClef = window.__fidiPluRegleClef; reglesLues = new Map(); }
+      if (parcs.length < 2) return;
+      parcs.forEach((p) => {
+        if (!p.geom) return;
+        const cle = clefGeom(p.geom);
+        if (!zonesLues.has(cle)) { zonesLues.set(cle, { etat: 'attente' }); lireZone(p, cle); }
+        else {
+          const z = zonesLues.get(cle);
+          if (z.etat === 'ok' && !p.principale) lireRegles(z.code, p.geom);
+        }
+      });
+    }
+    // Zone retenue pour une parcelle. La principale garde la zone de l'étude.
+    function habiller(parcs) {
+      const zp = (window.__fidiGpu || {}).zone || {};
+      const principale = codeZone(zp);
+      parcs.forEach((p) => {
+        const lue = p.geom ? zonesLues.get(clefGeom(p.geom)) : null;
+        p.lue = lue || null;
+        if (p.principale || !lue || lue.etat !== 'ok' || !lue.code) {
+          p.zone = principale;
+          p.typezone = zp.typezone || '';
+          p.zoneEtat = (p.principale || !p.geom) ? 'ok' : (lue && lue.etat === 'ok' ? 'ok' : (lue ? lue.etat : 'attente'));
+        } else { p.zone = lue.code; p.typezone = lue.typezone; p.zoneEtat = 'ok'; }
+      });
+    }
+
+    // Paramètres d'une zone. Règles (emprise, reculs, niveaux, écart) : par zone.
+    // Hypothèses de projet (bâtiment, coefficient) : communes à tout le terrain.
+    function parametresZone(zone, typezone) {
       const st = etat();
-      const reg = (window.__fidiPluRegle && window.__fidiPluRegle.regles) || null;
-      const def = defauts(reg);
+      const principale = codeZone((window.__fidiGpu || {}).zone);
+      const estPrincipale = !zone || zone === principale;
+      const lu = estPrincipale ? { etat: window.__fidiPluRegle ? 'ok' : 'attente', data: window.__fidiPluRegle } : (reglesLues.get(zone) || { etat: 'attente' });
+      const data = lu.data || {};
+      const def = defauts(data.regles || null);
+      const saisies = estPrincipale ? st.valeurs : (st.valeursZones[zone] || {});
       const val = {};
-      CHAMPS.forEach((k) => { val[k] = st && st.valeurs[k] !== undefined ? st.valeurs[k] : def[k]; });
-      const nat = natureZone();
-      return { def, val, nat, calc: Object.assign({}, val, {
-        geoms: geoms(), contenance: surfaceTerrain(), voieCotes: st ? st.voieCotes : [],
-        empriseNonReglementee: def.empriseNonReglementee && (!st || st.valeurs.emprisePct === undefined),
-        constructible: !(nat === 'agricole' || nat === 'naturel'),
-      }) };
+      CHAMPS_ZONE.forEach((k) => { val[k] = saisies[k] !== undefined ? saisies[k] : def[k]; });
+      CHAMPS_PROJET.forEach((k) => { val[k] = st.valeurs[k] !== undefined ? st.valeurs[k] : def[k]; });
+      const nat = natureDe(typezone);
+      return { def, val, nat, saisies, url: data.reglement_url || '', etat: lu.etat, zone,
+        calc: Object.assign({}, val, {
+          empriseNonReglementee: def.empriseNonReglementee && saisies.emprisePct === undefined,
+          constructible: !(nat === 'agricole' || nat === 'naturel'),
+        }) };
     }
-    function lienPage(src) {
-      const url = window.__fidiPluRegle && window.__fidiPluRegle.reglement_url;
+    function calculer(groupe) {
+      const st = etat();
+      const P = parametresZone(groupe[0].zone, groupe[0].typezone);
+      const geomsG = groupe.map((p) => p.geom).filter(Boolean);
+      const tout = groupe.every((p) => p.contenance > 0);
+      return compute(Object.assign({}, P.calc, {
+        geoms: geomsG, noms: groupe.filter((p) => p.geom).map((p) => p.ref),
+        contenance: tout ? groupe.reduce((s, p) => s + p.contenance, 0) : 0,
+        voieCotes: [], voieCles: st.voieCles,
+      }));
+    }
+    // Études enregistrées avec des numéros de côté : converties en clés de terrain.
+    function migrerVoies(parcs) {
+      const st = etat();
+      if (!st.voieCotes.length) return;
+      const g = parcs.map((p) => p.geom).filter(Boolean);
+      const polys = toMetres(g);
+      if (!polys) return;
+      const cotes = listeCotes(polys);
+      st.voieCotes = st.voieCotes.filter((id) => {
+        if (!cotes[id]) return true;
+        if (!st.voieCles.includes(cotes[id].cle)) st.voieCles.push(cotes[id].cle);
+        return false;
+      });
+    }
+
+    function lienPage(src, url) {
       if (!src || !src.page) return '<span class="impl-src" style="color:#8a6d3b;">hypothèse</span>';
       const label = 'règlement p. ' + src.page;
       return url
         ? '<a class="impl-src" href="' + esc(url) + '#page=' + src.page + '" target="_blank" rel="noopener" title="' + esc(src.citation || '') + '" style="color:#1a6b3a;">' + label + '</a>'
         : '<span class="impl-src" style="color:#1a6b3a;" title="' + esc(src.citation || '') + '">' + label + '</span>';
     }
-    function champ(k, label, unite, val, src, attrs) {
+    function champ(k, label, unite, val, src, attrs, zone) {
       return '<tr><td style="color:#556;">' + label + '</td>'
-        + '<td style="white-space:nowrap;"><input type="number" class="form-control form-control-sm d-inline-block impl-in" data-champ="' + k + '" value="' + esc(val) + '" style="width:76px;" ' + (attrs || 'min="0" step="0.5"') + '> ' + unite + '</td>'
+        + '<td style="white-space:nowrap;"><input type="number" class="form-control form-control-sm d-inline-block impl-in" data-champ="' + k + '" data-zone="' + esc(zone || '') + '" value="' + esc(val) + '" style="width:76px;" ' + (attrs || 'min="0" step="0.5"') + '> ' + unite + '</td>'
         + '<td style="font-size:.72rem;">' + src + '</td></tr>';
+    }
+
+    const LEGENDE = '<div class="d-flex flex-wrap gap-3 mt-1" style="font-size:.72rem;color:#556;">' +
+      '<span><span style="display:inline-block;width:14px;height:3px;background:#d6336c;vertical-align:middle;"></span> limite séparative</span>' +
+      '<span><span style="display:inline-block;width:14px;height:4px;background:#fd7e14;vertical-align:middle;"></span> côté sur voie</span>' +
+      '<span><span style="display:inline-block;width:12px;height:10px;background:#bfe3cd;vertical-align:middle;"></span> zone après reculs</span>' +
+      '<span><span style="display:inline-block;width:12px;height:10px;background:#1a4b8e;vertical-align:middle;"></span> bâtiment</span>' +
+      '</div>';
+    function lignesResultat(res) {
+      return [
+        ['Surface du terrain', m2(res.surface)],
+        ['Zone restant après reculs', m2(res.constructible_m2)],
+        ['Emprise au sol maximale', res.emprise_max_m2 != null ? m2(res.emprise_max_m2) : '—'],
+        ['Emprise retenue', res.emprise_m2 != null ? m2(res.emprise_m2) + (res.limite_par === 'reculs' ? ' <span class="text-muted">(limitée par les reculs)</span>' : '') : '—'],
+        ['<b>Surface de plancher réalisable</b>', res.sdp != null ? '<b style="color:#1a4b8e;">' + m2(res.sdp_min) + ' à ' + m2(res.sdp_max) + '</b>' : '—'],
+        ['<b>Bâtiments implantables</b>', res.emprise_m2 != null ? '<b style="color:#1a4b8e;">' + res.nb + '</b> <span class="text-muted">de ' + res.batiLong + ' × ' + res.batiLarg + ' m</span>' : '—'],
+      ].map((l) => '<tr><td style="color:#556;">' + l[0] + '</td><td class="text-end">' + l[1] + '</td></tr>').join('');
+    }
+    function colonneSchema(res, P) {
+      if (!res.polys) return '<div class="text-muted small">Contour indisponible : pas de schéma.</div>';
+      const aide = res.voieInconnue && Number(P.val.reculVoie) !== Number(P.val.reculLimites)
+        ? '<div class="no-print mt-1" style="font-size:.74rem;color:#b45309;"><i class="bi bi-hand-index me-1"></i>Cliquez le ou les côtés sur voie. Tant qu\'aucun n\'est marqué, le plus grand recul s\'applique partout.</div>'
+        : '<div class="no-print mt-1 text-muted" style="font-size:.72rem;"><i class="bi bi-hand-index me-1"></i>Cliquez un côté pour le marquer « sur voie ».</div>';
+      return svg(res) + LEGENDE + aide;
+    }
+    function tableParametres(zones, multi) {
+      const st = etat();
+      const sourceDe = (P, k, s) => P.saisies[k] !== undefined ? '<span class="impl-src" style="color:#556;">saisie</span>' : lienPage(s, P.url);
+      let h = '';
+      zones.forEach((Z) => {
+        const P = parametresZone(Z.zone, Z.typezone), def = P.def;
+        const empSrc = P.saisies.emprisePct !== undefined ? '<span class="impl-src" style="color:#556;">saisie</span>'
+          : (def.empriseNonReglementee ? '<span class="impl-src" style="color:#1a6b3a;">non réglementée</span> ' + lienPage(def.srcEmprise, P.url) : (def.emprisePct !== '' ? lienPage(def.srcEmprise, P.url) : '<span class="impl-src" style="color:#8a6d3b;">à saisir</span>'));
+        const refAxe = def.reculVoieRef ? ' <span class="text-muted">(compté depuis l\'' + esc(def.reculVoieRef) + ')</span>' : '';
+        const lecture = P.etat === 'attente' ? ' <span class="text-muted fw-normal">(lecture du règlement en cours…)</span>' : '';
+        h += '<div class="fw-semibold small mb-1">' + (multi ? 'Règles de la zone ' + esc(Z.zone || '?') : 'Paramètres') + lecture + '</div>' +
+          '<table class="table table-sm mb-1" style="font-size:.76rem;"><tbody>' +
+          champ('emprisePct', 'Emprise au sol', '%', P.val.emprisePct, empSrc, 'min="0" max="100" step="1"', Z.zone) +
+          champ('reculVoie', 'Recul voie' + refAxe, 'm', P.val.reculVoie, sourceDe(P, 'reculVoie', def.srcVoie), null, Z.zone) +
+          champ('reculLimites', 'Recul limites', 'm', P.val.reculLimites, sourceDe(P, 'reculLimites', def.srcLimites), null, Z.zone) +
+          champ('niveaux', 'Niveaux', '', P.val.niveaux, sourceDe(P, 'niveaux', def.srcNiveaux), 'min="1" step="1"', Z.zone) +
+          champ('ecart', 'Écart entre bâtiments', 'm', P.val.ecart, sourceDe(P, 'ecart', def.srcEcart), null, Z.zone) +
+          (multi ? '</tbody></table>' : '');
+        if (!multi) {
+          const hyp = (k) => st.valeurs[k] !== undefined ? '<span class="impl-src" style="color:#556;">saisie</span>' : lienPage(null);
+          h += champ('coef', 'Plancher / brut', '', P.val.coef, hyp('coef'), 'min="0.5" max="1" step="0.01"', '') +
+            champ('batiLong', 'Bâtiment : longueur', 'm', P.val.batiLong, hyp('batiLong'), 'min="3" step="1"', '') +
+            champ('batiLarg', 'Bâtiment : largeur', 'm', P.val.batiLarg, hyp('batiLarg'), 'min="3" step="1"', '') +
+            '</tbody></table>';
+        }
+        if (def.enLimitePossible) h += '<div class="text-muted" style="font-size:.7rem;">Implantation en limite possible sous conditions : voir le règlement. Saisir 0 pour ce scénario.</div>';
+      });
+      if (multi) {
+        const P = parametresZone(zones[0].zone, zones[0].typezone);
+        const hyp = (k) => st.valeurs[k] !== undefined ? '<span class="impl-src" style="color:#556;">saisie</span>' : lienPage(null);
+        h += '<div class="fw-semibold small mb-1 mt-2">Hypothèses de projet (tout le terrain)</div>' +
+          '<table class="table table-sm mb-1" style="font-size:.76rem;"><tbody>' +
+          champ('coef', 'Plancher / brut', '', P.val.coef, hyp('coef'), 'min="0.5" max="1" step="0.01"', '') +
+          champ('batiLong', 'Bâtiment : longueur', 'm', P.val.batiLong, hyp('batiLong'), 'min="3" step="1"', '') +
+          champ('batiLarg', 'Bâtiment : largeur', 'm', P.val.batiLarg, hyp('batiLarg'), 'min="3" step="1"', '') +
+          '</tbody></table>';
+      }
+      return h + '<button type="button" class="btn btn-sm btn-outline-secondary py-0 mt-1 no-print" id="implReset">Revenir aux valeurs du règlement</button>';
+    }
+    const zonesDistinctes = (parcs) => {
+      const m = new Map();
+      parcs.forEach((p) => { if (!m.has(p.zone)) m.set(p.zone, { zone: p.zone, typezone: p.typezone }); });
+      return Array.from(m.values());
+    };
+    function alertes(parcs) {
+      let a = '';
+      const alerte = (t) => '<div class="alert alert-warning py-1 px-2 small mb-2">' + t + '</div>';
+      const zones = zonesDistinctes(parcs), multi = zones.length > 1;
+      zones.forEach((Z) => {
+        const P = parametresZone(Z.zone, Z.typezone), nom = multi ? ' ' + esc(Z.zone || '?') : '';
+        if (P.calc.constructible === false) a += alerte('Zone' + nom + ' ' + (P.nat === 'agricole' ? 'agricole' : 'naturelle') + ' : constructibilité très restreinte. Le schéma montre seulement la géométrie du terrain.');
+        if (P.def.empriseAmbigue && P.saisies.emprisePct === undefined) a += alerte('Le règlement donne plusieurs emprises pour la zone' + nom + ' selon le quartier (' + P.def.empriseAmbigue.join(' %, ') + ' %). Saisissez la bonne valeur.');
+        else if (P.etat !== 'attente' && P.calc.constructible !== false && P.val.emprisePct === '' && !P.calc.empriseNonReglementee) a += alerte('Emprise au sol' + (multi ? ' de la zone' + nom : '') + ' non lue dans le règlement. Saisissez la valeur pour obtenir les surfaces et le nombre de bâtiments.');
+      });
+      parcs.forEach((p) => {
+        if (p.lue && p.lue.etat === 'ok' && p.lue.autres && p.lue.autres.length) {
+          const pc = (v) => Math.round(v * 100) + ' %';
+          a += alerte('Parcelle ' + esc(p.ref) + ' à cheval sur plusieurs zones : ' + esc(p.lue.code) + ' (' + pc(p.lue.part) + ')' + p.lue.autres.map((o) => ', ' + esc(o.code) + ' (' + pc(o.part) + ')').join('') + '. Les règles de ' + esc(p.zone || '?') + ' sont appliquées à toute la parcelle.');
+        }
+        if (!p.principale && p.geom && p.zoneEtat === 'echec') a += alerte('Zone de la parcelle ' + esc(p.ref) + ' non trouvée : règles de la zone principale appliquées, à vérifier.');
+      });
+      if (!parcs.some((p) => p.geom)) a += alerte('Contour de parcelle indisponible : schéma non dessiné, surfaces sans effet des reculs.');
+      if (parcs.some((p) => p.ref === SANS_CONTOUR)) a += alerte('Une surface a été saisie sans référence cadastrale : comptée dans le total, sans schéma ni effet des reculs.');
+      return a;
+    }
+    function ligneRecap(cle, nom, zone, r, st, fort) {
+      const actif = st.vue === cle || (!st.vue && cle === 'ensemble');
+      const plancher = r.sdp != null ? m2(r.sdp_min) + ' à ' + m2(r.sdp_max) + (r.incomplet ? ' <span class="text-muted">(partiel)</span>' : '') : '—';
+      return '<tr' + (cle ? ' data-impl-vue="' + esc(cle) + '" style="cursor:pointer;' + (actif ? 'background:#eef4fb;' : '') + '"' : '') + '>' +
+        '<td>' + (fort ? '<b>' + esc(nom) + '</b>' : esc(nom)) + '</td><td>' + esc(zone) + '</td>' +
+        '<td class="text-end">' + m2(r.surface) + '</td><td class="text-end">' + m2(r.constructible_m2) + '</td>' +
+        '<td class="text-end">' + (r.emprise_m2 != null ? m2(r.emprise_m2) : '—') + '</td>' +
+        '<td class="text-end">' + (fort ? '<b>' + plancher + '</b>' : plancher) + '</td>' +
+        '<td class="text-end">' + (r.emprise_m2 != null ? (fort ? '<b>' + r.nb + '</b>' : r.nb) : '—') + '</td></tr>';
     }
 
     function refresh() {
@@ -329,15 +676,28 @@
       if (!row || !d) return;
       const st = etat();
       row.classList.remove('d-none');
-      const { def, val, nat, calc } = parametres();
-      const res = compute(calc);
-      window.__fidiImplantation = res;
 
-      // Ligne « surface de plancher » du tableau de constructibilité.
+      let parcs = parcellesTerrain();
+      if (!parcs.length) parcs = [{ ref: SANS_CONTOUR, geom: null, contenance: surfaceTerrain() }];
+      preparerZones(parcs);
+      habiller(parcs);
+      migrerVoies(parcs);
+
+      const multi = parcs.length > 1;
+      const groupes = grouper(parcs);
+      const resGroupes = groupes.map(calculer);
+      const resParcelles = multi ? parcs.map((p) => calculer([p])) : resGroupes;
+      const total = resGroupes.length === 1 ? resGroupes[0] : agreger(resGroupes);
+      window.__fidiImplantation = total;
+
+      // Ligne « surface de plancher » du tableau de constructibilité : toujours l'ensemble du terrain.
       const cSdp = document.getElementById('cSdpVal');
-      if (cSdp) cSdp.innerHTML = res.sdp != null
-        ? '<span class="fw-semibold" style="color:#1a4b8e;">' + m2(res.sdp_min) + ' à ' + m2(res.sdp_max) + '</span> <span class="text-muted" style="font-size:.85em;">(' + res.niveaux + ' niveau' + (res.niveaux > 1 ? 'x' : '') + ', estimation)</span>'
-        : '—';
+      if (cSdp) {
+        const detail = total.niveaux ? total.niveaux + ' niveau' + (total.niveaux > 1 ? 'x' : '') + ', estimation' : 'estimation';
+        cSdp.innerHTML = total.sdp != null
+          ? '<span class="fw-semibold" style="color:#1a4b8e;">' + m2(total.sdp_min) + ' à ' + m2(total.sdp_max) + '</span> <span class="text-muted" style="font-size:.85em;">(' + detail + (total.incomplet ? ', partiel' : '') + ')</span>'
+          : '—';
+      }
 
       const btn = document.getElementById('btnImplantation');
       const body = document.getElementById('implantationBody');
@@ -351,59 +711,53 @@
       body.classList.toggle('d-none', !st.visible);
       if (!st.visible) { body.innerHTML = ''; return; }
 
-      const lectures = !!window.__fidiPluRegle;
-      let alerte = '';
-      if (calc.constructible === false) alerte += '<div class="alert alert-warning py-1 px-2 small mb-2">Zone ' + (nat === 'agricole' ? 'agricole' : 'naturelle') + ' : constructibilité très restreinte. Le schéma montre seulement la géométrie du terrain.</div>';
-      if (def.empriseAmbigue && (st.valeurs.emprisePct === undefined)) alerte += '<div class="alert alert-warning py-1 px-2 small mb-2">Le règlement donne plusieurs emprises pour cette zone selon le quartier (' + def.empriseAmbigue.join(' %, ') + ' %). Saisissez la bonne valeur.</div>';
-      else if (res.emprise_m2 == null && calc.constructible !== false) alerte += '<div class="alert alert-warning py-1 px-2 small mb-2">Emprise au sol non lue dans le règlement. Saisissez la valeur pour obtenir les surfaces et le nombre de bâtiments.</div>';
-      if (!geoms().length) alerte += '<div class="alert alert-warning py-1 px-2 small mb-2">Contour de parcelle indisponible : schéma non dessiné, surfaces sans effet des reculs.</div>';
+      const AVERTISSEMENT = '<div class="text-muted mt-2" style="font-size:.68rem;"><i class="bi bi-exclamation-triangle me-1" style="color:#fd7e14;"></i>Schéma et surfaces <b>indicatifs</b>, calculés sur le contour cadastral. Ils ne remplacent ni le règlement complet (pente, servitudes, stationnement, risques), ni un plan de masse, ni l\'avis d\'un architecte ou d\'un géomètre. La surface de plancher remplace la SHON depuis 2012.</div>';
+      const PA = (g) => parametresZone(g[0].zone, g[0].typezone);
+      const unBloc = (res, P, droite) => '<div class="row g-3"><div class="col-12 col-lg-7">' + colonneSchema(res, P) + '</div><div class="col-12 col-lg-5"><table class="table table-sm mb-2" style="font-size:.78rem;"><tbody>' + lignesResultat(res) + '</tbody></table>' + (droite || '') + '</div></div>';
 
-      const empSrc = st.valeurs.emprisePct !== undefined ? '<span class="impl-src" style="color:#556;">saisie</span>'
-        : (def.empriseNonReglementee ? '<span class="impl-src" style="color:#1a6b3a;">non réglementée</span> ' + lienPage(def.srcEmprise) : (def.emprisePct !== '' ? lienPage(def.srcEmprise) : '<span class="impl-src" style="color:#8a6d3b;">à saisir</span>'));
-      const src = (k, s) => st.valeurs[k] !== undefined ? '<span class="impl-src" style="color:#556;">saisie</span>' : lienPage(s);
-      const refAxe = def.reculVoieRef ? ' <span class="text-muted">(compté depuis l\'' + esc(def.reculVoieRef) + ')</span>' : '';
-      const enLim = def.enLimitePossible ? '<div class="text-muted" style="font-size:.7rem;">Implantation en limite possible sous conditions : voir le règlement. Saisir 0 pour ce scénario.</div>' : '';
+      // Un seul terrain d'un seul tenant : même présentation qu'avec une seule parcelle.
+      if (!multi) {
+        body.innerHTML = alertes(parcs) + unBloc(total, PA(groupes[0]), tableParametres(zonesDistinctes(parcs), false)) + AVERTISSEMENT;
+        return;
+      }
 
-      const lignes = [
-        ['Surface du terrain', m2(res.surface)],
-        ['Zone restant après reculs', m2(res.constructible_m2)],
-        ['Emprise au sol maximale', res.emprise_max_m2 != null ? m2(res.emprise_max_m2) : '—'],
-        ['Emprise retenue', res.emprise_m2 != null ? m2(res.emprise_m2) + (res.limite_par === 'reculs' ? ' <span class="text-muted">(limitée par les reculs)</span>' : '') : '—'],
-        ['<b>Surface de plancher réalisable</b>', res.sdp != null ? '<b style="color:#1a4b8e;">' + m2(res.sdp_min) + ' à ' + m2(res.sdp_max) + '</b>' : '—'],
-        ['<b>Bâtiments implantables</b>', res.emprise_m2 != null ? '<b style="color:#1a4b8e;">' + res.nb + '</b> <span class="text-muted">de ' + res.batiLong + ' × ' + res.batiLarg + ' m</span>' : '—'],
-      ].map((l) => '<tr><td style="color:#556;">' + l[0] + '</td><td class="text-end">' + l[1] + '</td></tr>').join('');
+      // Plusieurs parcelles : tableau automatique, puis schémas de la vue choisie.
+      const refs = parcs.map((p) => p.ref);
+      let vue = st.vue || 'ensemble';
+      if (vue !== 'ensemble' && vue !== 'toutes' && !refs.includes(vue)) vue = 'ensemble';
+      const memeLot = groupes.length < parcs.length;
+      const sommeSeparee = agreger(resParcelles);
+      const bouton = (cle, nom) => '<button type="button" class="btn btn-sm ' + (vue === cle ? 'btn-primary' : 'btn-outline-primary') + ' py-0" data-impl-vue="' + esc(cle) + '">' + esc(nom) + '</button>';
+      const selecteur = '<div class="d-flex flex-wrap gap-1 mb-2 no-print align-items-center" style="font-size:.76rem;"><span class="text-muted me-1">Proposition :</span>' +
+        bouton('ensemble', 'Ensemble') + parcs.filter((p) => p.geom).map((p) => bouton(p.ref, p.ref)).join('') + bouton('toutes', 'Toutes les propositions') + '</div>';
+      const zoneTexte = (p) => p.zoneEtat === 'attente' ? 'lecture…' : ((p.zone || '—') + (p.zoneEtat === 'echec' ? ' (à vérifier)' : ''));
+      const zonesEns = zonesDistinctes(parcs);
+      let recap = '<table class="table table-sm mb-2" style="font-size:.76rem;"><thead><tr><th>Parcelle</th><th>Zone</th><th class="text-end">Surface</th><th class="text-end">Après reculs</th><th class="text-end">Emprise</th><th class="text-end">Plancher</th><th class="text-end">Bâtiments</th></tr></thead><tbody>' +
+        parcs.map((p, i) => ligneRecap(p.geom ? p.ref : '', p.ref, zoneTexte(p), resParcelles[i], st, false)).join('');
+      if (memeLot) recap += ligneRecap('', 'Somme, parcelles traitées séparément', '', sommeSeparee, st, false);
+      recap += ligneRecap('ensemble', 'Ensemble du terrain', zonesEns.length === 1 ? (zonesEns[0].zone || '—') : zonesEns.length + ' zones', total, st, true) + '</tbody></table>';
+      const nomGroupe = (g) => g.map((p) => p.ref).join(' + ');
+      let explication;
+      if (groupes.length === 1) explication = 'L\'ensemble traite les ' + parcs.length + ' parcelles comme un seul terrain : les limites communes ne donnent plus de recul.';
+      else if (memeLot) explication = 'L\'ensemble regroupe les parcelles contiguës de même zone (' + groupes.filter((g) => g.length > 1).map(nomGroupe).map(esc).join(' ; ') + '). Les autres restent à part : elles sont séparées ou en zone différente.';
+      else explication = 'Ces parcelles sont séparées ou en zones différentes : l\'ensemble additionne chaque parcelle avec ses propres règles, sans projet commun.';
+      recap += '<div class="text-muted mb-2" style="font-size:.72rem;">' + explication + '</div>';
 
-      body.innerHTML =
-        alerte +
-        '<div class="row g-3">' +
-          '<div class="col-12 col-lg-7">' + (res.polys ? svg(res, st.voieCotes) : '') +
-            '<div class="d-flex flex-wrap gap-3 mt-1" style="font-size:.72rem;color:#556;">' +
-              '<span><span style="display:inline-block;width:14px;height:3px;background:#d6336c;vertical-align:middle;"></span> limite séparative</span>' +
-              '<span><span style="display:inline-block;width:14px;height:4px;background:#fd7e14;vertical-align:middle;"></span> côté sur voie</span>' +
-              '<span><span style="display:inline-block;width:12px;height:10px;background:#bfe3cd;vertical-align:middle;"></span> zone après reculs</span>' +
-              '<span><span style="display:inline-block;width:12px;height:10px;background:#1a4b8e;vertical-align:middle;"></span> bâtiment</span>' +
-            '</div>' +
-            (res.voieInconnue && Number(val.reculVoie) !== Number(val.reculLimites)
-              ? '<div class="no-print mt-1" style="font-size:.74rem;color:#b45309;"><i class="bi bi-hand-index me-1"></i>Cliquez le ou les côtés sur voie. Tant qu\'aucun n\'est marqué, le plus grand recul s\'applique partout.</div>'
-              : '<div class="no-print mt-1 text-muted" style="font-size:.72rem;"><i class="bi bi-hand-index me-1"></i>Cliquez un côté pour le marquer « sur voie ».</div>') +
-          '</div>' +
-          '<div class="col-12 col-lg-5">' +
-            '<table class="table table-sm mb-2" style="font-size:.78rem;"><tbody>' + lignes + '</tbody></table>' +
-            '<div class="fw-semibold small mb-1">Paramètres' + (lectures ? '' : ' <span class="text-muted fw-normal">(lecture du règlement en cours…)</span>') + '</div>' +
-            '<table class="table table-sm mb-1" style="font-size:.76rem;"><tbody>' +
-              champ('emprisePct', 'Emprise au sol', '%', val.emprisePct, empSrc, 'min="0" max="100" step="1"') +
-              champ('reculVoie', 'Recul voie' + refAxe, 'm', val.reculVoie, src('reculVoie', def.srcVoie)) +
-              champ('reculLimites', 'Recul limites', 'm', val.reculLimites, src('reculLimites', def.srcLimites)) +
-              champ('niveaux', 'Niveaux', '', val.niveaux, src('niveaux', def.srcNiveaux), 'min="1" step="1"') +
-              champ('coef', 'Plancher / brut', '', val.coef, src('coef', null), 'min="0.5" max="1" step="0.01"') +
-              champ('batiLong', 'Bâtiment : longueur', 'm', val.batiLong, src('batiLong', null), 'min="3" step="1"') +
-              champ('batiLarg', 'Bâtiment : largeur', 'm', val.batiLarg, src('batiLarg', null), 'min="3" step="1"') +
-              champ('ecart', 'Écart entre bâtiments', 'm', val.ecart, src('ecart', def.srcEcart)) +
-            '</tbody></table>' + enLim +
-            '<button type="button" class="btn btn-sm btn-outline-secondary py-0 mt-1 no-print" id="implReset">Revenir aux valeurs du règlement</button>' +
-          '</div>' +
-        '</div>' +
-        '<div class="text-muted mt-2" style="font-size:.68rem;"><i class="bi bi-exclamation-triangle me-1" style="color:#fd7e14;"></i>Schéma et surfaces <b>indicatifs</b>, calculés sur le contour cadastral. Ils ne remplacent ni le règlement complet (pente, servitudes, stationnement, risques), ni un plan de masse, ni l\'avis d\'un architecte ou d\'un géomètre. La surface de plancher remplace la SHON depuis 2012.</div>';
+      const titre = (t) => '<div class="fw-semibold small mt-2 mb-1" style="color:#1a4b8e;">' + esc(t) + '</div>';
+      let schemas = '', visibles = parcs;
+      if (vue === 'ensemble') {
+        if (groupes.length === 1) schemas = unBloc(resGroupes[0], PA(groupes[0]), tableParametres(zonesEns, zonesEns.length > 1));
+        else schemas = groupes.filter((g) => g.some((p) => p.geom)).map((g) => titre((g.length > 1 ? 'Ensemble : ' : 'Parcelle à part : ') + nomGroupe(g)) + unBloc(resGroupes[groupes.indexOf(g)], PA(g))).join('') + '<div class="row g-3 mt-1"><div class="col-12">' + tableParametres(zonesEns, zonesEns.length > 1) + '</div></div>';
+      } else if (vue === 'toutes') {
+        const blocs = parcs.map((p, i) => (p.geom ? titre('Parcelle ' + p.ref + ' seule') + unBloc(resParcelles[i], PA([p])) : ''));
+        if (memeLot) groupes.forEach((g, i) => { if (g.length > 1) blocs.push(titre('Ensemble : ' + nomGroupe(g)) + unBloc(resGroupes[i], PA(g))); });
+        schemas = blocs.join('') + '<div class="row g-3 mt-1"><div class="col-12">' + tableParametres(zonesEns, zonesEns.length > 1) + '</div></div>';
+      } else {
+        const i = refs.indexOf(vue), p = parcs[i];
+        visibles = [p];
+        schemas = titre('Parcelle ' + p.ref + ' seule') + unBloc(resParcelles[i], PA([p]), tableParametres(zonesDistinctes([p]), false));
+      }
+      body.innerHTML = alertes(visibles) + selecteur + recap + schemas + AVERTISSEMENT;
     }
 
     function marqueModifie() { if (window.FidiGuard) window.FidiGuard.setDirty(); }
@@ -415,19 +769,31 @@
       const t = e.target;
       if (!t || !t.classList || !t.classList.contains('impl-in')) return;
       const st = etat(); if (!st) return;
-      const k = t.getAttribute('data-champ');
-      if (t.value === '') delete st.valeurs[k]; else st.valeurs[k] = Number(t.value);
+      const k = t.getAttribute('data-champ'), zone = t.getAttribute('data-zone') || '';
+      const principale = codeZone((window.__fidiGpu || {}).zone);
+      let cible = st.valeurs;
+      if (zone && zone !== principale && CHAMPS_ZONE.includes(k)) {
+        if (!st.valeursZones[zone]) st.valeursZones[zone] = {};
+        cible = st.valeursZones[zone];
+      }
+      if (t.value === '') delete cible[k]; else cible[k] = Number(t.value);
       marqueModifie(); refresh();
     });
     document.addEventListener('click', (e) => {
       const t = e.target; if (!t || !t.getAttribute) return;
       const st = etat(); if (!st) return;
-      if (t.id === 'implReset') { st.valeurs = {}; marqueModifie(); refresh(); return; }
-      const id = t.getAttribute('data-cote');
-      if (id == null) return;
-      const n = Number(id), i = st.voieCotes.indexOf(n);
-      if (i >= 0) st.voieCotes.splice(i, 1); else st.voieCotes.push(n);
-      marqueModifie(); refresh();
+      if (t.id === 'implReset') { st.valeurs = {}; st.valeursZones = {}; marqueModifie(); refresh(); return; }
+      const cle = t.getAttribute('data-cle');
+      if (cle != null) {
+        const i = st.voieCles.indexOf(cle);
+        if (i >= 0) st.voieCles.splice(i, 1); else st.voieCles.push(cle);
+        marqueModifie(); refresh();
+        return;
+      }
+      const v = t.closest ? t.closest('[data-impl-vue]') : null;
+      if (v && document.getElementById('implantationBody') && document.getElementById('implantationBody').contains(v)) {
+        st.vue = v.getAttribute('data-impl-vue'); marqueModifie(); refresh();
+      }
     });
     api.refresh = refresh;
     api.toggle = toggle;
