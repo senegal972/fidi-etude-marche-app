@@ -886,6 +886,13 @@
       if (btn) btn.innerHTML = st.visible
         ? '<i class="bi bi-eye-slash me-1"></i>Masquer (ne pas imprimer)'
         : '<i class="bi bi-eye me-1"></i>Afficher (et imprimer)';
+      const pdf = document.getElementById('implantationPdfBtns');
+      if (pdf) {
+        const bouton = (vue, texte) => '<button type="button" class="btn btn-sm btn-warning py-0 px-2" style="font-weight:600;font-size:.74rem;" onclick="implantationPdf(\'' + vue + '\')" title="Document A4 de ce module, à imprimer ou envoyer"><i class="bi bi-file-earmark-text me-1"></i>' + texte + '</button>';
+        pdf.innerHTML = !st.visible ? '' : (multi
+          ? bouton('ensemble', "PDF de l'ensemble (A4)") + bouton('toutes', 'PDF de toutes les propositions (A4)')
+          : bouton('ensemble', 'PDF de ce module (A4)'));
+      }
       if (note) note.classList.toggle('d-none', !!st.visible);
       row.classList.toggle('no-print', !st.visible);
       if (!body) return;
@@ -946,6 +953,25 @@
       body.innerHTML = alertes(visibles) + selecteur + recap + schemas + AVERTISSEMENT;
     }
 
+    // Contenu du module pour une vue donnée, prêt à imprimer. La vue affichée à l'écran est rétablie.
+    function htmlVue(vue) {
+      const st = etat(), body = document.getElementById('implantationBody');
+      if (!st || !body) return '';
+      const avant = st.vue, visible = st.visible;
+      st.vue = vue; st.visible = true;
+      refresh();
+      const c = body.cloneNode(true);
+      if (avant === undefined) delete st.vue; else st.vue = avant;
+      st.visible = visible;
+      refresh();
+      c.querySelectorAll('input').forEach((f) => { const b = document.createElement('b'); b.textContent = f.value; f.replaceWith(b); });
+      c.querySelectorAll('button,script,.no-print,.bi').forEach((x) => x.remove());
+      c.querySelectorAll('[data-impl-vue]').forEach((x) => { x.removeAttribute('data-impl-vue'); x.removeAttribute('style'); });
+      c.querySelectorAll('[id]').forEach((x) => x.removeAttribute('id'));
+      c.classList.remove('d-none');
+      return c.innerHTML;
+    }
+
     function marqueModifie() { if (window.FidiGuard) window.FidiGuard.setDirty(); }
     function toggle() {
       const st = etat(); if (!st) { alert("Lancez une analyse avant."); return; }
@@ -981,6 +1007,7 @@
         st.vue = v.getAttribute('data-impl-vue'); marqueModifie(); refresh();
       }
     });
+    api.htmlVue = htmlVue;
     api.refresh = refresh;
     api.toggle = toggle;
   }
