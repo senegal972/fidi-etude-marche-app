@@ -10,6 +10,7 @@
 
 import crypto from "node:crypto";
 import { currentUser } from "./_auth.mjs";
+import { getShareStore } from "./_blobs.mjs";
 
 const TTL_MS = 7 * 24 * 3600 * 1000; // 7 jours
 const MAX_BYTES = 9 * 1024 * 1024;   // garde-fou : 9 Mo de PDF max (études avec graphiques)
@@ -22,24 +23,6 @@ const CORS = {
 
 function jsonResp(status, body) {
   return { statusCode: status, headers: CORS, body: JSON.stringify(body) };
-}
-
-async function getShareStore() {
-  const mod = await import("@netlify/blobs");
-  // Essai 1 : contexte auto-injecté par le runtime Netlify (cas normal en prod)
-  try {
-    const store = mod.getStore({ name: "fidi-shared", consistency: "strong" });
-    return store;
-  } catch (e1) {
-    // Essai 2 : credentials explicites via variables d'environnement
-    const siteID = process.env.NETLIFY_SITE_ID;
-    const token  = process.env.NETLIFY_AUTH_TOKEN || process.env.NETLIFY_TOKEN;
-    if (siteID && token) {
-      return mod.getStore({ name: "fidi-shared", siteID, token, consistency: "eventual" });
-    }
-    throw new Error("Blobs context indisponible : " + e1.message +
-      (siteID ? "" : " — NETLIFY_SITE_ID manquant"));
-  }
 }
 
 function makeId() {
@@ -88,8 +71,11 @@ export const handler = async (event) => {
   if (!isPdfB64(pdf)) return jsonResp(400, { error: "Le fichier reçu n'est pas un PDF." });
 
   let store;
-  try { store = await getShareStore(); }
-  catch (e) { return jsonResp(503, { error: "Stockage Blobs indisponible : " + e.message, blobs_error: true }); }
+  try { store = await getShareStore(event); }
+  catch (e) {
+    console.error("[pdf-share] store indisponible :", e.message);
+    return jsonResp(503, { error: "Stockage Blobs indisponible : " + e.message, blobs_error: true });
+  }
 
   const filename = sanitizeFilename(b.filename);
   const id = makeId();
@@ -99,6 +85,7 @@ export const handler = async (event) => {
       metadata: { ts: Date.now(), filename, ct: "application/pdf" },
     });
   } catch (e) {
+    console.error("[pdf-share] échec d'enregistrement :", e.message);
     return jsonResp(500, { error: "Échec d'enregistrement : " + e.message });
   }
 
