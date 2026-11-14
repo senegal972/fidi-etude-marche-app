@@ -28,6 +28,7 @@
 <link href="/avis-valeur.css" rel="stylesheet"/>
 <link href="/saisie.css" rel="stylesheet"/>
 <link href="/marque.css" rel="stylesheet"/>
+<link href="/facture.css" rel="stylesheet"/>
 <style>
 :root{
   /* Valeurs par défaut — remplacées à l'exécution par marque.js (module « Mise en page ») */
@@ -5638,170 +5639,9 @@ async function partagerEtude(){
 window.__factCtx = null;      // contexte de la prestation en cours de facturation
 window.__factRemise = null;   // résultat (facture créée + lien de remise)
 
-function proposerFacture(kind){
-  const label = kind==='avis' ? 'Avis de valeur' : 'Étude de marché';
-  let d = window.__fidiData, inputs = window.__fidiInputs || {};
-  let adresse='', ref='', client='', email='', telephone='', htmlString='';
-  if(kind==='etude' && d){
-    const loc = d.localisation||{};
-    adresse = loc.label || inputs.adresse || loc.city || '';
-    ref     = etudeRef(d, inputs);
-  } else if(kind==='avis' && window.__factureAvisCtx){
-    const ctx = window.__factureAvisCtx;
-    client = ctx.client||''; email = ctx.email||''; telephone = ctx.telephone||'';
-    adresse = ctx.adresse || ctx.commune || '';
-    ref = ctx.ref||''; htmlString = ctx.htmlString || '';
-    window.__factureAvisCtx = null;
-  }
-  window.__factCtx = { kind, label, ref, client, email, telephone, adresse, htmlString };
-  window.__factRemise = null;
-  if(typeof bootstrap === 'undefined'){ alert('Bootstrap non chargé.'); return; }
-
-  let root = document.getElementById('factureRoot');
-  if(!root){ root = document.createElement('div'); root.id='factureRoot'; document.body.appendChild(root); }
-  root.innerHTML =
-    '<div class="modal fade" id="factureModal" tabindex="-1"><div class="modal-dialog modal-dialog-scrollable"><div class="modal-content">'+
-    '<div class="modal-header" style="background:#12294d;color:#fff;">'+
-    '<h5 class="modal-title"><i class="bi bi-receipt me-2"></i>Facturer &amp; Envoyer — '+escHtml(label)+'</h5>'+
-    '<button type="button" class="btn-close" style="filter:invert(1)" data-bs-dismiss="modal"></button></div>'+
-    '<div class="modal-body" id="factBody">'+
-      '<div class="row g-2 mb-2">'+
-        '<div class="col-12"><label class="form-label small mb-1">Nom du client</label>'+
-        '<input class="form-control form-control-sm" id="factClient" value="'+escHtml(client)+'" placeholder="Nom Prénom ou Société"></div>'+
-        '<div class="col-md-6"><label class="form-label small mb-1">E-mail client</label>'+
-        '<input class="form-control form-control-sm" id="factEmail" value="'+escHtml(email)+'" placeholder="client@exemple.com" type="email"></div>'+
-        '<div class="col-md-6"><label class="form-label small mb-1">Téléphone (WhatsApp)</label>'+
-        '<input class="form-control form-control-sm" id="factTel" value="'+escHtml(telephone)+'" placeholder="+596 6 96 …" type="tel"></div>'+
-        '<div class="col-12"><label class="form-label small mb-1">Bien / adresse</label>'+
-        '<input class="form-control form-control-sm" id="factAdresse" value="'+escHtml(adresse)+'" placeholder="Commune ou adresse du bien"></div>'+
-      '</div>'+
-      '<label class="form-label small mb-1 fw-semibold">Prestation facturée</label>'+
-      '<div id="factTarifsBox" class="mb-2"><div class="text-muted small py-2"><span class="spinner-border spinner-border-sm me-1"></span>Chargement de la grille…</div></div>'+
-      '<div class="row g-2 align-items-end mb-2">'+
-        '<div class="col-7"><label class="form-label small mb-1">Libellé</label>'+
-        '<input class="form-control form-control-sm" id="factLibelle" placeholder="Désignation sur la facture"></div>'+
-        '<div class="col-5"><label class="form-label small mb-1">Montant TTC (€)</label>'+
-        '<input class="form-control form-control-sm text-end fw-bold" id="factMontant" type="number" min="0" step="1"></div>'+
-      '</div>'+
-      '<div class="border rounded p-2 mb-2" style="background:#f8fafc;">'+
-        '<div class="form-check form-switch mb-1">'+
-          '<input class="form-check-input" type="checkbox" role="switch" id="factPayReq" checked>'+
-          '<label class="form-check-label small fw-semibold" for="factPayReq">Paiement préalable requis</label>'+
-        '</div>'+
-        '<div class="text-muted" style="font-size:.74rem;" id="factPayHint">Le client règle en ligne (carte / PayPal) avant de recevoir la facture et le document.</div>'+
-      '</div>'+
-      '<label class="form-label small mb-1 fw-semibold">Canaux d\'envoi</label>'+
-      '<div class="d-flex gap-3 mb-1 small">'+
-        '<div class="form-check"><input class="form-check-input" type="checkbox" id="factCanEmail" checked><label class="form-check-label" for="factCanEmail"><i class="bi bi-envelope me-1"></i>E-mail</label></div>'+
-        '<div class="form-check"><input class="form-check-input" type="checkbox" id="factCanWa" checked><label class="form-check-label" for="factCanWa"><i class="bi bi-whatsapp me-1"></i>WhatsApp</label></div>'+
-      '</div>'+
-      '<div id="factStatus"></div>'+
-    '</div>'+
-    '<div class="modal-footer" style="justify-content:space-between;flex-wrap:wrap;gap:.4rem;">'+
-      '<button class="btn btn-outline-primary btn-sm" onclick="factHistoriqueClient()" title="Voir toutes les factures de ce client"><i class="bi bi-clock-history me-1"></i>Historique client</button>'+
-      '<div class="d-flex gap-2">'+
-        '<button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Fermer</button>'+
-        '<button class="btn btn-sm fw-bold text-white" style="background:#12294d;" id="factBtnOk" onclick="factGenerer()">'+
-        '<i class="bi bi-send me-1"></i>Générer &amp; préparer l\'envoi</button>'+
-      '</div>'+
-    '</div>'+
-    '</div></div></div>';
-  const el = document.getElementById('factureModal');
-  el.addEventListener('hidden.bs.modal', ()=>el.remove());
-  fidiStackModal(el); // facture ouverte par-dessus l'avis : la placer au-dessus (clics accessibles)
-  const pr = document.getElementById('factPayReq');
-  if(pr) pr.addEventListener('change', ()=>{ const h=document.getElementById('factPayHint');
-    if(h) h.textContent = pr.checked ? 'Le client règle en ligne (carte / PayPal) avant de recevoir la facture et le document.'
-      : 'Envoi immédiat : le client reçoit la facture et le document sans condition de paiement.'; });
-  new bootstrap.Modal(el).show();
-  factRenderTarifs(kind, label);
-}
-
-// Grille tarifaire (base Notion « Tarifs prestations ») filtrée pour ce type.
-async function factRenderTarifs(kind, label){
-  const box = document.getElementById('factTarifsBox');
-  const wantCat = kind==='avis' ? 'Avis de valeur' : 'Étude de marché';
-  const defMontant = kind==='avis' ? 250 : 450;
-  let tarifs = [];
-  try{
-    const r = await fetch('/api/tarifs', {credentials:'same-origin'});
-    const j = await r.json().catch(()=>({}));
-    if(j && j.ok) tarifs = j.tarifs || [];
-  }catch(e){}
-  // Prestations pertinentes : la catégorie du type + Options + Forfaits.
-  const list = tarifs.filter(t => t.categorie===wantCat || t.categorie==='Option' || t.categorie==='Forfait');
-  if(!box) return;
-  if(!list.length){
-    box.innerHTML = '<div class="text-muted small">Aucune grille configurée — saisissez le montant ci-dessous.</div>';
-    factSetPresta(label, defMontant);
-    return;
-  }
-  box.innerHTML = '<div class="d-flex flex-wrap gap-1">' + list.map(t =>
-    '<button type="button" class="btn btn-sm btn-outline-primary py-1 px-2" style="font-size:.8rem;" '+
-    'onclick="factSetPresta('+JSON.stringify(t.prestation).replace(/"/g,'&quot;')+','+t.prix+')">'+
-    escHtml(t.prestation)+' · <b>'+t.prix+' €</b></button>'
-  ).join('') + '</div>';
-  // Pré-sélection : première prestation de la catégorie exacte, sinon défaut.
-  const pref = list.find(t => t.categorie===wantCat) || list[0];
-  factSetPresta(pref ? pref.prestation : label, pref ? pref.prix : defMontant);
-}
-
-function factSetPresta(libelle, montant){
-  const l = document.getElementById('factLibelle'); if(l) l.value = libelle;
-  const m = document.getElementById('factMontant'); if(m) m.value = montant;
-}
-
-// Génère la facture + le document, prépare la page de remise.
-async function factGenerer(){
-  const ctx = window.__factCtx || {};
-  const btn = document.getElementById('factBtnOk');
-  const status = document.getElementById('factStatus');
-  const val = id => (document.getElementById(id)||{}).value || '';
-  const client = val('factClient'), email = val('factEmail'), tel = val('factTel');
-  const adresse = val('factAdresse'), libelle = val('factLibelle');
-  const montant = parseFloat(val('factMontant'));
-  const payReq = !!(document.getElementById('factPayReq')||{}).checked;
-  const canal = ['Lien'];
-  if((document.getElementById('factCanEmail')||{}).checked) canal.push('Email');
-  if((document.getElementById('factCanWa')||{}).checked) canal.push('WhatsApp');
-  if(!(montant>0)){ if(status) status.innerHTML='<div class="alert alert-warning py-2 small mb-0">Indiquez un montant.</div>'; return; }
-
-  if(btn){ btn.disabled=true; }
-  const setStatus = (html)=>{ if(status) status.innerHTML = html; };
-  setStatus('<div class="alert alert-info py-2 small mb-0"><span class="spinner-border spinner-border-sm me-1"></span>Génération du document…</div>');
-
-  // 1) Génère le PDF du document (étude/avis) et l'héberge (lien sécurisé).
-  let lienDoc = '';
-  try{ lienDoc = await factGenDocLink(ctx); }catch(e){ lienDoc=''; }
-  if(!lienDoc){
-    setStatus('<div class="alert alert-warning py-2 small mb-0"><i class="bi bi-exclamation-triangle me-1"></i>Document non généré automatiquement (trop volumineux ou indisponible). La facture est créée ; vous pourrez joindre le document via « Partager ».</div>');
-  } else {
-    setStatus('<div class="alert alert-info py-2 small mb-0"><span class="spinner-border spinner-border-sm me-1"></span>Création de la facture…</div>');
-  }
-
-  // 2) Crée la facture + le jeton de remise.
-  try{
-    const payload = { kind: ctx.kind, ref: ctx.ref, client, email_client: email, telephone: tel,
-      adresse, commune: adresse, montant, libelle, paiement_requis: payReq, canal, lien_document: lienDoc };
-    const r = await fetch('/api/facture', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-    const j = await r.json().catch(()=>({}));
-    // Facture verrouillée (Payée / Annulée) : afficher un message clair, pas d'erreur brute
-    if(r.status === 409 && j && j.locked){
-      setStatus('<div class="alert alert-warning py-2 small mb-0">'+
-        '<i class="bi bi-lock-fill me-1"></i><strong>Facture N° '+escHtml(j.ref)+' au statut « '+escHtml(j.statut)+' » — non modifiable.</strong><br>'+
-        (j.hint || '')+' '+
-        (j.delivery_url ? '<a href="'+escHtml(j.delivery_url)+'" target="_blank" class="alert-link">Voir la facture existante</a>' : '')+
-      '</div>');
-      if(btn) btn.disabled=false; return;
-    }
-    if(!r.ok || !j.ok){ setStatus('<div class="alert alert-danger py-2 small mb-0">Erreur : '+escHtml((j&&j.error)||'création facture impossible')+'</div>'); if(btn) btn.disabled=false; return; }
-    window.__factRemise = Object.assign({}, j, { client, email, tel, libelle, montant, payReq, lienDoc, adresse, kind: ctx.kind, label: ctx.label });
-    factAfficherRemise();
-  }catch(e){
-    setStatus('<div class="alert alert-danger py-2 small mb-0">Erreur réseau : '+escHtml(e.message)+'</div>');
-    if(btn) btn.disabled=false;
-  }
-}
+// L'écran « Nouvelle facture » (proposerFacture, grille tarifaire, création) est dans facture.js ;
+// la page de remise (factAfficherRemise), le document joint (factGenDocLink) et l'historique client
+// (factHistoriqueClient) restent ci-dessous et sont appelés par facture.js.
 
 // ─── Relance facture — multi-canal (WhatsApp / e-mail / enregistrer) ─────────
 // Fonction GLOBALE réutilisable : modale facturation (avis) + onglet Facturation FIDI.
@@ -6551,6 +6391,7 @@ function copyShareUrl(){
 <script src="/avis-methodes.js" defer></script>
 <script src="/avis-valeur.js" defer></script>
 <script src="/saisie.js" defer></script>
+<script src="/facture.js" defer></script>
 
 <!-- Module Compte : connexion, solde, administration -->
 <div id="compteModalRoot"></div>

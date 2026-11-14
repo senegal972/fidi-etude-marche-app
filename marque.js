@@ -29,7 +29,10 @@
     baseline: 'Immobilier · Données publiques françaises',
     logo: '',
     couleurs: { principale: '#0C447C', accent: '#993C1D', secondaire: '#0F6E56' },
-    coordonnees: { raisonSociale: '', adresse: '', telephone: '', email: '', mentions: '' }
+    coordonnees: { raisonSociale: '', adresse: '', telephone: '', email: '', mentions: '' },
+    // Mentions légales des factures émises depuis le module de facturation (facture.js).
+    facturation: { formeJuridique: '', capital: '', siren: '', registre: '', tvaIntra: '',
+                   regimeTva: '', tauxTva: 8.5, delaiJours: 30, conditions: '' }
   };
 
   var CHARTES = [
@@ -40,7 +43,8 @@
   ];
 
   var LIMITES = { enseigne: 40, produit: 60, baseline: 80, raisonSociale: 80, adresse: 160,
-                  telephone: 30, email: 80, mentions: 240 };
+                  telephone: 30, email: 80, mentions: 240,
+                  formeJuridique: 60, capital: 40, siren: 20, registre: 80, tvaIntra: 20, conditions: 400 };
 
   var base = clone(DEFAUT);      // DEFAUT + marque.json
   var perso = lire(K_PERSO) || {};
@@ -77,13 +81,26 @@
         var t = texte(src.coordonnees[k], LIMITES[k]); if (t !== null) out.coordonnees[k] = t;
       });
     }
+    // Mêmes règles que assainirMarque() dans netlify/functions/marque.mjs.
+    if (src.facturation && typeof src.facturation === 'object') {
+      var f = src.facturation, o = {};
+      ['formeJuridique', 'capital', 'siren', 'registre', 'tvaIntra', 'conditions'].forEach(function (k) {
+        var t = texte(f[k], LIMITES[k]); if (t !== null) o[k] = t;
+      });
+      if (['franchise', 'assujetti', ''].indexOf(f.regimeTva) >= 0) o.regimeTva = f.regimeTva;
+      var taux = Number(f.tauxTva);
+      if (f.tauxTva !== undefined && f.tauxTva !== '' && isFinite(taux)) o.tauxTva = Math.max(0, Math.min(30, taux));
+      var delai = parseInt(f.delaiJours, 10);
+      if (isFinite(delai)) o.delaiJours = Math.max(0, Math.min(90, delai));
+      out.facturation = o;
+    }
     return out;
   }
   function fusion(a, b) {
     var r = clone(DEFAUT);
     [assainir(a), assainir(b)].forEach(function (s) {
       ['enseigne', 'produit', 'baseline', 'logo'].forEach(function (k) { if (k in s) r[k] = s[k]; });
-      ['couleurs', 'coordonnees'].forEach(function (g) {
+      ['couleurs', 'coordonnees', 'facturation'].forEach(function (g) {
         if (s[g]) Object.keys(s[g]).forEach(function (k) { r[g][k] = s[g][k]; });
       });
     });
@@ -299,6 +316,24 @@
         '<div class="row g-2"><div class="col-6">' + champ('mqTel', 'Téléphone', LIMITES.telephone) + '</div>' +
           '<div class="col-6">' + champ('mqEmail', 'E-mail', LIMITES.email) + '</div></div>' +
         champ('mqMentions', 'Mentions légales (RCS, carte professionnelle…)', LIMITES.mentions, true) +
+        '<h3 class="marque-section" id="marqueSectionFacturation">Facturation <small>(mentions obligatoires des factures)</small></h3>' +
+        '<div class="marque-label">Régime de TVA</div>' +
+        '<div class="marque-tva" role="radiogroup" aria-label="Régime de TVA">' +
+          '<label><input type="radio" name="mqRegime" value="franchise"/> Franchise en base — TVA non applicable (art. 293 B du CGI)</label>' +
+          '<label><input type="radio" name="mqRegime" value="assujetti"/> Assujetti à la TVA, taux ' +
+            '<input type="number" id="mqTaux" min="0" max="30" step="0.1" class="form-control form-control-sm d-inline-block" style="width:5.2rem;" aria-label="Taux de TVA en %"/> %</label>' +
+        '</div>' +
+        '<div class="row g-2 mt-1"><div class="col-6">' + champ('mqForme', 'Forme juridique (ex : SASU)', LIMITES.formeJuridique) + '</div>' +
+          '<div class="col-6">' + champ('mqCapital', 'Capital social', LIMITES.capital) + '</div></div>' +
+        '<div class="row g-2"><div class="col-6">' + champ('mqSiren', 'SIREN / SIRET', LIMITES.siren) + '</div>' +
+          '<div class="col-6">' + champ('mqTvaIntra', 'N° TVA intracommunautaire', LIMITES.tvaIntra) + '</div></div>' +
+        champ('mqRegistre', 'Immatriculation (ex : RCS Fort-de-France 000 000 000)', LIMITES.registre) +
+        '<div class="mb-2"><label class="marque-label" for="mqDelai">Échéance par défaut</label>' +
+          '<select class="form-select form-select-sm" id="mqDelai">' +
+            [[0, 'À réception'], [15, '15 jours'], [30, '30 jours'], [45, '45 jours'], [60, '60 jours']].map(function (o) {
+              return '<option value="' + o[0] + '">' + o[1] + '</option>';
+            }).join('') + '</select></div>' +
+        champ('mqConditions', 'Conditions de règlement (moyens de paiement, ordre des chèques…)', LIMITES.conditions, true) +
         '<h3 class="marque-section">Transférer la charte</h3>' +
         '<div class="d-flex flex-wrap gap-2">' +
           '<button type="button" class="btn btn-sm btn-outline-secondary" id="mqExporter"><i class="bi bi-download me-1"></i>Exporter</button>' +
@@ -327,8 +362,14 @@
       mqEnseigne: ['enseigne'], mqProduit: ['produit'], mqBaseline: ['baseline'],
       mqRaison: ['coordonnees', 'raisonSociale'], mqAdresse: ['coordonnees', 'adresse'],
       mqTel: ['coordonnees', 'telephone'], mqEmail: ['coordonnees', 'email'], mqMentions: ['coordonnees', 'mentions'],
-      mqPrincipale: ['couleurs', 'principale'], mqAccent: ['couleurs', 'accent'], mqSecondaire: ['couleurs', 'secondaire']
+      mqPrincipale: ['couleurs', 'principale'], mqAccent: ['couleurs', 'accent'], mqSecondaire: ['couleurs', 'secondaire'],
+      mqForme: ['facturation', 'formeJuridique'], mqCapital: ['facturation', 'capital'], mqSiren: ['facturation', 'siren'],
+      mqTvaIntra: ['facturation', 'tvaIntra'], mqRegistre: ['facturation', 'registre'], mqTaux: ['facturation', 'tauxTva'],
+      mqDelai: ['facturation', 'delaiJours'], mqConditions: ['facturation', 'conditions']
     };
+    Array.prototype.forEach.call(el.querySelectorAll('input[name="mqRegime"]'), function (r) {
+      r.addEventListener('change', function () { majPerso({ facturation: { regimeTva: r.value } }); etat('Enregistré.'); });
+    });
     Object.keys(liens).forEach(function (id) {
       el.querySelector('#' + id).addEventListener('input', function (e) {
         var ch = liens[id], m = {};
@@ -380,7 +421,13 @@
     var co = courante.coordonnees;
     var v = { mqEnseigne: courante.enseigne, mqProduit: courante.produit, mqBaseline: courante.baseline,
               mqRaison: co.raisonSociale, mqAdresse: co.adresse, mqTel: co.telephone, mqEmail: co.email, mqMentions: co.mentions };
+    var fa = courante.facturation || {};
+    v.mqForme = fa.formeJuridique; v.mqCapital = fa.capital; v.mqSiren = fa.siren; v.mqTvaIntra = fa.tvaIntra;
+    v.mqRegistre = fa.registre; v.mqConditions = fa.conditions;
     Object.keys(v).forEach(function (id) { document.getElementById(id).value = v[id] || ''; });
+    document.getElementById('mqTaux').value = fa.tauxTva != null ? fa.tauxTva : '';
+    document.getElementById('mqDelai').value = String(fa.delaiJours != null ? fa.delaiJours : 30);
+    Array.prototype.forEach.call(document.querySelectorAll('input[name="mqRegime"]'), function (r) { r.checked = r.value === fa.regimeTva; });
     majCouleursUi();
     var ap = document.getElementById('mqLogoApercu');
     ap.textContent = '';
@@ -435,10 +482,16 @@
     lecteur.readAsText(fichier);
   }
 
-  function ouvrir() {
+  function ouvrir(section) {
     if (!panneau) panneau = construirePanneau();
     remplir();
     majCompteUi();
+    if (section === 'facturation') {
+      panneau.addEventListener('shown.bs.offcanvas', function vers() {
+        panneau.removeEventListener('shown.bs.offcanvas', vers);
+        var t = document.getElementById('marqueSectionFacturation'); if (t) t.scrollIntoView({ behavior: 'smooth' });
+      });
+    }
     bootstrap.Offcanvas.getOrCreateInstance(panneau).show();
   }
 
@@ -448,7 +501,7 @@
   function demarrer() {
     appliquerDom();
     var b = document.getElementById('btnMarque');
-    if (b) b.addEventListener('click', ouvrir);
+    if (b) b.addEventListener('click', function () { ouvrir(); });
     fetch('/marque.json', { cache: 'no-cache' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (j) { if (j) { base = fusion(DEFAUT, j); courante = fusion(base, perso); appliquer(); remplir(); } })
@@ -463,6 +516,8 @@
     get: function () { return clone(courante); },
     couleur: function (nom) { return courante.couleurs[nom] || courante.couleurs.principale; },
     recolorer: recolorer,
+    // Modifie la charte (mêmes règles que le panneau) : utilisé par l'écran de facturation.
+    maj: function (modif) { if (modif && typeof modif === 'object') majPerso(modif); },
     // Nom à faire figurer sur les documents (raison sociale, à défaut l'enseigne).
     nomDoc: function () { return courante.coordonnees.raisonSociale || courante.enseigne || ''; },
     // Bloc d'identité (logo ou enseigne + coordonnées) pour l'en-tête des documents imprimés.

@@ -1,0 +1,102 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Écran de facturation « Nouvelle facture » — logique : facture.js
+   Contenu de la facture à gauche, options et montant dû à droite.
+   Couleurs : variables de la charte (marque.js).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.fx-modal .modal-content{border-radius:16px;overflow:hidden;}
+.fx-head{background:#fff;border-bottom:1px solid #e6e9ee;align-items:center;}
+.fx-head .modal-title{font-size:1.35rem;font-weight:800;color:var(--fidi-blue);letter-spacing:-.2px;}
+.fx-sous-titre{font-size:.8rem;color:#5b6573;}
+.fx-head-actions{display:flex;align-items:center;gap:.6rem;}
+.fx-pill{border-radius:999px;padding:.4rem 1rem;font-size:.83rem;font-weight:600;border:1px solid #c9d0da;background:#fff;color:#1f2a3a;}
+.fx-pill:hover{border-color:var(--fidi-blue);color:var(--fidi-blue);}
+.fx-body{background:#f4f6f9;}
+.fx-foot{justify-content:space-between;flex-wrap:wrap;gap:.4rem;}
+.fx-btn-ok{background:var(--fidi-accent);color:var(--fidi-on-accent,#fff);border-radius:999px;padding:.45rem 1.2rem;}
+.fx-btn-ok:hover{background:var(--fidi-accent-hover);color:var(--fidi-on-accent,#fff);}
+.fx-btn-ok:disabled{opacity:.55;}
+
+.fx-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(260px,1fr);gap:1rem;align-items:start;}
+.fx-main{display:flex;flex-direction:column;gap:1rem;}
+.fx-side{position:sticky;top:0;}
+.fx-card{background:#fff;border:1px solid #dfe3e9;border-radius:14px;padding:1.1rem 1.15rem;}
+.fx-card-t{font-size:.95rem;font-weight:700;color:#1f2a3a;margin-bottom:.75rem;}
+.fx-card-head{display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.75rem;flex-wrap:wrap;}
+.fx-label{display:block;font-size:.74rem;font-weight:600;color:#4a5462;margin-bottom:.2rem;}
+.fx-fac{font-weight:400;color:#8a94a3;font-size:.7rem;text-transform:none;}
+.fx-input{border:1px solid #c9d0da;border-radius:10px;font-size:.9rem;}
+.fx-input:focus{border-color:var(--fidi-blue-light);box-shadow:0 0 0 3px rgba(38,82,160,.15);}
+.fx-link{background:none;border:none;padding:0;color:var(--fidi-blue-light);font-size:.83rem;font-weight:600;}
+.fx-link:hover{text-decoration:underline;}
+.fx-link-sm{font-size:.76rem;margin-top:.35rem;}
+.fx-modal button:focus-visible,.fx-modal input:focus-visible,.fx-modal select:focus-visible,.fx-modal textarea:focus-visible{outline:3px solid rgba(38,82,160,.45);outline-offset:2px;}
+
+/* ─ Bascules ─ */
+.fx-seg{display:inline-flex;background:#eef1f5;border-radius:999px;padding:3px;}
+.fx-seg label{border-radius:999px;padding:.2rem .75rem;font-size:.76rem;font-weight:600;color:#4a5462;cursor:pointer;margin:0;}
+.fx-seg .btn-check:checked + label{background:#fff;color:var(--fidi-blue);box-shadow:0 1px 3px rgba(0,0,0,.12);}
+.fx-modes{display:flex;flex-wrap:wrap;gap:1.1rem;font-size:.85rem;margin-bottom:.75rem;}
+.fx-modes label{display:flex;align-items:center;gap:.35rem;cursor:pointer;}
+.fx-modes input{accent-color:var(--fidi-blue);width:1rem;height:1rem;}
+
+/* ─ Grille tarifaire ─ */
+.fx-tarifs{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem;margin-bottom:.75rem;}
+.fx-tarifs-t{font-size:.74rem;color:#5b6573;margin-right:.2rem;}
+.fx-chip{border:1px solid #c9d0da;background:#fff;border-radius:999px;padding:.2rem .7rem;font-size:.76rem;color:#1f2a3a;}
+.fx-chip:hover{border-color:var(--fidi-blue);color:var(--fidi-blue);}
+
+/* ─ Lignes d'articles ─ */
+.fx-ligne{border:1px solid #e3e7ed;border-radius:12px;padding:.75rem .8rem .55rem;margin-bottom:.6rem;background:#fcfdfe;}
+.fx-ligne-row{display:flex;gap:.5rem;align-items:flex-end;}
+.fx-c-des{flex:1 1 auto;min-width:0;}
+.fx-c-q{flex:0 0 5.5rem;}
+.fx-c-p{flex:0 0 9.5rem;}
+.fx-suppr{border:none;background:none;color:#8a94a3;padding:.45rem .4rem;border-radius:8px;}
+.fx-suppr:hover{color:#b42318;background:#fdecea;}
+.fx-ligne-total{text-align:right;font-size:.78rem;color:#3a4553;font-weight:600;min-height:1rem;}
+
+/* ─ Totaux ─ */
+.fx-totaux{margin:1rem 0 0 auto;max-width:400px;}
+.fx-tot{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:.4rem 0;font-size:.86rem;}
+.fx-tot dt{font-weight:400;color:#3a4553;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;}
+.fx-tot dd{margin:0;font-weight:600;color:#1f2a3a;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.fx-remise-in{display:inline-flex;gap:.25rem;align-items:center;}
+.fx-remise-in input{width:5rem;}
+.fx-remise-in select{width:4rem;}
+.fx-tot-alerte dt{color:#9a3412;}
+.fx-tot-ttc{border-top:1px solid #dfe3e9;margin-top:.3rem;padding-top:.7rem;}
+.fx-tot-ttc dt{font-weight:800;color:#1f2a3a;font-size:1rem;}
+.fx-tot-ttc dt small{font-weight:400;color:#6c757d;}
+.fx-tot-ttc dd{font-size:1.5rem;font-weight:800;color:var(--fidi-blue);}
+.fx-compteur{text-align:right;font-size:.7rem;color:#8a94a3;margin-top:.2rem;}
+
+/* ─ Colonne d'options ─ */
+.fx-tile{display:flex;gap:.7rem;align-items:flex-start;background:#f4f6f9;border-radius:10px;padding:.65rem .8rem;margin-bottom:.55rem;}
+.fx-tile > i{font-size:1.05rem;color:var(--fidi-blue);margin-top:.1rem;}
+.fx-tile-t{font-size:.84rem;font-weight:600;color:#1f2a3a;margin:0;}
+.fx-tile-s{font-size:.72rem;color:#6c757d;}
+.fx-sub{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#6c757d;margin:1rem 0 .4rem;}
+.fx-emetteur{font-size:.8rem;color:#3a4553;line-height:1.5;}
+.fx-em-nom{font-weight:700;color:#1f2a3a;}
+.fx-em-alerte{background:#fdebe5;color:#9a3412;border-radius:8px;padding:.4rem .6rem;margin-top:.4rem;font-size:.75rem;}
+.fx-em-edit{border:1px dashed #c9d0da;border-radius:10px;padding:.7rem;margin-top:.5rem;background:#fff;}
+.fx-radio{display:flex;align-items:center;gap:.35rem;flex-wrap:wrap;font-size:.8rem;margin:.25rem 0;}
+.fx-total-side{display:flex;justify-content:space-between;align-items:baseline;border-top:1px solid #dfe3e9;margin-top:1rem;padding-top:.75rem;font-weight:700;color:#1f2a3a;}
+.fx-total-side strong{font-size:1.45rem;font-weight:800;color:var(--fidi-blue);font-variant-numeric:tabular-nums;}
+
+/* ─ Aperçu ─ */
+.fx-apercu{background:#e9edf2;border-radius:12px;padding:1rem;}
+.fx-apercu iframe{width:100%;min-height:72vh;border:none;background:#fff;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,.08);}
+
+@media (max-width: 991.98px){
+  .fx-grid{grid-template-columns:1fr;}
+  .fx-side{position:static;}
+}
+@media (max-width: 575.98px){
+  .fx-ligne-row{flex-wrap:wrap;}
+  .fx-c-des{flex-basis:100%;}
+  .fx-c-q{flex:1 1 30%;}
+  .fx-c-p{flex:1 1 50%;}
+  .fx-head .modal-title{font-size:1.1rem;}
+}

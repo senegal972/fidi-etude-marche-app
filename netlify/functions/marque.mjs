@@ -17,6 +17,7 @@ const TAILLE_MAX = 800_000; // octets — une charte avec logo redimensionné p�
 const LIMITES = {
   enseigne: 40, produit: 60, baseline: 80,
   raisonSociale: 80, adresse: 160, telephone: 30, email: 80, mentions: 240,
+  formeJuridique: 60, capital: 40, siren: 20, registre: 80, tvaIntra: 20, conditions: 400,
 };
 
 const hexOk = (h) => typeof h === "string" && /^#[0-9a-f]{6}$/i.test(h);
@@ -45,6 +46,20 @@ export function assainirMarque(src) {
       const t = texte(src.coordonnees[k], LIMITES[k]);
       if (t !== null) out.coordonnees[k] = t;
     }
+  }
+  // Mentions légales de l'émetteur des factures (régime de TVA, SIREN, registre…).
+  if (src.facturation && typeof src.facturation === "object") {
+    const f = src.facturation, o = {};
+    for (const k of ["formeJuridique", "capital", "siren", "registre", "tvaIntra", "conditions"]) {
+      const t = texte(f[k], LIMITES[k]);
+      if (t !== null) o[k] = t;
+    }
+    if (["franchise", "assujetti", ""].includes(f.regimeTva)) o.regimeTva = f.regimeTva;
+    const taux = Number(f.tauxTva);
+    if (f.tauxTva !== undefined && f.tauxTva !== "" && Number.isFinite(taux)) o.tauxTva = Math.max(0, Math.min(30, taux));
+    const delai = parseInt(f.delaiJours, 10);
+    if (Number.isFinite(delai)) o.delaiJours = Math.max(0, Math.min(90, delai));
+    out.facturation = o;
   }
   return out;
 }

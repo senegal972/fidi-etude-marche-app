@@ -1,6 +1,15 @@
 // Netlify Function — Facture HTML imprimable
-// GET /api/facture-html?ref=FIDI-FAC-2026-001&kind=avis&...
+// GET  /api/facture-html?ref=FIDI-FAC-2026-001&kind=avis&...&t=<jeton>
+//      Avec t : rendu de la facture détaillée figée dans le store « fidi-factures » (lignes, TVA,
+//      remise, échéance, émetteur). Sans détail enregistré : rendu d'origine (facture à une ligne).
+// POST /api/facture-html — aperçu avant création (connexion requise), corps = données de _facture_doc.mjs.
 // Retourne un document HTML complet prêt pour window.print() ou iframe impression.
+
+import { renderFactureHTML } from "./_facture_doc.mjs";
+import { getNamedStore } from "./_blobs.mjs";
+import { currentUser } from "./_auth.mjs";
+
+const FACTURES_STORE = "fidi-factures"; // même nom que dans facture.mjs
 
 const CORS_HEADERS = {
   "Content-Type": "text/html; charset=utf-8",
@@ -25,7 +34,29 @@ function fmtDate(iso) {
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return { statusCode: 200, headers: CORS_HEADERS, body: "" };
 
+  // Aperçu avant création : rien n'est enregistré.
+  if (event.httpMethod === "POST") {
+    let me = null;
+    try { me = await currentUser(event); } catch (_) { me = null; }
+    if (!me) return { statusCode: 401, headers: CORS_HEADERS, body: "<p>Connexion requise.</p>" };
+    let data = {};
+    try { data = JSON.parse(event.body || "{}"); } catch (_) { return { statusCode: 400, headers: CORS_HEADERS, body: "<p>Données invalides.</p>" }; }
+    return { statusCode: 200, headers: CORS_HEADERS, body: renderFactureHTML({ ...data, apercu: true }) };
+  }
+
   const q = event.queryStringParameters || {};
+
+  // Facture détaillée : le jeton de livraison (non devinable) ouvre le détail figé.
+  if (q.t) {
+    try {
+      const store = await getNamedStore(event, FACTURES_STORE);
+      const detail = await store.get(String(q.t), { type: "json" });
+      if (detail) {
+        return { statusCode: 200, headers: CORS_HEADERS,
+                 body: renderFactureHTML({ ...detail, acquittee: q.acquittee === "1", apercu: false }) };
+      }
+    } catch (e) { console.error("[facture-html] détail indisponible :", e.message); }
+  }
   const ref      = q.ref      || "FIDI-FAC-????-???";
   const kind     = q.kind     || "avis";
   const client   = q.client   || "";
