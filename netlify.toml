@@ -182,6 +182,12 @@
   to     = "/.netlify/functions/moncompte"
   status = 200
 
+# Charte de marque du compte connecté (module « Mise en page », marque.js)
+[[redirects]]
+  from   = "/api/marque"
+  to     = "/.netlify/functions/marque"
+  status = 200
+
 [[redirects]]
   from   = "/api/admin/users"
   to     = "/.netlify/functions/admin-users"

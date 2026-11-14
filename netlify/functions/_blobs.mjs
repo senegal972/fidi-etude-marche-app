@@ -8,6 +8,11 @@
 export const SHARE_STORE = "fidi-shared";
 
 export async function getShareStore(event) {
+  return getNamedStore(event, SHARE_STORE);
+}
+
+// Même raccordement pour tout autre store (ex. « fidi-marques » pour les chartes de marque).
+export async function getNamedStore(event, name) {
   const mod = await import("@netlify/blobs");
   if (event && event.blobs) {
     try { mod.connectLambda(event); }
@@ -15,12 +20,12 @@ export async function getShareStore(event) {
   }
   // Essai 1 : contexte du runtime Netlify (cas normal en prod).
   try {
-    return mod.getStore({ name: SHARE_STORE });
+    return mod.getStore({ name });
   } catch (e1) {
     // Essai 2 : credentials explicites via variables d'environnement.
     const siteID = process.env.NETLIFY_SITE_ID;
     const token  = process.env.NETLIFY_AUTH_TOKEN || process.env.NETLIFY_TOKEN;
-    if (siteID && token) return mod.getStore({ name: SHARE_STORE, siteID, token });
+    if (siteID && token) return mod.getStore({ name, siteID, token });
     throw new Error("Blobs context indisponible : " + e1.message +
       (siteID ? "" : " — NETLIFY_SITE_ID manquant"));
   }

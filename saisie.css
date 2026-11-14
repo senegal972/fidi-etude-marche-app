@@ -1,0 +1,121 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Écran de saisie « Nouvelle étude de marché »
+   Mise en page en deux colonnes : le contenu de l'étude à gauche,
+   ses options et son récapitulatif à droite. Chargé après le <style> inline.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.search-panel.saisie{background:transparent;padding:1.75rem 1.5rem .5rem;}
+.saisie .autocomplete-dropdown{z-index:1050;}
+
+/* ─ Barre de titre et d'actions ─ */
+.saisie-head{display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap;margin-bottom:1.25rem;}
+.saisie .saisie-head h1{font-size:1.75rem;font-weight:800;color:var(--fidi-blue);margin:0;letter-spacing:-.3px;}
+.saisie .saisie-head p{color:#5b6573;font-size:.9rem;margin:.2rem 0 0;}
+.saisie-actions{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;}
+.saisie-stamp{font-size:.75rem;color:#6c757d;margin-right:.25rem;}
+
+.btn-pill{border-radius:999px;padding:.5rem 1.1rem;font-size:.85rem;font-weight:600;border:1px solid transparent;transition:background .15s,border-color .15s;}
+.btn-pill-ghost{background:#fff;border-color:#c9d0da;color:#1f2a3a;}
+.btn-pill-ghost:hover{border-color:var(--fidi-blue);color:var(--fidi-blue);}
+.btn-pill-dark{background:var(--fidi-blue);color:#fff;}
+.btn-pill-dark:hover{background:var(--fidi-blue-light);}
+.btn-pill-cta.btn-analyse{border-radius:999px;padding:.6rem 1.6rem;}
+.btn-icon{width:38px;height:38px;border-radius:50%;border:none;background:#e6eaf0;color:#1f2a3a;display:inline-flex;align-items:center;justify-content:center;transition:background .15s;}
+.btn-icon:hover{background:#d5dbe4;}
+.saisie button:focus-visible,.saisie input:focus-visible,.saisie select:focus-visible{outline:3px solid rgba(38,82,160,.45);outline-offset:2px;}
+
+/* ─ Grille ─ */
+.saisie-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(280px,1fr);gap:1rem;align-items:start;}
+.saisie-main{display:flex;flex-direction:column;gap:1rem;}
+.saisie-side{position:sticky;top:1rem;}
+
+/* ─ Cartes ─ */
+.saisie-card{background:#fff;border:1px solid #dfe3e9;border-radius:14px;padding:1.25rem 1.25rem 1.35rem;}
+.saisie-card-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:.9rem;}
+.saisie-card h2{font-size:1rem;font-weight:700;color:#1f2a3a;margin:0;}
+.saisie-facultatif{font-size:.7rem;color:#6c757d;text-transform:uppercase;letter-spacing:.6px;}
+.saisie-label{display:block;font-size:.78rem;font-weight:600;color:#4a5462;margin-bottom:.3rem;}
+.saisie-mini-label{display:block;font-size:.72rem;font-weight:600;color:#5b6573;margin-bottom:.2rem;}
+.saisie-input{border:1px solid #c9d0da;border-radius:10px;padding:.7rem .9rem;font-size:.95rem;}
+.saisie-input:focus{border-color:var(--fidi-blue-light);box-shadow:0 0 0 3px rgba(38,82,160,.15);}
+.saisie-hint{font-size:.78rem;color:#6c757d;margin:.75rem 0 0;}
+.saisie-link{background:none;border:none;padding:0;color:var(--fidi-blue-light);font-size:.83rem;font-weight:600;}
+.saisie-link:hover{text-decoration:underline;}
+
+/* ─ Bascule Adresse / Réf. cadastrale ─ */
+.saisie-modes{display:inline-flex;background:#eef1f5;border-radius:999px;padding:3px;}
+.saisie-mode{border-radius:999px;padding:.25rem .8rem;font-size:.78rem;font-weight:600;color:#4a5462;cursor:pointer;margin:0;user-select:none;}
+.saisie-modes .btn-check:checked + .saisie-mode{background:#fff;color:var(--fidi-blue);box-shadow:0 1px 3px rgba(0,0,0,.12);}
+.saisie-modes .btn-check:focus-visible + .saisie-mode{outline:3px solid rgba(38,82,160,.45);outline-offset:1px;}
+#extraParcelles .form-control{border:1px solid #c9d0da;border-radius:10px;}
+.saisie-cout{font-size:.76rem;color:#3a4553;background:#f4f6f9;border-radius:8px;padding:.45rem .65rem;margin:.7rem 0 0;}
+
+/* ─ Sélecteur de famille (boutons radio segmentés) ─ */
+.saisie-segment{display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem;}
+.saisie-segment input{position:absolute;opacity:0;pointer-events:none;}
+.saisie-segment label{margin:0;border:1px solid #c9d0da;border-radius:999px;padding:.45rem 1rem;font-size:.85rem;font-weight:600;color:#3a4553;cursor:pointer;transition:all .15s;user-select:none;}
+.saisie-segment label:hover{border-color:var(--fidi-blue);}
+.saisie-segment input:checked + label{background:var(--fidi-blue);border-color:var(--fidi-blue);color:#fff;}
+.saisie-segment input:focus-visible + label{outline:3px solid rgba(38,82,160,.45);outline-offset:2px;}
+
+/* ─ Vérifications complémentaires ─ */
+.saisie-opt{border-top:1px solid #eef0f3;padding:.8rem 0 .2rem;}
+#complBloc{margin-top:.9rem;}
+.saisie-opt .form-check-label{font-size:.88rem;font-weight:600;color:#1f2a3a;}
+.saisie-opt .form-check-label small{display:block;font-weight:400;color:#6c757d;font-size:.76rem;}
+.saisie-opt > div:last-child:not(.form-check){margin:.5rem 0 .4rem 1.5rem;max-width:320px;}
+
+/* ─ Colonne d'options ─ */
+.saisie-tile{display:flex;align-items:center;gap:.75rem;background:#f4f6f9;border-radius:10px;padding:.7rem .85rem;margin-bottom:.6rem;}
+.saisie-tile > i{font-size:1.1rem;color:var(--fidi-blue);}
+.saisie-ref-input{border:none;background:transparent;font-weight:700;color:var(--fidi-blue);font-size:.92rem;width:100%;padding:0;font-variant-numeric:tabular-nums;}
+.saisie-ref-input:focus{outline:none;border-bottom:2px solid var(--fidi-blue-light);}
+.saisie-sub{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#6c757d;margin:1.1rem 0 .5rem;}
+.saisie-recap{margin:0;}
+.saisie-recap > div{display:flex;justify-content:space-between;gap:1rem;padding:.38rem 0;font-size:.84rem;}
+.saisie-recap dt{font-weight:400;color:#5b6573;flex-shrink:0;}
+.saisie-recap dd{margin:0;font-weight:600;color:#1f2a3a;text-align:right;overflow-wrap:anywhere;}
+.saisie-total{display:flex;justify-content:space-between;align-items:baseline;border-top:1px solid #dfe3e9;margin-top:.5rem;padding-top:.7rem;font-weight:700;color:#1f2a3a;}
+.saisie-total strong{font-size:1.6rem;font-weight:800;color:var(--fidi-blue);font-variant-numeric:tabular-nums;}
+.saisie-chips{display:flex;flex-wrap:wrap;gap:.3rem;margin-top:.4rem;}
+.saisie-chips span{background:#eef2f8;color:#34425a;border-radius:6px;padding:.12rem .45rem;font-size:.68rem;font-weight:600;}
+.saisie-chips span.opt{background:#fdebe5;color:#9a3412;}
+.saisie-alerte{background:#fdebe5;color:#9a3412;border-radius:8px;padding:.5rem .75rem;font-size:.8rem;margin:.8rem 0 0;}
+.saisie-input.is-missing{border-color:#d9480f;box-shadow:0 0 0 3px rgba(217,72,15,.15);}
+
+/* ─ Modèles ─ */
+.saisie-modeles{min-width:320px;padding-top:.4rem;border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.14);}
+.saisie-modele{display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:0 .5rem;}
+.saisie-modele .dropdown-item{border-radius:8px;font-size:.86rem;white-space:normal;}
+.saisie-modele .dropdown-item small{display:block;color:#6c757d;font-size:.72rem;}
+.saisie-modele-del{border:none;background:none;color:#8a94a3;padding:.2rem .4rem;}
+.saisie-modele-del:hover{color:#c0392b;}
+
+/* ─ Études récentes ─ */
+#recentList .recent-title{padding:.45rem 1rem;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#6c757d;background:#f8f9fa;}
+#recentList .autocomplete-item small{display:block;color:#6c757d;font-size:.72rem;}
+
+/* ─ Résumé compact après analyse ─ */
+.saisie-resume{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;background:#fff;border:1px solid #dfe3e9;border-radius:14px;padding:.8rem 1.1rem;}
+.saisie-resume-txt{font-size:.88rem;color:#3a4553;display:flex;flex-wrap:wrap;gap:.25rem .6rem;align-items:baseline;}
+.saisie-ref{background:#eef2f8;color:var(--fidi-blue);border-radius:6px;padding:.1rem .5rem;font-weight:700;font-size:.76rem;font-variant-numeric:tabular-nums;}
+
+/* ─ Mobile ─ */
+@media (max-width: 900px){
+  .saisie-grid{grid-template-columns:1fr;}
+  .saisie-side{position:static;}
+}
+@media (max-width: 768px){
+  .search-panel.saisie{padding:1rem .75rem .25rem;}
+  .saisie .saisie-head h1{font-size:1.35rem;}
+  .saisie-actions{width:100%;}
+  .saisie-stamp{flex-basis:100%;}
+  .saisie-modeles{min-width:280px;}
+}
+@media (prefers-reduced-motion: reduce){
+  .saisie *{transition:none!important;}
+}
+
+/* Bouton « retirer » des parcelles supplémentaires (écrit par renderSearchParcelles pour un fond foncé) */
+#extraParcelles .btn-outline-light{color:#5b6573;border-color:#c9d0da;}
+#extraParcelles .btn-outline-light:hover{background:#f4f6f9;color:#b42318;}
