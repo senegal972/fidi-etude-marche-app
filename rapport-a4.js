@@ -12,15 +12,22 @@
 (function () {
   'use strict';
 
-  // ── Identité société (étude de marché : OPTIMMO DOM) ─────────────────────────
-  // Surchargeable via localStorage fidi:avis:signataire (societe) si présent.
+  // ── Identité société ───────────────────────────────────────────────────────
+  // Charte de marque active (marque.js, module « Mise en page ») ; le signataire mémorisé
+  // dans l'avis de valeur (localStorage fidi:avis:signataire) reste prioritaire s'il existe.
+  function charte() {
+    return (window.Marque && window.Marque.get()) || { enseigne: '', baseline: '', logo: '', coordonnees: {} };
+  }
   function societe() {
+    const m = charte(), co = m.coordonnees || {};
+    let nom = co.raisonSociale || m.enseigne || '', email = co.email || '';
     try {
       const s = JSON.parse(localStorage.getItem('fidi:avis:signataire') || 'null');
-      if (s && s.societe) return { nom: s.societe, email: s.email || 'contact@fidiconseil.com' };
+      if (s && s.societe) { nom = s.societe; email = s.email || email; }
     } catch (e) {}
-    return { nom: 'OPTIMMO DOM', email: 'contact@fidiconseil.com' };
+    return { nom: nom, email: email };
   }
+  const sep = (a, b) => [a, b].filter(Boolean).join(' · ');
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const esc = (s) => String(s == null ? '' : s)
@@ -196,7 +203,7 @@
   // ── Sections ───────────────────────────────────────────────────────────────
   function footer(page, total, ref) {
     const soc = societe();
-    return '<div class="rpt-foot"><span>' + esc(soc.nom) + ' · ' + esc(soc.email) + '</span>'
+    return '<div class="rpt-foot"><span>' + esc(sep(soc.nom, soc.email)) + '</span>'
       + '<span>' + esc(ref || '') + '</span><span>Section ' + page + ' / ' + total + '</span></div>';
   }
 
@@ -261,7 +268,11 @@
     const typ = LAB[(d.type_bien || '').toLowerCase()] || d.type_bien || '—';
     const mapImg = (loc.lat && loc.lon) ? '<img class="cover-map" src="' + staticMapUrl(loc.lat, loc.lon) + '" alt="Plan de situation">' : '';
     return '<div class="rpt-page rpt-cover">'
-      + '<div class="brand"><div class="t1">FIDI CONSEIL</div><div class="t2">Immobilier · Études de marché · Données publiques françaises</div></div>'
+      + (function () {
+        const m = charte();
+        const logo = m.logo ? '<img src="' + esc(m.logo) + '" alt="" style="max-height:18mm;max-width:60mm;object-fit:contain;background:#fff;border-radius:2mm;padding:2mm 3mm;margin-bottom:4mm;display:block;">' : '';
+        return '<div class="brand">' + logo + '<div class="t1">' + esc(m.enseigne || '') + '</div><div class="t2">' + esc(m.baseline || '') + '</div></div>';
+      })()
       + '<div class="doc-title">Étude de marché immobilière</div>'
       + '<div class="doc-sub">' + esc(loc.label || loc.city || '') + '</div>'
       + '<table class="meta"><tbody>'
@@ -593,7 +604,11 @@
       + '</tbody></table></div>'
       + '<div class="rpt-block rpt-sec"><h3>Mentions</h3>'
       + '<p style="font-size:8pt;color:#6a7385;">Ce document est une étude indicative établie à partir de données publiques. Il ne constitue ni une expertise immobilière au sens de la charte de l\'expertise, ni un avis de valeur opposable. ' + esc(societe().nom) + ' ne saurait être tenu responsable des décisions prises sur la seule base de ce document.</p>'
-      + '<p style="margin-top:6mm;"><strong>' + esc(societe().nom) + '</strong> · Martinique · ' + esc(societe().email) + '</p></div>';
+      + (function () {
+        const soc = societe(), co = charte().coordonnees || {};
+        return '<p style="margin-top:6mm;"><strong>' + esc(soc.nom) + '</strong>' + [co.adresse, co.telephone, soc.email].filter(Boolean).map(t => ' · ' + esc(t)).join('') + '</p>'
+          + (co.mentions ? '<p style="font-size:7.5pt;color:#6a7385;">' + esc(co.mentions) + '</p>' : '');
+      })() + '</div>';
   }
 
   // ── Modules : affichés à l'écran et cochés = imprimés ────────────────────
@@ -718,9 +733,11 @@
       ['Méthodologie, sources & mentions', imprime('methodo') ? mentionsPage(ref) : ''],
     ].filter((x) => String(x[1]).replace(/<[^>]*>/g, '').trim() || /<(img|svg)/i.test(x[1]));
     const total = sections.length;
-    return '<style>' + RPT_CSS + '</style>'
+    const html = '<style>' + RPT_CSS + '</style>'
       + coverPage(d, inputs, ref)
       + sections.map((x, i) => '<div class="rpt-page"><h2>' + (i + 1) + ' · ' + esc(x[0]) + '</h2>' + x[1] + footer(i + 1, total, ref) + '</div>').join('');
+    // Écrit avec les teintes de référence, puis passé à la charte active (le doré d'alerte est conservé).
+    return window.Marque ? window.Marque.recolorer(html, { secondaire: false }) : html;
   }
 
   // Attend le chargement des images du rapport (carte statique, graphiques)

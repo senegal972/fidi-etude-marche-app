@@ -153,10 +153,20 @@
     return 'FIDI-AV-' + hashStr(k).toUpperCase();
   }
 
+  // ── Charte de marque (module « Mise en page », marque.js) ───────────────
+  // Enseigne, logo, couleurs et coordonnées de la charte active ; neutre si marque.js est absent.
+  function charte() {
+    var m = (window.Marque && window.Marque.get()) || null;
+    return { enseigne: m ? m.enseigne : '', logo: m ? m.logo : '', coord: (m && m.coordonnees) || {} };
+  }
+  function nomSociete() { return window.Marque ? window.Marque.nomDoc() : ''; }
+  // Les documents sont écrits avec les teintes de référence puis passés à la charte active.
+  function recolor(html, opts) { return window.Marque ? window.Marque.recolorer(html, opts) : html; }
+
   function defaultData() {
     var y = new Date().getFullYear();
     return {
-      metadata: { ref: nextAvisRef(), date: new Date().toISOString().slice(0, 10), lieuEtablissement: 'Fort-de-France', lieuDit: '',
+      metadata: { ref: nextAvisRef(), date: new Date().toISOString().slice(0, 10), lieuEtablissement: '', lieuDit: '',
         nature: 'vente' // 'vente' (défaut) | 'location' — pilote UI et rendu doc
       },
       bien: {
@@ -292,16 +302,18 @@
       conclusion: { texte: '', potentielBas: '', potentielHaut: '' },
       reserves: "Le présent avis a été établi sur la base des informations communiquées par le mandant et des données publiques de marché. Il n'engage le rédacteur qu'à hauteur d'un avis indicatif. Il ne se substitue ni à une expertise judiciaire, ni à un rapport d'évaluation au sens de la Charte de l'Expertise en Évaluation Immobilière.\n\nLa valeur retenue est susceptible d'évoluer en fonction : (i) d'éventuels diagnostics techniques défavorables (amiante, termites, électricité, DPE, ERP – risques cycloniques et sismiques en Martinique) non encore portés à notre connaissance ; (ii) de l'état réel du locataire en place (régularité des paiements, durée de bail résiduelle, indexation IRL) ; (iii) de l'évolution du marché immobilier local sur les 12 prochains mois.\n\nAucune visite physique du bien n'a été matérialisée par procès-verbal contradictoire ; l'avis repose sur les éléments documentaires transmis.",
       signataire: {
-        nom: 'FIDI',                 // nom de famille
-        prenom: 'Franck',            // prénom
-        fonction: 'Mandataire en immobilier',
-        email: 'franck.fidi@sextantfrance.fr',
-        telephone: '',
-        societe: 'OPTIMMO DOM',
-        adresseSociete: '483 Avenue Victor Coridun',
-        ville: 'Fort-de-France',
-        codePostal: '97200',
-        region: 'Martinique',       // île / région / département
+        // Société et coordonnées pré-remplies depuis la charte de marque ; le nom du signataire
+        // se saisit une fois puis se mémorise (aucune identité écrite en dur dans le code).
+        nom: '',                     // nom de famille
+        prenom: '',                  // prénom
+        fonction: '',
+        email: charte().coord.email || '',
+        telephone: charte().coord.telephone || '',
+        societe: nomSociete(),
+        adresseSociete: charte().coord.adresse || '',
+        ville: '',
+        codePostal: '',
+        region: '',                  // île / région / département
         carteProHoguet: '',          // n° carte pro loi Hoguet + CCI émettrice
         siret: '',                   // SIRET société
         rcs: '',                     // RCS ville d'immatriculation
@@ -708,7 +720,7 @@
   function atoutsFromScore(score) {
     var out = [];
     if (!score) return out;
-    if (score.verdict && score.total != null) out.push('Potentiel de marché jugé « ' + score.verdict + ' » (' + score.total + '/100, étude FIDI).');
+    if (score.verdict && score.total != null) out.push('Potentiel de marché jugé « ' + score.verdict + ' » (' + score.total + '/100, étude de marché).');
     var ax = score.axes || {};
     if (ax.attractivite && ax.attractivite.detail) out.push(ax.attractivite.detail + '.');
     if (ax.activite && ax.activite.detail) out.push(ax.activite.detail + '.');
@@ -2378,7 +2390,7 @@
       '<div class="modal fade" id="avisModal" tabindex="-1" aria-hidden="true">' +
       '<div class="modal-dialog modal-fullscreen modal-dialog-scrollable">' +
       '<div class="modal-content">' +
-      '<div class="modal-header"><div><h5 class="modal-title">Avis de valeur<small>FIDI · document professionnel</small></h5>' +
+      '<div class="modal-header"><div><h5 class="modal-title">Avis de valeur<small>' + esc(charte().enseigne || 'Document professionnel') + '</small></h5>' +
         '<span id="avisVersionBadge" class="small" style="color:#9fb4d6;font-size:.7rem;"></span></div>' +
       // Toggle Vente / Location
       '<div class="btn-group btn-group-sm ms-auto me-2" role="group" aria-label="Nature">' +
@@ -2428,8 +2440,9 @@
     }
     // Styles d'impression pour l'avis : gabarit A4 documentaire, insécable.
     // Injecté une seule fois par ouverture du module.
-    if (!document.getElementById('avisPrintStyles')) {
-      var st = document.createElement('style'); st.id = 'avisPrintStyles';
+    // Réécrit à chaque ouverture : les teintes suivent la charte de marque active.
+    if (true) {
+      var st = document.getElementById('avisPrintStyles') || document.createElement('style'); st.id = 'avisPrintStyles';
       st.textContent =
         '#avisPrintRoot{display:none;}' +
         '@media print{' +
@@ -2469,7 +2482,8 @@
           '#avisPrintRoot .avis-doc .reserves p{font-size:8.5pt;color:#5c6470;}' +
           '#avisPrintRoot .avis-doc .gold-row{background:#b8860b;color:#fff;font-weight:bold;}' +
         '}';
-      document.head.appendChild(st);
+      st.textContent = recolor(st.textContent);
+      if (!st.parentNode) document.head.appendChild(st);
     }
 
     var modalEl = document.getElementById('avisModal');
@@ -3721,7 +3735,7 @@
         '</div></div>';
     }).join('') : '<div class="av-tip" style="padding:1rem;text-align:center;">Aucun avis sauvegardé pour le moment.</div>';
     root.innerHTML = '<div class="modal fade" id="avisLibModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-dialog-scrollable"><div class="modal-content">' +
-      '<div class="modal-header" style="background:#1a3a6e;color:#fff;"><h5 class="modal-title">Mes avis de valeur</h5>' +
+      '<div class="modal-header" style="background:var(--av-blue);color:#fff;"><h5 class="modal-title">Mes avis de valeur</h5>' +
       '<button type="button" class="btn-close" style="filter:invert(1)" data-bs-dismiss="modal"></button></div>' +
       '<div class="modal-body" id="avisLibBody">' + rows + '</div>' +
       '<div class="modal-footer"><button class="btn btn-sm btn-outline-primary" onclick="AvisValeur.open()">+ Nouvel avis</button></div>' +
@@ -3836,7 +3850,7 @@
         '<div class="av-lib-act"><button class="btn btn-sm btn-primary" onclick="AvisValeur.histRestore(' + i + ')">Restaurer</button></div></div>';
     }).join('') : '<div class="av-tip" style="padding:1rem;text-align:center;">Aucune version antérieure enregistrée pour cet avis.</div>';
     root.innerHTML = '<div class="modal fade" id="avisHistModal" tabindex="-1"><div class="modal-dialog modal-dialog-scrollable"><div class="modal-content">' +
-      '<div class="modal-header" style="background:#1a3a6e;color:#fff;"><h5 class="modal-title"><i class="bi bi-clock-history me-2"></i>Versions antérieures — ' + esc(ref) + '</h5>' +
+      '<div class="modal-header" style="background:var(--av-blue);color:#fff;"><h5 class="modal-title"><i class="bi bi-clock-history me-2"></i>Versions antérieures — ' + esc(ref) + '</h5>' +
       '<button type="button" class="btn-close" style="filter:invert(1)" data-bs-dismiss="modal"></button></div>' +
       '<div class="modal-body"><div class="av-tip" style="margin-bottom:.6rem;">10 dernières versions enregistrées localement (à chaque Sauvegarder). Restaurer remplace l\'avis courant.</div>' + rows + '</div>' +
       '</div></div></div>';
@@ -3997,7 +4011,7 @@
     var root = document.getElementById('avisCloudRoot');
     if (!root) { root = document.createElement('div'); root.id = 'avisCloudRoot'; document.body.appendChild(root); }
     root.innerHTML = '<div class="modal fade" id="avisCloudModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-dialog-scrollable"><div class="modal-content">' +
-      '<div class="modal-header" style="background:#1a3a6e;color:#fff;"><h5 class="modal-title">☁️ Mes dossiers (Notion)</h5>' +
+      '<div class="modal-header" style="background:var(--av-blue);color:#fff;"><h5 class="modal-title">☁️ Mes dossiers (Notion)</h5>' +
       '<button type="button" class="btn-close" style="filter:invert(1)" data-bs-dismiss="modal"></button></div>' +
       '<div class="modal-body" id="avisCloudBody"><div class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm me-2"></span>Chargement depuis Notion…</div></div>' +
       '</div></div></div>';
@@ -4213,7 +4227,7 @@
     wrap.innerHTML =
       '<div class="d-flex align-items-center gap-2 mb-2">' +
         '<strong style="font-size:.85rem;">Extension FIDI ACM</strong>' +
-        '<input type="text" id="avExtTok" class="form-control form-control-sm" style="max-width:220px;" placeholder="votre token (ex : franck-fidi-2026)" value="' + esc(tok) + '">' +
+        '<input type="text" id="avExtTok" class="form-control form-control-sm" style="max-width:220px;" placeholder="votre token (ex : agence-2026)" value="' + esc(tok) + '">' +
         '<button class="btn btn-sm btn-outline-secondary" data-action="ext-set-token">Enregistrer token</button>' +
         '<button class="btn btn-sm btn-primary" data-action="ext-refresh"><i class="bi bi-arrow-clockwise me-1"></i>Actualiser</button>' +
       '</div>' +
@@ -5057,16 +5071,17 @@
 
     var html = '';
     // ─── EN-TÊTE personnalisable par l'agent ─────────────────────────────────
-    var _lieuHeader = [sig.ville, sig.region].filter(Boolean).join(' – ') || 'Martinique';
+    var _lieuHeader = [sig.ville, sig.region].filter(Boolean).join(' – ');
     var _natureHeader = (data.metadata && data.metadata.nature === 'location') ? 'Avis de valeur locative' : 'Avis de valeur immobilière';
-    var _logoCell = sig.logoUrl
-      ? '<td style="border:none;width:80px;padding:0;vertical-align:top;"><img src="' + esc(sig.logoUrl) + '" alt="logo" style="max-width:80px;max-height:60px;object-fit:contain;"/></td>'
+    var _logo = sig.logoUrl || charte().logo; // logo du signataire, à défaut celui de la charte
+    var _logoCell = _logo
+      ? '<td style="border:none;width:80px;padding:0;vertical-align:top;"><img src="' + esc(_logo) + '" alt="logo" style="max-width:80px;max-height:60px;object-fit:contain;"/></td>'
       : '';
     html += '<div class="header-bar"><table style="border:none;width:100%;"><tr style="border:none;">' +
       _logoCell +
-      '<td style="border:none;padding:0;"><div class="left">' + esc(sig.societe || 'FIDI') + '</div>' +
+      '<td style="border:none;padding:0;"><div class="left">' + esc(sig.societe || nomSociete()) + '</div>' +
       '<div style="color:#5c6470;font-size:9px;font-style:italic;">' + _natureHeader + '</div>' +
-      '<div style="color:#5c6470;font-size:9px;">' + esc(_lieuHeader) + (sig.headerLibre ? ' — ' + esc(sig.headerLibre) : '') + '</div></td>' +
+      ((_lieuHeader || sig.headerLibre) ? '<div style="color:#5c6470;font-size:9px;">' + esc(_lieuHeader) + (_lieuHeader && sig.headerLibre ? ' — ' : '') + esc(sig.headerLibre || '') + '</div>' : '') + '</td>' +
       '<td style="border:none;padding:0;text-align:right;vertical-align:top;">' +
         '<div style="color:#1a3a6e;font-weight:bold;">' + esc([sig.prenom, sig.nom].filter(Boolean).join(' ')) + '</div>' +
         '<div>' + esc(sig.fonction) + '</div>' +
@@ -5133,7 +5148,7 @@
     }
 
     html += '<h1>1. Préambule et cadre de l\'avis</h1>' +
-      '<p>Le présent document constitue un <b>avis de valeur</b> établi par <b>' + esc(sig.societe) + '</b>, ' + (data.metadata.lieuEtablissement ? 'à ' + esc(data.metadata.lieuEtablissement) : 'en Martinique') + ', par ' + esc([sig.prenom, sig.nom].filter(Boolean).join(' ')) + ', ' + esc(sig.fonction) + '. Il porte sur ' + (b.type ? 'un ' + esc(b.type.toLowerCase()) : 'le bien') + ' situé ' + (adresseComplete || '[adresse]') + '.</p>' +
+      '<p>Le présent document constitue un <b>avis de valeur</b> établi par <b>' + esc(sig.societe || nomSociete() || '[Société]') + '</b>' + (data.metadata.lieuEtablissement ? ', à ' + esc(data.metadata.lieuEtablissement) : '') + ', par ' + esc([sig.prenom, sig.nom].filter(Boolean).join(' ') || '[Nom du signataire]') + (sig.fonction ? ', ' + esc(sig.fonction) : '') + '. Il porte sur ' + (b.type ? 'un ' + esc(b.type.toLowerCase()) : 'le bien') + ' situé ' + (adresseComplete || '[adresse]') + '.</p>' +
       '<p>Conformément aux usages de la profession et à la Charte de l\'Expertise en Évaluation Immobilière, le présent avis <b>ne constitue pas une expertise judiciaire ou réglementée</b>. Il est délivré à titre indicatif et matérialise une opinion motivée sur la valeur vénale du bien au jour de son établissement, sur la base des éléments communiqués et des données de marché disponibles.</p>' +
       (b.prixVente ? '<p style="font-style:italic;color:#5c6470;">Le bien faisant l\'objet du présent avis ' + (occ ? 'a été cédé' : 'est proposé') + ' pour un prix de ' + fmtE(b.prixVente) + ' net vendeur.</p>' : '');
 
@@ -5489,7 +5504,7 @@
       '<p style="color:#5c6470;">' + esc(sig.societe) + (_adrSoc ? ' – ' + esc(_adrSoc) : '') + '</p>' +
       (_contact ? '<p style="color:#5c6470;">' + esc(_contact) + '</p>' : '') +
       (_legales ? '<p style="color:#5c6470;font-size:8pt;">' + esc(_legales) + '</p>' : '') +
-      (sig.footerLibre ? '<p style="color:#5c6470;font-size:8pt;font-style:italic;margin-top:6pt;">' + esc(sig.footerLibre) + '</p>' : '') +
+      ((sig.footerLibre || charte().coord.mentions) ? '<p style="color:#5c6470;font-size:8pt;font-style:italic;margin-top:6pt;">' + esc(sig.footerLibre || charte().coord.mentions) + '</p>' : '') +
       '</div>';
 
     // ── Pied de page OPTIMMO DOM + sources (LOT G) ─────────────────────────────
@@ -5510,11 +5525,12 @@
         '<br/>Avis de valeur — document d\'aide à la décision, ne constitue ni une expertise judiciaire ni un acte notarié.' +
       '</div>';
 
-    return html;
+    return recolor(html, { secondaire: false }); // doré d'alerte conservé dans le corps
   }
 
   function buildWordDoc(data, calc) {
-    return '<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>Avis de valeur ' + esc(data.metadata.ref) + '</title>' +
+    // En-tête et feuille de style passés à la charte active ; le corps l'est par buildAvisDocHTML.
+    return recolor('<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>Avis de valeur ' + esc(data.metadata.ref) + '</title>' +
       '<xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml>' +
       '<style>@page{size:A4;margin:2cm;}body{font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#000;line-height:1.4;}' +
       'h1{color:#1a3a6e;font-size:14pt;border-bottom:2pt solid #b8860b;padding-bottom:4pt;margin-top:20pt;}' +
@@ -5527,7 +5543,7 @@
       '.synth-libre{background:#eaf0f8;padding:12pt;}.synth-libre .v{font-size:18pt;font-weight:bold;color:#1a3a6e;text-align:center;}' +
       '.header-bar{border-bottom:2pt solid #b8860b;padding-bottom:8pt;margin-bottom:16pt;}.header-bar .left{color:#1a3a6e;font-weight:bold;font-size:14pt;}' +
       '.atouts{background:#e8f5e9;padding:10pt;}.vigilance{background:#ffebee;padding:10pt;}.atouts .h{color:#198754;font-weight:bold;font-size:10pt;margin-bottom:6pt;}.vigilance .h{color:#b71c1c;font-weight:bold;font-size:10pt;margin-bottom:6pt;}' +
-      '.signature{text-align:right;margin-top:24pt;}.signature .name{color:#1a3a6e;font-weight:bold;font-size:12pt;}.reserves p{font-size:9pt;color:#5c6470;}.gold-row{background:#b8860b;color:#fff;font-weight:bold;}</style></head><body>' +
+      '.signature{text-align:right;margin-top:24pt;}.signature .name{color:#1a3a6e;font-weight:bold;font-size:12pt;}.reserves p{font-size:9pt;color:#5c6470;}.gold-row{background:#b8860b;color:#fff;font-weight:bold;}</style></head><body>') +
       buildAvisDocHTML(data, calc) + '</body></html>';
   }
 

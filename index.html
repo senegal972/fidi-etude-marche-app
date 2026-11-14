@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <meta name="description" content="Étude de marché immobilier — FIDI. Analyse complète d'une adresse à partir des données publiques data.gouv.fr (DVF, BDNB, BAN, Géorisques)."/>
-<meta name="theme-color" content="#1a3a6e"/>
+<meta name="theme-color" content="#0C447C"/>
 <meta name="color-scheme" content="light"/>
 <meta name="format-detection" content="telephone=no"/>
 <!-- PWA -->
@@ -21,17 +21,21 @@
 <meta property="og:type" content="website"/>
 <meta property="og:url" content="https://fidi-etude-marche.netlify.app/"/>
 <meta property="og:image" content="https://fidi-etude-marche.netlify.app/favicon.svg"/>
-<title>Étude de Marché Immobilier – FIDI</title>
+<title>Étude de Marché &amp; Avis de valeur – OPTIMMO DOM</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
 <link href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet"/>
 <link href="/avis-valeur.css" rel="stylesheet"/>
+<link href="/saisie.css" rel="stylesheet"/>
+<link href="/marque.css" rel="stylesheet"/>
 <style>
 :root{
-  --fidi-blue:#1a3a6e;
-  --fidi-blue-light:#2652a0;
-  --fidi-accent:#e8491d;
-  --fidi-gold:#f5a623;
+  /* Valeurs par défaut — remplacées à l'exécution par marque.js (module « Mise en page ») */
+  --fidi-blue:#0C447C;
+  --fidi-blue-light:#386694;
+  --fidi-accent:#993C1D;
+  --fidi-accent-hover:#803218;
+  --fidi-gold:#0F6E56;
   --card-shadow:0 2px 12px rgba(0,0,0,.08);
 }
 body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#212529;}
@@ -43,14 +47,8 @@ body{background:#f0f2f5;font-family:'Segoe UI',system-ui,sans-serif;color:#21252
 .navbar-fidi .badge-gov{background:rgba(255,255,255,.15);color:#fff;font-size:.65rem;border-radius:4px;padding:2px 6px;}
 
 /* ─ Search panel ────────────────────────── */
-.search-panel{background:linear-gradient(135deg,var(--fidi-blue) 0%,var(--fidi-blue-light) 100%);padding:2rem 1.5rem 2.5rem;}
-.search-panel h1{font-size:1.5rem;font-weight:700;color:#fff;margin-bottom:.25rem;}
-.search-panel p{color:rgba(255,255,255,.75);font-size:.9rem;margin-bottom:1.5rem;}
-.search-form{background:rgba(255,255,255,.12);border-radius:12px;padding:1.25rem 1.5rem;backdrop-filter:blur(6px);}
-.search-form .form-control,.search-form .form-select{background:rgba(255,255,255,.95);border:none;border-radius:8px;}
-.search-form .form-control:focus,.search-form .form-select:focus{box-shadow:0 0 0 3px rgba(248,165,35,.4);}
 .btn-analyse{background:var(--fidi-accent);border:none;color:#fff;font-weight:700;padding:.65rem 2rem;border-radius:8px;transition:all .2s;}
-.btn-analyse:hover{background:#c23a10;transform:translateY(-1px);box-shadow:0 4px 12px rgba(232,73,29,.4);}
+.btn-analyse:hover{background:var(--fidi-accent-hover);transform:translateY(-1px);box-shadow:0 4px 12px rgba(232,73,29,.4);}
 .autocomplete-dropdown{position:absolute;z-index:9999;background:#fff;border:1px solid #dee2e6;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);top:100%;left:0;right:0;max-height:220px;overflow-y:auto;}
 .autocomplete-item{padding:.6rem 1rem;cursor:pointer;font-size:.85rem;border-bottom:1px solid #f0f0f0;}
 .autocomplete-item:hover{background:#f8f9fa;}
@@ -162,9 +160,6 @@ body.map-fs-on{overflow:hidden;}
   .navbar-fidi{padding:.5rem .75rem;flex-wrap:wrap;gap:.5rem;}
   .brand-text{font-size:1rem;}
   .brand-sub{font-size:.7rem;}
-  .search-panel{padding:1rem .75rem;}
-  .search-form{padding:.75rem;}
-  .search-form .row > [class*="col-"]{margin-bottom:.5rem;}
   .btn-analyse{font-size:.95rem;padding:.5rem;}
   .form-check-inline{margin-right:.5rem;}
   .card-body{padding:.75rem;}
@@ -174,7 +169,6 @@ body.map-fs-on{overflow:hidden;}
   .chart-wrap{height:200px!important;}
   #map{height:240px!important;}
   /* Empile les options en colonne */
-  .search-form .d-flex.flex-wrap.gap-3{flex-direction:column;align-items:flex-start;gap:.5rem!important;}
   #entrepriseQueryWrap,#financeQueryWrap{width:100%;min-width:0!important;margin-left:0!important;}
   /* Réduction badges */
   .badge{font-size:.65rem;}
@@ -243,14 +237,16 @@ body.map-fs-on{overflow:hidden;}
   body.share-printing #sharePrintRoot{display:block!important;}
 }
 </style>
+<!-- Charte de marque : couleurs posées avant le premier affichage (module « Mise en page ») -->
+<script src="/marque.js"></script>
 </head>
 <body>
 
 <!-- NAVBAR -->
 <nav class="navbar-fidi d-flex align-items-center justify-content-between">
   <div>
-    <div class="brand-text"><i class="bi bi-building me-2"></i>FIDI · Étude de Marché</div>
-    <div class="brand-sub">Immobilier · Données publiques françaises</div>
+    <div class="brand-text" id="marqueTitre"><i class="bi bi-building me-2"></i>OPTIMMO DOM · Étude de Marché &amp; Avis de valeur</div>
+    <div class="brand-sub" id="marqueBaseline">Immobilier · Données publiques françaises</div>
   </div>
   <div class="d-flex gap-2 align-items-center flex-wrap">
     <span class="badge-gov" id="appVersionBadge" title="Chargement version…" style="cursor:help;"><i class="bi bi-tag me-1"></i><span id="appVersionLabel">v…</span></span>
@@ -295,6 +291,7 @@ body.map-fs-on{overflow:hidden;}
       </button>
       <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="ddCompte">
         <li><a class="dropdown-item" href="#" id="miCompte" onclick="Compte.open();return false;"><i class="bi bi-gear me-2"></i>Mon compte</a></li>
+        <li><a class="dropdown-item" href="#" id="btnMarque" onclick="return false;"><i class="bi bi-palette me-2"></i>Mise en page</a></li>
         <li><a class="dropdown-item d-none" id="miPresentation" href="#" onclick="Presentation.open();return false;"><i class="bi bi-easel me-2 text-warning"></i>Présentation ImmoData Pro</a></li>
         <li><hr class="dropdown-divider"></li>
         <li><a class="dropdown-item small text-muted" href="https://www.data.gouv.fr" target="_blank" rel="noopener"><i class="bi bi-info-circle me-2"></i>À propos des sources</a></li>
@@ -312,150 +309,271 @@ body.map-fs-on{overflow:hidden;}
   </div>
 </nav>
 
-<!-- SEARCH PANEL -->
-<div class="search-panel">
+<!-- ÉCRAN DE SAISIE — « Nouvelle étude » (logique : saisie.js · styles : saisie.css)
+     Tous les identifiants historiques sont conservés : lancerAnalyse() et les scripts de recherche
+     cadastrale les lisent tels quels (voir CLAUDE.md, « Écran de saisie »). -->
+<div class="search-panel saisie" id="saisie">
   <div class="container-xl">
-    <h1><i class="bi bi-search me-2"></i>Évaluation du potentiel d'un bien immobilier</h1>
-    <p>Renseignez l'adresse du bien — ou sa référence cadastrale (commune, section, parcelle) — pour obtenir une analyse complète du marché local à partir des données publiques officielles.</p>
-    <div class="search-form">
-      <div class="row g-2 align-items-end">
-        <div class="col-md-4 position-relative">
-          <label class="form-label text-white small fw-semibold mb-1 d-flex align-items-center flex-wrap gap-2 w-100">
-            <span id="lblRecherche">Adresse du bien</span>
-            <button type="button" class="btn btn-sm btn-link p-0 ms-1 text-warning text-decoration-none"
-                    id="btnGeoloc" title="Utiliser ma position actuelle"
-                    style="font-size:.75rem;vertical-align:baseline;">
-              <i class="bi bi-geo-alt-fill"></i> Ma position
+
+    <!-- Résumé compact affiché une fois l'analyse affichée -->
+    <div class="saisie-resume d-none" id="saisieResume">
+      <div class="saisie-resume-txt">
+        <span class="saisie-ref d-none" id="resumeRef"></span>
+        <strong id="resumeAdresse"></strong>
+        <span id="resumeDetails"></span>
+      </div>
+      <div class="d-flex gap-2 flex-wrap">
+        <button type="button" class="btn-pill btn-pill-ghost" id="btnModifier">
+          <i class="bi bi-pencil me-1"></i>Modifier les critères
+        </button>
+        <button type="button" class="btn-pill btn-pill-dark" id="btnNouvelle">
+          <i class="bi bi-plus-lg me-1"></i>Nouvelle étude
+        </button>
+      </div>
+    </div>
+
+    <div id="saisieForm">
+      <!-- Barre de titre et d'actions -->
+      <div class="saisie-head">
+        <div>
+          <h1>Nouvelle étude de marché</h1>
+          <p>Adresse du bien ou référence cadastrale : l'analyse du marché local est établie à partir des données publiques officielles.</p>
+        </div>
+        <div class="saisie-actions">
+          <div class="dropdown">
+            <button type="button" class="btn-pill btn-pill-ghost dropdown-toggle" id="btnModele"
+                    data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+              <i class="bi bi-files me-1"></i>Modèle
             </button>
-            <span class="btn-group btn-group-sm ms-auto" role="group" title="Mode de recherche">
-              <input type="radio" class="btn-check" name="searchMode" id="modeAdresse" value="adresse" checked>
-              <label class="btn btn-outline-warning py-0 px-2" for="modeAdresse" style="font-size:.72rem;">Adresse</label>
-              <input type="radio" class="btn-check" name="searchMode" id="modeCadastre" value="cadastre">
-              <label class="btn btn-outline-warning py-0 px-2" for="modeCadastre" style="font-size:.72rem;">Réf. cadastrale</label>
-            </span>
-          </label>
-          <input type="text" class="form-control" id="inputAdresse"
-                 placeholder="Ex : 15 rue de la Paix, Lyon" autocomplete="off"/>
-          <div class="autocomplete-dropdown d-none" id="autocompleteList"></div>
-          <!-- Recherche par référence cadastrale (commune + section + parcelle) -->
-          <div id="cadastreFields" class="d-none">
-            <div class="position-relative">
-              <input type="text" class="form-control" id="inputCommune"
-                     placeholder="Commune (ex : Le Robert)" autocomplete="off"/>
-              <div class="autocomplete-dropdown d-none" id="communeList"></div>
+            <div class="dropdown-menu dropdown-menu-end saisie-modeles" aria-labelledby="btnModele">
+              <div id="modelesList"></div>
+              <div class="dropdown-divider"></div>
+              <div class="px-3 pb-2">
+                <label for="inputModeleNom" class="saisie-mini-label">Enregistrer les critères actuels comme modèle</label>
+                <div class="d-flex gap-2">
+                  <input type="text" class="form-control form-control-sm" id="inputModeleNom"
+                         placeholder="Nom du modèle" maxlength="40"/>
+                  <button type="button" class="btn btn-sm btn-outline-primary" id="btnModeleSave">Enregistrer</button>
+                </div>
+              </div>
             </div>
-            <div class="d-flex gap-2 mt-1">
-              <input type="text" class="form-control" id="inputSection"
-                     placeholder="Section (ex : AB)" style="max-width:46%;" autocomplete="off"/>
-              <input type="text" class="form-control" id="inputParcelle"
-                     placeholder="N° parcelle (ex : 123)" autocomplete="off"/>
-            </div>
-            <!-- Parcelles supplémentaires (terrains) : leurs contenances s'ajoutent au total -->
-            <div id="extraParcelles"></div>
-            <button type="button" class="btn btn-sm btn-outline-light py-0 mt-1" id="btnAddParcelle" onclick="addSearchParcelle()">
-              <i class="bi bi-plus-lg"></i> parcelle
-            </button>
-            <div class="small mt-1" id="communeMeta" style="color:#ffd54f;"></div>
           </div>
-        </div>
-        <div class="col-md-2">
-          <label class="form-label text-white small fw-semibold mb-1">Type de bien</label>
-          <select class="form-select" id="selectType">
-            <optgroup label="Résidentiel">
-              <option value="maison">Maison</option>
-              <option value="appartement">Appartement</option>
-              <option value="tous">Immeuble</option>
-            </optgroup>
-            <optgroup label="Terrain">
-              <option value="terrain">Terrain à bâtir</option>
-              <option value="terrain">Terrain agricole</option>
-              <option value="terrain">Terrain naturel (ONF)</option>
-              <option value="terrain">Terrain de loisirs</option>
-            </optgroup>
-            <optgroup label="Professionnel">
-              <option value="local">Local commercial</option>
-              <option value="local">Entrepôt</option>
-              <option value="local">Bureau</option>
-              <option value="local">Bâtiment industriel</option>
-              <option value="local">Parking / garage</option>
-              <option value="tous">Bien mixte (habitation + pro)</option>
-            </optgroup>
-            <option value="tous">Tous types</option>
-          </select>
-        </div>
-        <div class="col-6 col-md-2">
-          <label class="form-label text-white small fw-semibold mb-1">Surface (m²)</label>
-          <input type="number" class="form-control" id="inputSurface" placeholder="Ex : 120" min="1" max="9999"/>
-        </div>
-        <div class="col-6 col-md-2">
-          <label class="form-label text-white small fw-semibold mb-1"><i class="bi bi-geo-alt me-1"></i>Périmètre d'analyse</label>
-          <select class="form-select" id="selectPerimetre">
-            <optgroup label="Rayon autour de l'adresse">
-              <option value="rayon_500m">500 m</option>
-              <option value="rayon_1km" selected>1 km</option>
-              <option value="rayon_2km">2 km</option>
-              <option value="rayon_5km">5 km</option>
-              <option value="rayon_10km">10 km</option>
-              <option value="rayon_20km">20 km</option>
-              <option value="rayon_50km">50 km</option>
-            </optgroup>
-            <optgroup label="Zone administrative">
-              <option value="code_postal">Code postal</option>
-              <option value="section">Section cadastrale</option>
-              <option value="iris">Quartier IRIS</option>
-              <option value="commune">Commune entière</option>
-            </optgroup>
-          </select>
-        </div>
-        <div class="col-md-2">
-          <button class="btn btn-analyse w-100" id="btnAnalyse">
+          <button type="button" class="btn-icon" id="btnReset" title="Effacer et recommencer" aria-label="Effacer et recommencer">
+            <i class="bi bi-arrow-counterclockwise"></i>
+          </button>
+          <button type="button" class="btn btn-analyse btn-pill-cta" id="btnAnalyseTete">
             <i class="bi bi-bar-chart-line me-2"></i>Lancer l'analyse
           </button>
         </div>
       </div>
 
-      <!-- Options additionnelles (sources non-immo) ───────────────────────── -->
-      <div class="row g-3 mt-2">
-        <div class="col-12">
-          <div class="d-flex flex-wrap gap-3 align-items-center text-white small">
-            <span class="fw-semibold opacity-75"><i class="bi bi-sliders me-1"></i>Options :</span>
+      <div class="saisie-grid">
+        <!-- ── Colonne principale : le contenu de l'étude ── -->
+        <div class="saisie-main">
 
-            <div class="form-check form-check-inline" data-bs-toggle="tooltip"
-                 title="Identité légale, dirigeants et bénéficiaires effectifs (SCI, vendeur).">
-              <input class="form-check-input" type="checkbox" id="optEntreprise"/>
-              <label class="form-check-label" for="optEntreprise">
-                Vérifications légales d'entreprise
-              </label>
+          <section class="saisie-card" aria-labelledby="titreBien">
+            <div class="saisie-card-head">
+              <h2 id="titreBien">Bien étudié</h2>
+              <span class="saisie-modes" role="group" aria-label="Mode de recherche">
+                <input type="radio" class="btn-check" name="searchMode" id="modeAdresse" value="adresse" checked>
+                <label class="saisie-mode" for="modeAdresse">Adresse</label>
+                <input type="radio" class="btn-check" name="searchMode" id="modeCadastre" value="cadastre">
+                <label class="saisie-mode" for="modeCadastre">Réf. cadastrale</label>
+              </span>
+            </div>
+            <div class="position-relative">
+              <div class="d-flex justify-content-between align-items-baseline">
+                <label for="inputAdresse" class="saisie-label" id="lblRecherche">Adresse du bien</label>
+                <button type="button" class="saisie-link" id="btnGeoloc" title="Utiliser ma position actuelle">
+                  <i class="bi bi-geo-alt-fill"></i> Ma position
+                </button>
+              </div>
+              <input type="text" class="form-control saisie-input" id="inputAdresse"
+                     placeholder="Ex : 12 rue Victor Hugo, Fort-de-France" autocomplete="off"/>
+              <div class="autocomplete-dropdown d-none" id="autocompleteList"></div>
+              <!-- Recherche par référence cadastrale (commune + section + parcelle) -->
+              <div id="cadastreFields" class="d-none">
+                <div class="position-relative">
+                  <input type="text" class="form-control saisie-input" id="inputCommune"
+                         placeholder="Commune (ex : Le Robert)" autocomplete="off" aria-label="Commune"/>
+                  <div class="autocomplete-dropdown d-none" id="communeList"></div>
+                </div>
+                <div class="d-flex gap-2 mt-2">
+                  <input type="text" class="form-control saisie-input" id="inputSection"
+                         placeholder="Section (ex : AB)" style="max-width:46%;" autocomplete="off" aria-label="Section cadastrale"/>
+                  <input type="text" class="form-control saisie-input" id="inputParcelle"
+                         placeholder="N° parcelle (ex : 123)" autocomplete="off" aria-label="Numéro de parcelle"/>
+                </div>
+                <!-- Parcelles supplémentaires (terrains) : leurs contenances s'ajoutent au total -->
+                <div id="extraParcelles"></div>
+                <button type="button" class="saisie-link mt-2" id="btnAddParcelle" onclick="addSearchParcelle()">
+                  <i class="bi bi-plus-lg"></i> Ajouter une parcelle
+                </button>
+                <div class="saisie-hint mt-1" id="communeMeta"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="saisie-card" aria-labelledby="titreCarac">
+            <div class="saisie-card-head">
+              <h2 id="titreCarac">Caractéristiques</h2>
             </div>
 
-            <div class="form-check form-check-inline" data-bs-toggle="tooltip"
-                 title="Comptes annuels, ratios financiers, score solvabilité (API Pappers, clé requise).">
-              <input class="form-check-input" type="checkbox" id="optFinance"/>
-              <label class="form-check-label" for="optFinance">
-                Santé financière (Pappers)
-              </label>
+            <div class="saisie-segment" role="radiogroup" aria-label="Famille de bien">
+              <input type="radio" name="famille" id="famResidentiel" value="Résidentiel" checked/>
+              <label for="famResidentiel"><i class="bi bi-house-door me-1"></i>Résidentiel</label>
+              <input type="radio" name="famille" id="famTerrain" value="Terrain"/>
+              <label for="famTerrain"><i class="bi bi-tree me-1"></i>Terrain</label>
+              <input type="radio" name="famille" id="famPro" value="Professionnel"/>
+              <label for="famPro"><i class="bi bi-shop me-1"></i>Professionnel</label>
+              <input type="radio" name="famille" id="famTous" value=""/>
+              <label for="famTous"><i class="bi bi-grid me-1"></i>Tous types</label>
             </div>
 
-            <div class="form-check form-check-inline" data-bs-toggle="tooltip"
-                 title="Permis de construire SITADEL + proxy logements neufs (ADEME DPE Neuf).">
-              <input class="form-check-input" type="checkbox" id="optPermis"/>
-              <label class="form-check-label" for="optPermis">
-                Permis & logements neufs
-              </label>
+            <div class="row g-3 mt-0">
+              <div class="col-sm-7">
+                <label for="selectType" class="saisie-label">Nature du bien</label>
+                <select class="form-select saisie-input" id="selectType">
+                  <optgroup label="Résidentiel">
+                    <option value="maison">Maison</option>
+                    <option value="appartement">Appartement</option>
+                    <option value="tous">Immeuble</option>
+                  </optgroup>
+                  <optgroup label="Terrain">
+                    <option value="terrain">Terrain à bâtir</option>
+                    <option value="terrain">Terrain agricole</option>
+                    <option value="terrain">Terrain naturel (ONF)</option>
+                    <option value="terrain">Terrain de loisirs</option>
+                  </optgroup>
+                  <optgroup label="Professionnel">
+                    <option value="local">Local commercial</option>
+                    <option value="local">Entrepôt</option>
+                    <option value="local">Bureau</option>
+                    <option value="local">Bâtiment industriel</option>
+                    <option value="local">Parking / garage</option>
+                    <option value="tous">Bien mixte (habitation + pro)</option>
+                  </optgroup>
+                  <option value="tous">Tous types</option>
+                </select>
+              </div>
+              <div class="col-sm-5">
+                <label for="inputSurface" class="saisie-label">
+                  <span id="surfaceLabel">Surface habitable</span> (m²)
+                </label>
+                <input type="number" class="form-control saisie-input" id="inputSurface"
+                       placeholder="Ex : 120" min="1" max="9999" inputmode="decimal"/>
+              </div>
             </div>
+            <p class="saisie-hint" id="surfaceHint">
+              <i class="bi bi-info-circle me-1"></i>Sans surface, l'étude est produite mais sans estimation chiffrée du bien.
+            </p>
+          </section>
 
-            <!-- Champ SIREN affiché si Entreprise coché -->
-            <div class="d-none ms-md-3" id="entrepriseQueryWrap" style="min-width:280px;">
-              <input type="text" class="form-control form-control-sm" id="inputEntrepriseQ"
-                     placeholder="SIREN, SIRET ou raison sociale (SCI, vendeur)"/>
+          <section class="saisie-card" aria-labelledby="titreCompl">
+            <div class="saisie-card-head">
+              <h2 id="titreCompl">Vérifications complémentaires</h2>
+              <span class="saisie-facultatif">Facultatif</span>
             </div>
-            <!-- Champ SIREN Pappers affiché si Finance coché -->
-            <div class="d-none" id="financeQueryWrap" style="min-width:200px;">
-              <input type="text" class="form-control form-control-sm" id="inputFinanceSiren"
-                     placeholder="SIREN (9 chiffres)" maxlength="11"/>
+            <button type="button" class="saisie-link" id="btnPlus" aria-expanded="false" aria-controls="complBloc">
+              <i class="bi bi-plus-lg"></i> Ajouter une vérification (société vendeuse, santé financière, permis de construire)
+            </button>
+
+            <div class="d-none" id="complBloc">
+              <div class="saisie-opt">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="optEntreprise"/>
+                  <label class="form-check-label" for="optEntreprise">
+                    Vérifications légales d'entreprise
+                    <small>Identité légale, dirigeants et bénéficiaires effectifs (SCI, vendeur).</small>
+                  </label>
+                </div>
+                <div class="d-none" id="entrepriseQueryWrap">
+                  <input type="text" class="form-control form-control-sm" id="inputEntrepriseQ"
+                         placeholder="SIREN, SIRET ou raison sociale (SCI, vendeur)" aria-label="SIREN, SIRET ou raison sociale"/>
+                </div>
+              </div>
+
+              <div class="saisie-opt">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="optFinance"/>
+                  <label class="form-check-label" for="optFinance">
+                    Santé financière (Pappers)
+                    <small>Comptes annuels, ratios financiers, score de solvabilité (clé Pappers requise).</small>
+                  </label>
+                </div>
+                <div class="d-none" id="financeQueryWrap">
+                  <input type="text" class="form-control form-control-sm" id="inputFinanceSiren"
+                         placeholder="SIREN (9 chiffres)" maxlength="11" aria-label="SIREN à 9 chiffres"/>
+                </div>
+              </div>
+
+              <div class="saisie-opt">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="optPermis"/>
+                  <label class="form-check-label" for="optPermis">
+                    Permis &amp; logements neufs
+                    <small>Permis de construire SITADEL et logements neufs du secteur (ADEME DPE neuf).</small>
+                  </label>
+                </div>
+              </div>
             </div>
-          </div>
+          </section>
         </div>
+
+        <!-- ── Colonne latérale : options de l'étude et récapitulatif ── -->
+        <aside class="saisie-side" aria-labelledby="titreOptions">
+          <div class="saisie-card">
+            <div class="saisie-card-head">
+              <h2 id="titreOptions">Options de l'étude</h2>
+            </div>
+
+            <div class="saisie-tile">
+              <i class="bi bi-bullseye"></i>
+              <div class="flex-grow-1">
+                <label for="selectPerimetre" class="saisie-mini-label">Périmètre d'analyse</label>
+                <select class="form-select form-select-sm" id="selectPerimetre">
+                  <optgroup label="Rayon autour de l'adresse">
+                    <option value="rayon_500m">500 m</option>
+                    <option value="rayon_1km" selected>1 km</option>
+                    <option value="rayon_2km">2 km</option>
+                    <option value="rayon_5km">5 km</option>
+                    <option value="rayon_10km">10 km</option>
+                    <option value="rayon_20km">20 km</option>
+                    <option value="rayon_50km">50 km</option>
+                  </optgroup>
+                  <optgroup label="Zone administrative">
+                    <option value="code_postal">Code postal</option>
+                    <option value="section">Section cadastrale</option>
+                    <option value="iris">Quartier IRIS</option>
+                    <option value="commune">Commune entière</option>
+                  </optgroup>
+                </select>
+              </div>
+            </div>
+
+            <h3 class="saisie-sub">Récapitulatif</h3>
+            <dl class="saisie-recap" id="saisieRecap">
+              <div><dt>Bien</dt><dd id="recapAdresse">—</dd></div>
+              <div><dt>Nature</dt><dd id="recapType">—</dd></div>
+              <div><dt>Surface</dt><dd id="recapSurface">—</dd></div>
+              <div><dt>Périmètre</dt><dd id="recapPerimetre">—</dd></div>
+              <div><dt>Vérifications</dt><dd id="recapOptions">Aucune</dd></div>
+            </dl>
+
+            <div class="saisie-total">
+              <span>Sources interrogées</span>
+              <strong id="recapSources">—</strong>
+            </div>
+            <div class="saisie-chips" id="recapChips"></div>
+            <p class="saisie-cout d-none" id="recapCout"></p>
+
+            <p class="saisie-alerte d-none" id="saisieAlerte" role="alert"></p>
+
+            <button type="button" class="btn btn-analyse btn-pill-cta w-100 mt-3" id="btnAnalyse">
+              <i class="bi bi-bar-chart-line me-2"></i>Lancer l'analyse
+            </button>
+          </div>
+        </aside>
       </div>
     </div>
   </div>
@@ -2067,7 +2185,7 @@ function renderAleasMq(b, lat, lon){
     aleas: aleas.map(function(a){ return { label:a.label, niveau:a.niveau_label||'Concerné' }; }) };
   wrap.classList.remove('d-none');
   wrap.innerHTML =
-    '<div class="fw-bold mb-2" style="color:#1a3a6e;"><i class="bi bi-exclamation-octagon me-1"></i>Localisation et détails des aléas au point indiqué</div>'+
+    '<div class="fw-bold mb-2" style="color:var(--fidi-blue);"><i class="bi bi-exclamation-octagon me-1"></i>Localisation et détails des aléas au point indiqué</div>'+
     '<div class="row g-3 align-items-start">'+
       '<div class="col-md-4">'+
         (mapImg ? '<div style="position:relative;display:inline-block;width:100%;max-width:240px;">'+
@@ -2132,7 +2250,7 @@ async function renderAleasGeorisques(lat, lon){
     chips: chips.slice() };
   wrap.classList.remove('d-none');
   wrap.innerHTML =
-    '<div class="fw-bold mb-2" style="color:#1a3a6e;"><i class="bi bi-exclamation-octagon me-1"></i>Localisation et détails des aléas au point indiqué</div>'+
+    '<div class="fw-bold mb-2" style="color:var(--fidi-blue);"><i class="bi bi-exclamation-octagon me-1"></i>Localisation et détails des aléas au point indiqué</div>'+
     '<div class="table-responsive"><table class="table table-sm align-middle mb-1" style="font-size:.85rem;">'+
       '<thead style="background:#efe9d9;color:#4a4238;font-size:.7rem;text-transform:uppercase;"><tr><th>Aléa</th><th class="text-center">Au point</th><th>Précision</th></tr></thead>'+
       '<tbody>'+rows+'</tbody></table></div>'+
@@ -2333,7 +2451,7 @@ async function openEtudesRecentes(){
   let root = document.getElementById('etudesLibRoot');
   if(!root){ root = document.createElement('div'); root.id='etudesLibRoot'; document.body.appendChild(root); }
   root.innerHTML = '<div class="modal fade" id="etudesLibModal" tabindex="-1"><div class="modal-dialog modal-dialog-scrollable"><div class="modal-content">'+
-    '<div class="modal-header" style="background:#1a3a6e;color:#fff;"><h5 class="modal-title">🕘 Études récentes (Notion)</h5>'+
+    '<div class="modal-header" style="background:var(--fidi-blue);color:#fff;"><h5 class="modal-title">🕘 Études récentes (Notion)</h5>'+
     '<button type="button" class="btn-close" style="filter:invert(1)" data-bs-dismiss="modal"></button></div>'+
     '<div class="modal-body" id="etudesLibBody"><div class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm me-2"></span>Chargement…</div></div>'+
     '</div></div></div>';
@@ -3533,8 +3651,8 @@ function addTransactionMarkers(transactions, rayon_km, latRef, lonRef){
   if(rayon_km > 0){
     radiusCircle = L.circle([latRef,lonRef],{
       radius: rayon_km*1000,
-      color:'#1a3a6e', weight:1.5, dashArray:'6 4',
-      fillColor:'#2652a0', fillOpacity:.06
+      color:Marque.couleur('principale'), weight:1.5, dashArray:'6 4',
+      fillColor:Marque.couleur('principale'), fillOpacity:.06
     }).addTo(mapInstance);
   }
 
@@ -3583,7 +3701,7 @@ function renderPrixChart(dvfA, typeBien){
     data:{
       labels,
       datasets:[
-        {label:'Maison (€/m²)',data:maison,borderColor:'#1a3a6e',backgroundColor:'rgba(26,58,110,.1)',tension:.35,pointRadius:4,fill:true,spanGaps:true},
+        {label:'Maison (€/m²)',data:maison,borderColor:Marque.couleur('principale'),backgroundColor:Marque.rgba('principale',.1),tension:.35,pointRadius:4,fill:true,spanGaps:true},
         {label:'Appartement (€/m²)',data:appart,borderColor:'#6f42c1',backgroundColor:'rgba(111,66,193,.08)',tension:.35,pointRadius:4,fill:true,spanGaps:true},
       ]
     },
@@ -3613,7 +3731,7 @@ function renderTransChart(dvfA){
     data:{
       labels,
       datasets:[
-        {label:'Maisons',data:maison,backgroundColor:'rgba(26,58,110,.75)',borderRadius:4},
+        {label:'Maisons',data:maison,backgroundColor:Marque.rgba('principale',.75),borderRadius:4},
         {label:'Appartements',data:appart,backgroundColor:'rgba(111,66,193,.65)',borderRadius:4},
       ]
     },
@@ -5000,7 +5118,9 @@ function recapText(){
   ].filter(Boolean);
   return lignes.join('\n');
 }
-function recapBuildHTML(){
+// Le document est écrit avec les teintes de référence, puis passé à la charte active (marque.js).
+function recapBuildHTML(){ return Marque.recolorer(_recapBuildHTML(), { secondaire:false }); }
+function _recapBuildHTML(){
   var d=window.__fidiData||{}, loc=d.localisation||{}, gpu=window.__fidiGpu||{}, zone=gpu.zone||{}, parc=gpu.parcelle||{};
   var esc=function(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
   var adr = loc.label || [loc.name, loc.postcode, loc.city].filter(Boolean).join(' ') || '[adresse]';
@@ -5142,7 +5262,7 @@ function recapBuildHTML(){
       '<span style="opacity:.8;font-size:11px;">Astuce : « Imprimer » → « Enregistrer en PDF » pour joindre le PDF.</span>'+
     '</div>'+
     '<div class="pg">'+
-      '<div class="hd"><div><h1>Étude de marché — Récapitulatif</h1><div style="color:#445">'+esc(adr)+'</div></div><div style="text-align:right"><div class="logo" style="font-size:15px;letter-spacing:-.3px;">OPTIMMO DOM</div><div style="font-size:9px;color:#667">FIDI · Franck FIDI · '+today+'</div></div></div>'+
+      '<div class="hd"><div><h1>Étude de marché — Récapitulatif</h1><div style="color:#445">'+esc(adr)+'</div></div><div style="text-align:right">'+Marque.enTeteDoc(today)+'</div></div>'+
       (noteTxt ? '<div class="note"><b>Note :</b> '+esc(noteTxt)+'</div>' : '')+
       '<h2>Estimation vénale du bien</h2>'+
       '<div class="est"><div class="c"><div class="lbl">Borne basse</div><div class="big">'+(mn||'—')+'</div></div>'+
@@ -5166,7 +5286,7 @@ function recapBuildHTML(){
         : '<table><thead><tr><th>Date</th><th>Type</th><th style="text-align:right">Surf.</th><th style="text-align:right">Prix</th><th style="text-align:right">€/m²</th><th style="text-align:right">Dist.</th><th>Adresse</th></tr></thead><tbody>'+tx+'</tbody></table>')+
       (enrichHtml ? '<h2>Enrichissement — risques &amp; couches réglementaires</h2><div class="enr">'+enrichHtml+'</div>' : '')+
       (aleasHtml ? '<h2>Aléas au point indiqué — zonage réglementaire PPRN</h2><div class="aleas">'+aleasHtml+'</div>' : '')+
-      '<div class="foot">Document indicatif établi par OPTIMMO DOM (FIDI Conseil) à partir de données publiques (DVF, GPU/IGN, Géorisques). <b>Ni un avis notarié ni une expertise réglementée.</b> Valeurs à confirmer.</div>'+
+      '<div class="foot">Document indicatif établi par '+esc(Marque.nomDoc())+' à partir de données publiques (DVF, GPU/IGN, Géorisques). <b>Ni un avis notarié ni une expertise réglementée.</b> Valeurs à confirmer.</div>'+
     '</div>'+
     '<script>('+recapPopupInit.toString()+')('+JSON.stringify(recapText())+','+JSON.stringify('Étude de marché — Récapitulatif')+');<\/script>'+
     '</body></html>';
@@ -5237,7 +5357,8 @@ function implantationPdfTexte(titre){
     'Schéma et surfaces indicatifs, à confirmer par le règlement et un professionnel.'
   ].filter(Boolean).join('\n');
 }
-function implantationPdfHTML(vue){
+function implantationPdfHTML(vue){ return Marque.recolorer(_implantationPdfHTML(vue), { secondaire:false }); }
+function _implantationPdfHTML(vue){
   var esc=function(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
   var d=window.__fidiData||{}, loc=d.localisation||{}, zone=(window.__fidiGpu||{}).zone||{};
   var adr=loc.label || [loc.name, loc.postcode, loc.city].filter(Boolean).join(' ') || '';
@@ -5278,9 +5399,9 @@ function implantationPdfHTML(vue){
         (sousTitre?'<div style="font-weight:700;color:#1a4b8e">'+esc(sousTitre)+'</div>':'')+
         '<div style="color:#445">'+esc(adr)+'</div>'+
         '<div style="color:#445;font-size:10px">'+(refs.length?'Réf. cadastrale'+(refs.length>1?'s':'')+' : <b>'+esc(refs.join(', '))+'</b>':'')+(zone.libelle?' · Zone <b>'+esc(zone.libelle)+'</b>':'')+'</div>'+
-      '</div><div style="text-align:right;white-space:nowrap"><div class="logo">OPTIMMO DOM</div><div style="font-size:9px;color:#667">FIDI Conseil · '+today+'</div></div></div>'+
+      '</div><div style="text-align:right;white-space:nowrap">'+Marque.enTeteDoc(today)+'</div></div>'+
       corps+
-      '<div class="foot">Document indicatif établi par OPTIMMO DOM (FIDI Conseil) à partir de données publiques (cadastre IGN, GPU). <b>Ni un avis notarié ni une expertise réglementée.</b></div>'+
+      '<div class="foot">Document indicatif établi par '+esc(Marque.nomDoc())+' à partir de données publiques (cadastre IGN, GPU). <b>Ni un avis notarié ni une expertise réglementée.</b></div>'+
     '</div>'+
     '<script>'+script+'<\/script>'+
     '</body></html>';
@@ -6085,7 +6206,7 @@ function fidiSharePdf(opts){
   if(!root){ root = document.createElement('div'); root.id='shareRoot'; document.body.appendChild(root); }
   root.innerHTML =
     '<div class="modal fade" id="shareModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">'+
-    '<div class="modal-header" style="background:#1a3a6e;color:#fff;"><h5 class="modal-title"><i class="bi bi-share me-2"></i>Partager — '+kindH+'</h5>'+
+    '<div class="modal-header" style="background:var(--fidi-blue);color:#fff;"><h5 class="modal-title"><i class="bi bi-share me-2"></i>Partager — '+kindH+'</h5>'+
     '<button type="button" class="btn-close" style="filter:invert(1)" data-bs-dismiss="modal"></button></div>'+
     '<div class="modal-body" id="shareBody">'+
       // PDF généré automatiquement (rendu serveur identique à l\'écran)
@@ -6429,6 +6550,7 @@ function copyShareUrl(){
 <!-- Moteur de calcul des méthodes d'évaluation (CEE Saint Joseph) -->
 <script src="/avis-methodes.js" defer></script>
 <script src="/avis-valeur.js" defer></script>
+<script src="/saisie.js" defer></script>
 
 <!-- Module Compte : connexion, solde, administration -->
 <div id="compteModalRoot"></div>
@@ -6452,6 +6574,7 @@ window.Compte = (function(){
     render();
     renderGate();
     try { window.FidiFlags && FidiFlags.load(); } catch(e){}  // applique le template (modules visibles)
+    try { document.dispatchEvent(new CustomEvent('fidi:compte', { detail: { authenticated: state.authenticated } })); } catch(e){} // marque.js
   }
 
   // ─── Portail d'accueil (vitrine + connexion) ────────────────────────────────
@@ -6466,7 +6589,7 @@ window.Compte = (function(){
     if(!gate){
       gate = document.createElement('div');
       gate.id = 'authGate';
-      gate.style.cssText = 'position:fixed;inset:0;z-index:3000;overflow:auto;background:linear-gradient(135deg,#12294d 0%,#1a3a6e 55%,#24508f 100%);';
+      gate.style.cssText = 'position:fixed;inset:0;z-index:3000;overflow:auto;background:linear-gradient(135deg,var(--fidi-blue) 0%,var(--fidi-blue-light) 100%);';
       gate.innerHTML = gateHTML();
       document.body.appendChild(gate);
       document.body.style.overflow = 'hidden';
