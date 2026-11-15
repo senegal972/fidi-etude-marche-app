@@ -1,6 +1,8 @@
 // Netlify Function — Création d'une facture FIDI + préparation de la remise.
 // POST /api/facture
-// Body: { kind:"avis"|"etude", ref, client, email_client, telephone, adresse,
+// Body: { kind:"avis"|"etude"|"prestation", ref, client, email_client, telephone, adresse,
+//   « prestation » : facture demandée par une autre application (REA, Fiche découverte, HomeStaging PRO…)
+//   via facturation-pont.js ; type_libelle = libellé du type dans Notion, source = application d'origine.
 //         commune, montant, libelle?, paiement_requis?, canal?:[], lien_document? }
 //   Facture détaillée (écran de facturation v2, facture.js) — champs supplémentaires :
 //         facture:{ lignes:[{designation,description,quantite,prixUnitaire}], mode, prixSaisis, remise },
@@ -60,7 +62,7 @@ async function emetteurDe(event, me, b) {
   };
 }
 
-const TARIFS = { avis: 250, etude: 450 };
+const TARIFS = { avis: 250, etude: 450, prestation: 0 };
 
 // Numéro suivant dans la suite chronologique d'une société émettrice : <PRÉFIXE>-<AAAA>-<NNN>.
 // Chaque société a son préfixe (obligation légale d'une numérotation continue par émetteur) ;
@@ -98,7 +100,10 @@ export const handler = async (event) => {
   try { b = JSON.parse(event.body || "{}"); } catch { return authResp(400, { error: "JSON invalide" }); }
 
   const kind = (b.kind || "").toLowerCase();
-  if (!["avis", "etude"].includes(kind)) return authResp(400, { error: "kind doit être avis ou etude" });
+  if (!["avis", "etude", "prestation"].includes(kind)) return authResp(400, { error: "kind doit être avis, etude ou prestation" });
+  if (kind === "prestation" && !(b.facture && typeof b.facture === "object")) {
+    return authResp(400, { error: "Une prestation se facture avec le détail des articles (champ « facture »)." });
+  }
 
   const today   = new Date().toISOString().slice(0, 10);
   const year    = today.slice(0, 4);
@@ -111,10 +116,12 @@ export const handler = async (event) => {
   const paiementRequis = !!b.paiement_requis;
   const lienDoc = String(b.lien_document || "").trim();
   const canaux  = Array.isArray(b.canal) ? b.canal.filter((c) => ["Lien", "Email", "WhatsApp"].includes(c)) : [];
-  const type    = kind === "avis" ? "Avis de valeur" : "Étude de marché";
+  const type    = kind === "avis" ? "Avis de valeur" : kind === "etude" ? "Étude de marché"
+                : (String(b.type_libelle || "").replace(/[\u0000-\u001f,]/g, " ").trim().slice(0, 60) || "Prestation");
   const libelle = String(b.libelle || "").trim() || (kind === "avis"
     ? `Avis de valeur immobilier — ${adresse || ref}`
-    : `Étude de marché immobilier — ${adresse || ref}`);
+    : kind === "etude" ? `Étude de marché immobilier — ${adresse || ref}`
+    : `${type}${adresse ? " — " + adresse : ""}`);
 
   const origin  = reqOrigin(event);
 
@@ -140,7 +147,7 @@ export const handler = async (event) => {
     detail = {
       v: 1, date: today, echeance: plusJours(today, jours),
       client: { nom: client, email, telephone: tel, adresse: txt(b.client_adresse, 200) },
-      bien: adresse, refDossier: ref, notes: txt(b.notes, 1000),
+      bien: adresse, refDossier: ref, notes: txt(b.notes, 1000), source: txt(b.source, 60),
       facture: { lignes: calc.lignes.map(({ designation, description, quantite, prixUnitaire }) => ({ designation, description, quantite, prixUnitaire })),
                  mode: calc.mode, prixSaisis: calc.prixSaisis, remise: calc.remise, tva: calc.tva },
       totaux: calc.totaux, emetteur,

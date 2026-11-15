@@ -44,6 +44,17 @@ Les redirections `/api/<nom>` sont déclarées dans `netlify.toml`.
   `starts_with`) ; `FIDI-FAC` = suite historique quand aucune société n'est définie. Une prestation déjà facturée par une
   société ne peut pas être ré-éditée au nom d'une autre : 409 `{ autre_emetteur:true }`.
 - Le logo et les mentions de la charte ne sont apposés que sur les factures des sociétés cochées « avecLogo ».
+- **Service central pour les autres applications** (REA, Fiche découverte, HomeStaging PRO, suivi de chantier) :
+  - `facturation-pont.js` (à inclure dans l'application cliente depuis cette app) : `FidiFacturation.ouvrir({ source, type_libelle,
+    ref, client, bien, lignes, prixSaisis, mode, notes, lien_document, onCreee, onFermee })` ouvre `/?facturer=1` en fenêtre ;
+    données par `postMessage` (`fidi:facture-prete` → `fidi:facture-demande` → `fidi:facture-creee`). Mobile :
+    `FidiFacturation.lienDirect(demande)` (données dans le fragment `#facturer=`, effacé à la lecture).
+  - `facture-externe.js` (récepteur) : liste blanche d'origines `ORIGINES` — **ajouter ici le domaine de toute nouvelle
+    application** ; appelle `proposerFacture('prestation', demande)` une fois connecté ; rien n'est créé sans clic.
+  - `POST /api/facture` accepte `kind:"prestation"` (détail `facture` obligatoire, `type_libelle` → Type Notion, `source` figée).
+  - `POST /api/facture-auto` (serveur à serveur) : en-tête `X-Fidi-Cle` = `FIDI_FACTURATION_CLE` (≥ 24 car.), facture émise
+    au nom du compte `FIDI_FACTURATION_COMPTE`, marquée Payée si `paye !== false` ; idempotente sur `ref`
+    (Référence dossier). Sans ces variables : 503.
 - Hors périmètre à ce jour : paiement partiel / acompte (le paiement en ligne encaisse toujours le TTC) ;
   les préfixes ne sont uniques qu'au sein d'un compte (deux comptes d'un même déploiement doivent en choisir de différents).
 
@@ -117,6 +128,8 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
 - `ANTHROPIC_API_KEY` — *optionnelle*, mode enrichi IA de la veille (non activé par défaut ; facturation à l'usage).
 - `ANNONCES_MODEL` — *optionnelle*, modèle utilisé si le mode IA est activé.
 - `ANNONCES_MAX_SEARCHES` — *optionnelle*, borne le nombre de requêtes de recherche.
+- `FIDI_FACTURATION_CLE`, `FIDI_FACTURATION_COMPTE` — *optionnelles*, factures automatiques de serveur à serveur
+  (`/api/facture-auto`, ex. achats de crédits REA). Même clé à poser dans l'application appelante.
 - `NOTION_TOKEN`, `NOTION_DB_*` — intégration Notion (CRM, templates, dossiers).
 
 **Aucune clé API en dur dans le code.** Si les clés sont absentes, l'application se dégrade proprement.
@@ -124,7 +137,7 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
 ## Tests
 - `npm test` — suite `node --test` : endpoints (ESM, CORS, OPTIONS, repli sans secret), charte de marque
   (`marque.test.mjs`), contrat de l'interface (`interface.test.mjs`), facturation détaillée
-  (`facture-calc.test.mjs`, `facture-detaillee.test.mjs` — dont plusieurs sociétés et numérotation par société), unités veille
+  (`facture-calc.test.mjs`, `facture-detaillee.test.mjs`, `facturation-centrale.test.mjs` — dont plusieurs sociétés et numérotation par société), unités veille
   (dédoublonnage, similarité, bien sujet, extraction JSON-LD/regex), et fixture Marigot du moteur de calcul.
 - `npm run test:marigot` — fixture seule (`tests/avis-marigot.test.mjs`, synthèse 4,70 / 5,30 / 6,00 M€).
 
