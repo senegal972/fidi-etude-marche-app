@@ -2,8 +2,8 @@
    Écran de facturation « Nouvelle facture » (inspiré de la création de facture PayPal)
    - le contenu de la facture à gauche : client, articles (montant / quantité / heures),
      récapitulatif HT / remise / TVA / TTC recalculé à chaque frappe, note au client
-   - ses options à droite : numéro, échéance, paiement préalable, canaux d'envoi,
-     régime de TVA et mentions de l'émetteur (charte « Mise en page → Facturation »)
+   - ses options à droite : numéro, échéance, paiement préalable, canaux d'envoi, et la société
+     émettrice (plusieurs possibles, recherche par SIRET / nom / dirigeant : emetteurs.js)
    - aperçu du document final avant création (POST /api/facture-html, rien n'est enregistré)
    - génération : POST /api/facture (totaux recalculés côté serveur), puis page de remise
      existante (factAfficherRemise, factGenDocLink, factHistoriqueClient dans index.html)
@@ -79,7 +79,15 @@
   function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function eur(n) { return Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'; }
   function charte() { return (window.Marque && window.Marque.get()) || { enseigne: '', coordonnees: {}, facturation: {} }; }
-  function fact() { return charte().facturation || {}; }
+  // Société émettrice choisie (emetteurs.js) ; sans société définie : mentions uniques de la charte.
+  var gestion = null;
+  function emetteur() { return gestion ? gestion.selection() : null; }
+  function fact() {
+    var e = emetteur(), fa = charte().facturation || {};
+    if (e) return { regimeTva: e.regimeTva, tauxTva: e.tauxTva, delaiJours: fa.delaiJours };
+    if (window.FidiEmetteurs && window.FidiEmetteurs.liste().length) return { delaiJours: fa.delaiJours };
+    return fa;
+  }
 
   var etat = null; // { ctx, lignes:[], mode, prixSaisis, remise, apercu }
 
@@ -111,10 +119,12 @@
     if (typeof window.fidiStackModal === 'function') window.fidiStackModal(el);
     brancher(el);
     document.addEventListener('marque:change', majEmetteur);
+    gestion = window.FidiEmetteurs ? window.FidiEmetteurs.monter($('fxEmetteurs'), { onChange: majEmetteur }) : null;
     majEcheanceDefaut();
-    majEmetteur();
-    if (manquantes().length) ouvrirEditeur('aucun');
-    new bootstrap.Modal(el).show();
+    var m0 = new bootstrap.Modal(el);
+    // Aucune société enregistrée : la recherche s'ouvre d'emblée, une fois la fenêtre affichée.
+    if (gestion && !emetteur()) el.addEventListener('shown.bs.modal', function () { gestion.ajouter(); }, { once: true });
+    m0.show();
     chargerTarifs(kind, label);
   }
 
@@ -185,9 +195,7 @@
                 '<div class="form-check m-0"><input class="form-check-input" type="checkbox" id="factCanWa" checked><label class="form-check-label" for="factCanWa">WhatsApp</label></div>' +
               '</div></div></div>' +
             '<h6 class="fx-sub">Émetteur</h6>' +
-            '<div id="fxEmetteur" class="fx-emetteur"></div>' +
-            '<button type="button" class="fx-link mt-1" id="fxModifierEmetteur" aria-expanded="false" aria-controls="fxEmEdit"><i class="bi bi-pencil"></i> Compléter les mentions</button>' +
-            '<div id="fxEmEdit" class="fx-em-edit d-none"></div>' +
+            '<div id="fxEmetteurs" class="fx-emetteur"></div>' +
             '<div class="fx-total-side"><span>Montant dû</span><strong id="fxTotalSide">0,00 €</strong></div>' +
             '<div id="factStatus" class="mt-2"></div>' +
           '</section>' +
@@ -236,7 +244,6 @@
     $('fxAjouter').addEventListener('click', function () { ajouterLigne('', 0, true); });
     $('fxBtnApercu').addEventListener('click', basculerApercu);
     $('factBtnOk').addEventListener('click', generer);
-    $('fxModifierEmetteur').addEventListener('click', function () { ouvrirEditeur(); });
   }
 
   // ─── Articles ──────────────────────────────────────────────────────────────
@@ -301,7 +308,7 @@
       rows.push('<div class="fx-tot"><dt>Remise sur la facture</dt><dd><button type="button" class="fx-link" data-action="remise">Ajouter</button></dd></div>');
     }
     rows.push(ligneTot('Total HT', eur(t.ht)));
-    if (!f.regimeTva) rows.push('<div class="fx-tot fx-tot-alerte"><dt>TVA</dt><dd><button type="button" class="fx-link" data-action-tva>Régime à choisir</button></dd></div>');
+    if (!f.regimeTva) rows.push('<div class="fx-tot fx-tot-alerte"><dt>TVA</dt><dd><button type="button" class="fx-link" data-action-tva>' + (emetteur() ? 'Régime à choisir' : 'Société émettrice à ajouter') + '</button></dd></div>');
     else if (f.regimeTva === 'assujetti') rows.push(ligneTot('TVA ' + String(calc.tva.taux).replace('.', ',') + ' %', eur(t.tva)));
     else rows.push(ligneTot('TVA non applicable (art. 293 B du CGI)', '0,00 €'));
     rows.push('<div class="fx-tot fx-tot-ttc"><dt>Montant dû <small>(TTC)</small></dt><dd>' + eur(t.ttc) + '</dd></div>');
@@ -314,7 +321,7 @@
       var rd = box.querySelector('.fx-tot-remise dd'); if (rd) rd.textContent = '− ' + eur(t.remise);
     } else {
       box.innerHTML = rows.join('');
-      var bt = box.querySelector('[data-action-tva]'); if (bt) bt.addEventListener('click', function () { ouvrirEditeur('tva'); });
+      var bt = box.querySelector('[data-action-tva]'); if (bt) bt.addEventListener('click', function () { if (gestion) gestion.modifier(); });
     }
     $('fxTotalSide').textContent = eur(t.ttc);
     majBouton(calc);
@@ -324,7 +331,7 @@
   function majBouton(calc) {
     var b = $('factBtnOk'); if (!b) return;
     b.disabled = !fact().regimeTva || !(calc.totaux.ttc > 0);
-    b.title = !fact().regimeTva ? 'Choisissez d\'abord le régime de TVA (Mise en page → Facturation)'
+    b.title = !fact().regimeTva ? (emetteur() ? 'Choisissez d\'abord le régime de TVA de la société émettrice' : 'Ajoutez d\'abord une société émettrice')
       : !(calc.totaux.ttc > 0) ? 'Ajoutez au moins un article avec un montant' : '';
   }
 
@@ -340,71 +347,10 @@
     $('fxEcheanceDate').textContent = j ? 'Due le ' + d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Due dès réception';
   }
 
-  // ─── Émetteur (charte « Mise en page → Facturation ») ──────────────────────
-  function manquantes() {
-    var m = charte(), co = m.coordonnees || {}, f = m.facturation || {}, out = [];
-    if (!(co.raisonSociale || m.enseigne)) out.push('raison sociale');
-    if (!co.adresse) out.push('adresse');
-    if (!f.siren) out.push('SIREN / SIRET');
-    if (!f.regimeTva) out.push('régime de TVA');
-    return out;
-  }
-  function majEmetteur() {
-    if (!$('fxEmetteur')) return;
-    var m = charte(), co = m.coordonnees || {}, f = m.facturation || {};
-    var regime = f.regimeTva === 'assujetti' ? 'TVA ' + String(f.tauxTva).replace('.', ',') + ' %'
-      : f.regimeTva === 'franchise' ? 'Franchise en base (293 B)' : '';
-    var miss = manquantes();
-    $('fxEmetteur').innerHTML =
-      '<div class="fx-em-nom">' + esc(co.raisonSociale || m.enseigne || '—') + '</div>' +
-      [f.siren && 'SIREN ' + esc(f.siren), regime && esc(regime)].filter(Boolean).map(function (x) { return '<div>' + x + '</div>'; }).join('') +
-      (miss.length ? '<div class="fx-em-alerte"><i class="bi bi-exclamation-triangle me-1"></i>Mentions à compléter : ' + esc(miss.join(', ')) + '</div>' : '');
-    if (etat) recalculer();
-  }
-
-  // Éditeur en ligne des mentions de l'émetteur : enregistrées dans la charte (Marque.maj),
-  // donc reprises par les prochaines factures et par le panneau « Mise en page ».
-  // (Le panneau lui-même ne peut pas s'ouvrir par-dessus cette fenêtre.)
-  function ouvrirEditeur(cible) {
-    var box = $('fxEmEdit'), m = charte(), co = m.coordonnees || {}, f = m.facturation || {};
-    if (!box.classList.contains('d-none')) {           // déjà ouvert : on y amène l'utilisateur
-      var r0 = cible === 'tva' ? box.querySelector('input[name="fxRegime"]') : null;
-      if (r0) r0.focus();
-      return;
-    }
-    var champ = function (id, label, v, max, ph) {
-      return '<label class="fx-label mt-2" for="' + id + '">' + label + '</label>' +
-        '<input class="form-control form-control-sm" id="' + id + '" value="' + esc(v || '') + '" maxlength="' + max + '"' + (ph ? ' placeholder="' + esc(ph) + '"' : '') + '>';
-    };
-    box.innerHTML =
-      '<div class="fx-label">Régime de TVA</div>' +
-      '<label class="fx-radio"><input type="radio" name="fxRegime" value="franchise"' + (f.regimeTva === 'franchise' ? ' checked' : '') + '> Franchise en base (art. 293 B du CGI)</label>' +
-      '<label class="fx-radio"><input type="radio" name="fxRegime" value="assujetti"' + (f.regimeTva === 'assujetti' ? ' checked' : '') + '> Assujetti, taux ' +
-        '<input type="number" id="fxTaux" class="form-control form-control-sm d-inline-block" style="width:4.8rem" min="0" max="30" step="0.1" value="' + esc(f.tauxTva != null ? f.tauxTva : 8.5) + '" aria-label="Taux de TVA en %"> %</label>' +
-      champ('fxEmRaison', 'Raison sociale', co.raisonSociale || m.enseigne, 80) +
-      champ('fxEmAdresse', 'Adresse', co.adresse, 160) +
-      champ('fxEmSiren', 'SIREN / SIRET', f.siren, 20) +
-      champ('fxEmRegistre', 'Immatriculation', f.registre, 80, 'RCS / RSAC ville n°') +
-      '<div class="fx-tile-s mt-2">Enregistré dans votre charte (Mise en page → Facturation).</div>';
-    box.classList.remove('d-none');
-    $('fxModifierEmetteur').setAttribute('aria-expanded', 'true');
-    $('fxModifierEmetteur').classList.add('d-none');
-    var maj = function (modif) { if (window.Marque) window.Marque.maj(modif); };
-    box.addEventListener('change', function (e) {
-      if (e.target.name === 'fxRegime') maj({ facturation: { regimeTva: e.target.value, tauxTva: num($('fxTaux').value) } });
-    });
-    box.addEventListener('input', function (e) {
-      var id = e.target.id, v = e.target.value;
-      if (id === 'fxTaux') maj({ facturation: { tauxTva: num(v) } });
-      else if (id === 'fxEmRaison') maj({ coordonnees: { raisonSociale: v } });
-      else if (id === 'fxEmAdresse') maj({ coordonnees: { adresse: v } });
-      else if (id === 'fxEmSiren') maj({ facturation: { siren: v } });
-      else if (id === 'fxEmRegistre') maj({ facturation: { registre: v } });
-    });
-    if (cible === 'aucun') return; // ouverture automatique : on ne déplace pas le curseur
-    var focus = cible === 'tva' ? box.querySelector('input[name="fxRegime"]') : $('fxEmRaison');
-    if (focus) focus.focus();
-  }
+  // ─── Émetteur ──────────────────────────────────────────────────────────────
+  // La gestion des sociétés (choix, recherche, fiche) est dans emetteurs.js ; ici, on recalcule
+  // simplement la facture quand la société ou ses mentions changent.
+  function majEmetteur() { if (etat && $('fxTotaux')) recalculer(); }
 
   // ─── Données envoyées (aperçu et création) ─────────────────────────────────
   function val(id) { return (($(id) || {}).value || '').trim(); }
@@ -416,7 +362,8 @@
       client: { nom: val('factClient'), email: val('factEmail'), telephone: val('factTel'), adresse: val('fxAdresseClient') },
       bien: val('factAdresse'), refDossier: (etat.ctx || {}).ref || '', notes: val('fxNotes'),
       facture: entree(),
-      emetteur: { enseigne: m.enseigne, logo: m.logo, couleurs: m.couleurs, coordonnees: m.coordonnees, facturation: m.facturation }
+      emetteur: window.FidiEmetteurs ? window.FidiEmetteurs.pourDocument(emetteur())
+        : { enseigne: m.enseigne, logo: m.logo, couleurs: m.couleurs, coordonnees: m.coordonnees, facturation: m.facturation }
     };
   }
 
@@ -472,7 +419,7 @@
     var btn = $('factBtnOk'), status = $('factStatus');
     var setStatus = function (h) { if (status) status.innerHTML = h; };
     var calc = calculerFacture(entree());
-    if (!fact().regimeTva) { setStatus('<div class="alert alert-warning py-2 small mb-0">Choisissez d\'abord le régime de TVA dans « Mise en page → Facturation ».</div>'); return; }
+    if (!fact().regimeTva) { setStatus('<div class="alert alert-warning py-2 small mb-0">' + (emetteur() ? 'Choisissez d\'abord le régime de TVA de la société émettrice.' : 'Ajoutez d\'abord une société émettrice.') + '</div>'); return; }
     if (!(calc.totaux.ttc > 0)) { setStatus('<div class="alert alert-warning py-2 small mb-0">Ajoutez au moins un article avec un montant.</div>'); return; }
     var client = val('factClient'), email = val('factEmail'), tel = val('factTel'), adresse = val('factAdresse');
     var payReq = !!($('factPayReq') || {}).checked;
@@ -495,12 +442,16 @@
         facture: { lignes: calc.lignes.map(function (l) { return { designation: l.designation, description: l.description, quantite: l.quantite, prixUnitaire: l.prixUnitaire }; }),
                    mode: calc.mode, prixSaisis: calc.prixSaisis, remise: calc.remise },
         echeance_jours: echeanceJours(), notes: val('fxNotes'), client_adresse: val('fxAdresseClient'),
-        emetteur: donneesApercu().emetteur
+        emetteur_id: (emetteur() || {}).id || '', charte: charte()
       };
       return fetch('/api/facture', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
         .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { r: r, j: j }; }); })
         .then(function (x) {
           var r = x.r, j = x.j || {};
+          if (r.status === 409 && j.autre_emetteur) {
+            setStatus('<div class="alert alert-warning py-2 small mb-0"><i class="bi bi-building me-1"></i>' + esc(j.error) + '</div>');
+            if (btn) btn.disabled = false; return;
+          }
           if (r.status === 409 && j.locked) {
             setStatus('<div class="alert alert-warning py-2 small mb-0"><i class="bi bi-lock-fill me-1"></i><strong>Facture N° ' + esc(j.ref) + ' au statut « ' + esc(j.statut) + ' » — non modifiable.</strong><br>' +
               esc(j.hint || '') + ' ' + (j.delivery_url ? '<a href="' + esc(j.delivery_url) + '" target="_blank" class="alert-link">Voir la facture existante</a>' : '') + '</div>');

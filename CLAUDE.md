@@ -38,8 +38,14 @@ Les redirections `/api/<nom>` sont déclarées dans `netlify.toml`.
   rien n'est enregistré). `factureHtmlUrl()` ajoute `t` automatiquement.
 - Arrondis : l'écart de centime est reporté sur la dernière ligne pour que Σ lignes HT − remise HT = total HT
   (testé par balayage dans `tests/facture-calc.test.mjs`). Les prix de la grille (`/api/tarifs`) sont TTC.
-- Hors périmètre à ce jour : paiement partiel / acompte (le paiement en ligne encaisse toujours le TTC),
-  numérotation `FIDI-FAC-` commune à tous les émetteurs d'un même déploiement.
+- **Plusieurs sociétés émettrices** : la charte porte `emetteurs[]` (10 au plus) et `emetteurDefaut`. `POST /api/facture`
+  reçoit `emetteur_id` ; la société est lue dans la charte du compte (repli : `charte` transmise), son identité est figée
+  dans le détail. **Numérotation par société** : `<préfixe>-<AAAA>-<NNN>` (`nextFactureRef(year, prefixe)`, filtre Notion
+  `starts_with`) ; `FIDI-FAC` = suite historique quand aucune société n'est définie. Une prestation déjà facturée par une
+  société ne peut pas être ré-éditée au nom d'une autre : 409 `{ autre_emetteur:true }`.
+- Le logo et les mentions de la charte ne sont apposés que sur les factures des sociétés cochées « avecLogo ».
+- Hors périmètre à ce jour : paiement partiel / acompte (le paiement en ligne encaisse toujours le TTC) ;
+  les préfixes ne sont uniques qu'au sein d'un compte (deux comptes d'un même déploiement doivent en choisir de différents).
 
 ## Modules d'interface
 
@@ -73,6 +79,16 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
 - Après création, la page de remise reste celle d'`index.html` : `factAfficherRemise`, `factGenDocLink`,
   `factHistoriqueClient` (identifiants conservés : `factureModal`, `factBody`, `factStatus`, `factClient`, `factEmail`,
   `factTel`, `factAdresse`, `factPayReq`, `factCanEmail`, `factCanWa`, `factBtnOk`, `factTarifsBox`).
+
+### Sociétés émettrices — `emetteurs.js` (styles dans `facture.css`)
+- `window.FidiEmetteurs.monter(conteneur, { selection, onChange })` : choix de la société, recherche par SIRET / SIREN,
+  nom ou dirigeant (`POST /api/entreprise`, API Recherche d'entreprises : INSEE Sirene + RNE/INPI), complément Pappers
+  facultatif (capital, greffe, n° TVA ; `POST /api/pappers`), fiche modifiable, enregistrement par `Marque.maj()`.
+- Pré-remplissage : forme juridique (catégorie INSEE → `FORMES`), siège, SIREN/SIRET, « RCS <SIREN> » (ville du greffe à
+  compléter), préfixe proposé (`prefixePropose`, unique dans le compte). Le régime de TVA n'est jamais deviné ; le n° de
+  TVA intracommunautaire est calculé depuis le SIREN (`tvaIntra`) seulement pour une société assujettie.
+- `pourDocument(e)` produit l'émetteur au format de `_facture_doc.mjs` — mêmes règles que `emetteurDe()` (facture.mjs).
+- Migration : les mentions uniques de la v1.8.0 (bloc `facturation`) deviennent la première société à l'ouverture.
 
 ### Mise en page / marque blanche — `marque.js` / `marque.css` / `marque.json`
 - L'application est destinée à être commercialisée : **aucune enseigne, couleur ou coordonnée client
@@ -108,7 +124,7 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
 ## Tests
 - `npm test` — suite `node --test` : endpoints (ESM, CORS, OPTIONS, repli sans secret), charte de marque
   (`marque.test.mjs`), contrat de l'interface (`interface.test.mjs`), facturation détaillée
-  (`facture-calc.test.mjs`, `facture-detaillee.test.mjs`), unités veille
+  (`facture-calc.test.mjs`, `facture-detaillee.test.mjs` — dont plusieurs sociétés et numérotation par société), unités veille
   (dédoublonnage, similarité, bien sujet, extraction JSON-LD/regex), et fixture Marigot du moteur de calcul.
 - `npm run test:marigot` — fixture seule (`tests/avis-marigot.test.mjs`, synthèse 4,70 / 5,30 / 6,00 M€).
 

@@ -100,3 +100,13 @@
   .fx-c-p{flex:1 1 50%;}
   .fx-head .modal-title{font-size:1.1rem;}
 }
+
+/* ─ Sociétés émettrices (emetteurs.js) ─ */
+.em-resume{font-size:.78rem;color:#3a4553;line-height:1.5;margin-top:.45rem;}
+.em-actions{display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap;margin-top:.45rem;}
+.em-edit{border:1px dashed #c9d0da;border-radius:10px;padding:.7rem;margin-top:.6rem;background:#fff;}
+.em-resultats{display:flex;flex-direction:column;gap:.3rem;margin-top:.5rem;max-height:300px;overflow:auto;}
+.em-res{display:flex;flex-direction:column;align-items:flex-start;text-align:left;border:1px solid #dfe3e9;background:#fff;border-radius:8px;padding:.45rem .6rem;font-size:.78rem;color:#1f2a3a;}
+.em-res:hover,.em-res:focus-visible{border-color:var(--fidi-blue);background:#f6f8fb;}
+.em-res span{color:#5b6573;font-size:.72rem;}
+.em-fermee{display:inline-block;background:#fdebe5;color:#9a3412;border-radius:4px;padding:0 .3rem;font-size:.65rem;font-weight:700;}
