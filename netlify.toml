@@ -182,6 +182,12 @@
   to     = "/.netlify/functions/moncompte"
   status = 200
 
+# Factures émises automatiquement par une autre application (serveur à serveur, clé FIDI_FACTURATION_CLE)
+[[redirects]]
+  from   = "/api/facture-auto"
+  to     = "/.netlify/functions/facture-auto"
+  status = 200
+
 # Charte de marque du compte connecté (module « Mise en page », marque.js)
 [[redirects]]
   from   = "/api/marque"

@@ -92,11 +92,18 @@
   var etat = null; // { ctx, lignes:[], mode, prixSaisis, remise, apercu }
 
   // ─── Ouverture ─────────────────────────────────────────────────────────────
-  function proposerFacture(kind) {
-    var label = kind === 'avis' ? 'Avis de valeur' : 'Étude de marché';
+  // kind : 'etude' | 'avis' | 'prestation' (demande d'une autre application, voir facture-externe.js)
+  function proposerFacture(kind, demande) {
+    var dm = kind === 'prestation' ? (demande || {}) : null;
+    var label = kind === 'avis' ? 'Avis de valeur' : kind === 'etude' ? 'Étude de marché'
+      : (String(dm.type_libelle || dm.source || 'Prestation').slice(0, 60));
     var d = window.__fidiData, inputs = window.__fidiInputs || {};
     var adresse = '', ref = '', client = '', email = '', telephone = '', htmlString = '';
-    if (kind === 'etude' && d) {
+    if (dm) {
+      var dc = dm.client || {};
+      client = dc.nom || ''; email = dc.email || ''; telephone = dc.telephone || '';
+      adresse = dm.bien || ''; ref = dm.ref || '';
+    } else if (kind === 'etude' && d) {
       var loc = d.localisation || {};
       adresse = loc.label || inputs.adresse || loc.city || '';
       ref = typeof window.etudeRef === 'function' ? window.etudeRef(d, inputs) : '';
@@ -106,15 +113,36 @@
       adresse = c.adresse || c.commune || ''; ref = c.ref || ''; htmlString = c.htmlString || '';
       window.__factureAvisCtx = null;
     }
-    window.__factCtx = { kind: kind, label: label, ref: ref, client: client, email: email, telephone: telephone, adresse: adresse, htmlString: htmlString };
+    window.__factCtx = { kind: kind, label: label, ref: ref, client: client, email: email, telephone: telephone, adresse: adresse, htmlString: htmlString,
+                         externe: !!dm, source: dm ? String(dm.source || '').slice(0, 60) : '', origine: dm ? dm._origine || '' : '',
+                         lienDocument: dm ? String(dm.lien_document || '') : '' };
     window.__factRemise = null;
-    etat = { ctx: window.__factCtx, lignes: [], mode: 'montant', prixSaisis: 'TTC', remise: null, remiseOuverte: false, apercu: false };
+    etat = { ctx: window.__factCtx, lignes: [], mode: 'montant', prixSaisis: 'TTC', remise: null, remiseOuverte: false, apercu: false, lignesImposees: false };
+    if (dm && Array.isArray(dm.lignes) && dm.lignes.length) {
+      etat.lignes = dm.lignes.slice(0, MAX_LIGNES).map(function (l) {
+        return { designation: txt(l.designation, 200), description: txt(l.description, 1000), quantite: num(l.quantite) || 1, prixUnitaire: num(l.prixUnitaire) || '' };
+      });
+      etat.mode = ['montant', 'quantite', 'heures'].indexOf(dm.mode) >= 0 ? dm.mode : 'quantite';
+      etat.prixSaisis = dm.prixSaisis === 'HT' ? 'HT' : 'TTC';
+      etat.lignesImposees = true;
+    }
     if (typeof bootstrap === 'undefined') return;
 
     var root = $('factureRoot');
     if (!root) { root = document.createElement('div'); root.id = 'factureRoot'; document.body.appendChild(root); }
     root.innerHTML = gabarit(label, client, email, telephone, adresse);
     var el = $('factureModal');
+    if (dm) {
+      // Demande d'une autre application : provenance affichée, champs et options pré-remplis.
+      var st = el.querySelector('.fx-sous-titre');
+      if (st) st.textContent = label + ' · demandée par ' + (window.__factCtx.source || 'une application') +
+        (window.__factCtx.origine && window.__factCtx.origine !== 'lien direct' ? ' (' + window.__factCtx.origine.replace(/^https?:\/\//, '') + ')' : '');
+      if (dm.client && dm.client.adresse) $('fxAdresseClient').value = String(dm.client.adresse).slice(0, 200);
+      if (dm.notes) { $('fxNotes').value = String(dm.notes).slice(0, 1000); $('fxNotesN').textContent = $('fxNotes').value.length + '/1000'; }
+      var rm = el.querySelector('input[name="fxMode"][value="' + etat.mode + '"]'); if (rm) rm.checked = true;
+      var rp = el.querySelector('input[name="fxPrix"][value="' + etat.prixSaisis + '"]'); if (rp) rp.checked = true;
+      rendreLignes();
+    }
     el.addEventListener('hidden.bs.modal', function () { el.remove(); document.removeEventListener('marque:change', majEmetteur); });
     if (typeof window.fidiStackModal === 'function') window.fidiStackModal(el);
     brancher(el);
@@ -387,8 +415,8 @@
 
   // ─── Grille tarifaire ──────────────────────────────────────────────────────
   function chargerTarifs(kind, label) {
-    var wantCat = kind === 'avis' ? 'Avis de valeur' : 'Étude de marché';
-    var defMontant = kind === 'avis' ? 250 : 450;
+    var wantCat = kind === 'avis' ? 'Avis de valeur' : kind === 'etude' ? 'Étude de marché' : '';
+    var defMontant = kind === 'avis' ? 250 : kind === 'etude' ? 450 : 0;
     fetch('/api/tarifs', { credentials: 'same-origin' })
       .then(function (r) { return r.json().catch(function () { return {}; }); })
       .catch(function () { return {}; })
@@ -399,13 +427,14 @@
         var designationDefaut = label + (etat.ctx.adresse ? ' — ' + etat.ctx.adresse : '');
         if (!list.length) {
           box.innerHTML = '<span class="text-muted small">Aucune grille tarifaire configurée : saisissez les articles ci-dessous.</span>';
-          etat.lignes = [{ designation: designationDefaut, description: '', quantite: 1, prixUnitaire: defMontant }];
+          if (!etat.lignesImposees) etat.lignes = [{ designation: designationDefaut, description: '', quantite: 1, prixUnitaire: defMontant || '' }];
           rendreLignes(); return;
         }
         box.innerHTML = '<span class="fx-tarifs-t">Ajouter depuis la grille :</span>' + list.map(function (t) {
           return '<button type="button" class="fx-chip" data-action="tarif" data-nom="' + esc(t.prestation) + '" data-prix="' + esc(t.prix) + '">' +
             esc(t.prestation) + ' · <b>' + esc(t.prix) + ' €</b></button>';
         }).join('');
+        if (etat.lignesImposees) { rendreLignes(); return; } // articles fournis par l'application d'origine
         var pref = list.filter(function (t) { return t.categorie === wantCat; })[0] || list[0];
         etat.lignes = [{ designation: pref ? pref.prestation + (etat.ctx.adresse ? ' — ' + etat.ctx.adresse : '') : designationDefaut,
                          description: '', quantite: 1, prixUnitaire: pref ? pref.prix : defMontant }];
@@ -422,6 +451,7 @@
     if (!fact().regimeTva) { setStatus('<div class="alert alert-warning py-2 small mb-0">' + (emetteur() ? 'Choisissez d\'abord le régime de TVA de la société émettrice.' : 'Ajoutez d\'abord une société émettrice.') + '</div>'); return; }
     if (!(calc.totaux.ttc > 0)) { setStatus('<div class="alert alert-warning py-2 small mb-0">Ajoutez au moins un article avec un montant.</div>'); return; }
     var client = val('factClient'), email = val('factEmail'), tel = val('factTel'), adresse = val('factAdresse');
+    if (!client) { setStatus('<div class="alert alert-warning py-2 small mb-0">Indiquez le nom du client (mention obligatoire de la facture).</div>'); var fc = $('factClient'); if (fc) fc.focus(); return; }
     var payReq = !!($('factPayReq') || {}).checked;
     var canal = ['Lien'];
     if (($('factCanEmail') || {}).checked) canal.push('Email');
@@ -430,13 +460,16 @@
     if (btn) btn.disabled = true;
     setStatus('<div class="alert alert-info py-2 small mb-0"><span class="spinner-border spinner-border-sm me-1"></span>Génération du document…</div>');
 
-    var genDoc = typeof window.factGenDocLink === 'function' ? window.factGenDocLink(ctx) : Promise.resolve('');
+    // Prestation d'une autre application : pas de document de l'étude à joindre (lien éventuel fourni par elle).
+    var genDoc = ctx.kind === 'prestation' ? Promise.resolve(ctx.lienDocument || '')
+      : typeof window.factGenDocLink === 'function' ? window.factGenDocLink(ctx) : Promise.resolve('');
     Promise.resolve(genDoc).catch(function () { return ''; }).then(function (lienDoc) {
       setStatus(lienDoc
         ? '<div class="alert alert-info py-2 small mb-0"><span class="spinner-border spinner-border-sm me-1"></span>Création de la facture…</div>'
         : '<div class="alert alert-warning py-2 small mb-0"><i class="bi bi-exclamation-triangle me-1"></i>Document non joint automatiquement ; la facture est créée quand même.</div>');
       var payload = {
         kind: ctx.kind, ref: ctx.ref, client: client, email_client: email, telephone: tel,
+        type_libelle: ctx.kind === 'prestation' ? ctx.label : '', source: ctx.source || '',
         adresse: adresse, commune: adresse, montant: calc.totaux.ttc, libelle: libelle,
         paiement_requis: payReq, canal: canal, lien_document: lienDoc || '',
         facture: { lignes: calc.lignes.map(function (l) { return { designation: l.designation, description: l.description, quantite: l.quantite, prixUnitaire: l.prixUnitaire }; }),
@@ -467,6 +500,7 @@
           var dlg = document.querySelector('#factureModal .modal-dialog'); if (dlg) dlg.classList.remove('modal-xl');
           var ap = $('fxBtnApercu'); if (ap) ap.remove();
           if (typeof window.factAfficherRemise === 'function') window.factAfficherRemise();
+          if (ctx.externe && window.FidiFactureExterne) window.FidiFactureExterne.signalerCreation(j);
         });
     }).catch(function (e) {
       setStatus('<div class="alert alert-danger py-2 small mb-0">Erreur réseau : ' + esc(e && e.message) + '</div>');
