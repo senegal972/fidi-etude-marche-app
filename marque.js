@@ -32,7 +32,10 @@
     coordonnees: { raisonSociale: '', adresse: '', telephone: '', email: '', mentions: '' },
     // Mentions légales des factures émises depuis le module de facturation (facture.js).
     facturation: { formeJuridique: '', capital: '', siren: '', registre: '', tvaIntra: '',
-                   regimeTva: '', tauxTva: 8.5, delaiJours: 30, conditions: '' }
+                   regimeTva: '', tauxTva: 8.5, delaiJours: 30, conditions: '' },
+    // Sociétés émettrices (plusieurs par compte, choisies dans la fenêtre de facture) — voir emetteurs.js.
+    emetteurs: [],
+    emetteurDefaut: ''
   };
 
   var CHARTES = [
@@ -44,7 +47,9 @@
 
   var LIMITES = { enseigne: 40, produit: 60, baseline: 80, raisonSociale: 80, adresse: 160,
                   telephone: 30, email: 80, mentions: 240,
-                  formeJuridique: 60, capital: 40, siren: 20, registre: 80, tvaIntra: 20, conditions: 400 };
+                  formeJuridique: 60, capital: 40, siren: 20, registre: 80, tvaIntra: 20, conditions: 400,
+                  siret: 20, prefixe: 16 };
+  var MAX_EMETTEURS = 10;
 
   var base = clone(DEFAUT);      // DEFAUT + marque.json
   var perso = lire(K_PERSO) || {};
@@ -94,12 +99,36 @@
       if (isFinite(delai)) o.delaiJours = Math.max(0, Math.min(90, delai));
       out.facturation = o;
     }
+    if (Array.isArray(src.emetteurs)) {
+      var vus = {};
+      out.emetteurs = src.emetteurs.map(assainirEmetteur).filter(function (e) {
+        if (!e || vus[e.id]) return false; vus[e.id] = true; return true;
+      }).slice(0, MAX_EMETTEURS);
+    }
+    if (typeof src.emetteurDefaut === 'string') out.emetteurDefaut = src.emetteurDefaut.replace(/[^a-z0-9]/gi, '').slice(0, 16);
     return out;
+  }
+  // Mêmes règles que assainirEmetteur() dans netlify/functions/marque.mjs.
+  function assainirEmetteur(src) {
+    if (!src || typeof src !== 'object' || Array.isArray(src)) return null;
+    var id = String(src.id || '').replace(/[^a-z0-9]/gi, '').slice(0, 16);
+    if (!id) return null;
+    var o = { id: id };
+    ['raisonSociale', 'adresse', 'telephone', 'email', 'formeJuridique', 'capital', 'siren', 'siret', 'registre', 'tvaIntra'].forEach(function (k) {
+      var t = texte(src[k], LIMITES[k]); o[k] = t === null ? '' : t;
+    });
+    o.regimeTva = ['franchise', 'assujetti'].indexOf(src.regimeTva) >= 0 ? src.regimeTva : '';
+    var taux = Number(src.tauxTva);
+    o.tauxTva = isFinite(taux) ? Math.max(0, Math.min(30, taux)) : 8.5;
+    var pre = String(src.prefixe || '').toUpperCase().replace(/[^A-Z0-9-]/g, '').replace(/^-+|-+$/g, '').slice(0, LIMITES.prefixe);
+    o.prefixe = pre.length >= 2 ? pre : '';
+    o.avecLogo = !!src.avecLogo;
+    return o;
   }
   function fusion(a, b) {
     var r = clone(DEFAUT);
     [assainir(a), assainir(b)].forEach(function (s) {
-      ['enseigne', 'produit', 'baseline', 'logo'].forEach(function (k) { if (k in s) r[k] = s[k]; });
+      ['enseigne', 'produit', 'baseline', 'logo', 'emetteurs', 'emetteurDefaut'].forEach(function (k) { if (k in s) r[k] = s[k]; });
       ['couleurs', 'coordonnees', 'facturation'].forEach(function (g) {
         if (s[g]) Object.keys(s[g]).forEach(function (k) { r[g][k] = s[g][k]; });
       });
@@ -269,7 +298,8 @@
   function fusionBrute(a, b) {
     var r = clone(a || {});
     Object.keys(b).forEach(function (k) {
-      if (b[k] && typeof b[k] === 'object') { r[k] = r[k] || {}; Object.keys(b[k]).forEach(function (j) { r[k][j] = b[k][j]; }); }
+      if (Array.isArray(b[k])) r[k] = clone(b[k]);                 // listes (sociétés émettrices) : remplacées
+      else if (b[k] && typeof b[k] === 'object') { r[k] = r[k] || {}; Object.keys(b[k]).forEach(function (j) { r[k][j] = b[k][j]; }); }
       else r[k] = b[k];
     });
     return r;
@@ -317,17 +347,10 @@
           '<div class="col-6">' + champ('mqEmail', 'E-mail', LIMITES.email) + '</div></div>' +
         champ('mqMentions', 'Mentions légales (RCS, carte professionnelle…)', LIMITES.mentions, true) +
         '<h3 class="marque-section" id="marqueSectionFacturation">Facturation <small>(mentions obligatoires des factures)</small></h3>' +
-        '<div class="marque-label">Régime de TVA</div>' +
-        '<div class="marque-tva" role="radiogroup" aria-label="Régime de TVA">' +
-          '<label><input type="radio" name="mqRegime" value="franchise"/> Franchise en base — TVA non applicable (art. 293 B du CGI)</label>' +
-          '<label><input type="radio" name="mqRegime" value="assujetti"/> Assujetti à la TVA, taux ' +
-            '<input type="number" id="mqTaux" min="0" max="30" step="0.1" class="form-control form-control-sm d-inline-block" style="width:5.2rem;" aria-label="Taux de TVA en %"/> %</label>' +
-        '</div>' +
-        '<div class="row g-2 mt-1"><div class="col-6">' + champ('mqForme', 'Forme juridique (ex : SASU)', LIMITES.formeJuridique) + '</div>' +
-          '<div class="col-6">' + champ('mqCapital', 'Capital social', LIMITES.capital) + '</div></div>' +
-        '<div class="row g-2"><div class="col-6">' + champ('mqSiren', 'SIREN / SIRET', LIMITES.siren) + '</div>' +
-          '<div class="col-6">' + champ('mqTvaIntra', 'N° TVA intracommunautaire', LIMITES.tvaIntra) + '</div></div>' +
-        champ('mqRegistre', 'Immatriculation (ex : RCS Fort-de-France 000 000 000)', LIMITES.registre) +
+        '<div class="marque-label">Sociétés émettrices</div>' +
+        '<ul class="marque-emetteurs" id="mqEmetteurs"></ul>' +
+        '<p class="marque-note mt-1 mb-2">Ajoutez une société par son SIRET, son nom ou son dirigeant, et modifiez ses mentions ' +
+        '(TVA, immatriculation, numérotation) depuis la fenêtre « Nouvelle facture ».</p>' +
         '<div class="mb-2"><label class="marque-label" for="mqDelai">Échéance par défaut</label>' +
           '<select class="form-select form-select-sm" id="mqDelai">' +
             [[0, 'À réception'], [15, '15 jours'], [30, '30 jours'], [45, '45 jours'], [60, '60 jours']].map(function (o) {
@@ -363,13 +386,8 @@
       mqRaison: ['coordonnees', 'raisonSociale'], mqAdresse: ['coordonnees', 'adresse'],
       mqTel: ['coordonnees', 'telephone'], mqEmail: ['coordonnees', 'email'], mqMentions: ['coordonnees', 'mentions'],
       mqPrincipale: ['couleurs', 'principale'], mqAccent: ['couleurs', 'accent'], mqSecondaire: ['couleurs', 'secondaire'],
-      mqForme: ['facturation', 'formeJuridique'], mqCapital: ['facturation', 'capital'], mqSiren: ['facturation', 'siren'],
-      mqTvaIntra: ['facturation', 'tvaIntra'], mqRegistre: ['facturation', 'registre'], mqTaux: ['facturation', 'tauxTva'],
       mqDelai: ['facturation', 'delaiJours'], mqConditions: ['facturation', 'conditions']
     };
-    Array.prototype.forEach.call(el.querySelectorAll('input[name="mqRegime"]'), function (r) {
-      r.addEventListener('change', function () { majPerso({ facturation: { regimeTva: r.value } }); etat('Enregistré.'); });
-    });
     Object.keys(liens).forEach(function (id) {
       el.querySelector('#' + id).addEventListener('input', function (e) {
         var ch = liens[id], m = {};
@@ -422,12 +440,17 @@
     var v = { mqEnseigne: courante.enseigne, mqProduit: courante.produit, mqBaseline: courante.baseline,
               mqRaison: co.raisonSociale, mqAdresse: co.adresse, mqTel: co.telephone, mqEmail: co.email, mqMentions: co.mentions };
     var fa = courante.facturation || {};
-    v.mqForme = fa.formeJuridique; v.mqCapital = fa.capital; v.mqSiren = fa.siren; v.mqTvaIntra = fa.tvaIntra;
-    v.mqRegistre = fa.registre; v.mqConditions = fa.conditions;
+    v.mqConditions = fa.conditions;
     Object.keys(v).forEach(function (id) { document.getElementById(id).value = v[id] || ''; });
-    document.getElementById('mqTaux').value = fa.tauxTva != null ? fa.tauxTva : '';
     document.getElementById('mqDelai').value = String(fa.delaiJours != null ? fa.delaiJours : 30);
-    Array.prototype.forEach.call(document.querySelectorAll('input[name="mqRegime"]'), function (r) { r.checked = r.value === fa.regimeTva; });
+    var ul = document.getElementById('mqEmetteurs');
+    ul.textContent = '';
+    (courante.emetteurs || []).forEach(function (e) {
+      var li = document.createElement('li');
+      li.textContent = e.raisonSociale + (e.siren ? ' · SIREN ' + e.siren : '') + (e.id === courante.emetteurDefaut ? ' (par défaut)' : '');
+      ul.appendChild(li);
+    });
+    if (!ul.children.length) { var li0 = document.createElement('li'); li0.className = 'text-muted'; li0.textContent = 'Aucune société enregistrée.'; ul.appendChild(li0); }
     majCouleursUi();
     var ap = document.getElementById('mqLogoApercu');
     ap.textContent = '';

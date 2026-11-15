@@ -101,3 +101,13 @@ test("assainirMarque écarte ce qui est invalide", () => {
   assert.deepEqual(m.coordonnees, {});
   assert.deepEqual(assainirMarque([1]), {});
 });
+
+test("assainirMarque — sociétés émettrices : champs bornés, préfixe normalisé, doublons et excédent écartés", () => {
+  const liste = Array.from({ length: 12 }, (_, i) => ({ id: "e" + i, raisonSociale: "Société " + i, prefixe: "od fac" + i, regimeTva: "assujetti" }));
+  const m = assainirMarque({ emetteurs: [{ id: "e0", raisonSociale: "Doublon" }, ...liste, { raisonSociale: "sans id" }], emetteurDefaut: "e<1>" });
+  assert.equal(m.emetteurs.length, 10);
+  assert.equal(m.emetteurs[0].raisonSociale, "Doublon");
+  assert.equal(m.emetteurs[1].prefixe, "ODFAC1");
+  assert.equal(m.emetteurs[0].regimeTva, "");
+  assert.equal(m.emetteurDefaut, "e1");
+});

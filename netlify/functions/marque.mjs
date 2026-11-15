@@ -18,7 +18,31 @@ const LIMITES = {
   enseigne: 40, produit: 60, baseline: 80,
   raisonSociale: 80, adresse: 160, telephone: 30, email: 80, mentions: 240,
   formeJuridique: 60, capital: 40, siren: 20, registre: 80, tvaIntra: 20, conditions: 400,
+  siret: 20, prefixe: 16,
 };
+export const MAX_EMETTEURS = 10;
+
+// Une société émettrice de factures (plusieurs par compte, choisie au moment de facturer).
+// Mêmes règles que assainirEmetteur() dans marque.js — à faire évoluer ensemble.
+export function assainirEmetteur(src) {
+  if (!src || typeof src !== "object" || Array.isArray(src)) return null;
+  const o = {};
+  const id = String(src.id || "").replace(/[^a-z0-9]/gi, "").slice(0, 16);
+  if (!id) return null;
+  o.id = id;
+  for (const k of ["raisonSociale", "adresse", "telephone", "email", "formeJuridique", "capital", "siren", "siret", "registre", "tvaIntra"]) {
+    const t = texte(src[k], LIMITES[k]);
+    o[k] = t === null ? "" : t;
+  }
+  o.regimeTva = ["franchise", "assujetti"].includes(src.regimeTva) ? src.regimeTva : "";
+  const taux = Number(src.tauxTva);
+  o.tauxTva = Number.isFinite(taux) ? Math.max(0, Math.min(30, taux)) : 8.5;
+  // Préfixe de numérotation : une suite chronologique distincte par société (obligation légale).
+  const pre = String(src.prefixe || "").toUpperCase().replace(/[^A-Z0-9-]/g, "").replace(/^-+|-+$/g, "").slice(0, LIMITES.prefixe);
+  o.prefixe = pre.length >= 2 ? pre : "";
+  o.avecLogo = !!src.avecLogo;
+  return o;
+}
 
 const hexOk = (h) => typeof h === "string" && /^#[0-9a-f]{6}$/i.test(h);
 const logoOk = (l) => typeof l === "string" && /^data:image\/(png|jpeg|webp|svg\+xml);/.test(l) && l.length < 600_000;
@@ -61,6 +85,11 @@ export function assainirMarque(src) {
     if (Number.isFinite(delai)) o.delaiJours = Math.max(0, Math.min(90, delai));
     out.facturation = o;
   }
+  if (Array.isArray(src.emetteurs)) {
+    const vus = new Set();
+    out.emetteurs = src.emetteurs.map(assainirEmetteur).filter((e) => e && !vus.has(e.id) && vus.add(e.id)).slice(0, MAX_EMETTEURS);
+  }
+  if (typeof src.emetteurDefaut === "string") out.emetteurDefaut = src.emetteurDefaut.replace(/[^a-z0-9]/gi, "").slice(0, 16);
   return out;
 }
 

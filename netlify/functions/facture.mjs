@@ -25,33 +25,63 @@ export const FACTURES_STORE = "fidi-factures";
 const txt = (v, max) => String(v == null ? "" : v).replace(/[\u0000-\u001f]/g, " ").trim().slice(0, max);
 const plusJours = (iso, j) => new Date(new Date(iso + "T12:00:00Z").getTime() + j * 86400000).toISOString().slice(0, 10);
 
-// Émetteur figé sur la facture : charte du compte, à défaut celle envoyée par le navigateur.
+// Émetteur figé sur la facture. Source : charte du compte (store « fidi-marques »), à défaut la
+// charte transmise par le navigateur (b.charte). Si la charte définit des sociétés émettrices,
+// celle demandée (b.emetteur_id, sinon la société par défaut) est utilisée, avec son préfixe de
+// numérotation. Sinon : mentions uniques de la charte (bloc « facturation ») et suite historique.
 async function emetteurDe(event, me, b) {
   let charte = null;
   try {
     const store = await getNamedStore(event, MARQUE_STORE);
     charte = await store.get(String(me.user.id || me.page?.id || ""), { type: "json" });
   } catch (_) { /* stockage indisponible : repli sur la charte transmise */ }
-  const m = assainirMarque(charte || b.emetteur || {});
-  return { enseigne: m.enseigne || "", logo: m.logo || "", couleurs: m.couleurs || {},
-           coordonnees: m.coordonnees || {}, facturation: m.facturation || {} };
+  const m = assainirMarque(charte || b.charte || b.emetteur || {});
+  const fa = m.facturation || {}, co = m.coordonnees || {};
+  const liste = m.emetteurs || [];
+  if (liste.length) {
+    const id = String(b.emetteur_id || m.emetteurDefaut || "");
+    const e = liste.find((x) => x.id === id) || (!b.emetteur_id ? liste[0] : null);
+    if (!e) return { erreur: "Société émettrice introuvable : rechargez la fenêtre de facture." };
+    return {
+      prefixe: e.prefixe || PREFIXE_HISTORIQUE,
+      emetteur: {
+        id: e.id, enseigne: e.raisonSociale, logo: e.avecLogo ? (m.logo || "") : "", couleurs: m.couleurs || {},
+        coordonnees: { raisonSociale: e.raisonSociale, adresse: e.adresse, telephone: e.telephone, email: e.email,
+                       mentions: e.avecLogo ? (co.mentions || "") : "" },
+        facturation: { formeJuridique: e.formeJuridique, capital: e.capital, siren: e.siret || e.siren,
+                       registre: e.registre, tvaIntra: e.tvaIntra, regimeTva: e.regimeTva, tauxTva: e.tauxTva,
+                       conditions: fa.conditions || "" },
+      },
+    };
+  }
+  return {
+    prefixe: PREFIXE_HISTORIQUE,
+    emetteur: { enseigne: m.enseigne || "", logo: m.logo || "", couleurs: m.couleurs || {}, coordonnees: co, facturation: fa },
+  };
 }
 
 const TARIFS = { avis: 250, etude: 450 };
 
-async function nextFactureRef(year) {
+// Numéro suivant dans la suite chronologique d'une société émettrice : <PRÉFIXE>-<AAAA>-<NNN>.
+// Chaque société a son préfixe (obligation légale d'une numérotation continue par émetteur) ;
+// « FIDI-FAC » est la suite historique, utilisée quand aucune société n'est définie.
+export const PREFIXE_HISTORIQUE = "FIDI-FAC";
+const echapperRegex = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+async function nextFactureRef(year, prefixe = PREFIXE_HISTORIQUE) {
+  const debut = `${prefixe}-${year}-`;
   try {
     const data = await queryDatabase(DB.facture, {
+      filter: { property: "Numéro", title: { starts_with: debut } },
       sorts: [{ property: "Numéro", direction: "descending" }],
       page_size: 1,
     });
-    if (!data.results?.length) return `FIDI-FAC-${year}-001`;
+    if (!data.results?.length) return `${debut}001`;
     const last = data.results[0].properties?.["Numéro"]?.title?.[0]?.plain_text || "";
-    const m = last.match(/FIDI-FAC-\d{4}-(\d+)$/);
+    const m = last.match(new RegExp("^" + echapperRegex(debut) + "(\\d+)$"));
     const n = m ? parseInt(m[1], 10) + 1 : 1;
-    return `FIDI-FAC-${year}-${String(n).padStart(3, "0")}`;
+    return `${debut}${String(n).padStart(3, "0")}`;
   } catch {
-    return `FIDI-FAC-${year}-${String(Date.now()).slice(-3)}`;
+    return `${debut}${String(Date.now()).slice(-3)}`;
   }
 }
 
@@ -90,11 +120,15 @@ export const handler = async (event) => {
 
   // ─── Facture détaillée (lignes, remise, TVA, échéance) ─────────────────────
   let detail = null, montantHT = montant, montantTVA = 0, montantTTC = montant, libelleFinal = libelle;
+  let prefixe = PREFIXE_HISTORIQUE;
   if (b.facture && typeof b.facture === "object") {
-    const emetteur = await emetteurDe(event, me, b);
+    const choix = await emetteurDe(event, me, b);
+    if (choix.erreur) return authResp(400, { error: choix.erreur });
+    const emetteur = choix.emetteur;
+    prefixe = choix.prefixe;
     const fa = emetteur.facturation;
     if (!fa.regimeTva) {
-      return authResp(400, { error: "Choisissez le régime de TVA dans « Mise en page → Facturation » avant de facturer.", need_regime: true });
+      return authResp(400, { error: "Choisissez le régime de TVA de la société émettrice avant de facturer.", need_regime: true });
     }
     const facture = { lignes: b.facture.lignes, mode: b.facture.mode, prixSaisis: b.facture.prixSaisis,
                       remise: b.facture.remise, tva: { regime: fa.regimeTva, taux: fa.tauxTva } };
@@ -150,6 +184,16 @@ export const handler = async (event) => {
           });
         }
 
+        // Le numéro appartient à la suite d'une société : une ré-édition au nom d'une AUTRE société
+        // ne peut pas le reprendre (numérotation continue par émetteur).
+        if (detail && !exRef.startsWith(prefixe + "-")) {
+          return authResp(409, {
+            error: "Cette prestation a déjà la facture N° " + exRef + " émise par une autre société. "
+              + "Annulez-la (onglet Facturation) avant d'en établir une au nom de la société choisie.",
+            autre_emetteur: true, ref: exRef, statut: exStatut,
+          });
+        }
+
         // Ré-édition (statut À payer / Brouillon) : on ECRASE aussi montant +
         // libellé + type + client + adresse avec les valeurs de la requête
         // actuelle (sinon un ancien montant erroné reste dans Notion).
@@ -181,7 +225,7 @@ export const handler = async (event) => {
       }
     }
 
-    const factRef = await nextFactureRef(year);
+    const factRef = await nextFactureRef(year, prefixe);
     const token   = randToken();
     if (detail) {
       try { await figerDetail(factRef, token, today); }

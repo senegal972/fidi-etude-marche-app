@@ -53,6 +53,8 @@ function normalize(e) {
     libelle_naf: e.libelle_code_naf || "",
     capital: e.capital || null,
     devise_capital: e.devise_capital || "EUR",
+    greffe: e.greffe || "",                                   // ville du greffe (mention « RCS <ville> »)
+    numero_tva_intracommunautaire: e.numero_tva_intracommunautaire || "",
     date_creation: e.date_creation || null,
     effectif: e.effectif || null,
     tranche_effectif: e.tranche_effectif || null,
