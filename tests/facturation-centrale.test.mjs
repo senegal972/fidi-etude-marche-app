@@ -183,3 +183,10 @@ test("interface : récepteur chargé et prestation gérée par l'écran de factu
   const toml = readFileSync(new URL("../netlify.toml", import.meta.url), "utf8");
   assert.match(toml, /from\s*=\s*"\/api\/facture-auto"/);
 });
+
+test("facture détaillée sans nom de client : refusée", async () => {
+  const r = await creer({ httpMethod: "POST", headers: session, blobs: contexte, body: JSON.stringify({
+    kind: "prestation", ref: "HSP-SANS-CLIENT", client: "  ", facture: { lignes, mode: "quantite", prixSaisis: "TTC" } }) });
+  assert.equal(r.statusCode, 400);
+  assert.match(JSON.parse(r.body).error, /client/);
+});

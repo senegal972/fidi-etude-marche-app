@@ -451,6 +451,7 @@
     if (!fact().regimeTva) { setStatus('<div class="alert alert-warning py-2 small mb-0">' + (emetteur() ? 'Choisissez d\'abord le régime de TVA de la société émettrice.' : 'Ajoutez d\'abord une société émettrice.') + '</div>'); return; }
     if (!(calc.totaux.ttc > 0)) { setStatus('<div class="alert alert-warning py-2 small mb-0">Ajoutez au moins un article avec un montant.</div>'); return; }
     var client = val('factClient'), email = val('factEmail'), tel = val('factTel'), adresse = val('factAdresse');
+    if (!client) { setStatus('<div class="alert alert-warning py-2 small mb-0">Indiquez le nom du client (mention obligatoire de la facture).</div>'); var fc = $('factClient'); if (fc) fc.focus(); return; }
     var payReq = !!($('factPayReq') || {}).checked;
     var canal = ['Lien'];
     if (($('factCanEmail') || {}).checked) canal.push('Email');

@@ -110,6 +110,7 @@ export const handler = async (event) => {
   const montant = Number(b.montant) > 0 ? Number(b.montant) : TARIFS[kind];
   const ref     = String(b.ref || "").trim();
   const client  = String(b.client || "").trim();
+  if (b.facture && typeof b.facture === "object" && !client) return authResp(400, { error: "Le nom du client est obligatoire sur une facture." });
   const email   = String(b.email_client || "").trim();
   const tel      = String(b.telephone || "").trim();
   const adresse = String(b.adresse || b.commune || "").trim();
