@@ -66,6 +66,35 @@ test("facturation — une seule définition de proposerFacture (facture.js) et h
   assert.ok(html.includes("onclick=\"proposerFacture('etude')\""), "bouton Facturer de l'étude");
 });
 
+test("avis de valeur — fenêtre « Mes avis & versions » branchée, versions figées à chaque diffusion", () => {
+  for (const f of ["/avis-dossiers.css", "/avis-dossiers.js"]) assert.ok(html.includes(f), `${f} n'est pas chargé`);
+  assert.ok(html.indexOf('src="/avis-valeur.js"') < html.indexOf('src="/avis-dossiers.js"'));
+  const avis = lire("avis-valeur.js"), dossiers = lire("avis-dossiers.js");
+  // Bas de l'avis : le bouton d'accès et l'enregistrement ; plus de liste déroulante ni de bouton Notion.
+  const pied = avis.slice(avis.indexOf("av-pied-groupes"), avis.indexOf("avisPrintRoot"));
+  for (const a of ["dossiers", "new", "prefill", "save", "export-json", "import-json", "partager", "facturer", "pdf-server", "pdf"]) {
+    assert.ok(pied.includes(`data-action="${a}"`), `bouton ${a} absent du bas de l'avis`);
+  }
+  assert.ok(!pied.includes('data-action="cloud"') && !pied.includes("avSavedSelect"));
+  // Chaque sortie remise à un tiers fige une version.
+  for (const m of ["impression", "partage", "facture", "word"]) assert.ok(avis.includes(`figerVersion('${m}')`), `version non figée : ${m}`);
+  assert.ok(avis.includes("enregistrerEnLigne({ motif: 'pdf' }"), "version non figée : pdf");
+  // Contrat entre les deux modules.
+  for (const f of ["lireLocal", "supprimerLocal", "charger", "resume", "documentHTML", "imprimerDonnees", "listAvis"]) {
+    assert.ok(new RegExp("\\b" + f + "\\s*:").test(avis.slice(avis.indexOf("window.AvisValeur ="))), `AvisValeur.${f} manquant`);
+    assert.ok(dossiers.includes("AvisValeur." + f), `AvisValeur.${f} inutilisé`);
+  }
+  // L'historique local d'un avis n'est pas un avis.
+  assert.match(avis, /indexOf\(AVIS_PREFIX\) === 0 && k\.indexOf\('::'\) < 0/);
+});
+
+test("étude — sauvegarde automatique sans alerte, et sans toucher au bouton", () => {
+  assert.ok(html.split("planifierSauvegardeEtude()").length - 1 >= 3, "déclencheurs de la sauvegarde automatique");
+  const f = html.slice(html.indexOf("async function saveEtudeCloud"), html.indexOf("async function openEtudesRecentes"));
+  assert.ok(f.includes("payload.auto = true"));
+  assert.ok(f.includes("const btn = auto ? null"));
+});
+
 test("sociétés émettrices — emetteurs.js chargé avant facture.js", () => {
   assert.ok(html.indexOf('src="/emetteurs.js"') < html.indexOf('src="/facture.js"'));
 });

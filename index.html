@@ -26,6 +26,7 @@
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
 <link href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet"/>
 <link href="/avis-valeur.css" rel="stylesheet"/>
+<link href="/avis-dossiers.css" rel="stylesheet"/>
 <link href="/saisie.css" rel="stylesheet"/>
 <link href="/marque.css" rel="stylesheet"/>
 <link href="/facture.css" rel="stylesheet"/>
@@ -1852,6 +1853,7 @@ async function lancerAnalyse(){
     window.__fidiData = data;
     window.__fidiInputs = { adresse, typeBien, surface, perimetre };
     if(window.FidiGuard) FidiGuard.setDirty(); // garde-fou sortie : donnees a proteger
+    planifierSauvegardeEtude(); // sauvegarde automatique, sans clic
     document.getElementById('results-panel').classList.remove('d-none');
     document.getElementById('btnPrint').classList.remove('d-none');
     document.getElementById('btnPdf').classList.remove('d-none');
@@ -2404,12 +2406,32 @@ async function etudeEnrichirLocal(){
   out.innerHTML = html || '<div class="col-12 small text-muted">Aucune donnée</div>';
 }
 
-async function saveEtudeCloud(){
-  const d = window.__fidiData, inputs = window.__fidiInputs || {};
-  if(!d){ alert('Lancez une analyse avant de sauvegarder.'); return; }
+// Sauvegarde automatique de l'étude : après une analyse, une actualisation ou un changement de
+// parcelles, sans clic. Elle ne remplace jamais l'étude d'une autre adresse (voir notion-save).
+let _etudeAutoTimer = null;
+function planifierSauvegardeEtude(){
+  clearTimeout(_etudeAutoTimer);
+  _etudeAutoTimer = setTimeout(function(){ saveEtudeCloud(true); }, 5000);
+}
+function etatSauvegardeEtude(texte, alerte){
   const btn = document.getElementById('btnSaveEtude');
+  if(!btn) return;
+  let el = document.getElementById('etatSaveEtude');
+  if(!el){ el = document.createElement('span'); el.id = 'etatSaveEtude'; el.className = 'small no-print'; el.style.cssText = 'font-size:.7rem;white-space:nowrap;align-self:center;'; btn.insertAdjacentElement('afterend', el); }
+  el.style.color = alerte ? '#b3261e' : '#17683a';
+  el.textContent = texte;
+}
+
+async function saveEtudeCloud(auto){
+  auto = auto === true;
+  const d = window.__fidiData, inputs = window.__fidiInputs || {};
+  if(!d){ if(!auto) alert('Lancez une analyse avant de sauvegarder.'); return; }
+  clearTimeout(_etudeAutoTimer);
+  // En automatique, le bouton n'est pas touché : seul le témoin à côté change.
+  const btn = auto ? null : document.getElementById('btnSaveEtude');
   const orig = btn ? btn.innerHTML : '';
   if(btn){ btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
+  if(auto) etatSauvegardeEtude('☁ Sauvegarde…');
   const destinataire = (document.getElementById('inputDestinataire') && document.getElementById('inputDestinataire').value || '').trim();
   const loc = d.localisation || {};
   const per = (d.dvf_periodes && d.dvf_periodes[0]) || {};
@@ -2438,13 +2460,31 @@ async function saveEtudeCloud(){
     }),
     data: { data: d, inputs: augmentedInputs }
   };
+  if(auto) payload.auto = true;
+  const heure = () => new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
   try{
-    const r = await fetch('/api/notion-save', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const r = await fetch('/api/notion-save', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const j = await r.json().catch(()=>({}));
-    if(j && j.ok){ if(window.FidiGuard) FidiGuard.setClean(); if(btn){ btn.innerHTML = '✅ Sauvegardé'; setTimeout(()=>{btn.innerHTML=orig;btn.disabled=false;},1800);} }
+    if(j && j.ok){
+      // Une étude modifiée pendant l'envoi reste à sauvegarder : le garde-fou n'est levé que si rien n'a changé.
+      if(window.FidiGuard && window.__fidiData === d) FidiGuard.setClean();
+      etatSauvegardeEtude('✓ Sauvegardée ' + heure());
+      if(btn){ btn.innerHTML = '✅ Sauvegardé'; setTimeout(()=>{btn.innerHTML=orig;btn.disabled=false;},1800);}
+    }
+    else if(auto){
+      // Jamais d'alerte en automatique : le témoin dit quoi faire.
+      etatSauvegardeEtude(j && j.conflit ? '⚠ Non sauvegardée : cliquez « Sauvegarder »' : '⚠ Non sauvegardée', true);
+      const t = document.getElementById('etatSaveEtude');
+      if(t) t.title = j && j.conflit
+        ? 'Une autre étude du même jour et de la même commune porte cette référence (' + (j.adresse_existante||'') + '). « Sauvegarder » la remplacera.'
+        : ((j && j.error) || 'Sauvegarde automatique impossible');
+    }
     else if(j && j.configured === false){ alert('Notion non configuré sur ce site.'); if(btn){btn.innerHTML=orig;btn.disabled=false;} }
     else { alert('Erreur Notion : ' + ((j&&j.error)||'inconnue')); if(btn){btn.innerHTML=orig;btn.disabled=false;} }
-  }catch(e){ alert('Sauvegarde impossible : ' + e.message); if(btn){btn.innerHTML=orig;btn.disabled=false;} }
+  }catch(e){
+    if(auto) etatSauvegardeEtude('⚠ Non sauvegardée (réseau)', true);
+    else { alert('Sauvegarde impossible : ' + e.message); if(btn){btn.innerHTML=orig;btn.disabled=false;} }
+  }
 }
 
 async function openEtudesRecentes(){
@@ -2560,7 +2600,8 @@ function actualiserEtude(){
     try { loadContexteLocalAsync(d.localisation, d.commune_info || {}); } catch(e){}
     // Données modifiées en mémoire → garde-fou + invite à sauvegarder manuellement.
     if(window.FidiGuard) FidiGuard.setDirty();
-    etudeFlash('Étude actualisée (règlement PLU & constructibilité rafraîchis). <b>Non sauvegardée</b> — cliquez « Sauvegarder » pour conserver.', 'ok');
+    planifierSauvegardeEtude();
+    etudeFlash('Étude actualisée (règlement PLU & constructibilité rafraîchis). Elle est sauvegardée automatiquement dans quelques secondes.', 'ok');
   }catch(e){
     etudeFlash('Actualisation partielle : ' + (e && e.message ? e.message : 'erreur'), 'warn');
   }finally{
@@ -6390,6 +6431,7 @@ function copyShareUrl(){
 <!-- Moteur de calcul des méthodes d'évaluation (CEE Saint Joseph) -->
 <script src="/avis-methodes.js" defer></script>
 <script src="/avis-valeur.js" defer></script>
+<script src="/avis-dossiers.js" defer></script>
 <script src="/saisie.js" defer></script>
 <script src="/emetteurs.js" defer></script>
 <script src="/facture.js" defer></script>

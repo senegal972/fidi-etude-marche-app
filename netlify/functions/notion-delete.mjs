@@ -7,9 +7,13 @@
 import { DB, jsonResp, hasToken, findByRef, archivePage } from "./_notion.mjs";
 import { factureLockForRef } from "./_facture.mjs";
 
+import { sessionRequise } from "./_auth.mjs";
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return jsonResp(200, {});
   if (event.httpMethod !== "POST") return jsonResp(405, { error: "POST requis" });
+
+  // Session vérifiée avant tout le reste : ces dossiers contiennent des noms de clients.
+  { const s = await sessionRequise(event); if (s.refus) return s.refus; }
 
   if (!hasToken()) {
     return jsonResp(503, { error: "Notion non configuré (NOTION_TOKEN absent).", configured: false });

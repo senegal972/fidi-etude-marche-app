@@ -115,6 +115,7 @@ export function readBigText(prop) {
 // Au-delà, le JSON brut (ex. avis avec nombreux comparables) faisait échouer la
 // sauvegarde en 400 silencieux. On compresse en « GZ:<base64> » si > 180 000 car.
 import zlib from "node:zlib";
+export const tropLourd = (prop) => (prop?.rich_text || []).length === 1 && /"__trop_lourd":true/.test(prop.rich_text[0].text?.content || "");
 export function packBig(obj) {
   const raw = typeof obj === "string" ? obj : JSON.stringify(obj || {});
   let payload = raw;
@@ -123,8 +124,10 @@ export function packBig(obj) {
     catch { payload = raw; }
   }
   const prop = bigText(payload);
-  // Garde-fou absolu : ne jamais dépasser 100 blocs (sinon 400 Notion).
-  if (prop.rich_text.length > 100) prop.rich_text = prop.rich_text.slice(0, 100);
+  // Au-delà de 100 blocs Notion refuse (400), et tronquer rend le JSON illisible (c'est ce qui
+  // vidait les avis avec photos) : on écrit un marqueur lisible. L'avis complet est dans
+  // /api/avis-store.
+  if (prop.rich_text.length > 100) return bigText(JSON.stringify({ __trop_lourd: true }));
   return prop;
 }
 export function unpackBig(prop) {

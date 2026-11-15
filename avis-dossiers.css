@@ -1,0 +1,48 @@
+/* Fenêtre « Mes avis & versions » (avis-dossiers.js) : liste, versions, aperçu du document. */
+#avisDossiersModal .avd-entete{background:linear-gradient(135deg,var(--av-blue,#1a3a6e),var(--av-blue-light,#2652a0));color:#fff;}
+#avisDossiersModal .modal-dialog{max-width:min(1500px,96vw);}
+#avisDossiersModal .avd-corps{display:grid;grid-template-columns:minmax(250px,1fr) minmax(260px,1fr) minmax(360px,1.7fr);gap:12px;padding:12px;height:min(78vh,900px);overflow:hidden;background:#f3f5f9;}
+#avisDossiersModal .avd-col{display:flex;flex-direction:column;min-height:0;min-width:0;background:#fff;border:1px solid #dfe5ee;border-radius:10px;padding:10px;}
+#avisDossiersModal .avd-defile{flex:1;min-height:0;overflow:auto;}
+#avisDossiersModal .avd-vide{color:#6a7385;font-size:.85rem;text-align:center;padding:1.6rem .8rem;}
+#avisDossiersModal .avd-note{color:#6a7385;font-size:.74rem;font-style:italic;padding:.15rem .3rem .5rem;}
+
+#avisDossiersModal .avd-doc,#avisDossiersModal .avd-version{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;background:#fff;border:1px solid #e3e8f0;border-radius:8px;padding:8px 10px;margin-bottom:6px;cursor:pointer;transition:border-color .12s,background .12s;}
+#avisDossiersModal .avd-doc:hover,#avisDossiersModal .avd-version:hover{border-color:var(--av-blue-light,#2652a0);background:#f6f9ff;}
+#avisDossiersModal .avd-actif{border-color:var(--av-blue,#1a3a6e)!important;background:#eaf1ff!important;box-shadow:inset 3px 0 0 var(--av-blue,#1a3a6e);}
+#avisDossiersModal .avd-nom{font-weight:700;color:#1a2233;font-size:.86rem;line-height:1.25;}
+#avisDossiersModal .avd-sous{color:#5b6577;font-size:.73rem;overflow-wrap:anywhere;}
+#avisDossiersModal .avd-valeur{color:var(--av-blue,#1a3a6e);font-weight:700;font-size:.8rem;font-variant-numeric:tabular-nums;}
+#avisDossiersModal .avd-ligne{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:2px;}
+#avisDossiersModal .avd-date{margin-left:auto;color:#7a8496;font-size:.68rem;white-space:nowrap;}
+#avisDossiersModal .avd-badge{display:inline-flex;align-items:center;gap:3px;border-radius:20px;padding:1px 7px;font-size:.66rem;font-weight:600;white-space:nowrap;}
+#avisDossiersModal .avd-ok{background:#e3f4ea;color:#17683a;}
+#avisDossiersModal .avd-alerte{background:#fff1d6;color:#8a5a00;}
+#avisDossiersModal .avd-or{background:#fbefc9;color:#6d5200;}
+#avisDossiersModal .avd-gris{background:#eceff4;color:#525c6d;}
+
+#avisDossiersModal .avd-titre{font-weight:800;color:var(--av-blue,#1a3a6e);font-size:.95rem;margin-bottom:6px;}
+#avisDossiersModal .avd-titre small{display:block;font-weight:500;color:#6a7385;font-size:.7rem;}
+#avisDossiersModal .avd-section{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:#525c6d;margin:10px 0 5px;}
+#avisDossiersModal .avd-diffusee{border-left:3px solid #d9a514;}
+
+#avisDossiersModal .avd-barre{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-height:31px;margin-bottom:8px;}
+#avisDossiersModal .avd-barre-titre{font-weight:700;color:#1a2233;font-size:.84rem;margin-right:auto;}
+#avisDossiersModal .avd-feuille{background:#8d96a6;border-radius:6px;padding:10px;}
+#avisDossiersModal .avd-feuille .avd-vide{color:#fff;}
+/* La feuille garde sa largeur A4 et est réduite : l'aperçu a la mise en page du PDF. */
+#avisDossiersModal .avd-page{background:#fff;width:794px;padding:34px 38px;zoom:.62;box-shadow:0 2px 12px rgba(0,0,0,.35);margin:0 auto;font-size:11px;}
+#avisDossiersModal .avd-pied{background:#fff;}
+
+@media (max-width:1100px){
+  #avisDossiersModal .avd-corps{grid-template-columns:1fr;height:auto;max-height:none;overflow:visible;}
+  #avisDossiersModal .avd-col{max-height:60vh;}
+  #avisDossiersModal .avd-page{zoom:.45;}
+}
+
+/* Bas de l'avis : boutons regroupés par usage. */
+#avisModal .av-pied-groupes{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem .9rem;}
+#avisModal .av-pied-groupe{display:flex;align-items:center;gap:.3rem;}
+#avisModal .av-etat-enreg{font-size:.68rem;line-height:1.2;color:#17683a;white-space:nowrap;}
+#avisModal .av-etat-enreg.av-attente{color:#8a5a00;}
+#avisModal .av-etat-enreg.av-erreur{color:#b3261e;}

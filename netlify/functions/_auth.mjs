@@ -192,3 +192,14 @@ export function authResp(status, body, extraHeaders = {}) {
 }
 
 export { jsonResp };
+
+// Garde commune des routes qui lisent ou écrivent des dossiers : { found } ou { refus } (401/503).
+// Sans JWT_SECRET, aucun jeton n'est valide : la route reste fermée.
+export async function sessionRequise(event) {
+  try {
+    const found = await currentUser(event);
+    return found ? { found } : { refus: authResp(401, { error: "Connexion requise.", need_auth: true }) };
+  } catch (e) {
+    return { refus: authResp(503, { error: "Comptes indisponibles" }) };
+  }
+}
