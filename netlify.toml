@@ -281,6 +281,12 @@
   to     = "/.netlify/functions/loyers"
   status = 200
 
+# Avis de valeur et versions, rattachés au compte (Netlify Blobs, sans la limite de taille Notion)
+[[redirects]]
+  from   = "/api/avis-store"
+  to     = "/.netlify/functions/avis-store"
+  status = 200
+
 [[redirects]]
   from   = "/api/notion-save"
   to     = "/.netlify/functions/notion-save"

@@ -34,8 +34,12 @@ async function rebuildEtude(page) {
   return { parsed, source: jsonStr ? "blob" : "vide" };
 }
 
+import { sessionRequise } from "./_auth.mjs";
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return jsonResp(200, {});
+
+  // Session vérifiée avant tout le reste : ces dossiers contiennent des noms de clients.
+  { const s = await sessionRequise(event); if (s.refus) return s.refus; }
 
   if (!hasToken()) {
     return jsonResp(503, { error: "Notion non configuré (NOTION_TOKEN absent).", configured: false });
@@ -64,7 +68,8 @@ export const handler = async (event) => {
     } else {
       const jsonStr = unpackBig(p["Donnees JSON"]);
       try { parsed = jsonStr ? JSON.parse(jsonStr) : null; } catch { parsed = null; }
-      source = jsonStr ? "blob" : "vide";
+      source = parsed ? "blob" : (jsonStr ? "illisible" : "vide");
+      if (parsed && parsed.__trop_lourd) { parsed = null; source = "trop_lourd"; }
     }
 
     return jsonResp(200, {

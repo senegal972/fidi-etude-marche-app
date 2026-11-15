@@ -6,10 +6,21 @@
 // « Prix DVF par année ». Aucun blob JSON n'est écrit pour les études.
 
 import {
-  DB, P, bigText, packBig, jsonResp, hasToken,
+  DB, P, bigText, packBig, tropLourd, jsonResp, hasToken,
   createPage, updatePage, findByRef, queryDatabase, archivePage, ensureProperty,
 } from "./_notion.mjs";
 import { etudeToProps, etudeToAnnees } from "./_etude_fields.mjs";
+
+// La copie Notion d'un avis est un index de secours. Si elle ne tient pas dans la propriété
+// (photos), on l'écrit sans les images plutôt que de la perdre ; l'avis complet, photos
+// comprises, est enregistré par /api/avis-store.
+export function packAvis(data) {
+  const plein = packBig(data);
+  if (!tropLourd(plein)) return plein;
+  const photos = data?.bien?.photos;
+  if (!Array.isArray(photos) || !photos.length) return plein;
+  return packBig({ ...data, bien: { ...data.bien, photos: [] }, __photos_retirees: photos.length });
+}
 
 function buildAvisProps(b) {
   return {
@@ -28,7 +39,7 @@ function buildAvisProps(b) {
     "Honoraires":       P.number(b.honoraires),
     "Statut facture":   P.select(b.statut_facture || "Non facturé"),
     "Lien partage":     P.url(b.lien_partage),
-    "Donnees JSON":     packBig(b.data),
+    "Donnees JSON":     packAvis(b.data),
   };
 }
 
@@ -49,9 +60,13 @@ async function syncEtudeAnnees(parentId, b, isUpdate) {
   ));
 }
 
+import { sessionRequise } from "./_auth.mjs";
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return jsonResp(200, {});
   if (event.httpMethod !== "POST") return jsonResp(405, { error: "POST requis" });
+
+  // Session vérifiée avant tout le reste : ces dossiers contiennent des noms de clients.
+  { const s = await sessionRequise(event); if (s.refus) return s.refus; }
 
   if (!hasToken()) {
     return jsonResp(503, {
@@ -84,7 +99,22 @@ export const handler = async (event) => {
   }
 
   try {
-    const existingId = await findByRef(databaseId, "Référence", ref);
+    // Sauvegarde automatique d'une étude : la référence ne contient ni adresse ni parcelle
+    // (jour + destinataire + commune). Deux études du même jour dans la même commune la
+    // partagent : une sauvegarde automatique ne remplace jamais l'étude d'une autre adresse.
+    let existingId;
+    if (kind === "etude" && b.auto) {
+      const deja = await queryDatabase(databaseId, { filter: { property: "Référence", title: { equals: ref } }, page_size: 1 });
+      const p0 = deja.results?.[0];
+      existingId = p0?.id || null;
+      const autre = p0 ? (p0.properties?.["Adresse"]?.rich_text || []).map((t) => t.plain_text).join("").trim() : "";
+      const ici = String(b.adresse || "").trim();
+      if (autre && ici && autre.toLowerCase() !== ici.toLowerCase()) {
+        return jsonResp(409, { ok: false, conflit: true, adresse_existante: autre, error: "Une autre étude porte déjà cette référence." });
+      }
+    } else {
+      existingId = await findByRef(databaseId, "Référence", ref);
+    }
     let page;
     if (existingId) {
       page = await updatePage(existingId, props);

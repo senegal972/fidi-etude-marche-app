@@ -631,7 +631,8 @@
     try {
       for (var i = 0; i < localStorage.length; i++) {
         var k = localStorage.key(i);
-        if (k && k.indexOf(AVIS_PREFIX) === 0) out.push(k.slice(AVIS_PREFIX.length));
+        // Les clés « …::hist » sont l'historique d'un avis, pas un avis.
+        if (k && k.indexOf(AVIS_PREFIX) === 0 && k.indexOf('::') < 0) out.push(k.slice(AVIS_PREFIX.length));
       }
     } catch (e) {}
     // Tri par date (metadata.date) décroissante puis par ref : le plus récent d'abord.
@@ -2413,24 +2414,32 @@
       '</div></div>' +
       '<div class="modal-footer" style="justify-content:space-between;flex-wrap:wrap;gap:.5rem;">' +
       '<div class="av-live" id="avLive"></div>' +
-      '<div class="d-flex gap-1 flex-wrap align-items-center">' +
-      '<select id="avSavedSelect" class="form-select form-select-sm" style="width:auto;min-width:240px;max-width:360px;" title="Avis sauvegardés (n° · réf · nom · date)"><option value="">— Avis sauvegardés —</option></select>' +
-      '<button class="btn btn-sm btn-outline-secondary" data-action="load" title="Charger l\'avis sélectionné"><i class="bi bi-folder2-open"></i></button>' +
-      '<button class="btn btn-sm btn-outline-danger" data-action="delete" title="Supprimer l\'avis sélectionné"><i class="bi bi-trash"></i></button>' +
-      '<button class="btn btn-sm btn-outline-secondary" data-action="new"><i class="bi bi-plus-lg me-1"></i>Nouveau</button>' +
-      '<button class="btn btn-sm btn-outline-primary" data-action="prefill" title="Re-remplir depuis l\'étude en cours"><i class="bi bi-magic me-1"></i>Pré-remplir</button>' +
-      '<button class="btn btn-sm btn-outline-success" data-action="save"><i class="bi bi-save me-1"></i>Sauvegarder</button>' +
-      '<span id="avAutoSaveTag" class="small text-success" style="font-size:.68rem;white-space:nowrap;" title="Enregistrement automatique local à chaque modification"></span>' +
-      '<button class="btn btn-sm btn-outline-info" data-action="cloud" title="Mes dossiers sauvegardés dans Notion">☁️ Cloud</button>' +
-      '<button class="btn btn-sm btn-outline-secondary" data-action="history" title="Versions antérieures (10 dernières, restaurables)"><i class="bi bi-clock-history me-1"></i>Versions</button>' +
-      '<button class="btn btn-sm btn-outline-secondary" data-action="export-json" title="Exporter la sauvegarde (.json) à déposer dans le dossier du bien"><i class="bi bi-download me-1"></i>Export</button>' +
-      '<label class="btn btn-sm btn-outline-secondary mb-0" style="cursor:pointer;" title="Importer une sauvegarde (.json)"><i class="bi bi-upload me-1"></i>Import<input type="file" accept="application/json,.json" data-action="import-json" class="d-none"/></label>' +
-      '<button class="btn btn-sm btn-outline-secondary" data-action="partager" title="Partager cet avis"><i class="bi bi-share me-1"></i>Partager</button>' +
-      '<button class="btn btn-sm btn-outline-warning" data-action="facturer" title="Facturer & envoyer cet avis"><i class="bi bi-receipt me-1"></i>Facturer</button>' +
-      '<button class="btn btn-sm btn-outline-dark" data-action="toggle-preview"><i class="bi bi-eye me-1"></i>Aperçu</button>' +
-      '<div class="btn-group btn-group-sm">' +
-      '<button class="btn btn-success" data-action="pdf-server" title="Rendu serveur haute qualité (texte copiable)"><i class="bi bi-file-earmark-pdf-fill me-1"></i>PDF HQ</button>' +
-      '<button class="btn btn-danger" data-action="pdf" title="Impression navigateur (fallback rapide)"><i class="bi bi-file-earmark-pdf"></i></button>' +
+      // Boutons regroupés par usage : dossier · enregistrement · document.
+      '<div class="av-pied-groupes">' +
+      '<div class="av-pied-groupe">' +
+        '<button class="btn btn-sm btn-primary" data-action="dossiers" title="Tous vos avis, leurs versions et l\'aperçu de chaque document"><i class="bi bi-folder2-open me-1"></i>Mes avis &amp; versions</button>' +
+        '<button class="btn btn-sm btn-outline-secondary" data-action="new" title="Commencer un nouvel avis"><i class="bi bi-plus-lg me-1"></i>Nouveau</button>' +
+        '<button class="btn btn-sm btn-outline-primary" data-action="prefill" title="Reprendre les données de l\'étude de marché en cours, sans effacer vos saisies"><i class="bi bi-magic me-1"></i>Pré-remplir</button>' +
+      '</div>' +
+      '<div class="av-pied-groupe">' +
+        '<button class="btn btn-sm btn-success" data-action="save" title="Enregistrer et créer une version que vous pourrez retrouver"><i class="bi bi-save me-1"></i>Enregistrer</button>' +
+        '<span id="avAutoSaveTag" class="av-etat-enreg" title="L\'avis est enregistré automatiquement, sur ce poste puis en ligne"></span>' +
+        '<div class="dropup">' +
+          '<button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Copie de sauvegarde dans un fichier">Fichier</button>' +
+          '<ul class="dropdown-menu">' +
+            '<li><button class="dropdown-item" type="button" data-action="export-json"><i class="bi bi-download me-2"></i>Exporter un fichier de sauvegarde (.json)</button></li>' +
+            '<li><label class="dropdown-item mb-0" style="cursor:pointer;"><i class="bi bi-upload me-2"></i>Importer un fichier de sauvegarde<input type="file" accept="application/json,.json" data-action="import-json" class="d-none"/></label></li>' +
+          '</ul>' +
+        '</div>' +
+      '</div>' +
+      '<div class="av-pied-groupe">' +
+        '<button class="btn btn-sm btn-outline-dark" data-action="toggle-preview"><i class="bi bi-eye me-1"></i>Aperçu</button>' +
+        '<button class="btn btn-sm btn-outline-secondary" data-action="partager" title="Partager cet avis"><i class="bi bi-share me-1"></i>Partager</button>' +
+        '<button class="btn btn-sm btn-outline-warning" data-action="facturer" title="Facturer & envoyer cet avis"><i class="bi bi-receipt me-1"></i>Facturer</button>' +
+        '<div class="btn-group btn-group-sm">' +
+        '<button class="btn btn-success" data-action="pdf-server" title="PDF de haute qualité (texte copiable)"><i class="bi bi-file-earmark-pdf-fill me-1"></i>PDF</button>' +
+        '<button class="btn btn-danger" data-action="pdf" title="Imprimer depuis le navigateur"><i class="bi bi-printer"></i></button>' +
+        '</div>' +
       '</div>' +
       '</div></div>' +
       '</div></div></div>';
@@ -2496,6 +2505,7 @@
     // Fermeture de la modale avis → flush autosave + le garde-fou repasse au contexte étude.
     modalEl.addEventListener('hidden.bs.modal', function () {
       try { avisAutoSaveNow(); } catch (e) {}
+      try { envoyerEnLigneMaintenant(); } catch (e) {}
       if (window.FidiGuard && window.FidiGuard.saveHandler === fidiAvisGuardSave) window.FidiGuard.saveHandler = null;
     });
     // Flush synchrone avant fermeture d'onglet / mise en arrière-plan (anti-perte des 600ms).
@@ -2684,6 +2694,7 @@
     else if (a === 'new') doNew();
     else if (a === 'prefill') doPrefill();
     else if (a === 'save') doSave();
+    else if (a === 'dossiers') { if (window.AvisDossiers) { avisAutoSaveNow(); window.AvisDossiers.ouvrir(); } else doCloud(); }
     else if (a === 'cloud') doCloud();
     else if (a === 'history') doHistory();
     else if (a === 'export-json') avisExportJson();
@@ -3748,10 +3759,39 @@
     state.data = ensureExpertBlock(buildPrefillFromEtude(null, null));
     showSection('metadata'); toast('Nouveau brouillon');
   }
+  // Rafraîchit l'avis depuis l'étude en cours SANS effacer le travail fait : une valeur fournie
+  // par l'étude remplace l'ancienne ; ce que l'étude ne fournit pas est conservé (référence,
+  // destinataire, photos, comparables saisis, textes…). L'état d'avant reste dans l'historique.
+  function fusionnerPrefill(actuel, neuf) {
+    var vide = function (v) { return v == null || v === '' || (Array.isArray(v) && !v.length); };
+    var estObjet = function (v) { return v && typeof v === 'object' && !Array.isArray(v); };
+    // Une valeur égale au modèle vierge ne vient pas de l'étude : elle ne remplace rien
+    // (sinon un taux ou un texte modifié à la main reviendrait à sa valeur par défaut).
+    (function aller(cible, source, vierge, racine) {
+      Object.keys(source).forEach(function (k) {
+        if (racine && (k === 'signataire' || k === '__saved')) return;
+        var s = source[k], v = vierge ? vierge[k] : undefined;
+        if (estObjet(s)) { if (!estObjet(cible[k])) cible[k] = {}; aller(cible[k], s, estObjet(v) ? v : null, false); }
+        else if (!vide(s) && JSON.stringify(s) !== JSON.stringify(v)) cible[k] = s;
+      });
+    })(actuel, neuf, defaultData(), true);
+    return actuel;
+  }
   function doPrefill() {
     if (!window.__fidiData) { toast('Lancez d\'abord une analyse', true); return; }
-    state.data = ensureExpertBlock(buildPrefillFromEtude(window.__fidiData, window.__fidiInputs));
-    showSection(state.section); toast('Pré-rempli depuis l\'étude');
+    var neuf = buildPrefillFromEtude(window.__fidiData, window.__fidiInputs);
+    var m = (state.data && state.data.metadata) || {};
+    var ref = (m.ref || '').trim();
+    if (ref) avisPushHistory(ref);
+    // Identité de l'avis et choix de l'utilisateur : jamais remplacés par l'étude.
+    var garde = { ref: m.ref, date: m.date, nature: m.nature, client: m.client };
+    var photos = state.data && state.data.bien && state.data.bien.photos;
+    state.data = ensureExpertBlock(state.data ? fusionnerPrefill(state.data, neuf) : neuf);
+    Object.keys(garde).forEach(function (k) { if (garde[k]) state.data.metadata[k] = garde[k]; });
+    if (photos && photos.length) state.data.bien.photos = photos;
+    if (window.FidiGuard) { window.FidiGuard.setDirty(); window.FidiGuard.saveHandler = fidiAvisGuardSave; }
+    scheduleAvisAutoSave();
+    showSection(state.section); toast('Avis mis à jour depuis l\'étude — vos saisies sont conservées');
   }
   function doSave() {
     if (state._cloudReloadPending) { toast('Chargement cloud en cours — patientez avant d\'enregistrer', true); return; }
@@ -3765,12 +3805,14 @@
     try {
       localStorage.setItem(AVIS_PREFIX + ref, JSON.stringify(state.data));
       try { localStorage.setItem('fidi:avis:last', ref); } catch (e) {}
-      refreshSavedSelect(); toast('Avis sauvegardé');
+      refreshSavedSelect(); toast('Avis enregistré');
       if (window.FidiGuard) FidiGuard.setClean(); // données à jour → plus de garde-fou
       avisPushHistory(ref); // historique local : 10 dernières versions (rotation)
     }
     catch (e) { toast('Erreur de sauvegarde', true); }
-    cloudSaveAvis(ref); // synchro Notion en arrière-plan (best-effort)
+    // En ligne : l'avis complet et une version retrouvable dans « Mes avis & versions ».
+    enregistrerEnLigne({ motif: 'manuel' }, true);
+    cloudSaveAvis(ref, true); // fiche Notion (suivi CRM), en arrière-plan
   }
   // Sauvegarde appelée par le garde-fou sortie (bouton « Enregistrer » de la modale de sortie).
   function fidiAvisGuardSave() { try { doSave(); } catch (e) {} return Promise.resolve(); }
@@ -3888,8 +3930,8 @@
       localStorage.setItem(AVIS_PREFIX + ref, JSON.stringify(state.data));
       try { localStorage.setItem('fidi:avis:last', ref); } catch (e) {}
       if (window.FidiGuard) FidiGuard.setClean(); // données en sécurité en local
-      var tag = document.getElementById('avAutoSaveTag');
-      if (tag) { tag.textContent = '✓ enregistré ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }); }
+      _avisLocalA = new Date();
+      afficherEtatEnregistrement();
       return true;
     } catch (e) { return false; }
   }
@@ -3897,10 +3939,72 @@
     if (state._cloudReloadPending) return; // repli cloud en cours → pas d'autosave
     if (_avisAutoTimer) clearTimeout(_avisAutoTimer);
     _avisAutoTimer = setTimeout(avisAutoSaveNow, 600);
+    // L'envoi en ligne suit, après une pause dans la saisie.
+    if (_avisEnLigneTimer) clearTimeout(_avisEnLigneTimer);
+    _avisEnLigneTimer = setTimeout(function () { _avisEnLigneTimer = null; enregistrerEnLigne(); }, 4000);
+    if (window.AvisDossiers) { _avisEnLigne = { etat: 'attente' }; afficherEtatEnregistrement(); }
   }
 
+  // ── Enregistrement en ligne, rattaché au compte (/api/avis-store, voir avis-dossiers.js) ──
+  // L'avis complet, photos comprises, est accessible de tout poste. Une version est figée à
+  // chaque « Enregistrer » et à chaque diffusion (PDF, impression, partage, facture, Word).
+  var _avisLocalA = null, _avisEnLigneTimer = null, _avisEnLigne = { etat: '' }, _avisEnvoi = Promise.resolve();
+  function resumeAvis(d) {
+    var c = {}; try { c = compute(d); } catch (e) {}
+    var m = (d && d.metadata) || {}, b = (d && d.bien) || {};
+    return {
+      client: m.client || '', commune: b.commune || '', type: b.type || '',
+      adresse: b.adresse || (d && d.loc && d.loc.adresse) || '', date: m.date || '', nature: m.nature || '',
+      valeur_min: c.voccBas || null, valeur_max: c.voccHaut || null
+    };
+  }
+  function afficherEtatEnregistrement() {
+    var tag = document.getElementById('avAutoSaveTag'); if (!tag) return;
+    var h = function (d) { return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }); };
+    var local = _avisLocalA ? '✓ Ce poste ' + h(_avisLocalA) : '';
+    var e = _avisEnLigne, ligne = '';
+    if (e.etat === 'ok') ligne = '☁ En ligne ' + h(e.quand);
+    else if (e.etat === 'attente') ligne = '☁ Envoi en ligne…';
+    else if (e.etat === 'erreur') ligne = '⚠ Pas en ligne';
+    tag.className = 'av-etat-enreg' + (e.etat === 'erreur' ? ' av-erreur' : (e.etat === 'attente' ? ' av-attente' : ''));
+    tag.innerHTML = esc(local) + (local && ligne ? '<br>' : '') + esc(ligne);
+    tag.title = e.etat === 'erreur' ? e.message : 'L\'avis est enregistré automatiquement, sur ce poste puis en ligne';
+  }
+  // version : { motif, libelle } pour figer une version. annoncer : affiche le résultat.
+  // Les envois se suivent un par un : une version figée ne peut pas être dépassée par un envoi plus ancien.
+  // donnees : copie déjà figée à enregistrer (sinon l'avis courant, copié à l'instant de l'appel).
+  function enregistrerEnLigne(version, annoncer, donnees) {
+    if (!window.AvisDossiers || state._cloudReloadPending || !state.data) return Promise.resolve(null);
+    var source = donnees || state.data;
+    var ref = (source.metadata && source.metadata.ref || '').trim();
+    if (!ref) return Promise.resolve(null);
+    if (_avisEnLigneTimer) { clearTimeout(_avisEnLigneTimer); _avisEnLigneTimer = null; }
+    // Copie figée à l'instant de la demande : c'est exactement ce qui est diffusé.
+    var copie; try { copie = donnees || JSON.parse(JSON.stringify(state.data)); } catch (e) { return Promise.resolve(null); }
+    var resume = resumeAvis(copie);
+    if (version && !version.libelle) version.libelle = resume.client ? 'Destinataire : ' + resume.client : '';
+    _avisEnLigne = { etat: 'attente' }; afficherEtatEnregistrement();
+    _avisEnvoi = _avisEnvoi.then(function () { return window.AvisDossiers.enregistrer(ref, copie, resume, version); }).then(function (r) {
+      if (r.ok) {
+        _avisEnLigne = { etat: 'ok', quand: new Date() };
+        if (annoncer) toast(r.version ? 'Avis enregistré en ligne — version conservée' : 'Avis enregistré en ligne');
+      } else {
+        _avisEnLigne = { etat: 'erreur', message: window.AvisDossiers.messageErreur(r) };
+        if (annoncer || (version && version.motif !== 'manuel')) toast(_avisEnLigne.message, true);
+      }
+      afficherEtatEnregistrement();
+      return r;
+    }).catch(function () { return null; });
+    return _avisEnvoi;
+  }
+  function envoyerEnLigneMaintenant() { if (_avisEnLigneTimer) enregistrerEnLigne(); }
+  // Fige la version remise à un tiers. Ne bloque jamais l'édition du document.
+  function figerVersion(motif) { try { avisAutoSaveNow(); enregistrerEnLigne({ motif: motif }); } catch (e) {} }
+
   // ── Synchronisation Notion (cloud) ──────────────────────────
-  function cloudSaveAvis(ref) {
+  // Fiche Notion de l'avis (suivi CRM, facturation). discret : sans message, l'enregistrement
+  // en ligne de référence étant celui d'/api/avis-store.
+  function cloudSaveAvis(ref, discret) {
     try {
       var d = state.data, c = compute(d);
       var valeur = (c.voccBas && c.voccHaut) ? Math.round((c.voccBas + c.voccHaut) / 2) : null;
@@ -3924,12 +4028,12 @@
         body: JSON.stringify(payload)
       }).then(function (r) { return r.json().catch(function () { return {}; }); })
         .then(function (j) {
-          if (j && j.ok) toast('☁️ Sauvegardé dans Notion');
+          if (j && j.ok) { if (!discret) toast('☁️ Sauvegardé dans Notion'); }
           // Échec cloud : la sauvegarde locale (localStorage) fait foi, MAIS on prévient
           // (sinon l'avis n'apparaît pas dans « Mes documents » sans que l'utilisateur le sache).
           else if (j && j.error) {
             try { console.warn('[avis] cloud non synchronisé :', j.error); } catch (e) {}
-            toast('⚠️ Avis enregistré en local mais non synchronisé au cloud (Mes documents). Réessayez.', true);
+            if (!discret) toast('⚠️ Avis enregistré en local mais non synchronisé au cloud (Mes documents). Réessayez.', true);
           }
         })
         .catch(function () { /* hors-ligne : localStorage suffit */ });
@@ -3975,6 +4079,7 @@
         // HTML du document, pour générer automatiquement le PDF de l'avis livré.
         htmlString: buildAvisDocHTML(d, compute(d))
       };
+      figerVersion('facture');
       window.proposerFacture('avis');
     } else {
       alert('Module facturation non disponible (rechargez la page).');
@@ -3996,9 +4101,10 @@
     var d = state.data;
     var titre = (d.bien && d.bien.adresse) ? d.bien.adresse : ref;
     var filename = avisFileBase() + '.pdf';
-    try { cloudSaveAvis(ref); } catch (e) {} // synchro Notion en arrière-plan
+    try { cloudSaveAvis(ref, true); } catch (e) {} // fiche Notion en arrière-plan
     // Génère un PDF autonome de l'avis (lisible sans accès à l'app)
     if (typeof window.fidiSharePdf === 'function') {
+      figerVersion('partage');
       var html = '<div class="avis-doc">' + buildAvisDocHTML(d, compute(d)) + '</div>';
       window.fidiSharePdf({ htmlString: html, filename: filename, titre: titre, kind: 'Avis de valeur' });
     } else {
@@ -4007,6 +4113,9 @@
   }
 
   function doCloud() {
+    // « Mes avis de valeur » ouvre la fenêtre des avis et versions ; l'ancienne liste Notion
+    // ne sert plus que si ce module n'a pas pu être chargé.
+    if (window.AvisDossiers) { window.AvisDossiers.ouvrir(); return; }
     if (typeof bootstrap === 'undefined') { alert('Bootstrap non chargé.'); return; }
     var root = document.getElementById('avisCloudRoot');
     if (!root) { root = document.createElement('div'); root.id = 'avisCloudRoot'; document.body.appendChild(root); }
@@ -4094,6 +4203,7 @@
     a.href = url; a.download = avisFileBase() + '.doc';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    figerVersion('word');
     toast('Document Word exporté');
   }
   // Sélecteur d'échelle avant impression ; le débit du crédit n'a lieu qu'à la
@@ -4137,9 +4247,16 @@
     // Édition d'un avis de valeur = acte facturé : débit d'un crédit (sauf admin/
     // illimité, péage inactif, ou ré-édition du même document). Bloque si épuisé.
     if (window.Compte && !(await window.Compte.consume('avis', ref))) return;
-    var filename = avisFileBase();
+    figerVersion('impression');
+    imprimerDocument(state.data, avisFileBase());
+  }
+  // Imprime un avis tel qu'il est dans `data` : l'avis courant, ou une version conservée.
+  function imprimerDocument(data, filename) {
+    if (!document.getElementById('avisPrintRoot')) {
+      var racine = document.createElement('div'); racine.id = 'avisPrintRoot'; document.body.appendChild(racine);
+    }
     var pr = document.getElementById('avisPrintRoot');
-    pr.innerHTML = '<div class="avis-doc">' + buildAvisDocHTML(state.data, compute(state.data)) + '</div>';
+    pr.innerHTML = '<div class="avis-doc">' + buildAvisDocHTML(data, compute(data)) + '</div>';
     var origTitle = document.title;
     document.title = filename;
     document.body.classList.add('avis-print');
@@ -4158,7 +4275,10 @@
     var ref = (state.data && state.data.metadata && state.data.metadata.ref) || 'rapport';
     if (window.Compte && !(await window.Compte.consume('avis', ref))) return;
     var filename = avisFileBase() + '.pdf';
-    var body = '<div class="avis-doc">' + buildAvisDocHTML(state.data, compute(state.data)) + '</div>';
+    // Copie des données rendues : la version figée est celle du PDF, même si l'avis change pendant le rendu.
+    var copiePdf = JSON.parse(JSON.stringify(state.data));
+    try { avisAutoSaveNow(); } catch (e) {}
+    var body = '<div class="avis-doc">' + buildAvisDocHTML(copiePdf, compute(copiePdf)) + '</div>';
     var css = Array.from(document.styleSheets).map(function (s) {
       try { return Array.from(s.cssRules).map(function (r) { return r.cssText; }).join('\n'); }
       catch (e) { return ''; }
@@ -4185,6 +4305,7 @@
       var a = document.createElement('a'); a.href = url; a.download = filename;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+      enregistrerEnLigne({ motif: 'pdf' }, false, copiePdf);
       toast('PDF téléchargé');
     } catch (e) {
       alert('Erreur réseau : ' + e.message + '\n\nFallback : impression navigateur.');
@@ -5580,6 +5701,15 @@
     // d'une AUTRE étude (corrige type/surface/immeuble/destinataire périmés au réouverture).
     var freshKey = window.__fidiData ? etudeKeyOf(window.__fidiData, window.__fidiInputs) : '';
 
+    // Venue depuis une AUTRE étude que celle de l'avis en mémoire : l'avis en mémoire est
+    // enregistré puis fermé, pour que l'avis de l'étude affichée s'ouvre déjà pré-rempli
+    // (rechargé s'il existe, créé depuis l'étude sinon). Sans cela, l'ancien avis restait
+    // affiché et il fallait cliquer « Pré-remplir ».
+    if (!refDemande && freshKey && state.data && state.data.__srcKey !== freshKey) {
+      try { avisAutoSaveNow(); enregistrerEnLigne(); } catch (e) {}
+      state.data = null;
+    }
+
     // UN SEUL avis par étude : au 1er open (pas de brouillon, pas de ref explicite), on recharge
     // l'avis à la RÉFÉRENCE STABLE de l'étude (toutes les données saisies + comparables importés).
     // Migration : si pas encore d'avis « stable » mais un ancien avis numéroté existe pour cette
@@ -5650,13 +5780,99 @@
     // Repli cloud : si l'avis de cette étude n'était pas en local, on tente de le récupérer
     // dans Notion (évite d'afficher un avis vierge et d'écraser la version cloud).
     if (state._pendingCloudRef) { var _pr = state._pendingCloudRef; state._pendingCloudRef = null; cloudReloadByRef(_pr); }
+    else verifierCopieEnLigne();
+  }
+
+  // À l'ouverture d'un avis présent sur ce poste : si la copie en ligne diffère et qu'elle est
+  // plus récente (avis modifié depuis un autre poste), propose de la charger. Si c'est la copie
+  // de ce poste qui n'a pas encore été envoyée, l'envoie.
+  function verifierCopieEnLigne() {
+    var AD = window.AvisDossiers;
+    if (!AD || !state.data) return;
+    var ref = (state.data.metadata && state.data.metadata.ref || '').trim();
+    if (!ref || !localStorage.getItem(AVIS_PREFIX + ref)) return;
+    _avisEnLigne = { etat: '' }; _avisLocalA = null; afficherEtatEnregistrement();
+    var local = state.data;
+    Promise.all([AD.resume(ref), AD.empreinte(local)]).then(function (res) {
+      var r = res[0], h = res[1];
+      if (state.data !== local) return;
+      if (r.code === 404) { enregistrerEnLigne(); return; }           // jamais envoyé : on l'envoie
+      if (!r.ok || !h || !r.empreinte) return;
+      if (r.empreinte === h) { _avisEnLigne = { etat: 'ok', quand: new Date(r.maj) }; afficherEtatEnregistrement(); return; }
+      var sync = AD.lireSync(ref);
+      // Envoi resté en attente sur ce poste, ou copie en ligne non postérieure à notre dernier envoi :
+      // c'est ce poste qui est en avance.
+      if (sync.attente || (sync.enLigne && r.maj && r.maj <= sync.enLigne)) { enregistrerEnLigne(); return; }
+      var quand = r.maj ? new Date(r.maj).toLocaleString('fr-FR') : '';
+      if (!confirm('Une version plus récente de cet avis est enregistrée en ligne' + (quand ? ' (' + quand + ')' : '') +
+        ', sans doute depuis un autre poste.\n\nOK : charger la version en ligne.\nAnnuler : garder celle de ce poste (elle remplacera la version en ligne au prochain enregistrement).')) {
+        AD.ecrireSync(ref, { attente: true });
+        return;
+      }
+      AD.lire(ref).then(function (j) {
+        if (!j.ok || !j.data || state.data !== local) { toast('Chargement en ligne impossible', true); return; }
+        avisPushHistory(ref); // la copie de ce poste reste dans l'historique local
+        state.data = ensureExpertBlock(j.data);
+        state.data.__saved = true;
+        try { localStorage.setItem(AVIS_PREFIX + ref, JSON.stringify(state.data)); } catch (e) {}
+        AD.ecrireSync(ref, { attente: false, enLigne: j.maj });
+        try { showSection(state.section || 'metadata'); } catch (e) {}
+        _avisEnLigne = { etat: 'ok', quand: new Date(j.maj) }; afficherEtatEnregistrement();
+        toast('Version en ligne chargée');
+      });
+    });
+  }
+
+  // ── Accès pour la fenêtre « Mes avis & versions » (avis-dossiers.js) ────────────────────
+  function lireLocal(ref) {
+    try { var raw = localStorage.getItem(AVIS_PREFIX + ref); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+  }
+  function supprimerLocal(ref) {
+    try { localStorage.removeItem(AVIS_PREFIX + ref); localStorage.removeItem(histKey(ref)); } catch (e) {}
+    refreshSavedSelect();
+  }
+  // Ouvre dans l'éditeur un avis fourni (version de travail d'un autre poste, ou version reprise).
+  // opts.modifie : contenu différent de l'enregistrement courant → à enregistrer par l'utilisateur.
+  function chargerAvis(data, opts) {
+    opts = opts || {};
+    if (!data || !data.metadata) { toast('Avis illisible', true); return; }
+    if (!state.built) buildModal();
+    var ref = (data.metadata.ref || '').trim();
+    try { var cur = (state.data && state.data.metadata && state.data.metadata.ref || '').trim(); if (cur && cur === ref) avisPushHistory(cur); } catch (e) {}
+    state.data = ensureExpertBlock(JSON.parse(JSON.stringify(data)));
+    state.data.__saved = true;
+    state.section = 'metadata';
+    if (ref) { try { localStorage.setItem(AVIS_PREFIX + ref, JSON.stringify(state.data)); localStorage.setItem('fidi:avis:last', ref); } catch (e) {} }
+    refreshSavedSelect();
+    // L'en-tête suit la nature (vente / location) de l'avis chargé, sans reconstruire la fenêtre.
+    try {
+      var nat = natureCourante();
+      Array.prototype.forEach.call(document.querySelectorAll('#avisModal [data-avnature]'), function (b) {
+        var on = b.dataset.avnature === nat;
+        b.classList.toggle('btn-warning', on); b.classList.toggle('btn-outline-warning', !on);
+      });
+      renderTabs();
+    } catch (e) {}
+    try { showSection('metadata'); } catch (e) { toast('Avis ouvert (données partielles)', true); }
+    state.modal.show();
+    _avisLocalA = null; _avisEnLigne = { etat: '' }; afficherEtatEnregistrement();
+    if (opts.modifie) {
+      if (window.FidiGuard) { window.FidiGuard.setDirty(); window.FidiGuard.saveHandler = fidiAvisGuardSave; }
+      if (window.AvisDossiers && ref) window.AvisDossiers.ecrireSync(ref, { attente: true });
+    } else verifierCopieEnLigne();
+    if (opts.message) toast(opts.message);
   }
 
   // Récupère un avis dans le cloud par sa référence (repli quand le local est absent).
   function cloudReloadByRef(ref) {
-    toast('Recherche de l\'avis dans le cloud…');
-    fetch('/api/notion-get?kind=avis&ref=' + encodeURIComponent(ref))
-      .then(function (r) { return r.ok ? r.json() : null; })
+    toast('Recherche de l\'avis en ligne…');
+    // D'abord l'enregistrement en ligne du compte (complet), sinon l'ancienne copie Notion.
+    var enLigne = window.AvisDossiers ? window.AvisDossiers.lire(ref) : Promise.resolve({ ok: false });
+    enLigne.then(function (r) {
+      if (r && r.ok && r.data) return r;
+      return fetch('/api/notion-get?kind=avis&ref=' + encodeURIComponent(ref), { credentials: 'same-origin' })
+        .then(function (x) { return x.ok ? x.json() : null; });
+    })
       .then(function (j) {
         state._cloudReloadPending = false;
         if (j && j.data) {
@@ -5746,5 +5962,15 @@
     }
   }
 
-  window.AvisValeur = { open: open, openLibrary: openLibrary, listAvis: avisList, cloud: doCloud, cloudOpen: cloudOpen, cloudDelete: cloudDelete, histRestore: histRestore, partager: doPartager, facturer: doFacturer, _compute: compute, _prefill: buildPrefillFromEtude };
+  window.AvisValeur = { open: open, openLibrary: openLibrary, listAvis: avisList, cloud: doCloud, cloudOpen: cloudOpen, cloudDelete: cloudDelete, histRestore: histRestore, partager: doPartager, facturer: doFacturer, _compute: compute, _prefill: buildPrefillFromEtude,
+    // Pour avis-dossiers.js (fenêtre « Mes avis & versions »)
+    lireLocal: lireLocal, supprimerLocal: supprimerLocal, charger: chargerAvis, resume: resumeAvis,
+    documentHTML: function (d) { var x = ensureExpertBlock(JSON.parse(JSON.stringify(d))); return buildAvisDocHTML(x, compute(x)); },
+    imprimerDonnees: function (d) {
+      var x = ensureExpertBlock(JSON.parse(JSON.stringify(d)));
+      var ref = (x.metadata && x.metadata.ref) || 'avis';
+      var go = function () { imprimerDocument(x, ['Avis_de_valeur', (x.metadata && x.metadata.client) || '', ref].filter(Boolean).join('_').replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 90)); };
+      // Même règle de crédit que l'impression de l'avis courant (ré-édition du même document : gratuite).
+      if (window.Compte) window.Compte.consume('avis', ref).then(function (ok) { if (ok) go(); }); else go();
+    } };
 })();
