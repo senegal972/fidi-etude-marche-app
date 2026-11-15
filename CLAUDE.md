@@ -26,6 +26,21 @@ Les redirections `/api/<nom>` sont déclarées dans `netlify.toml`.
   l'assainit (`assainirMarque`) et l'enregistre dans Netlify Blobs, store `fidi-marques`, clé = id de la page
   Notion de l'utilisateur. 401 sans session, 503 `{ blobs_error:true }` si le stockage est indisponible.
 
+### Facturation détaillée
+- `POST /api/facture` — accepte en plus `facture:{ lignes, mode, prixSaisis, remise }`, `echeance_jours`, `notes`,
+  `client_adresse` (écran `facture.js`). **Les totaux sont recalculés côté serveur** (`_facture_calc.mjs`, miroir
+  navigateur `window.FidiFactureCalc`) ; le régime de TVA et l'identité de l'émetteur viennent de la charte du compte
+  (`fidi-marques` → bloc `facturation`). Sans régime de TVA : 400 `{ need_regime:true }`. Notion reçoit
+  Montant HT / TVA / Montant TTC réels ; le détail complet est **figé** dans Blobs `fidi-factures`
+  (clé = jeton de livraison), écrit AVANT la page Notion. Un appel sans `facture` garde le comportement historique.
+- `GET /api/facture-html?…&t=<jeton>` — rend la facture détaillée figée (`_facture_doc.mjs`) ; sans détail :
+  rendu historique à une ligne (factures antérieures inchangées). `POST /api/facture-html` — aperçu (connexion requise,
+  rien n'est enregistré). `factureHtmlUrl()` ajoute `t` automatiquement.
+- Arrondis : l'écart de centime est reporté sur la dernière ligne pour que Σ lignes HT − remise HT = total HT
+  (testé par balayage dans `tests/facture-calc.test.mjs`). Les prix de la grille (`/api/tarifs`) sont TTC.
+- Hors périmètre à ce jour : paiement partiel / acompte (le paiement en ligne encaisse toujours le TTC),
+  numérotation `FIDI-FAC-` commune à tous les émetteurs d'un même déploiement.
+
 ## Modules d'interface
 
 L'interface est découpée en modules chargés par `index.html`. **Toute évolution de l'écran de saisie
@@ -49,6 +64,15 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
   en phase de capture, avant `lancerAnalyse()`.
 - Le formulaire se replie en résumé quand `#results-panel` devient visible (MutationObserver) ;
   « Nouvelle étude » demande un second clic si `FidiGuard.isDirty()`.
+
+### Écran de facturation — `facture.js` / `facture.css`
+- `window.proposerFacture(kind)` ouvre « Nouvelle facture » : client, articles (montant / quantité / heures, prix TTC ou HT,
+  grille tarifaire), remise, note ; colonne d'options (échéance, paiement préalable, canaux, émetteur) ; aperçu.
+- Les mentions de l'émetteur manquantes (raison sociale, adresse, SIREN, régime de TVA) se complètent dans la fenêtre
+  et sont enregistrées dans la charte via `Marque.maj()` (le panneau « Mise en page » ne peut pas s'ouvrir par-dessus).
+- Après création, la page de remise reste celle d'`index.html` : `factAfficherRemise`, `factGenDocLink`,
+  `factHistoriqueClient` (identifiants conservés : `factureModal`, `factBody`, `factStatus`, `factClient`, `factEmail`,
+  `factTel`, `factAdresse`, `factPayReq`, `factCanEmail`, `factCanWa`, `factBtnOk`, `factTarifsBox`).
 
 ### Mise en page / marque blanche — `marque.js` / `marque.css` / `marque.json`
 - L'application est destinée à être commercialisée : **aucune enseigne, couleur ou coordonnée client
@@ -83,7 +107,8 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
 
 ## Tests
 - `npm test` — suite `node --test` : endpoints (ESM, CORS, OPTIONS, repli sans secret), charte de marque
-  (`marque.test.mjs`), contrat de l'interface (`interface.test.mjs`), unités veille
+  (`marque.test.mjs`), contrat de l'interface (`interface.test.mjs`), facturation détaillée
+  (`facture-calc.test.mjs`, `facture-detaillee.test.mjs`), unités veille
   (dédoublonnage, similarité, bien sujet, extraction JSON-LD/regex), et fixture Marigot du moteur de calcul.
 - `npm run test:marigot` — fixture seule (`tests/avis-marigot.test.mjs`, synthèse 4,70 / 5,30 / 6,00 M€).
 

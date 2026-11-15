@@ -8,7 +8,7 @@ const lire = (f) => readFileSync(new URL("../" + f, import.meta.url), "utf8");
 const html = lire("index.html");
 
 test("index.html charge les modules d'interface", () => {
-  for (const f of ["/saisie.css", "/saisie.js", "/marque.css", "/marque.js"]) {
+  for (const f of ["/saisie.css", "/saisie.js", "/marque.css", "/marque.js", "/facture.css", "/facture.js"]) {
     assert.ok(html.includes(f), `${f} n'est pas chargé par index.html`);
   }
   // marque.js doit être lu avant le premier affichage (pas de defer) pour éviter un flash de couleurs.
@@ -54,5 +54,14 @@ test("documents imprimés — aucune identité personnelle en dur, charte lue", 
 });
 
 test("modules d'interface — pas de alert() pour les contrôles de saisie", () => {
-  for (const f of ["saisie.js", "marque.js"]) assert.ok(!/\balert\s*\(/.test(lire(f)), `${f} utilise alert()`);
+  for (const f of ["saisie.js", "marque.js", "facture.js"]) assert.ok(!/\balert\s*\(/.test(lire(f)), `${f} utilise alert()`);
+});
+
+test("facturation — une seule définition de proposerFacture (facture.js) et helpers de remise conservés", () => {
+  assert.ok(!/function proposerFacture\s*\(/.test(html), "proposerFacture doit vivre dans facture.js");
+  assert.match(lire("facture.js"), /window\.proposerFacture = proposerFacture/);
+  for (const f of ["factAfficherRemise", "factGenDocLink", "factHistoriqueClient"]) {
+    assert.ok(new RegExp("function " + f + "\\s*\\(").test(html), f + " a disparu de index.html");
+  }
+  assert.ok(html.includes("onclick=\"proposerFacture('etude')\""), "bouton Facturer de l'étude");
 });

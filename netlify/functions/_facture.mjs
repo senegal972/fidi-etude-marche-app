@@ -55,6 +55,8 @@ export function factureHtmlUrl(f, origin) {
     prestRef: f.refDossier || "",
     acquittee: f.paye ? "1" : "0",
   });
+  // Jeton (non devinable) : donne accès au détail figé d'une facture détaillée (store « fidi-factures »).
+  if (f.jeton) params.set("t", f.jeton);
   return `${origin}/api/facture-html?${params.toString()}`;
 }
 
