@@ -15,6 +15,12 @@ Les redirections `/api/<nom>` sont déclarées dans `netlify.toml`.
   Réponse : `{ valeur:{ methodes[], synthese }, cout_acquisition, strategie, vigilances, constat_marche }`.
   **Rétro-compatible** : un corps minimal ne provoque pas d'erreur. Logique pure dans `_avis_calcul.mjs`
   (miroir navigateur : `window.FidiAvisCalcV2` dans `avis-valeur.js`).
+  **Décotes** : le moteur donne la valeur d'un bien en état courant et libre. Dans le navigateur, `syntheseFinale(data)`
+  applique la décote d'état et d'occupation de la rubrique « Valeur vénale retenue » (sur la comparaison ; « Sol + construction »
+  porte déjà sa vétusté) : 5 ter, 7 ter et la valeur retenue donnent ainsi le même montant. Toute sortie de prix
+  (objectif, présentation, comparatif ancien / neuf) passe par `strategieCalc(data)`, jamais par la synthèse brute.
+  L'API `/api/avis-de-valeur` n'applique pas ces décotes. **Neuf / ancien** : `segmentComparable(cp)` ; un comparable de
+  l'autre catégorie que le bien (`bien.segment`) est écarté du calcul (vente d'un bien bâti seulement). Tests : `tests/avis-synthese.test.mjs`.
 - `POST /api/annonces` — lance la veille d'annonces (job de fond), renvoie `{ job_id, statut }`.
   `GET /api/annonces?job_id=…` — état + résultats. Sans clé de recherche : `{ statut: "indisponible" }`
   (pas d'erreur 500 ; l'UI propose la saisie manuelle). Cœur : `_annonces.mjs`. Job de fond :

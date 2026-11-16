@@ -175,6 +175,7 @@
         regime: 'Copropriété', nbLots: '', nbPieces: '', taxeFonciere: '', statut: 'occupe',
         loyer: '', bailDateDebut: '', bailDuree: '36', prixVente: '',
         refCadastrale: '', zonagePlu: '', // réinjectés depuis l'étude (cadastre + PLU/GPU)
+        segment: 'ancien', // 'ancien' | 'neuf' — un comparable de l'autre catégorie n'entre pas dans le calcul
         photos: [] // [{ dataUrl, name, w, h }] max 2 photos compressees
       },
       // ── Cadastre & urbanisme (LOT D + multi-parcelles) ───────────────────
@@ -212,7 +213,9 @@
         margeNegoPct: 8.5,          // marge de négociation par défaut — à valider
         prixPresentationManuel: '', // vide → central × (1 + marge), arrondi 50 000 €
         honorairesPct: '', honorairesCharge: 'acquéreur',  // acquéreur | vendeur
-        exclureNonRegularise: false
+        exclureNonRegularise: false,
+        // Comparatif acheter dans l'ancien / dans le neuf (vide = valeur calculée)
+        comparatif: { neufPrixM2: '', ancienPrixM2: '', travaux: '', fraisNeufPct: '' }
       },
       marche: {
         sources: [{ nom: '', bas: '', moyen: '', haut: '' }],
@@ -1093,11 +1096,44 @@
     var m = Math.floor(s.length / 2);
     return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
   }
+  // ── Neuf / ancien ───────────────────────────────────────────
+  // Un logement neuf et un logement ancien ne se vendent pas au même prix : un comparable de
+  // l'autre segment que le bien évalué est montré mais n'entre pas dans le €/m² retenu.
+  function segmentBien(data) { return (data.bien && data.bien.segment) === 'neuf' ? 'neuf' : 'ancien'; }
+  function segmentComparable(cp) {
+    if (cp.segment === 'neuf' || cp.segment === 'ancien') return cp.segment;
+    if (cp.etat === 'Neuf') return 'neuf';
+    // Les ventes DVF de l'étude sont des mutations « Vente » (les ventes sur plan, VEFA, sont exclues).
+    if (cp.nature === 'vendu' && cp.source === 'DVF') return 'ancien';
+    return '';
+  }
+  // La distinction ne s'applique qu'à la vente d'un bien bâti.
+  function segmentApplicable(data) {
+    return !isTerrain((data.bien || {}).type) && ((data.metadata || {}).nature || 'vente') !== 'location';
+  }
+  function comparableEcarte(data, cp) {
+    if (!segmentApplicable(data)) return false;
+    var s = segmentComparable(cp);
+    return !!s && s !== segmentBien(data);
+  }
+  // Comparables exploitables (cochés « inclus », surface et prix renseignés), avec leur €/m².
+  function comparablesDetail(data) {
+    var out = [];
+    (data.comparables || []).forEach(function (cp) {
+      if (cp.inclus === false) return;
+      var su = num(cp.surface), pr = num(cp.prix);
+      if (!(su > 0 && pr > 0)) return;
+      out.push({ cp: cp, surface: su, prix: pr, m2: pr / su, m2Adj: (pr / su) * (1 + num(cp.ajustementPct) / 100),
+        segment: segmentComparable(cp), vendu: cp.nature === 'vendu', ecarte: comparableEcarte(data, cp) });
+    });
+    return out;
+  }
+
   // Statistiques ACM : €/m² ajustés des comparables inclus
   function acmStats(data) {
     var arr = [];
     (data.comparables || []).forEach(function (cp) {
-      if (cp.inclus === false) return;
+      if (cp.inclus === false || comparableEcarte(data, cp)) return;
       var su = num(cp.surface), pr = num(cp.prix);
       if (su > 0 && pr > 0) arr.push((pr / su) * (1 + num(cp.ajustementPct) / 100));
     });
@@ -1269,6 +1305,8 @@
     if (!d.cadastre.mode) d.cadastre.mode = 'simple';
     if (!d.methodesV2) d.methodesV2 = def.methodesV2;
     if (!d.strategie) d.strategie = def.strategie;
+    if (!d.strategie.comparatif) d.strategie.comparatif = def.strategie.comparatif;
+    if (d.bien && d.bien.segment !== 'neuf') d.bien.segment = 'ancien';
     // Migration : l'ancien loyer unique (bien.loyer) devient un lot unique si aucun lot défini.
     if (d.methodesV2 && (!d.methodesV2.lots || !d.methodesV2.lots.length) && d.bien && num(d.bien.loyer) > 0) {
       d.methodesV2.lots = [{ libelle: 'Bien loué', nombre: 1, mode: 'annuel', loyerMensuel: num(d.bien.loyer), semaines: '', prixSemaine: '' }];
@@ -1466,6 +1504,7 @@
           '<span class="text-muted small align-self-center">Récupère année approximative + DPE dominant + surface via ADEME et RNB (BDNB CSTB complète nécessite abonnement CSTB, non intégrée).</span>' +
         '</div>' +
         fld('Description immeuble', 'bien.immeuble', { tip: 'Année de livraison, niveaux, ascenseur…', ph: 'Résidence 2009 – R+3 – 16 lots' }) +
+        (isTerrain(b.type) || isLoc ? '' : '<div class="av-grid-2">' + fld('Bien neuf ou ancien', 'bien.segment', { type: 'select', options: ['ancien', 'neuf'], tip: 'neuf = jamais habité, vendu par le promoteur. Les comparables de l\'autre catégorie sont écartés du calcul.' }) + '<div class="av-field"></div></div>') +
         '<div class="av-grid-4">' + fld(isTerrain(b.type) ? 'Surface du terrain (m²)' : (isLoc ? 'Surface habitable (m²)' : 'Surface Carrez (m²)'), 'bien.surfaceCarrez', { type: 'number', flag: true, tip: isTerrain(b.type) ? 'Contenance cadastrale (m²)' : (isLoc ? 'Loi Boutin en location, Carrez en copro à la vente' : 'Loi Carrez (obligatoire vente copro)') }) + fld('Surface SHOB (m²)', 'bien.surfaceShob', { type: 'number' }) + fld('Séjour (m²)', 'bien.sejour', { type: 'number' }) + fld('Terrasse/Balcon (m²)', 'bien.terrasse', { type: 'number', step: '0.01' }) + '</div>' +
         '<div class="av-grid-4">' + fld('Nombre de pièces', 'bien.nbPieces', { type: 'number', ph: 'ex : 4' }) + fld('Stationnement', 'bien.parking', { ph: '1 place couverte' }) + fld('Nb. lots (copro)', 'bien.nbLots', { type: 'number' }) + fld('Taxe foncière (€/an)', 'bien.taxeFonciere', { type: 'number' }) + '</div>' +
         // En location : uniquement mention "bien libre à louer / actuellement occupé" (info)
@@ -1692,10 +1731,16 @@
             return '<option' + (String(o) === String(cp[key]) ? ' selected' : '') + '>' + esc(o) + '</option>';
           }).join('') + '</select>';
         }
-        return '<div class="av-cmp' + (cp.inclus === false ? ' av-cmp-off' : '') + '">' +
+        var segCp = segmentComparable(cp), ecarteCp = cp.inclus !== false && comparableEcarte(d, cp);
+        var selSeg = '<select data-list="comparables" data-idx="' + i + '" data-key="segment" data-rerender="1">' +
+          [['', 'non précisé'], ['ancien', 'Ancien'], ['neuf', 'Neuf']].map(function (o) {
+            return '<option value="' + o[0] + '"' + (o[0] === segCp ? ' selected' : '') + '>' + o[1] + '</option>';
+          }).join('') + '</select>';
+        var badgeEcarte = ecarteCp ? ' <span style="background:#b8860b;color:#fff;font-size:.6rem;font-weight:700;border-radius:3px;padding:1px 5px;" title="Le bien évalué est ' + segmentBien(d) + ' : ce comparable ' + esc(segCp) + ' est montré mais n\'entre pas dans le €/m² retenu.">' + (segCp === 'neuf' ? 'NEUF' : 'ANCIEN') + ' · HORS CALCUL</span>' : '';
+        return '<div class="av-cmp' + (cp.inclus === false || ecarteCp ? ' av-cmp-off' : '') + '">' +
           '<div class="av-cmp-head">' +
           '<label class="av-cmp-inc"><input type="checkbox"' + (cp.inclus === false ? '' : ' checked') + ' data-list="comparables" data-idx="' + i + '" data-key="inclus"/> inclus</label>' +
-          badge + sel('source', PORTAILS) + li('type', 'Type (T2…)') +
+          badge + badgeEcarte + sel('source', PORTAILS) + li('type', 'Type (T2…)') +
           '<button class="av-del" data-listdel="comparables" data-idx="' + i + '" title="Supprimer">✕</button></div>' +
           '<div class="av-grid-4">' +
           '<div class="av-field"><label>Surface (m²)</label>' + li('surface', '', 'number') + '</div>' +
@@ -1708,7 +1753,10 @@
           '<div class="av-field"><label>Étage / expo</label>' + li('etage', 'ex : 2e / Sud') + '</div>' +
           '<div class="av-field"><label>Secteur</label>' + li('secteur', 'quartier') + '</div>' +
           '</div>' +
-          '<div class="av-field"><label>Lien annonce (traçabilité)</label>' + li('lien', 'https://…') + '</div>' +
+          (segmentApplicable(d)
+            ? '<div class="av-grid-4"><div class="av-field"><label>Neuf ou ancien</label>' + selSeg + '</div>' +
+              '<div class="av-field" style="grid-column:span 3;"><label>Lien annonce (traçabilité)</label>' + li('lien', 'https://…') + '</div></div>'
+            : '<div class="av-field"><label>Lien annonce (traçabilité)</label>' + li('lien', 'https://…') + '</div>') +
           '</div>';
       }).join('');
       var titre = isLocCmp ? 'Comparables loyers (VLM)' : 'Analyse comparative de marché (ACM)';
@@ -2298,7 +2346,11 @@
       liveItem('Médiane €/m² ajusté', st.median ? fmt(st.median) + ' €' : '—') +
       liveItem('Moyenne €/m² ajusté', st.mean ? fmt(st.mean) + ' €' : '—') +
       liveItem('€/m² ACM retenu', retenu ? fmt(retenu) + ' €' : '—') +
-      '</div>';
+      '</div>' +
+      (function () {
+        var L = lectureComparables(d), rem = remarquesComparables(d, L);
+        return rem.length ? '<ul class="small" style="margin:.4rem 0 0;padding-left:1.1rem;">' + rem.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul>' : '';
+      })();
   }
   function renderResultBlock() {
     var d = state.data, c = compute(d), occ = d.bien.statut === 'occupe';
@@ -2628,6 +2680,8 @@
     if (isCb) { showSection(state.section); return; }
     // Fourchette multi-méthodes : recalcul complet au blur / changement de select (pas à chaque frappe).
     if ((state.section === 'methodesv2' || state.section === 'strategie') && e.type === 'change') { showSection(state.section); return; }
+    // Comparables : un choix dans une liste (neuf / ancien, état, source) peut faire entrer ou sortir le comparable du calcul.
+    if (state.section === 'comparables' && el.tagName === 'SELECT' && e.type === 'change') { showSection(state.section); return; }
     refreshOutputs();
   }
 
@@ -3135,6 +3189,99 @@
     return { netVendeur: netVendeur, hono: hono, tvaHono: tvaHono, honoTTC: honoTTC, prixFAI: prixFAI, droits: droits, notaire: notaire, total: total };
   }
 
+  // Positionnement de prix : part de la valeur APRÈS décotes (état, occupation), celle de l'avis.
+  function strategieCalc(data) {
+    var st = data.strategie || {}, b = data.bien || {};
+    var F = syntheseFinale(data), syn = F.net.synthese;
+    var terr = terrPourCp(b.cp);
+    var honoPct = (st.honorairesPct !== '' && st.honorairesPct != null) ? num(st.honorairesPct) : terr.hono;
+    var marge = num(st.margeNegoPct);
+    var objectif = syn.central;
+    var auto = CALC.arrondi(objectif * (1 + marge / 100));
+    var prixPres = num(st.prixPresentationManuel) || auto;
+    // Plancher : le bas de la fourchette de l'avis quand les deux lectures concordent (jamais au-dessus).
+    var plancher = (F.coherent && F.retenue.bas > 0) ? Math.min(syn.bas, F.retenue.bas) : syn.bas;
+    return { F: F, syn: syn, terr: terr, honoPct: honoPct, marge: marge, objectif: objectif, plancher: plancher,
+      prixPresAuto: auto, prixPres: prixPres, prixPresManuel: !!num(st.prixPresentationManuel),
+      cPres: coutAcquereur(prixPres, terr, honoPct, st.honorairesCharge),
+      cObj: coutAcquereur(objectif, terr, honoPct, st.honorairesCharge) };
+  }
+
+  // Frais d'acquisition d'un logement neuf (% du prix). Droits réduits : 2 à 3 % en général.
+  // Saint-Barthélemy et Saint-Martin ont leur propre fiscalité : même taux que l'ancien, à valider.
+  function fraisNeufDefaut(cp, terr) {
+    cp = String(cp || '').trim();
+    return (cp === '97133' || cp === '97150') ? (terr.droits + terr.notaire) : 2.5;
+  }
+
+  // Comparatif « acheter dans l'ancien / acheter dans le neuf », à surface égale.
+  // Le bien évalué occupe la colonne de sa catégorie ; l'autre colonne est un bien équivalent du marché.
+  // Retourne null si sans objet (terrain, location, surface ou valeur absente),
+  // { manque:'neuf'|'ancien' } si le prix au m² de l'autre catégorie est inconnu.
+  function comparatifAncienNeuf(data, S) {
+    if (!segmentApplicable(data)) return null;
+    var b = data.bien || {}, st = data.strategie || {}, cf = st.comparatif || {};
+    var surf = num(b.surfaceCarrez);
+    S = S || strategieCalc(data);
+    if (!(surf > 0) || !(S.objectif > 0)) return null;
+    var seg = segmentBien(data), L = lectureComparables(data), terr = S.terr;
+    var acq = st.honorairesCharge !== 'vendeur';
+    var neufM2 = num(cf.neufPrixM2) || L.m2NeufMed;
+    var neufSrc = num(cf.neufPrixM2) ? 'prix au m² saisi' : (L.m2NeufMed ? 'médiane des comparables neufs' : '');
+    var ancM2 = num(cf.ancienPrixM2) || L.m2AncienMed || L.m2Etude;
+    var ancSrc = num(cf.ancienPrixM2) ? 'prix au m² saisi' : (L.m2AncienMed ? 'médiane des comparables anciens' : (L.m2Etude ? 'étude de marché (ventes enregistrées)' : ''));
+    if (seg === 'ancien' && !(neufM2 > 0)) return { manque: 'neuf', surf: surf, seg: seg };
+    if (seg === 'neuf' && !(ancM2 > 0)) return { manque: 'ancien', surf: surf, seg: seg };
+    // Colonne ANCIEN
+    var pA = seg === 'ancien' ? S.objectif : CALC.arrondi(surf * ancM2);
+    var cA = coutAcquereur(pA, terr, S.honoPct, st.honorairesCharge);
+    // Travaux : saisie, sinon (bien ancien évalué) le montant de la décote d'état.
+    var travEst = seg === 'ancien' ? Math.round(S.F.brut.comparaison.central * S.F.dEtat / 100 / 1000) * 1000 : 0;
+    var travSaisi = cf.travaux !== '' && cf.travaux != null;
+    var trav = travSaisi ? num(cf.travaux) : travEst;
+    var ancien = { estLeBien: seg === 'ancien', prix: pA, m2: pA / surf, hono: acq ? cA.honoTTC : 0, honoInclus: !acq,
+      frais: cA.droits + cA.notaire, fraisPct: terr.droits + terr.notaire, travaux: trav, travauxEstime: !travSaisi && seg === 'ancien',
+      source: seg === 'ancien' ? 'valeur de l\'avis' : ancSrc };
+    ancien.total = ancien.prix + ancien.hono + ancien.frais + ancien.travaux;
+    // Colonne NEUF
+    var pN = seg === 'neuf' ? S.objectif : CALC.arrondi(surf * neufM2);
+    var fPct = (cf.fraisNeufPct !== '' && cf.fraisNeufPct != null) ? num(cf.fraisNeufPct) : fraisNeufDefaut(b.cp, terr);
+    var honoN = (seg === 'neuf' && acq) ? coutAcquereur(pN, terr, S.honoPct, st.honorairesCharge).honoTTC : 0;
+    var neuf = { estLeBien: seg === 'neuf', prix: pN, m2: pN / surf, hono: honoN, honoInclus: !honoN,
+      frais: pN * fPct / 100, fraisPct: fPct, travaux: 0, source: seg === 'neuf' ? 'valeur de l\'avis' : neufSrc };
+    neuf.total = neuf.prix + neuf.hono + neuf.frais + neuf.travaux;
+    ancien.totalM2 = ancien.total / surf; neuf.totalM2 = neuf.total / surf;
+    return { surf: surf, seg: seg, ancien: ancien, neuf: neuf,
+      ecart: neuf.total - ancien.total, ecartPct: ancien.total > 0 ? (neuf.total - ancien.total) / ancien.total * 100 : 0 };
+  }
+  // Phrase de conclusion du comparatif.
+  function phraseComparatif(K) {
+    var e = Math.abs(K.ecart), p = fmt(Math.abs(Math.round(K.ecartPct)));
+    if (e < 1000) return 'À surface égale, l\'ancien, travaux compris, et le neuf reviennent au même coût.';
+    return K.ecart > 0
+      ? 'À surface égale, acheter dans l\'ancien, travaux compris, revient ' + fmtE(Math.round(e / 1000) * 1000) + ' de moins qu\'acheter dans le neuf (le neuf coûte ' + p + ' % de plus).'
+      : 'À surface égale, acheter dans le neuf revient ' + fmtE(Math.round(e / 1000) * 1000) + ' de moins qu\'acheter dans l\'ancien, travaux compris (l\'ancien coûte ' + p + ' % de plus).';
+  }
+  // Lignes du comparatif : [libellé, valeur ancien, valeur neuf, total?]
+  function lignesComparatif(K) {
+    var A = K.ancien, N = K.neuf;
+    return [
+      ['Prix d\'achat', fmtE(A.prix), fmtE(N.prix)],
+      ['soit au m² (' + fmt(K.surf) + ' m²)', fmt(Math.round(A.m2)) + ' €/m²', fmt(Math.round(N.m2)) + ' €/m²'],
+      ['Honoraires d\'agence (TTC)', A.honoInclus ? 'inclus dans le prix' : fmtE(Math.round(A.hono)), N.honoInclus ? 'inclus dans le prix' : fmtE(Math.round(N.hono))],
+      ['Frais d\'acquisition (droits et notaire)', fmtE(Math.round(A.frais)) + ' (' + fmt(A.fraisPct, 1) + ' %)', fmtE(Math.round(N.frais)) + ' (' + fmt(N.fraisPct, 1) + ' %)'],
+      ['Travaux de remise en état', fmtE(A.travaux) + (A.travauxEstime ? ' (estimation)' : ''), fmtE(0)],
+      ['COÛT TOTAL', fmtE(Math.round(A.total)), fmtE(Math.round(N.total)), true],
+      ['Coût total au m²', fmt(Math.round(A.totalM2)) + ' €/m²', fmt(Math.round(N.totalM2)) + ' €/m²'],
+    ];
+  }
+  var COMPARATIF_A_SAVOIR = [
+    ['Garanties', 'Vendu en l\'état, avec les diagnostics obligatoires', 'Parfait achèvement (1 an), bon fonctionnement (2 ans), décennale (10 ans)'],
+    ['Disponibilité', 'Dès la signature de l\'acte', 'À la livraison du programme si vente sur plan'],
+    ['Taxe foncière', 'Due dès la première année', 'Exonération de 2 ans, sauf décision contraire de la commune'],
+    ['Charges et énergie', 'Selon le diagnostic de performance énergétique', 'Normes de construction récentes'],
+  ];
+
   // Vigilances automatiques (LOT F). Retourne [{ niveau:'rouge'|'orange'|'info', txt }].
   function vigilancesAuto(data, r) {
     var out = [], cad = data.cadastre || {}, b = data.bien || {};
@@ -3164,15 +3311,15 @@
 
   function renderStrategie() {
     var d = state.data, st = d.strategie, b = d.bien;
-    var r = CALC.calculerMethodes(buildV2Input(d));
-    var central = r.synthese.central, bas = r.synthese.bas;
-    var terr = terrPourCp(b.cp);
-    var honoPct = st.honorairesPct !== '' && st.honorairesPct != null ? num(st.honorairesPct) : terr.hono;
-    var marge = num(st.margeNegoPct);
-    var prixPresentation = num(st.prixPresentationManuel) || CALC.arrondi(central * (1 + marge / 100));
+    var SC = strategieCalc(d), FS = SC.F;
+    var r = FS.brut;                      // méthodes avant décote (vigilances, rendement)
+    var central = SC.objectif, bas = SC.plancher;   // valeur APRÈS décotes : celle de l'avis
+    var terr = SC.terr, honoPct = SC.honoPct, marge = SC.marge;
+    var prixPresentation = SC.prixPres;
     var objectif = central;   // objectif de signature
-    var cPres = coutAcquereur(prixPresentation, terr, honoPct, st.honorairesCharge);
-    var cObj = coutAcquereur(objectif, terr, honoPct, st.honorairesCharge);
+    var cPres = SC.cPres, cObj = SC.cObj;
+    var decotesTxt = [FS.dEtat > 0 ? 'état −' + FS.dEtat + ' %' : '', FS.dOcc > 0 ? 'occupation −' + FS.dOcc + ' %' : ''].filter(Boolean).join(', ');
+    var KC = comparatifAncienNeuf(d, SC);
     function row(lbl, a, c, strong) {
       return '<tr' + (strong ? ' style="font-weight:800;border-top:2px solid #ccc;"' : '') + '><td>' + esc(lbl) + '</td>' +
         '<td style="text-align:right;">' + fmtE(a) + '</td><td style="text-align:right;">' + fmtE(c) + '</td></tr>';
@@ -3209,10 +3356,13 @@
         (estTerStrat ? '<div class="av-tip">α et K <b>alignés sur les tableaux de l\'étude de marché</b>' + (st._zoneDecote ? ' — ' + esc(st._zoneDecote) : '') + ' (resynchronisés à chaque ouverture). <b>CAS 1 — particulier</b> : abattement de contenance sur le €/m² (grille surfacique α, fonction de la surface globale ' + fmt(contenanceTotale(d.cadastre) || 0) + ' m²). <b>CAS 2 — professionnel (promoteur)</b> : abattement de contenance <b>puis</b> facteur opérateur K ' + fmt(num(st.promoteurK) || 0.62, 2) + ' (portage, viabilisation, aléas, marge à sa charge). Détail du €/m² décoté dans « Fourchette multi-méthodes » → charge foncière.</div>' : '') +
       '</div>' +
 
-      '<div class="av-box"><div class="av-box-title">Positionnement (depuis la synthèse : bas ' + fmtE(bas) + ' / central ' + fmtE(central) + ')</div>' +
+      '<div class="av-box"><div class="av-box-title">Positionnement (valeur de l\'avis : bas ' + fmtE(bas) + ' / central ' + fmtE(central) + ')</div>' +
+        '<div class="av-tip">Le positionnement part de la valeur <b>après décotes</b>' + (decotesTxt ? ' (' + decotesTxt + ')' : '') + (decotesTxt ? ' : méthodes avant décote ' + fmtE(FS.brut.synthese.central) + ' → ' + fmtE(central) + '.' : ' : aucune décote appliquée.') + '</div>' +
+        (FS.coherent ? '' : '<div class="av-tip" style="border-left:3px solid #dc3545;color:#dc3545;">⛔ La synthèse des méthodes après décotes (' + fmtE(central) + ') sort de la fourchette de la rubrique « Valeur vénale retenue » (' + fmtE(FS.retenue.bas) + ' – ' + fmtE(FS.retenue.haut) + '). Le document afficherait deux valeurs : ajustez les bornes de la valeur retenue ou la pondération des méthodes.</div>') +
+        (SC.prixPresManuel && prixPresentation < bas ? '<div class="av-tip" style="border-left:3px solid #b8860b;color:#8a6508;">⚠️ Le prix de présentation saisi est inférieur au plancher.</div>' : '') +
         '<div class="av-grid-3">' +
-          fld('Marge de négociation (%)', 'strategie.margeNegoPct', { type: 'number', tip: 'présentation = central × (1 + marge), arrondi 50 000 €' }) +
-          fld('Prix de présentation (€)', 'strategie.prixPresentationManuel', { type: 'number', ph: String(CALC.arrondi(central * (1 + marge / 100))), tip: 'vide = auto' }) +
+          fld('Marge de négociation (%)', 'strategie.margeNegoPct', { type: 'number', tip: 'présentation = central × (1 + marge), arrondi 1 000 € (50 000 € au-dessus de 1 M€)' }) +
+          fld('Prix de présentation (€)', 'strategie.prixPresentationManuel', { type: 'number', ph: String(SC.prixPresAuto), tip: 'vide = auto' }) +
           '<div class="av-field"><label>Plancher (bas)</label><div class="av-cmp-calc">' + fmtE(bas) + '</div></div>' +
         '</div>' +
         '<div class="small text-muted">Prix de présentation retenu : <b>' + fmtE(prixPresentation) + '</b> · Objectif de signature (central) : <b>' + fmtE(objectif) + '</b>.</div>' +
@@ -3242,6 +3392,30 @@
         '<div class="small text-muted mt-1">Base des droits/notaire = net vendeur si honoraires à charge acquéreur. Indicatif, hors débours et cas particuliers.</div>' +
       '</div>' +
 
+      // Comparatif ancien / neuf (vente d'un bien bâti)
+      (KC === null ? '' :
+        '<div class="av-box"><div class="av-box-title">Acheter dans l\'ancien ou dans le neuf — à surface égale (' + fmt(KC.surf) + ' m²)</div>' +
+          '<div class="av-tip">Le bien évalué est <b>' + KC.seg + '</b> (réglage dans « Le bien »). L\'autre colonne est un bien équivalent du marché. Champs vides = valeur calculée.</div>' +
+          '<div class="av-grid-4">' +
+            (KC.seg === 'ancien'
+              ? fld('Prix du neuf (€/m²)', 'strategie.comparatif.neufPrixM2', { type: 'number', ph: KC.manque ? 'à renseigner' : String(Math.round(KC.neuf.m2)), tip: 'vide = médiane des comparables marqués « Neuf »' })
+              : fld('Prix de l\'ancien (€/m²)', 'strategie.comparatif.ancienPrixM2', { type: 'number', ph: KC.manque ? 'à renseigner' : String(Math.round(KC.ancien.m2)), tip: 'vide = médiane des comparables anciens, sinon €/m² de l\'étude' })) +
+            fld('Travaux dans l\'ancien (€)', 'strategie.comparatif.travaux', { type: 'number', ph: KC.manque ? '' : String(KC.ancien.travaux), tip: KC.seg === 'ancien' ? 'vide = montant de la décote d\'état' : 'travaux de remise en état du bien ancien équivalent' }) +
+            fld('Frais d\'acquisition du neuf (%)', 'strategie.comparatif.fraisNeufPct', { type: 'number', step: '0.1', ph: String(fraisNeufDefaut(b.cp, terr)), tip: 'frais réduits du neuf : 2 à 3 % en général' }) +
+            '<div class="av-field"></div>' +
+          '</div>' +
+          (KC.manque
+            ? '<div class="av-tip" style="border-left:3px solid #b8860b;">Pour afficher le comparatif, indiquez le prix au m² ' + (KC.manque === 'neuf' ? 'du neuf dans le secteur, ou marquez au moins un comparable « Neuf »' : 'de l\'ancien dans le secteur') + '. Sans ce prix, le comparatif n\'apparaît pas dans le document.</div>'
+            : '<table style="width:100%;font-size:.85rem;border-collapse:collapse;">' +
+                '<thead><tr><th style="text-align:left;">Poste</th><th style="text-align:right;">Ancien' + (KC.ancien.estLeBien ? ' — ce bien' : '') + '</th><th style="text-align:right;">Neuf' + (KC.neuf.estLeBien ? ' — ce bien' : '') + '</th></tr></thead><tbody>' +
+                lignesComparatif(KC).map(function (l) {
+                  return '<tr' + (l[3] ? ' style="font-weight:800;border-top:2px solid #ccc;"' : '') + '><td>' + esc(l[0]) + '</td><td style="text-align:right;">' + esc(l[1]) + '</td><td style="text-align:right;">' + esc(l[2]) + '</td></tr>';
+                }).join('') +
+                '</tbody></table>' +
+              '<div class="small mt-1"><b>' + esc(phraseComparatif(KC)) + '</b></div>' +
+              '<div class="small text-muted">Prix ' + (KC.seg === 'ancien' ? 'du neuf' : 'de l\'ancien') + ' : ' + esc(KC.seg === 'ancien' ? KC.neuf.source : KC.ancien.source) + '. Hypothèses à valider.</div>') +
+        '</div>') +
+
       '<div class="av-box"><div class="av-box-title">Vigilances automatiques</div>' + (vigHtml || '<div class="av-tip">Aucune vigilance détectée.</div>') + '</div>' +
 
       '<div class="av-box"><div class="av-box-title">Recommandations</div>' +
@@ -3265,13 +3439,74 @@
   function comparablesM2(data) {
     var vals = [];
     (data.comparables || []).forEach(function (c) {
-      if (c.inclus === false) return;
+      if (c.inclus === false || comparableEcarte(data, c)) return;
       var s = num(c.surface), p = num(c.prix);
       if (!s || !p) return;
       var m2 = (p / s) * (1 + num(c.ajustementPct) / 100);
       if (m2 > 0) vals.push(m2);
     });
     return vals.sort(function (a, b) { return a - b; });
+  }
+
+  // ── Des méthodes à la valeur retenue ───────────────────────────────────────────
+  // Les méthodes donnent une valeur pour un bien en état courant et libre. La valeur de l'avis
+  // tient compte de l'état du bien et de son occupation : les mêmes décotes que la rubrique
+  // « Valeur vénale retenue » sont appliquées ici, pour que la synthèse, la stratégie de prix
+  // et la conclusion de l'avis donnent le même montant.
+  //   - décote d'état : sur la comparaison (les comparables sont en état courant) et, pour un
+  //     terrain, sur la charge foncière. « Sol + construction » porte déjà sa vétusté.
+  //   - décote d'occupation : sur la comparaison (la capitalisation part déjà du loyer perçu).
+  function syntheseFinale(data) {
+    var inp = buildV2Input(data), brut = CALC.calculerMethodes(inp), c = compute(data);
+    var occ = (data.bien || {}).statut === 'occupe';
+    var dEtat = Math.max(0, Math.min(100, num(c.decoteEtat)));
+    var dOcc = occ ? Math.max(0, Math.min(100, num((data.calcul || {}).decoteOccupation))) : 0;
+    var fEtat = 1 - dEtat / 100, f = fEtat * (1 - dOcc / 100);
+    var net = brut;
+    if (f !== 1) {
+      var inp2 = Object.assign({}, inp, { comparaison: { bas: inp.comparaison.bas * f, central: inp.comparaison.central * f, haut: inp.comparaison.haut * f } });
+      if (inp._estTerrain) inp2.chargeFonciere = { bas: inp.chargeFonciere.bas * fEtat, central: inp.chargeFonciere.central * fEtat, haut: inp.chargeFonciere.haut * fEtat };
+      net = CALC.calculerMethodes(inp2);
+    }
+    var rb = num(c.voccBas), rh = num(c.voccHaut);
+    var retenue = { bas: rb, haut: rh, central: (rb > 0 && rh > 0) ? Math.round((rb + rh) / 2000) * 1000 : 0 };
+    var cen = net.synthese.central;
+    return { inp: inp, brut: brut, net: net, calc: c, occ: occ, dEtat: dEtat, dOcc: dOcc, retenue: retenue,
+      // La synthèse après décotes tombe-t-elle dans la fourchette retenue par l'avis ?
+      coherent: !(retenue.central > 0 && cen > 0) || (cen >= rb * 0.98 && cen <= rh * 1.02),
+      ecartPct: (retenue.central > 0 && cen > 0) ? (cen - retenue.central) / retenue.central * 100 : 0 };
+  }
+
+  // Lecture des comparables retenus : combien, de quelle nature, de quelles surfaces, neufs ou anciens.
+  function lectureComparables(data) {
+    var tous = comparablesDetail(data), ret = tous.filter(function (x) { return !x.ecarte; }), ec = tous.filter(function (x) { return x.ecarte; });
+    var surf = ret.map(function (x) { return x.surface; }).sort(function (a, b) { return a - b; });
+    var m2 = ret.map(function (x) { return x.m2Adj; }).sort(function (a, b) { return a - b; });
+    function nb(l, f) { return l.filter(f).length; }
+    var m2Etude = num((data.marche || {}).moyenneMoyen);
+    var med = m2.length ? Math.round(quantile(m2, 0.5)) : 0;
+    return { retenus: ret, ecartes: ec, n: ret.length,
+      ventes: nb(ret, function (x) { return x.vendu; }), annonces: nb(ret, function (x) { return !x.vendu; }),
+      neufs: nb(ret, function (x) { return x.segment === 'neuf'; }), anciens: nb(ret, function (x) { return x.segment === 'ancien'; }),
+      nonPrecises: nb(ret, function (x) { return !x.segment; }),
+      surfMin: surf.length ? surf[0] : 0, surfMax: surf.length ? surf[surf.length - 1] : 0, surfMed: surf.length ? quantile(surf, 0.5) : 0,
+      m2Med: med, m2Etude: m2Etude, ecartEtudePct: (m2Etude > 0 && med > 0) ? (med - m2Etude) / m2Etude * 100 : 0,
+      m2NeufMed: (function () { var v = tous.filter(function (x) { return x.segment === 'neuf'; }).map(function (x) { return x.m2Adj; }).sort(function (a, b) { return a - b; }); return v.length ? Math.round(quantile(v, 0.5)) : 0; })(),
+      m2AncienMed: (function () { var v = tous.filter(function (x) { return x.segment === 'ancien'; }).map(function (x) { return x.m2Adj; }).sort(function (a, b) { return a - b; }); return v.length ? Math.round(quantile(v, 0.5)) : 0; })() };
+  }
+  // Remarques de lecture, en clair, communes à l'écran et au document.
+  function remarquesComparables(data, L) {
+    var out = [], S = num((data.bien || {}).surfaceCarrez), seg = segmentBien(data), app = segmentApplicable(data);
+    if (!L.n) return out;
+    if (L.annonces && !L.ventes) out.push('Les comparables retenus sont tous des annonces : ce sont des prix demandés, pas des prix de vente. Le prix signé est en général inférieur au prix affiché.');
+    else if (L.annonces) out.push(L.annonces + ' comparable' + (L.annonces > 1 ? 's sont des annonces' : ' est une annonce') + ' (prix demandé, avant négociation) ; ' + L.ventes + ' ' + (L.ventes > 1 ? 'sont des ventes enregistrées' : 'est une vente enregistrée') + '.');
+    if (L.n < 3) out.push('Base étroite : ' + L.n + ' comparable' + (L.n > 1 ? 's' : '') + '. Avec moins de 3 références, le €/m² retenu reste fragile.');
+    if (S > 0 && L.surfMed > 0 && !isTerrain((data.bien || {}).type) && L.surfMed < S * 0.7) out.push('Les comparables sont plus petits que le bien (surface médiane ' + fmt(Math.round(L.surfMed)) + ' m² pour un bien de ' + fmt(S) + ' m²) : le €/m² d\'un petit logement est plus élevé que celui d\'un grand.');
+    if (S > 0 && L.surfMed > S * 1.4 && !isTerrain((data.bien || {}).type)) out.push('Les comparables sont plus grands que le bien (surface médiane ' + fmt(Math.round(L.surfMed)) + ' m² pour un bien de ' + fmt(S) + ' m²) : le €/m² d\'un grand logement est plus faible que celui d\'un petit.');
+    if (app && L.ecartes.length) out.push(L.ecartes.length + ' comparable' + (L.ecartes.length > 1 ? 's' : '') + ' ' + (seg === 'ancien' ? 'neuf' : 'ancien') + (L.ecartes.length > 1 ? 's écartés' : ' écarté') + ' du calcul : le bien évalué est ' + seg + '.');
+    if (app && L.nonPrecises) out.push('Neuf ou ancien non précisé pour ' + L.nonPrecises + ' comparable' + (L.nonPrecises > 1 ? 's' : '') + ' : à vérifier sur l\'annonce, un programme neuf tire le €/m² vers le haut.');
+    if (L.m2Etude > 0 && Math.abs(L.ecartEtudePct) >= 10) out.push('Le €/m² des comparables (' + fmt(L.m2Med) + ' €) est ' + (L.ecartEtudePct > 0 ? 'supérieur' : 'inférieur') + ' de ' + fmt(Math.abs(Math.round(L.ecartEtudePct))) + ' % au €/m² de l\'étude de marché (' + fmt(L.m2Etude) + ' €, ventes enregistrées).');
+    return out;
   }
 
   // Assemble l'entrée du moteur v2 depuis le bien, le cadastre, les comparables et les overrides.
@@ -3481,7 +3716,7 @@
       '</div>' +
 
       '<div class="av-box" style="background:#0d2b52;color:#fff;">' +
-        '<div class="av-box-title" style="color:#fff;">Synthèse (moyenne pondérée, arrondie)</div>' +
+        '<div class="av-box-title" style="color:#fff;">Synthèse des méthodes, avant décote (moyenne pondérée, arrondie)</div>' +
         '<table style="width:100%;font-size:.85rem;color:#fff;border-collapse:collapse;">' +
           '<thead><tr><th style="text-align:left;">Méthode</th><th style="text-align:right;">Bas</th><th style="text-align:right;">Central</th><th style="text-align:right;">Haut</th></tr></thead>' +
           '<tbody>' +
@@ -3495,6 +3730,35 @@
           '</tbody>' +
         '</table>' +
         '<div class="small" style="color:rgba(255,255,255,.7);margin-top:.4rem;">Arrondi au 50 000 € au-dessus de 1 M€, au 1 000 € en dessous.</div>' +
+      '</div>' +
+      renderPontValeur(syntheseFinale(d)) +
+      renderLectureComparables(d);
+  }
+
+  // Écran : passage des méthodes (avant décote) à la valeur de l'avis.
+  function renderPontValeur(F) {
+    var n = F.net.synthese, b0 = F.brut.synthese;
+    function l(lbl, v, fort) { return '<div class="av-r-row' + (fort ? ' hl' : '') + '"><span>' + lbl + '</span><span>' + v + '</span></div>'; }
+    return '<div class="av-result"><div class="av-box-title">Des méthodes à la valeur de l\'avis</div>' +
+      l('Synthèse des méthodes, avant décote', fmtE(b0.central)) +
+      (F.dEtat > 0 ? l('Décote d\'état / vétusté', '−' + F.dEtat + ' %') : '') +
+      (F.dOcc > 0 ? l('Décote d\'occupation', '−' + F.dOcc + ' %') : '') +
+      (F.dEtat > 0 || F.dOcc > 0 ? '' : l('Décote', 'aucune')) +
+      l('Valeur après décotes (bas / central / haut)', fmtE(n.bas) + ' / ' + fmtE(n.central) + ' / ' + fmtE(n.haut), true) +
+      l('Valeur retenue par l\'avis (rubrique « Valeur vénale retenue »)', fmtE(F.retenue.bas) + ' – ' + fmtE(F.retenue.haut), true) +
+      (F.coherent ? '<div class="small text-muted mt-1">Les deux lectures concordent. La stratégie de prix part de la valeur après décotes.</div>'
+        : '<div class="small mt-1" style="color:#dc3545;">⛔ Écart de ' + fmt(Math.abs(Math.round(F.ecartPct))) + ' % entre la synthèse après décotes et la valeur retenue : le document afficherait deux valeurs. Ajustez la pondération ci-dessus ou les bornes de la valeur retenue.</div>') +
+      '<div class="small text-muted">La décote d\'état s\'applique à la comparaison (les comparables sont en état courant) ; « Sol + construction » porte déjà sa vétusté.</div>' +
+      '</div>';
+  }
+  // Écran : ce que disent les comparables retenus.
+  function renderLectureComparables(d) {
+    var L = lectureComparables(d);
+    if (!L.n && !L.ecartes.length) return '<div class="av-box"><div class="av-box-title">Comparables retenus</div><div class="av-tip">Aucun comparable exploitable (surface et prix renseignés, case « inclus » cochée).</div></div>';
+    var rem = remarquesComparables(d, L);
+    return '<div class="av-box"><div class="av-box-title">Comparables retenus : ' + L.n + ' (' + L.ventes + ' vente' + (L.ventes > 1 ? 's' : '') + ', ' + L.annonces + ' annonce' + (L.annonces > 1 ? 's' : '') + ')</div>' +
+      (L.n ? '<div class="small">Surfaces de ' + fmt(Math.round(L.surfMin)) + ' à ' + fmt(Math.round(L.surfMax)) + ' m² · €/m² médian ' + fmt(L.m2Med) + ' €' + (segmentApplicable(d) ? ' · ' + L.anciens + ' ancien' + (L.anciens > 1 ? 's' : '') + ', ' + L.neufs + ' neuf' + (L.neufs > 1 ? 's' : '') + ', ' + L.nonPrecises + ' non précisé' + (L.nonPrecises > 1 ? 's' : '') : '') + '.</div>' : '') +
+      (rem.length ? '<ul class="small" style="margin:.3rem 0 0;padding-left:1.1rem;">' + rem.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul>' : '') +
       '</div>';
   }
 
@@ -5070,40 +5334,78 @@
     if (!mv) return '';
     var hasData = (data.comparables || []).length || (mv.lots || []).length || num((data.cadastre || {}).shonAutorisee);
     if (!hasData) return '';
-    var inpF = buildV2Input(data);
-    var r = CALC.calculerMethodes(inpF);
-    var syn = r.synthese;
+    var F = syntheseFinale(data);
+    var inpF = F.inp, r = F.brut;        // méthodes AVANT décote
+    var syn = r.synthese, fin = F.net.synthese;   // fin = valeur APRÈS décotes
     if (!(syn.central > 0)) return '';
     var b = data.bien, cad = data.cadastre || {};
-    // Base bâti (lot / appartement) : ni terrain ni SHOB d'immeuble → tuiles neutralisées.
-    var terrainOffF = !!inpF._terrainOff;
-    var terrain = terrainOffF ? 0 : (contenanceTotale(cad) || num(b.surfaceCarrez));
+    var estTer = !!inpF._estTerrain;
+    var L = lectureComparables(data);
     // 4 tuiles
-    function tile(lbl, val) {
+    function tile(lbl, val, sous) {
       return '<td style="border:.4pt solid #bfbfbf;padding:8pt;text-align:center;width:25%;">' +
         '<div style="font-size:8pt;color:#5c6470;text-transform:uppercase;">' + esc(lbl) + '</div>' +
-        '<div style="font-size:13pt;font-weight:800;color:' + BLEU + ';">' + val + '</div></td>';
+        '<div style="font-size:13pt;font-weight:800;color:' + BLEU + ';">' + val + '</div>' +
+        (sous ? '<div style="font-size:7.5pt;color:#5c6470;">' + esc(sous) + '</div>' : '') + '</td>';
     }
-    var margeP = num(data.strategie && data.strategie.margeNegoPct);
-    var prixPres = num(data.strategie && data.strategie.prixPresentationManuel) || CALC.arrondi(syn.central * (1 + margeP / 100));
-    var html = '<h1>5 ter. Synthèse multi-méthodes (fourchette)</h1>';
+    var decotes = [F.dEtat > 0 ? 'état −' + F.dEtat + ' %' : '', F.dOcc > 0 ? 'occupation −' + F.dOcc + ' %' : ''].filter(Boolean).join(', ');
+    var html = '<h1>5 ter. Contrôle de la valeur par plusieurs méthodes</h1>';
+    html += '<p>Cette rubrique recoupe la valeur du bien par plusieurs méthodes. Les méthodes donnent une valeur pour un bien <b>en état courant et libre</b>. La valeur de l\'avis tient ensuite compte de l\'état du bien' + (F.occ ? ' et de son occupation' : '') + '.</p>';
     html += '<table style="margin-bottom:8pt;"><tr>' +
-      tile('Terrain', terrain ? fmt(terrain) + ' m²' : '—') +
-      tile('SHOB / SHON', terrainOffF ? '—' : ((num(cad.shobAutorisee) || '—') + ' / ' + (num(cad.shonAutorisee) || '—'))) +
-      tile('Valeur vénale (central)', fmtE(syn.central)) +
-      tile('Prix de présentation', fmtE(prixPres)) +
+      tile(estTer ? 'Terrain évalué' : 'Bien évalué', fmt(r.comparaison.base) + ' m²', estTer ? 'contenance' : (r.comparaison.baseType === 'SHON' ? 'SHON autorisée' : 'surface habitable') + (segmentApplicable(data) ? ' · ' + segmentBien(data) : '')) +
+      tile('Comparables retenus', String(L.n), L.n ? L.ventes + ' vente' + (L.ventes > 1 ? 's' : '') + ' · ' + L.annonces + ' annonce' + (L.annonces > 1 ? 's' : '') : 'aucun') +
+      tile('Méthodes, avant décote', fmtE(syn.central), 'bien en état courant') +
+      tile('Valeur de l\'avis', fmtE(fin.central), decotes ? 'après décote : ' + decotes : 'sans décote') +
       '</tr></table>';
-    // tableau méthodes
-    function mrow(lbl, m, strong) {
-      return '<tr' + (strong ? ' class="gold-row"' : '') + '><td' + (strong ? '' : ' class="lbl"') + '>' + esc(lbl) + '</td>' +
-        '<td class="center">' + fmtE(m.bas) + '</td><td class="center">' + fmtE(m.central) + '</td><td class="center">' + fmtE(m.haut) + '</td></tr>';
+
+    // ── Comparables : ce qui est comparé ──
+    if (L.n) {
+      html += '<h2>Les comparables retenus</h2>';
+      var aff = L.retenus.slice().sort(function (x, y) { return x.m2Adj - y.m2Adj; });
+      var MAXL = 12, coupe = aff.length > MAXL;
+      html += '<table><thead><tr><th>Nature</th><th>Source</th>' + (segmentApplicable(data) ? '<th class="center">Neuf / ancien</th>' : '') + '<th class="center">Surface</th><th class="center">Prix</th><th class="center">€/m²</th></tr></thead><tbody>' +
+        aff.slice(0, MAXL).map(function (x) {
+          return '<tr><td class="lbl">' + (x.vendu ? 'Vente enregistrée' : 'Annonce (prix demandé)') + '</td>' +
+            '<td>' + esc([x.cp.source, x.cp.type].filter(Boolean).join(' · ')) + '</td>' +
+            (segmentApplicable(data) ? '<td class="center">' + (x.segment || 'non précisé') + '</td>' : '') +
+            '<td class="center">' + fmt(x.surface) + ' m²</td><td class="center">' + fmtE(x.prix) + '</td>' +
+            '<td class="center">' + fmt(Math.round(x.m2Adj)) + ' €' + (num(x.cp.ajustementPct) ? ' <span style="color:#5c6470;">(ajusté ' + (num(x.cp.ajustementPct) > 0 ? '+' : '') + num(x.cp.ajustementPct) + ' %)</span>' : '') + '</td></tr>';
+        }).join('') + '</tbody></table>';
+      if (coupe) html += '<p style="font-size:8.5pt;color:#5c6470;">' + (aff.length - MAXL) + ' autres comparables retenus ne sont pas listés.</p>';
+      html += '<p>Surfaces de <b>' + fmt(Math.round(L.surfMin)) + ' à ' + fmt(Math.round(L.surfMax)) + ' m²</b> pour un bien de <b>' + fmt(r.comparaison.base) + ' m²</b>. ' +
+        (inpF._autoComparaison
+          ? 'Prix au m² des comparables : bas <b>' + fmt(inpF._compRef.bas) + ' €</b> (quart inférieur), central <b>' + fmt(inpF._compRef.central) + ' €</b> (médiane), haut <b>' + fmt(inpF._compRef.haut) + ' €</b> (quart supérieur).'
+          : 'Prix au m² saisis par l\'évaluateur : bas <b>' + fmt(inpF._compRef.bas) + ' €</b>, central <b>' + fmt(inpF._compRef.central) + ' €</b>, haut <b>' + fmt(inpF._compRef.haut) + ' €</b>.') +
+        (estTer && inpF.comparaison.central !== inpF._compRef.central ? ' Après abattement lié à la taille du terrain : <b>' + fmt(inpF.comparaison.central) + ' €/m²</b>.' : '') +
+        (L.m2Etude > 0 ? ' L\'étude de marché relève <b>' + fmt(L.m2Etude) + ' €/m²</b>' + (estTer ? '' : ' (ventes enregistrées)') + '.' : '') + '</p>';
+      var rem = remarquesComparables(data, L);
+      if (rem.length) html += '<ul style="margin:0 0 6pt;padding-left:1.1rem;font-size:9pt;">' + rem.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul>';
     }
-    html += '<table><thead><tr><th>Méthode</th><th class="center">Bas</th><th class="center">Central</th><th class="center">Haut</th></tr></thead><tbody>' +
-      (r.actives.comparaison ? mrow('Comparaison (' + r.comparaison.baseType + ')', r.comparaison) : '') +
+
+    // ── Tableau des méthodes (avant décote) ──
+    function mrow(lbl, m, strong) {
+      return '<tr' + (strong ? ' style="background:#eaf0f8;font-weight:bold;"' : '') + '><td' + (strong ? '' : ' class="lbl"') + '>' + esc(lbl) + '</td>' +
+        '<td class="center">' + fmtE(Math.round(m.bas)) + '</td><td class="center">' + fmtE(Math.round(m.central)) + '</td><td class="center">' + fmtE(Math.round(m.haut)) + '</td></tr>';
+    }
+    html += '<h2>Valeur par méthode, avant décote</h2>' +
+      '<table><thead><tr><th>Méthode</th><th class="center">Bas</th><th class="center">Central</th><th class="center">Haut</th></tr></thead><tbody>' +
+      (r.actives.comparaison ? mrow('Comparaison : ' + fmt(r.comparaison.base) + ' m² × ' + fmt(inpF.comparaison.central) + ' €/m²', r.comparaison) : '') +
       (r.actives.solConstruction ? mrow('Sol + construction', r.solConstruction) : '') +
-      (r.actives.capitalisation ? mrow('Capitalisation multi-lots', r.capitalisation) : '') +
-      mrow('SYNTHÈSE (pondérée, arrondie)', syn, true) +
+      (r.actives.capitalisation ? mrow('Capitalisation des loyers', r.capitalisation) : '') +
+      mrow('Synthèse des méthodes (pondérée, arrondie)', syn, true) +
       '</tbody></table>';
+
+    // ── Des méthodes à la valeur de l'avis ──
+    html += '<h2>Des méthodes à la valeur de l\'avis</h2><table><tbody>' +
+      '<tr><td class="lbl">Synthèse des méthodes, avant décote</td><td class="center">' + fmtE(syn.central) + '</td></tr>' +
+      (F.dEtat > 0 ? '<tr><td class="lbl">Décote d\'état / vétusté</td><td class="center">−' + F.dEtat + ' %</td></tr>' : '') +
+      (F.dOcc > 0 ? '<tr><td class="lbl">Décote d\'occupation locative</td><td class="center">−' + F.dOcc + ' %</td></tr>' : '') +
+      (decotes ? '' : '<tr><td class="lbl">Décote</td><td class="center">aucune</td></tr>') +
+      '<tr class="gold-row"><td>VALEUR APRÈS DÉCOTES — bas / central / haut</td><td class="center">' + fmtE(fin.bas) + ' / ' + fmtE(fin.central) + ' / ' + fmtE(fin.haut) + '</td></tr>' +
+      (F.retenue.central > 0 ? '<tr><td class="lbl">Fourchette retenue par l\'avis (rubriques 5 et 7)</td><td class="center">' + fmtE(F.retenue.bas) + ' – ' + fmtE(F.retenue.haut) + '</td></tr>' : '') +
+      '</tbody></table>';
+    if (decotes && r.actives.solConstruction && !estTer) html += '<p style="font-size:8.5pt;color:#5c6470;">La décote d\'état porte sur la comparaison (les comparables sont en état courant) ; « Sol + construction » intègre déjà la vétusté du bâti.</p>';
+    if (!F.coherent) html += '<p style="font-size:9pt;"><b>Écart à arbitrer avant diffusion :</b> la valeur après décotes (' + fmtE(fin.central) + ') sort de la fourchette retenue par l\'avis (' + fmtE(F.retenue.bas) + ' – ' + fmtE(F.retenue.haut) + ').</p>';
     // graphiques
     var g1 = chartComparablesM2(data), g2 = chartMethodesFourchette(data, r), g3 = chartRevenusAnneau(r);
     if (g1) html += '<h2>€/m² des comparables</h2><div style="break-inside:avoid;page-break-inside:avoid;">' + g1 + '</div>';
@@ -5117,16 +5419,13 @@
   function buildStrategieDocHTML(data) {
     var mv = data.methodesV2, st = data.strategie, b = data.bien;
     if (!mv || !st) return '';
-    var inpDoc = buildV2Input(data);
-    var r = CALC.calculerMethodes(inpDoc);
-    var syn = r.synthese;
+    var SC = strategieCalc(data), F = SC.F;
+    var inpDoc = F.inp, r = F.brut;
+    var syn = SC.syn;                     // valeur APRÈS décotes : celle de l'avis
     if (!(syn.central > 0)) return '';
-    var terr = terrPourCp(b.cp);
-    var honoPct = (st.honorairesPct !== '' && st.honorairesPct != null) ? num(st.honorairesPct) : terr.hono;
-    var marge = num(st.margeNegoPct);
-    var prixPres = num(st.prixPresentationManuel) || CALC.arrondi(syn.central * (1 + marge / 100));
-    var cPres = coutAcquereur(prixPres, terr, honoPct, st.honorairesCharge);
-    var cObj = coutAcquereur(syn.central, terr, honoPct, st.honorairesCharge);
+    var terr = SC.terr, honoPct = SC.honoPct, marge = SC.marge;
+    var prixPres = SC.prixPres, cPres = SC.cPres, cObj = SC.cObj;
+    var decotesDoc = [F.dEtat > 0 ? 'état −' + F.dEtat + ' %' : '', F.dOcc > 0 ? 'occupation −' + F.dOcc + ' %' : ''].filter(Boolean).join(', ');
     function crow(lbl, a, c, strong) {
       return '<tr' + (strong ? ' class="gold-row"' : '') + '><td' + (strong ? '' : ' class="lbl"') + '>' + esc(lbl) + '</td>' +
         '<td class="center">' + fmtE(a) + '</td><td class="center">' + fmtE(c) + '</td></tr>';
@@ -5146,10 +5445,11 @@
       }
     }
     html += '<table><tbody>' +
-      '<tr><td class="lbl">Prix de présentation net vendeur</td><td class="center">' + fmtE(prixPres) + ' <span style="color:#5c6470;">(central + ' + fmt(marge) + ' % de négociation)</span></td></tr>' +
-      '<tr><td class="lbl">Objectif de signature (central)</td><td class="center">' + fmtE(syn.central) + '</td></tr>' +
-      '<tr><td class="lbl">Plancher (bas)</td><td class="center">' + fmtE(syn.bas) + '</td></tr>' +
-      '</tbody></table>';
+      '<tr><td class="lbl">Prix de présentation net vendeur</td><td class="center">' + fmtE(prixPres) + ' <span style="color:#5c6470;">(' + (SC.prixPresManuel ? 'fixé par l\'évaluateur' : 'objectif + ' + fmt(marge, marge % 1 ? 1 : 0) + ' % de négociation') + ')</span></td></tr>' +
+      '<tr><td class="lbl">Objectif de signature</td><td class="center">' + fmtE(syn.central) + '</td></tr>' +
+      '<tr><td class="lbl">Plancher</td><td class="center">' + fmtE(SC.plancher) + '</td></tr>' +
+      '</tbody></table>' +
+      '<p style="font-size:8.5pt;color:#5c6470;">Ces montants partent de la valeur de l\'avis' + (decotesDoc ? ', après décote (' + decotesDoc + ')' : '') + ' — voir la rubrique 5 ter.</p>';
     html += '<h2>Coût global acquéreur</h2>' +
       '<table><thead><tr><th>Poste</th><th class="center">Présentation</th><th class="center">Objectif signature</th></tr></thead><tbody>' +
         crow('Net vendeur', cPres.netVendeur, cObj.netVendeur) +
@@ -5161,6 +5461,24 @@
         crow('COÛT TOTAL ACQUÉREUR', cPres.total, cObj.total, true) +
       '</tbody></table>' +
       '<p style="font-size:8.5pt;color:#5c6470;">Base des droits et émoluments = net vendeur si honoraires à charge acquéreur. Indicatif, hors débours et cas particuliers.</p>';
+    // Comparatif ancien / neuf (absent si le prix au m² de l'autre catégorie est inconnu)
+    var KC = comparatifAncienNeuf(data, SC);
+    if (KC && !KC.manque) {
+      html += '<div style="break-inside:avoid;page-break-inside:avoid;"><h2>Acheter dans l\'ancien ou dans le neuf</h2>' +
+        '<p>Comparaison à surface égale (' + fmt(KC.surf) + ' m²) entre ' + (KC.seg === 'ancien' ? 'ce bien ancien et un logement neuf équivalent du secteur' : 'ce bien neuf et un logement ancien équivalent du secteur') + '.</p>' +
+        '<table><thead><tr><th>Poste</th><th class="center">Ancien' + (KC.ancien.estLeBien ? ' — ce bien' : '') + '</th><th class="center">Neuf' + (KC.neuf.estLeBien ? ' — ce bien' : '') + '</th></tr></thead><tbody>' +
+        lignesComparatif(KC).map(function (l) {
+          return '<tr' + (l[3] ? ' class="gold-row"' : '') + '><td' + (l[3] ? '' : ' class="lbl"') + '>' + esc(l[0]) + '</td><td class="center">' + esc(l[1]) + '</td><td class="center">' + esc(l[2]) + '</td></tr>';
+        }).join('') +
+        COMPARATIF_A_SAVOIR.map(function (l) {
+          return '<tr><td class="lbl">' + esc(l[0]) + '</td><td class="center" style="font-size:8.5pt;">' + esc(l[1]) + '</td><td class="center" style="font-size:8.5pt;">' + esc(l[2]) + '</td></tr>';
+        }).join('') +
+        '</tbody></table>' +
+        '<p><b>' + esc(phraseComparatif(KC)) + '</b></p>' +
+        '<p style="font-size:8.5pt;color:#5c6470;">Prix ' + (KC.seg === 'ancien' ? 'du neuf' : 'de l\'ancien') + ' : ' + esc(KC.seg === 'ancien' ? KC.neuf.source : KC.ancien.source) + '.' +
+          (KC.ancien.travauxEstime ? ' Travaux : estimation égale à la décote d\'état, à confirmer par des devis.' : '') +
+          ' Frais d\'acquisition du neuf : taux réduit indicatif. Hypothèses à valider.</p></div>';
+    }
     // Vigilances automatiques
     var vig = vigilancesAuto(data, r);
     if (vig.length) {
@@ -5554,6 +5872,8 @@
       if (state.mode === 'expert' && data.expert && window.FidiAvisMethodes) {
         html += buildExpertMethodesHTML(data, calc);
       }
+      // 5 ter : contrôle par plusieurs méthodes, à la suite de la rubrique 5 qu'il complète.
+      try { html += buildFourchetteDocHTML(data); } catch (e) { /* jamais bloquer le doc */ }
     }
 
     if (atouts.length || vigilances.length) {
@@ -5601,9 +5921,8 @@
         '<p style="margin-top:12px;"><b style="color:#1a3a6e;">Conclusion :</b> ' + conclusionTexte + '</p>';
     }
 
-    // ── Fourchette multi-méthodes + graphiques (LOT E/G) + Stratégie & coût acquéreur (LOT F) — vente ──
+    // ── Stratégie de prix, coût acquéreur, comparatif ancien / neuf (LOT F) — vente ──
     if (_nature !== 'location') {
-      try { html += buildFourchetteDocHTML(data); } catch (e) { /* jamais bloquer le doc */ }
       try { html += buildStrategieDocHTML(data); } catch (e) { /* jamais bloquer le doc */ }
     }
 
@@ -5963,6 +6282,9 @@
   }
 
   window.AvisValeur = { open: open, openLibrary: openLibrary, listAvis: avisList, cloud: doCloud, cloudOpen: cloudOpen, cloudDelete: cloudDelete, histRestore: histRestore, partager: doPartager, facturer: doFacturer, _compute: compute, _prefill: buildPrefillFromEtude,
+    // Pour les tests (tests/avis-synthese.test.mjs)
+    _defaut: function () { return ensureExpertBlock(defaultData()); }, _synthese: syntheseFinale, _strategie: strategieCalc,
+    _comparatif: comparatifAncienNeuf, _lecture: lectureComparables, _remarques: remarquesComparables,
     // Pour avis-dossiers.js (fenêtre « Mes avis & versions »)
     lireLocal: lireLocal, supprimerLocal: supprimerLocal, charger: chargerAvis, resume: resumeAvis,
     documentHTML: function (d) { var x = ensureExpertBlock(JSON.parse(JSON.stringify(d))); return buildAvisDocHTML(x, compute(x)); },
