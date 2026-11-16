@@ -1290,6 +1290,28 @@
     wrap.innerHTML = visibleSections().map(function (s) {
       return '<button class="av-tab' + (s.id === state.section ? ' active' : '') + '" data-sec="' + s.id + '">' + esc(s.label) + '</button>';
     }).join('');
+    majNavMobile();
+  }
+  // Téléphone : les onglets (15 rubriques) sont remplacés par une liste et deux flèches.
+  function estMobile() { try { return window.matchMedia('(max-width: 768px)').matches; } catch (e) { return false; } }
+  function navMobileHTML() {
+    return '<button type="button" class="av-nav-fleche" data-action="prev" aria-label="Rubrique précédente"><i class="bi bi-chevron-left"></i></button>' +
+      '<select id="avSecSelect" aria-label="Rubrique de l\'avis">' + visibleSections().map(function (s) {
+        return '<option value="' + s.id + '"' + (s.id === state.section ? ' selected' : '') + '>' + esc(s.label) + '</option>';
+      }).join('') + '</select>' +
+      '<button type="button" class="av-nav-fleche" data-action="next" aria-label="Rubrique suivante"><i class="bi bi-chevron-right"></i></button>';
+  }
+  function majNavMobile() {
+    var nav = document.querySelector('#avisModal .av-nav-mobile');
+    if (nav) nav.innerHTML = navMobileHTML();
+  }
+  // Bouton « Aperçu » : sur téléphone l'aperçu remplace la saisie, le bouton sert alors à y revenir.
+  function majBoutonApercu() {
+    var b = document.querySelector('#avisModal [data-action="toggle-preview"]');
+    if (!b) return;
+    var retour = state.preview && estMobile();
+    b.innerHTML = retour ? '<i class="bi bi-pencil me-1"></i>Saisie' : '<i class="bi bi-eye me-1"></i>Aperçu';
+    b.classList.toggle('active', !!state.preview);
   }
 
   // Rétrocompat : garantit la présence des blocs "expert" et "locatif"
@@ -2421,6 +2443,13 @@
     var c = document.getElementById('avFormContent');
     if (c) c.innerHTML = renderSection(id);
     document.querySelectorAll('.av-tab').forEach(function (t) { t.classList.toggle('active', t.dataset.sec === id); });
+    var selSec = document.getElementById('avSecSelect');
+    if (selSec) {
+      if (selSec.value !== id) selSec.value = id;
+      if (selSec.value !== id) majNavMobile();   // la liste des rubriques a changé (vente / location, expert)
+    }
+    // Téléphone : la rubrique choisie s'affiche depuis son début.
+    if (estMobile()) { var corps = document.querySelector('#avisModal .modal-body'); if (corps) corps.scrollTop = 0; }
     refreshOutputs();
     // Section Référence + CRM activé : rafraîchit le cache CRM en arrière-plan (une fois
     // par ouverture de modale) pour éviter d'afficher un cache obsolète (nom seul).
@@ -2439,6 +2468,8 @@
     var root = document.getElementById('avisModalRoot');
     if (!root) { root = document.createElement('div'); root.id = 'avisModalRoot'; document.body.appendChild(root); }
     var tabs = visibleSections().map(function (s) { return '<button class="av-tab" data-sec="' + s.id + '">' + esc(s.label) + '</button>'; }).join('');
+    // Téléphone : l'aperçu remplace la saisie, il est donc fermé à l'ouverture.
+    if (estMobile()) state.preview = false;
     root.innerHTML =
       '<div class="modal fade" id="avisModal" tabindex="-1" aria-hidden="true">' +
       '<div class="modal-dialog modal-fullscreen modal-dialog-scrollable">' +
@@ -2457,26 +2488,27 @@
       '</div>' +
       '<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button></div>' +
       '<div class="av-tabs">' + tabs + '</div>' +
+      '<div class="av-nav-mobile">' + navMobileHTML() + '</div>' +
       '<div class="modal-body"><div class="av-layout' + (state.preview ? ' av-with-preview' : '') + '" id="avLayout">' +
       '<div class="av-form"><div id="avFormContent"></div>' +
       '<div style="display:flex;justify-content:space-between;margin-top:1rem;padding-top:1rem;border-top:1px solid var(--av-grey-light);">' +
       '<button class="btn btn-sm btn-light" data-action="prev">← Précédent</button>' +
       '<button class="btn btn-sm btn-primary" data-action="next">Suivant →</button></div></div>' +
-      '<div class="av-preview" id="avPreviewWrap"><div id="avPreview"></div></div>' +
+      '<div class="av-preview" id="avPreviewWrap"' + (state.preview ? '' : ' style="display:none;"') + '><div id="avPreview"></div></div>' +
       '</div></div>' +
       '<div class="modal-footer" style="justify-content:space-between;flex-wrap:wrap;gap:.5rem;">' +
       '<div class="av-live" id="avLive"></div>' +
       // Boutons regroupés par usage : dossier · enregistrement · document.
       '<div class="av-pied-groupes">' +
       '<div class="av-pied-groupe">' +
-        '<button class="btn btn-sm btn-primary" data-action="dossiers" title="Tous vos avis, leurs versions et l\'aperçu de chaque document"><i class="bi bi-folder2-open me-1"></i>Mes avis &amp; versions</button>' +
-        '<button class="btn btn-sm btn-outline-secondary" data-action="new" title="Commencer un nouvel avis"><i class="bi bi-plus-lg me-1"></i>Nouveau</button>' +
-        '<button class="btn btn-sm btn-outline-primary" data-action="prefill" title="Reprendre les données de l\'étude de marché en cours, sans effacer vos saisies"><i class="bi bi-magic me-1"></i>Pré-remplir</button>' +
+        '<button class="btn btn-sm btn-primary" data-action="dossiers" title="Tous vos avis, leurs versions et l\'aperçu de chaque document"><i class="bi bi-folder2-open me-1"></i>Mes avis<span class="av-m-masque"> &amp; versions</span></button>' +
+        '<button class="btn btn-sm btn-outline-secondary av-m-masque" data-action="new" title="Commencer un nouvel avis"><i class="bi bi-plus-lg me-1"></i>Nouveau</button>' +
+        '<button class="btn btn-sm btn-outline-primary av-m-masque" data-action="prefill" title="Reprendre les données de l\'étude de marché en cours, sans effacer vos saisies"><i class="bi bi-magic me-1"></i>Pré-remplir</button>' +
       '</div>' +
       '<div class="av-pied-groupe">' +
         '<button class="btn btn-sm btn-success" data-action="save" title="Enregistrer et créer une version que vous pourrez retrouver"><i class="bi bi-save me-1"></i>Enregistrer</button>' +
         '<span id="avAutoSaveTag" class="av-etat-enreg" title="L\'avis est enregistré automatiquement, sur ce poste puis en ligne"></span>' +
-        '<div class="dropup">' +
+        '<div class="dropup av-m-masque">' +
           '<button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Copie de sauvegarde dans un fichier">Fichier</button>' +
           '<ul class="dropdown-menu">' +
             '<li><button class="dropdown-item" type="button" data-action="export-json"><i class="bi bi-download me-2"></i>Exporter un fichier de sauvegarde (.json)</button></li>' +
@@ -2486,11 +2518,26 @@
       '</div>' +
       '<div class="av-pied-groupe">' +
         '<button class="btn btn-sm btn-outline-dark" data-action="toggle-preview"><i class="bi bi-eye me-1"></i>Aperçu</button>' +
-        '<button class="btn btn-sm btn-outline-secondary" data-action="partager" title="Partager cet avis"><i class="bi bi-share me-1"></i>Partager</button>' +
-        '<button class="btn btn-sm btn-outline-warning" data-action="facturer" title="Facturer & envoyer cet avis"><i class="bi bi-receipt me-1"></i>Facturer</button>' +
+        '<button class="btn btn-sm btn-outline-secondary av-m-masque" data-action="partager" title="Partager cet avis"><i class="bi bi-share me-1"></i>Partager</button>' +
+        '<button class="btn btn-sm btn-outline-warning av-m-masque" data-action="facturer" title="Facturer & envoyer cet avis"><i class="bi bi-receipt me-1"></i>Facturer</button>' +
         '<div class="btn-group btn-group-sm">' +
         '<button class="btn btn-success" data-action="pdf-server" title="PDF de haute qualité (texte copiable)"><i class="bi bi-file-earmark-pdf-fill me-1"></i>PDF</button>' +
-        '<button class="btn btn-danger" data-action="pdf" title="Imprimer depuis le navigateur"><i class="bi bi-printer"></i></button>' +
+        '<button class="btn btn-danger av-m-masque" data-action="pdf" title="Imprimer depuis le navigateur"><i class="bi bi-printer"></i></button>' +
+        '</div>' +
+        // Téléphone : les actions secondaires sont rangées dans un menu.
+        '<div class="dropup av-m-seul">' +
+          '<button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Autres actions"><i class="bi bi-three-dots"></i><span class="av-m-plus"> Plus</span></button>' +
+          '<ul class="dropdown-menu dropdown-menu-end">' +
+            '<li><button class="dropdown-item" type="button" data-action="prefill"><i class="bi bi-magic me-2"></i>Pré-remplir depuis l\'étude</button></li>' +
+            '<li><button class="dropdown-item" type="button" data-action="new"><i class="bi bi-plus-lg me-2"></i>Nouvel avis</button></li>' +
+            '<li><hr class="dropdown-divider"></li>' +
+            '<li><button class="dropdown-item" type="button" data-action="partager"><i class="bi bi-share me-2"></i>Partager</button></li>' +
+            '<li><button class="dropdown-item" type="button" data-action="facturer"><i class="bi bi-receipt me-2"></i>Facturer</button></li>' +
+            '<li><button class="dropdown-item" type="button" data-action="pdf"><i class="bi bi-printer me-2"></i>Imprimer</button></li>' +
+            '<li><hr class="dropdown-divider"></li>' +
+            '<li><button class="dropdown-item" type="button" data-action="export-json"><i class="bi bi-download me-2"></i>Exporter une sauvegarde (.json)</button></li>' +
+            '<li><label class="dropdown-item mb-0"><i class="bi bi-upload me-2"></i>Importer une sauvegarde<input type="file" accept="application/json,.json" data-action="import-json" class="d-none"/></label></li>' +
+          '</ul>' +
         '</div>' +
       '</div>' +
       '</div></div>' +
@@ -2568,6 +2615,8 @@
 
   function onInput(e) {
     var el = e.target;
+    // Liste des rubriques (téléphone) : navigation, pas une saisie.
+    if (el.id === 'avSecSelect') { if (e.type === 'change') showSection(el.value); return; }
     // Upload photo (input file avec data-action="photo-add")
     // NB : la délégation écoute 'input' ET 'change' ; un input file déclenche les
     // deux → on ne traite que 'change' pour éviter d'ajouter 2 fois la même photo.
@@ -3954,6 +4003,8 @@
     var wrap = document.getElementById('avPreviewWrap');
     if (lay) lay.classList.toggle('av-with-preview', state.preview);
     if (wrap) wrap.style.display = state.preview ? '' : 'none';
+    majBoutonApercu();
+    if (estMobile()) { var corps = document.querySelector('#avisModal .modal-body'); if (corps) corps.scrollTop = 0; }
     refreshOutputs();
   }
 

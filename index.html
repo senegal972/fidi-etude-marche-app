@@ -30,6 +30,7 @@
 <link href="/saisie.css" rel="stylesheet"/>
 <link href="/marque.css" rel="stylesheet"/>
 <link href="/facture.css" rel="stylesheet"/>
+<link href="/mobile.css" rel="stylesheet"/>
 <style>
 :root{
   /* Valeurs par défaut — remplacées à l'exécution par marque.js (module « Mise en page ») */
@@ -254,13 +255,13 @@ body.map-fs-on{overflow:hidden;}
     <span class="badge-gov" id="appVersionBadge" title="Chargement version…" style="cursor:help;"><i class="bi bi-tag me-1"></i><span id="appVersionLabel">v…</span></span>
     <span class="badge-gov" title="Données publiques françaises"><i class="bi bi-database me-1"></i>data.gouv.fr</span>
     <span class="badge bg-warning text-dark d-none" id="creditsPill" title="Crédits d'analyse restants" style="font-size:.72rem;">
-      <i class="bi bi-coin me-1"></i><span id="creditsVal">0</span> crédits
+      <i class="bi bi-coin me-1"></i><span id="creditsVal">0</span><span class="nav-lbl"> crédits</span>
     </span>
 
     <!-- Dropdown Mes documents (études + avis) -->
     <div class="dropdown">
       <button class="btn btn-sm btn-outline-light dropdown-toggle" type="button" id="ddDocs" data-bs-toggle="dropdown" aria-expanded="false" title="Mes dossiers">
-        <i class="bi bi-folder2-open me-1"></i>Mes documents
+        <i class="bi bi-folder2-open me-1"></i><span class="nav-lbl">Mes documents</span>
       </button>
       <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="ddDocs">
         <li><a class="dropdown-item" href="#" onclick="openEtudesRecentes();return false;"><i class="bi bi-clock-history me-2 text-primary"></i>Études récentes</a></li>
@@ -271,7 +272,7 @@ body.map-fs-on{overflow:hidden;}
     <!-- Dropdown Actions étude courante (visible après analyse) -->
     <div class="dropdown d-none" id="ddResultsWrap">
       <button class="btn btn-sm btn-warning dropdown-toggle" type="button" id="ddResults" data-bs-toggle="dropdown" aria-expanded="false">
-        <i class="bi bi-lightning-charge-fill me-1"></i>Actions
+        <i class="bi bi-lightning-charge-fill me-1"></i><span class="nav-lbl">Actions</span>
       </button>
       <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="ddResults">
         <li><a class="dropdown-item" href="#" onclick="AvisValeur.open('vente');return false;"><i class="bi bi-house-check me-2 text-warning"></i>Avis de valeur <strong>Vente</strong></a></li>
@@ -289,7 +290,7 @@ body.map-fs-on{overflow:hidden;}
     <!-- Dropdown Compte + Ressources -->
     <div class="dropdown">
       <button class="btn btn-sm btn-outline-warning dropdown-toggle" type="button" id="ddCompte" data-bs-toggle="dropdown" aria-expanded="false">
-        <i class="bi bi-person-circle me-1"></i><span id="btnCompteLabel">Connexion</span>
+        <i class="bi bi-person-circle me-1"></i><span id="btnCompteLabel" class="nav-lbl">Connexion</span>
       </button>
       <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="ddCompte">
         <li><a class="dropdown-item" href="#" id="miCompte" onclick="Compte.open();return false;"><i class="bi bi-gear me-2"></i>Mon compte</a></li>

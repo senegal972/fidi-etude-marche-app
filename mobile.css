@@ -1,0 +1,162 @@
+/* ============================================================
+   FIDI · Étude de marché & Avis de valeur — téléphone (Android, iPhone)
+   Chargé en dernier. Règle d'or : sur un petit écran, les barres (haut, rubriques, bas)
+   tiennent chacune sur une ligne et laissent la place au contenu.
+   Testé à 360 et 375 px de large (tests/mobile.test.mjs garde les points d'accroche).
+   ============================================================ */
+
+/* Boutons techniques invisibles (compatibilité des scripts) : jamais affichés, quel que soit l'écran. */
+#btnPresentation,#btnCompte,#btnEtudesLib,#btnAvisLib,#btnAvis,#btnPdf,#btnPrint{display:none!important;}
+
+/* Éléments propres au téléphone : absents ailleurs. */
+.av-nav-mobile,.av-m-seul{display:none;}
+
+@media (max-width: 768px){
+
+  /* ── Barre du haut : une seule ligne ───────────────────────── */
+  .navbar-fidi{flex-wrap:nowrap!important;gap:.4rem;padding:.4rem .6rem;position:sticky;top:0;z-index:1020;}
+  .navbar-fidi > div:first-child{min-width:0;flex:1 1 auto;}
+  .navbar-fidi .brand-text{font-size:.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .navbar-fidi .brand-sub,.navbar-fidi .badge-gov{display:none!important;}
+  .navbar-fidi > div:last-child{flex:0 0 auto;flex-wrap:nowrap!important;gap:.3rem!important;}
+  .navbar-fidi .nav-lbl:not(#btnCompteLabel){display:none;}
+  .navbar-fidi #btnCompteLabel{display:inline-block;max-width:4.6rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom;}
+  .navbar-fidi .btn{min-height:40px;min-width:40px;padding:.3rem .55rem;display:inline-flex;align-items:center;justify-content:center;}
+  .navbar-fidi .btn > i{margin-right:0!important;font-size:1.05rem;}
+  .navbar-fidi #ddCompte > i{margin-right:.3rem!important;}
+  .navbar-fidi .dropdown-toggle::after{margin-left:.25rem;}
+  .navbar-fidi #creditsPill{font-size:.7rem!important;padding:.3rem .4rem;}
+  /* Menus : lignes hautes, faciles à toucher, jamais plus larges que l'écran. */
+  .dropdown-menu{max-width:calc(100vw - 16px);}
+  .dropdown-menu .dropdown-item{padding:.65rem 1rem;white-space:normal;}
+
+  /* ── Avis de valeur : en-tête sur une ligne ───────────────── */
+  #avisModal .modal-header{padding:.4rem .6rem;gap:.35rem;flex-wrap:nowrap;}
+  #avisModal .modal-header > div:first-child{min-width:0;flex:1 1 auto;}
+  #avisModal .modal-title{font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  #avisModal .modal-title small,#avisModal #avisVersionBadge{display:none;}
+  #avisModal .modal-header .btn-group{margin:0!important;flex:0 0 auto;}
+  #avisModal .modal-header .btn-group .btn{font-size:.74rem;padding:.4rem .45rem;min-height:36px;}
+  #avisModal .modal-header .btn-group .btn > i{display:none;}
+  #avisModal .modal-header .btn-close{flex:0 0 auto;margin:0;padding:.6rem;}
+
+  /* ── Avis : la liste des rubriques remplace les onglets ───── */
+  #avisModal .av-tabs{display:none;}
+  #avisModal .av-nav-mobile{display:flex;align-items:center;gap:.35rem;padding:.4rem .6rem;background:#fff;border-bottom:1px solid var(--av-grey-light);flex:0 0 auto;}
+  #avisModal .av-nav-mobile select{flex:1 1 auto;min-width:0;height:42px;font-size:.92rem;font-weight:700;color:var(--av-blue);border:1px solid #c9d2df;border-radius:8px;padding:0 .6rem;background-color:#f6f9ff;}
+  #avisModal .av-nav-fleche{flex:0 0 42px;height:42px;border:1px solid #c9d2df;border-radius:8px;background:#fff;color:var(--av-blue);font-size:1.1rem;display:flex;align-items:center;justify-content:center;}
+  #avisModal .av-nav-fleche:active{background:var(--av-lightblue);}
+
+  /* ── Avis : contenu. Un seul défilement, celui de la fenêtre. ─ */
+  #avisModal .av-form{max-height:none;overflow:visible;padding:.85rem .75rem 1.2rem;}
+  #avisModal .av-preview{max-height:none;overflow:visible;padding:.5rem;}
+  /* L'aperçu remplace la saisie (le bouton « Saisie » y ramène). */
+  #avisModal .av-layout.av-with-preview .av-form{display:none;}
+  #avisModal .av-preview-page{padding:.9rem .8rem;overflow-x:auto;}
+  #avisModal .av-sec-head h5{font-size:1.05rem;}
+  /* Champs : 16 px au moins, sinon Android et iPhone zooment à chaque saisie. */
+  #avisModal .av-field input,#avisModal .av-field select,#avisModal .av-field textarea,
+  #avisModal .av-row input,#avisModal .av-row select,
+  #avisModal .av-cmp-head select,#avisModal .av-cmp-head input,
+  #avisModal .av-method-poids input{font-size:16px;min-height:42px;}
+  #avisModal .av-field input[type=checkbox],#avisModal .av-field input[type=radio],
+  #avisModal input[type=checkbox],#avisModal input[type=radio]{min-height:0;width:1.15rem;height:1.15rem;}
+  #avisModal .av-field label{font-size:.8rem;}
+  #avisModal .av-field .av-tip{font-size:.74rem;}
+  #avisModal .av-box{padding:.7rem;}
+  #avisModal .av-cmp-head select{max-width:none;flex:1 1 40%;}
+  /* Lignes répétables (sources, loyers, lots) : colonnes imposées en ligne → repli propre. */
+  #avisModal .av-row{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+  #avisModal .av-row > input[type=text]:first-child{grid-column:1 / -1;}
+  #avisModal .av-row .av-del{justify-self:end;min-width:40px;min-height:40px;}
+  #avisModal .av-del{min-width:40px;min-height:40px;}
+  /* Tableaux et graphiques larges : défilent dans leur boîte, pas la page. */
+  #avisModal .av-box,#avisModal .av-result{overflow-x:auto;}
+  #avisModal .av-form table{font-size:.78rem;}
+  #avisModal .av-result .av-r-row{gap:.6rem;}
+  #avisModal .av-result .av-r-row > span:last-child{text-align:right;flex:0 0 auto;max-width:55%;}
+  #avisModal .av-form .btn{min-height:40px;}
+
+  /* ── Avis : bas de fenêtre sur deux lignes courtes ────────── */
+  #avisModal .modal-footer{padding:.35rem .5rem calc(.35rem + env(safe-area-inset-bottom,0px));gap:.3rem!important;}
+  #avisModal .modal-footer > *{margin:0;}
+  #avisModal .av-live{flex:1 1 100%;flex-wrap:nowrap;gap:.8rem;font-size:.72rem;overflow:hidden;}
+  #avisModal .av-live .av-live-item{flex-direction:row;align-items:baseline;gap:.35rem;white-space:nowrap;}
+  #avisModal .av-live .av-live-item:not(:last-child){display:none;}   /* seule la valeur retenue reste */
+  #avisModal .av-live .av-live-k{font-size:.64rem;}
+  #avisModal .av-pied-groupes{flex:1 1 100%;flex-wrap:nowrap;gap:.3rem;justify-content:space-between;}
+  #avisModal .av-pied-groupe{gap:.3rem;flex:0 0 auto;}
+  #avisModal .av-m-masque{display:none!important;}
+  #avisModal .av-m-seul{display:block;}
+  #avisModal .modal-footer .btn{min-height:42px;font-size:.8rem;padding:.3rem .5rem;white-space:nowrap;}
+  #avisModal .modal-footer .btn > i.me-1{margin-right:.2rem!important;}
+  /* L'état d'enregistrement passe sur la ligne de la valeur retenue. */
+  #avisModal .av-etat-enreg{position:absolute;right:.6rem;top:.4rem;font-size:.64rem;white-space:nowrap;}
+  #avisModal .av-etat-enreg br{display:none;}
+
+  /* ── Fenêtre « Mes avis & versions » ──────────────────────── */
+  #avisDossiersModal .modal-dialog{max-width:none;margin:0;}
+  #avisDossiersModal .modal-content{min-height:100vh;border-radius:0;border:0;}
+  #avisDossiersModal .avd-corps{padding:8px;gap:8px;}
+  #avisDossiersModal .avd-col{max-height:none;}
+  #avisDossiersModal .avd-defile{overflow:visible;}
+  #avisDossiersModal .avd-feuille{overflow-x:auto;padding:6px;}
+  #avisDossiersModal .avd-page{zoom:.42;}
+  #avisDossiersModal .avd-doc,#avisDossiersModal .avd-version{padding:10px 12px;}
+  #avisDossiersModal .btn{min-height:40px;}
+  #avisDossiersModal input{font-size:16px;}
+
+  /* ── Autres fenêtres : pleine largeur, champs sans zoom ───── */
+  .modal-dialog:not([class*="modal-fullscreen"]){margin:.4rem;}
+  .modal .form-control,.modal .form-select{font-size:16px;}
+  .modal-header{padding:.6rem .8rem;}
+  .modal-title{font-size:1rem;}
+  .modal-footer{padding:.5rem .6rem;}
+
+  /* ── Écran de saisie et résultats ─────────────────────────── */
+  .saisie input.form-control,.saisie select.form-select,.saisie .form-control,.saisie .form-select{font-size:16px;}
+  .saisie-resume{padding:.6rem .7rem;gap:.5rem;}
+  .saisie-resume .btn-pill{min-height:40px;}
+  #results-panel .table-responsive{-webkit-overflow-scrolling:touch;}
+  #results-panel .card{overflow:hidden;}
+  #results-panel .card-body{overflow-x:auto;}
+}
+
+/* Très petits écrans (≤ 360 px) : on gagne encore quelques pixels. */
+@media (max-width: 380px){
+  #avisModal .modal-title{font-size:.86rem;}
+  #avisModal .modal-header .btn-group .btn{padding:.4rem .35rem;font-size:.7rem;}
+  #avisModal .modal-footer .btn{font-size:.76rem;padding:.3rem .4rem;}
+  .navbar-fidi #btnCompteLabel{max-width:3.6rem;}
+  #avisModal .av-m-plus{display:none;}
+  #avisModal .av-m-seul .dropdown-toggle::after{display:none;}
+  #avisModal .av-m-seul .btn{min-width:42px;}
+}
+
+/* Lisibilité : bouton non choisi (Expert, Location) sur l'en-tête bleu de l'avis. */
+#avisModal .modal-header .btn-outline-primary{color:#dbe7ff;border-color:#9fbcf5;}
+#avisModal .modal-header .btn-outline-primary:hover{background:rgba(255,255,255,.15);color:#fff;}
+@media (max-width: 768px){
+  #avisModal .av-m-seul .dropdown-menu{min-width:min(280px,calc(100vw - 16px));}
+}
+
+/* « Mes avis & versions » : retour à la liste, seulement quand les volets sont empilés. */
+#avisDossiersModal .avd-retour{display:none;padding:0 0 .3rem;text-decoration:none;font-weight:600;}
+@media (max-width: 1100px){
+  #avisDossiersModal .avd-retour{display:inline-flex;align-items:center;min-height:36px;}
+  #avisDossiersModal .avd-col{scroll-margin-top:8px;}
+}
+@media (max-width: 768px){
+  .navbar-fidi .marque-logo{height:26px;max-width:64px;margin-right:.35rem;padding:2px 4px;}
+  .offcanvas .form-control,.offcanvas .form-select{font-size:16px;}
+}
+@media (max-width: 768px){
+  /* La présentation reste accessible par le menu du compte. */
+  .navbar-fidi #btnPresentationDirect{display:none!important;}
+  /* Boutons des résultats : hauteur confortable au doigt. */
+  #results-panel .btn,.saisie-resume .btn-pill{min-height:40px;display:inline-flex;align-items:center;}
+  #results-panel .btn-group > .btn{display:inline-flex;}
+}
+@media (max-width: 768px){
+  #avisModal .av-form .av-tip{font-size:.78rem;line-height:1.35;}
+}

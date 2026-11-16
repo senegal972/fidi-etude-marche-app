@@ -162,3 +162,13 @@ Rules:
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+
+## Téléphone (mobile.css)
+
+`mobile.css` est chargé **en dernier** et porte toutes les règles ≤ 768 px. Règle : sur un petit écran, chaque barre (haut, rubriques, bas)
+tient sur une ligne et laisse la place au contenu ; un seul défilement par fenêtre ; champs à 16 px au moins (sinon le téléphone zoome).
+- Avis de valeur : `.av-tabs` est masqué, remplacé par `.av-nav-mobile` (liste `#avSecSelect` + flèches, `navMobileHTML()`). Les boutons
+  secondaires du bas portent `av-m-masque` et sont repris dans le menu « Plus » (`av-m-seul`) : **toute nouvelle action du bas doit y figurer**.
+  L'aperçu remplace la saisie (`estMobile()`, `majBoutonApercu()`).
+- Barre du haut : libellés masquables dans `<span class="nav-lbl">`.
+- Vérifier tout changement d'interface à 360 px de large (aucun élément hors écran, aucune barre sur plusieurs lignes). Garde-fous : `tests/mobile.test.mjs`.

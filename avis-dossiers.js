@@ -241,7 +241,8 @@
     var d = etat.choisi, zone = document.getElementById('avdVersions'); if (!zone || !d) return;
     var nom = d.client || [d.type, d.commune].filter(Boolean).join(' · ') || d.ref;
     var supprimable = d.aMoi && !d.diffusions && !d.verrou;
-    var html = '<div class="avd-titre">' + esc(nom) + '<small>' + esc(d.ref) + '</small></div>' +
+    var html = '<button type="button" class="btn btn-sm btn-link avd-retour" data-avd-action="retour-liste"><i class="bi bi-arrow-up me-1"></i>Tous les avis</button>' +
+      '<div class="avd-titre">' + esc(nom) + '<small>' + esc(d.ref) + '</small></div>' +
       '<div class="d-flex gap-1 flex-wrap mb-2">' +
         '<button type="button" class="btn btn-sm btn-primary" data-avd-action="ouvrir"><i class="bi bi-pencil-square me-1"></i>Ouvrir l\'avis</button>' +
         (supprimable ? '<button type="button" class="btn btn-sm btn-outline-danger" data-avd-action="supprimer" title="Supprimer cet avis"><i class="bi bi-trash"></i></button>' :
@@ -303,6 +304,15 @@
       .then(function (r) { return r.ok ? r.json() : {}; }).then(function (j) { return (j && j.data) || null; }).catch(function () { return null; });
   }
 
+  // Écran étroit : les trois volets sont empilés. Un choix amène au volet suivant.
+  function allerVers(volet) {
+    try {
+      if (!window.matchMedia('(max-width: 1100px)').matches) return;
+      var c = document.querySelector('#avisDossiersModal ' + volet);
+      if (c) setTimeout(function () { c.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60);
+    } catch (e) {}
+  }
+
   function fermer() {
     var el = document.getElementById('avisDossiersModal');
     var m = el && bootstrap.Modal.getInstance(el);
@@ -312,8 +322,9 @@
   function surClic(e) {
     var t = e.target.closest('[data-avd-doc],[data-avd-version],[data-avd-action]');
     if (!t) return;
-    if (t.dataset.avdDoc != null) { choisir(etat.docs[+t.dataset.avdDoc]); return; }
-    if (t.dataset.avdVersion) { apercu(t.dataset.avdVersion); return; }
+    if (t.dataset.avdDoc != null) { choisir(etat.docs[+t.dataset.avdDoc]); allerVers('.avd-versions'); return; }
+    if (t.dataset.avdVersion) { apercu(t.dataset.avdVersion); allerVers('.avd-apercu'); return; }
+    if (t.dataset.avdAction === 'retour-liste') { allerVers('.avd-liste'); return; }
     var d = etat.choisi, a = t.dataset.avdAction; if (!d) return;
 
     if (a === 'ouvrir') {
