@@ -1,4 +1,6 @@
-// Veille annonces (mode SANS IA) — Brave Search API + extraction JSON-LD / og: / regex.
+// Veille annonces (mode SANS IA) — Brave Search API. Depuis la v1.15, les annonces sont lues dans
+// les résultats du moteur (voir « Recherche par les résultats du moteur » plus bas) : les portails
+// refusent la lecture automatique de leurs pages. L'extraction JSON-LD / og: reste pour une page fournie.
 // Aucune image ni texte complet stocké : uniquement données factuelles + URL source.
 // Garde-fous : robots.txt, 1 req/s/domaine, User-Agent identifié, erreurs silencieuses.
 import crypto from "node:crypto";
@@ -152,7 +154,8 @@ function urlKey(u) {
 function dedup(items) {
   const out = []; const urlSeen = new Set();
   for (const a of items) {
-    const uk = urlKey(a.url);
+    // Une page de résultats de portail porte plusieurs annonces : la clé ajoute alors prix et surface.
+    const uk = urlKey(a.url) + (a.page_resultats ? "|" + (a.prix || "") + "|" + (a.surface_hab || a.surface_terrain || "") : "");
     if (uk && urlSeen.has(uk)) continue;            // même annonce (URL identique) → doublon
     const dup = out.find((b) =>
       (a.prix && b.prix && a.source === b.source && Math.abs(a.prix - b.prix) / a.prix < 0.001) ||
@@ -204,106 +207,291 @@ function plausible(a) {
   return true;
 }
 
+// ── Recherche par les résultats du moteur (v1.15) ───────────────────────────────
+// Constat : les grands portails (SeLoger, Leboncoin, Bien'ici…) refusent la lecture
+// automatique de leurs pages ; l'ancienne recherche, qui ouvrait chaque fiche, ne
+// ramenait donc rien. Les annonces sont désormais lues dans les RÉSULTATS du moteur de
+// recherche (titre + extrait), où les portails publient déjà type, surface et prix.
+// Aucune page de portail n'est ouverte. Limite assumée : l'extrait est court, la liste
+// n'est pas exhaustive, et le lien mène à la page de résultats du portail, pas à la fiche.
+
+export const PORTAILS_CHOIX = [
+  { id: "leboncoin", nom: "Leboncoin", domaine: "leboncoin.fr" },
+  { id: "seloger", nom: "SeLoger", domaine: "seloger.com" },
+  { id: "bienici", nom: "Bien'ici", domaine: "bienici.com" },
+  { id: "logicimmo", nom: "Logic-Immo", domaine: "logic-immo.com" },
+  { id: "pap", nom: "PAP", domaine: "pap.fr" },
+  { id: "figaro", nom: "Figaro Immo", domaine: "immobilier.lefigaro.fr" },
+  { id: "domimmo", nom: "DomImmo", domaine: "domimmo.com" },
+];
+const PORTAILS_DEFAUT = ["leboncoin", "seloger", "bienici", "logicimmo", "domimmo"];
+
+const sansAccent = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const cleTexte = (s) => sansAccent(s).replace(/[^a-z0-9]+/g, " ").trim();
+
+// Famille de bien recherchée, à partir du type saisi dans l'avis.
+export function familleBien(type) {
+  const t = sansAccent(type);
+  if (/terrain/.test(t)) return "terrain";
+  if (/appart|studio|duplex|loft/.test(t)) return "appartement";
+  if (/maison|villa|pavillon/.test(t)) return "maison";
+  if (/immeuble/.test(t)) return "immeuble";
+  if (/local|commerce|bureau/.test(t)) return "local";
+  return "bien";
+}
+function familleMot(mot) {
+  const m = sansAccent(mot);
+  if (/terrain/.test(m)) return "terrain";
+  if (/appart|studio|duplex|loft|^t\d|^f\d/.test(m)) return "appartement";
+  if (/maison|villa|pavillon/.test(m)) return "maison";
+  if (/immeuble/.test(m)) return "immeuble";
+  if (/local|commerce|bureau|fonds/.test(m)) return "local";
+  return "";
+}
+
+// Distance en mètres entre deux points (lat, lon en degrés).
+export function distanceM(lat1, lon1, lat2, lon2) {
+  const R = 6371000, r = Math.PI / 180;
+  const dLat = (lat2 - lat1) * r, dLon = (lon2 - lon1) * r;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+// Quartiers et lieux-dits habités autour du bien (IGN, BD TOPO, sans clé).
+// Retourne [{ nom, distance_m }] du plus proche au plus lointain ; [] si indisponible.
+export async function quartiersProches(lat, lon, rayonM = 1000) {
+  lat = Number(lat); lon = Number(lon);
+  if (!isFinite(lat) || !isFinite(lon) || (!lat && !lon)) return [];
+  const dLat = rayonM / 111320, dLon = rayonM / (111320 * Math.cos(lat * Math.PI / 180));
+  // BBOX en CRS84 : longitude d'abord.
+  const bbox = [lon - dLon, lat - dLat, lon + dLon, lat + dLat].map((v) => v.toFixed(6)).join(",");
+  const url = "https://data.geopf.fr/wfs/ows?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAMES=BDTOPO_V3:zone_d_habitation" +
+    "&OUTPUTFORMAT=application/json&COUNT=80&SRSNAME=EPSG:4326&BBOX=" + bbox + ",urn:ogc:def:crs:OGC:1.3:CRS84";
+  let j;
+  try {
+    const r = await fetchTimeout(url, 6000);
+    if (!r.ok) return [];
+    j = await r.json();
+  } catch { return []; }
+  const vus = new Set(), out = [];
+  for (const f of (j && j.features) || []) {
+    const p = f.properties || {}, nom = String(p.toponyme || "").trim();
+    // « fictif » = contour approximatif autour du nom (cas courant outre-mer) : le nom reste valable.
+    if (!nom) continue;
+    // Les résidences et immeubles nommés ne sont pas des quartiers.
+    if (/^(r[ée]sidence|imm\.?|immeuble|tour|cit[ée]|lotissement|b[âa]t)\b/i.test(nom)) continue;
+    const k = cleTexte(nom);
+    if (!k || vus.has(k)) continue;
+    // Point le plus proche du contour : un quartier qui touche le rayon compte.
+    let dMin = Infinity;
+    // L'ordre des coordonnées dépend du service (lon,lat ou lat,lon) : les deux lectures sont essayées,
+    // la mauvaise donne un point à des milliers de kilomètres.
+    const parcourir = (c) => {
+      if (typeof c[0] === "number") { const d = Math.min(distanceM(lat, lon, c[1], c[0]), distanceM(lat, lon, c[0], c[1])); if (d < dMin) dMin = d; }
+      else c.forEach(parcourir);
+    };
+    try { parcourir((f.geometry && f.geometry.coordinates) || []); } catch { /* géométrie illisible */ }
+    if (dMin > rayonM) continue;
+    vus.add(k);
+    out.push({ nom, distance_m: Math.round(dMin), importance: Number(p.importance) || 9 });
+  }
+  return out.sort((a, b) => a.distance_m - b.distance_m || a.importance - b.importance).slice(0, 12)
+    .map(({ nom, distance_m }) => ({ nom, distance_m }));
+}
+
+// ── Lecture d'un résultat de recherche ────────────────────────────────────────
+const RE_PRIX = /(\d{1,3}(?:[   .]\d{3})+|\d{5,8})\s*(?:€|euros?\b|EUR\b)(?!\s*(?:\/|par)\s*(?:m|mois))/gi;
+// Surface : « 75 », « 87,2 » ou, pour un terrain, « 1 200 » (milliers séparés par une espace).
+const RE_SURF = /(\d{1,3}(?:[   ]\d{3})+|\d{1,5}(?:[.,]\d{1,2})?)\s*(?:m²|m2\b|m²|mètres?\s*carrés?)/gi;
+const RE_TYPE = /\b(appartements?|maisons?|villas?|studios?|duplex|lofts?|terrains?|immeubles?|pavillons?|locaux|local|fonds de commerce|[TF][1-7])\b/gi;
+const RE_LOCATION = /\b(location|locations|à louer|a louer|louer|loyer|colocation)\b|\/mois|par mois|€\s*cc\b/i;
+
+// Page de résultats d'un portail (liste d'annonces), par opposition à la fiche d'une annonce.
+function estPageDeResultats(u) {
+  let p = ""; try { p = new URL(u).pathname + new URL(u).search; } catch { return true; }
+  if (/\/(annonce|annonces-immobilieres|ad|detail|fiche)\/[^/]+/i.test(p) && !/\/(recherche|search)\//i.test(p)) return false;
+  return true;
+}
+
+function tous(re, texte) {
+  const out = []; re.lastIndex = 0; let m;
+  while ((m = re.exec(texte))) out.push({ i: m.index, fin: m.index + m[0].length, brut: m[0], v: m[1] });
+  return out;
+}
+
+// Annonces lisibles dans un résultat { url, title, desc }. ctx : { famille, commune, cp, quartiers:[noms] }.
+export function annoncesDuResultat(r, ctx = {}) {
+  const url = r.url || "", titre = String(r.title || ""), desc = String(r.desc || r.description || "");
+  // Une page de location ne donne pas de prix de vente.
+  if (RE_LOCATION.test(titre) || /\/(location|locations|louer)\b/i.test(url)) return [];
+  const texte = (titre + " · " + desc).replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ");
+  const prix = tous(RE_PRIX, texte).map((p) => ({ ...p, n: num(p.v.replace(/[   .]/g, "")) })).filter((p) => p.n >= 10000 && p.n <= 200000000)
+    // Leboncoin répète le prix (« 115 000 € Prix: 115 000 € ») : une seule mention est gardée.
+    .filter((p, k, l) => !(k > 0 && l[k - 1].n === p.n && p.i - l[k - 1].fin <= 25));
+  const surfs = tous(RE_SURF, texte).map((s) => ({ ...s, n: num(s.v) })).filter((s) => s.n >= 8 && s.n <= 500000);
+  const types = tous(RE_TYPE, texte);
+  const pieces = tous(/(\d{1,2})\s*(?:pièces?|p\b)/gi, texte);
+  const familleCible = ctx.famille || "bien";
+  const cleCommune = cleTexte(ctx.commune), cp = String(ctx.cp || "");
+  const cleGlobale = cleTexte(texte + " " + url);
+  // Le résultat doit parler de la commune du bien (nom ou code postal).
+  const surCommune = (cleCommune && cleGlobale.includes(cleCommune)) || (cp && cleGlobale.includes(cp));
+  if ((cleCommune || cp) && !surCommune) return [];
+
+  const out = [], prisSurf = new Set(), vus = new Set();
+  for (const p of prix) {
+    // Surface la plus proche du prix (avant ou après), à 90 caractères au plus, non encore utilisée.
+    let best = null, bd = 91;
+    surfs.forEach((s, k) => {
+      if (prisSurf.has(k)) return;
+      const d = s.i >= p.fin ? s.i - p.fin : p.i - s.fin;
+      if (d >= 0 && d < bd) { bd = d; best = k; }
+    });
+    if (best == null) continue;
+    const s = surfs[best];
+    const debut = Math.min(p.i, s.i), fin = Math.max(p.fin, s.fin);
+    // Type : le mot de type qui précède de plus près (120 caractères), sinon celui du titre.
+    // Type : le mot écrit entre le prix et la surface s'il y en a un (« 168 270 € Prix: Maison, 163 m² »),
+    // sinon celui qui précède de plus près.
+    let mot = "";
+    for (const t of types) { if (t.i > debut + 2 && t.fin <= fin) mot = t.brut; }
+    if (!mot) for (const t of types) { if (t.i <= debut + 2 && debut - t.i <= 120) mot = t.brut; }
+    if (!mot) { const t0 = tous(RE_TYPE, titre)[0]; if (t0) mot = t0.brut; }
+    const fam = familleMot(mot) || (familleCible !== "bien" ? "" : "bien");
+    const autour = texte.slice(Math.max(0, debut - 60), Math.min(texte.length, fin + 80));
+    const estTerrain = fam === "terrain" || /surface du terrain|terrain de/i.test(texte.slice(Math.max(0, s.i - 30), s.fin + 25));
+    const famille = estTerrain ? "terrain" : (fam || "bien");
+    // Autre commune citée juste après l'annonce (page départementale) : hors sujet.
+    // Les portails écrivent le lieu dans l'annonce ou juste après : lecture de son début à 70 caractères après sa fin.
+    const zoneLieu = texte.slice(debut, Math.min(texte.length, fin + 70));
+    const cpProche = (zoneLieu.match(/\b\d{5}\b(?! ?€)/g) || []).filter((c) => /^(0[1-9]|[1-8]\d|9[0-5]|97|98)\d{3}$/.test(c));
+    if (cp && cpProche.length && !cpProche.includes(cp)) continue;
+    if (familleCible !== "bien" && famille !== "bien" && famille !== familleCible) continue;
+    const m2 = Math.round(p.n / s.n);
+    if (famille === "terrain" ? (m2 < 2 || m2 > 6000) : (m2 < 300 || m2 > 40000)) continue;
+    const cle = p.n + "|" + s.n;
+    if (vus.has(cle)) continue;
+    vus.add(cle); prisSurf.add(best);
+    let nbPieces = null;
+    // Nombre de pièces : la mention la plus proche de l'annonce (60 caractères avant, 40 après).
+    let dp = Infinity;
+    for (const pc of pieces) {
+      const d = pc.fin <= debut ? debut - pc.fin : (pc.i >= fin ? pc.i - fin : 0);
+      if ((pc.fin <= debut ? d <= 60 : d <= 40) && d < dp) { dp = d; nbPieces = num(pc.v); }
+    }
+    // Quartier cité près de l'annonce (ou dans le résultat s'il n'en contient qu'une).
+    let quartier = "";
+    const cleAutour = cleTexte(autour);
+    for (const q of ctx.quartiers || []) { const kq = cleTexte(q); if (kq.length >= 4 && cleAutour.includes(kq)) { quartier = q; break; } }
+    out.push({
+      id: sha1(url + "|" + cle), nature: famille === "terrain" ? "terrain" : "annonce", source: host(url), agence: null, url,
+      date_releve: new Date().toISOString().slice(0, 10),
+      type: mot ? mot.charAt(0).toUpperCase() + mot.slice(1).toLowerCase() : (famille === "terrain" ? "Terrain" : "Bien"),
+      prix: p.n, prix_mode: "affiché",
+      surface_hab: famille === "terrain" ? null : s.n, surface_terrain: famille === "terrain" ? s.n : null, shon_autorisee: null,
+      chambres: null, pieces: nbPieces, piscine: /piscine/i.test(autour), vue_mer: /vue\s*mer/i.test(autour), pieds_dans_eau: false,
+      annee_construction: null,
+      neuf: /\b(neuf|neuve|programme|vefa|sur plan|livraison)\b/i.test(autour),
+      prix_m2: famille === "terrain" ? null : m2, prix_m2_terrain: famille === "terrain" ? m2 : null,
+      description_courte: autour.trim().slice(0, 200),
+      quartier, proche: !!quartier, page_resultats: estPageDeResultats(url), confiance: 0.6,
+    });
+  }
+  if (out.length > 1) return out;
+  // Résultat ne contenant qu'une annonce : le quartier peut être cité n'importe où dans l'extrait.
+  if (out.length === 1 && !out[0].quartier) {
+    for (const q of ctx.quartiers || []) { const kq = cleTexte(q); if (kq.length >= 4 && cleGlobale.includes(kq)) { out[0].quartier = q; out[0].proche = true; break; } }
+  }
+  return out;
+}
+
+// Recherche Brave avec état : { ok, statut, resultats }. Le palier gratuit limite à 1 requête par seconde.
+async function braveRecherche(query, key) {
+  const url = "https://api.search.brave.com/res/v1/web/search?q=" + encodeURIComponent(query) + "&count=20&country=fr&search_lang=fr";
+  for (let essai = 0; essai < 2; essai++) {
+    try {
+      const r = await fetchTimeout(url, 9000, { headers: { "X-Subscription-Token": key, "Accept": "application/json" } });
+      if (r.status === 429 && essai === 0) { await sleep(1300); continue; }
+      if (!r.ok) return { ok: false, statut: r.status, resultats: [] };
+      const j = await r.json();
+      return { ok: true, statut: 200, resultats: ((j.web && j.web.results) || []).map((x) => ({ url: x.url, title: x.title, desc: [x.description].concat(x.extra_snippets || []).filter(Boolean).join(" · ") })) };
+    } catch { return { ok: false, statut: 0, resultats: [] }; }
+  }
+  return { ok: false, statut: 429, resultats: [] };
+}
+
+const MOT_RECHERCHE = { appartement: "appartement", maison: "maison", terrain: "terrain", immeuble: "immeuble", local: "local commercial", bien: "immobilier" };
+
 // ── Point d'entrée ────────────────────────────────────────────────────────────
 export async function rechercherAnnonces(criteres) {
   const key = process.env.SEARCH_API_KEY || "";
   if (!key) return { statut: "indisponible", raison: "SEARCH_API_KEY absente (Brave Search).", comparables: [], terrains: [], bien_sujet_expose: [], stats: {} };
 
-  const commune = criteres.commune || "";
-  const quartier = criteres.quartier || "";
-  const type = criteres.type_bien || "maison";
-  const cible = Number(criteres.cible) > 0 ? Number(criteres.cible) : TARGET_ITEMS;
+  const commune = String(criteres.commune || "").trim();
+  const cp = String(criteres.code_postal || "").trim();
+  const famille = criteres.inclure_terrains && !criteres.surface_hab ? "terrain" : familleBien(criteres.type_bien || "maison");
+  const mot = MOT_RECHERCHE[famille] || "immobilier";
+  const rayon = Math.min(5000, Math.max(300, Number(criteres.rayon_m) || 1000));
+  const choisis = (Array.isArray(criteres.portails) && criteres.portails.length ? criteres.portails : PORTAILS_DEFAUT)
+    .map((id) => PORTAILS_CHOIX.find((p) => p.id === id)).filter(Boolean).slice(0, 6);
+  const debut = Date.now();
 
-  const estTerrain = /terrain/i.test(type) || !!criteres.inclure_terrains;
-  // Majors demandés : LeBonCoin, SeLoger, Bien'ici, Logic-Immo (+ DomImmo pour les DOM).
-  const topPortails = ["leboncoin.fr", "seloger.com", "bienici.com", "logic-immo.com", "domimmo.com"];
-  // Requêtes CIBLÉES portails d'abord (site:), puis générales pour l'élargissement.
-  const motTerrain = "terrain à vendre";
-  const requetesPortail = topPortails.map((p) =>
-    estTerrain ? `${motTerrain} ${commune} site:${p}`.trim()
-               : `${type} ${quartier} ${commune} site:${p}`.trim());
-  const requetesGenerales = estTerrain
-    ? [
-        // TERRAINS : on ne filtre PAS la surface ; tous les terrains à vendre de la commune (périphérie).
-        `terrain à vendre ${commune}`.trim(),
-        `terrain constructible ${commune} à vendre`.trim(),
-        `terrain à bâtir ${quartier} ${commune}`.trim(),
-        `${commune} vente terrain prix`.trim(),
-      ]
-    : [
-        `${type} à vendre ${quartier} ${commune}`.trim(),
-        `villa ${quartier} ${commune} à vendre`.trim(),
-        `${commune} ${quartier} immobilier annonce prix vente`.trim(),
-        ...(criteres.inclure_terrains ? [`terrain à vendre ${commune}`.trim()] : []),
-      ];
-  const requetes = [...requetesPortail, ...requetesGenerales];
+  // 1) Quartiers dans le rayon (au mieux ; la recherche continue sans eux).
+  const quartiers = await quartiersProches(criteres.lat, criteres.lon, rayon);
+  const nomsQuartiers = quartiers.map((q) => q.nom).filter((n) => cleTexte(n) !== cleTexte(commune));
+  if (criteres.quartier && !nomsQuartiers.some((n) => cleTexte(n) === cleTexte(criteres.quartier))) nomsQuartiers.unshift(String(criteres.quartier));
 
-  // 1) Récupère les URLs candidates via Brave (dédupliquées, plus large qu'avant).
-  const seen = new Set(); const candidats = [];
-  for (const q of requetes) {
-    for (const r of await braveSearch(q, key, 10)) {
-      if (r.url && !seen.has(r.url)) { seen.add(r.url); candidats.push(r); }
+  // 2) Requêtes : une par portail choisi, puis jusqu'à deux par quartier proche.
+  const lieu = [commune, cp].filter(Boolean).join(" ");
+  const requetes = choisis.map((p) => ({ q: `site:${p.domaine} ${mot} vente ${lieu}`.trim(), portail: p.id }));
+  nomsQuartiers.slice(0, 2).forEach((q) => requetes.push({ q: `${mot} à vendre "${q}" ${commune}`.trim(), portail: "" }));
+
+  const diag = { requetes: 0, resultats: 0, refus: {}, portails: {}, duree_ms: 0 };
+  const ctx = { famille, commune, cp, quartiers: nomsQuartiers };
+  const items = [], urls = new Set();
+  let dernier = 0;
+  for (const rq of requetes) {
+    if (Date.now() - debut > 19000) break;                 // la fonction doit répondre avant 26 s
+    const attente = 1100 - (Date.now() - dernier);
+    if (attente > 0 && dernier) await sleep(attente);
+    dernier = Date.now();
+    const br = await braveRecherche(rq.q, key);
+    diag.requetes++;
+    if (!br.ok) { diag.refus[br.statut] = (diag.refus[br.statut] || 0) + 1; continue; }
+    for (const r of br.resultats) {
+      if (!r.url || urls.has(r.url)) continue;
+      urls.add(r.url); diag.resultats++;
+      for (const a of annoncesDuResultat(r, ctx)) {
+        a.commune = commune;
+        a.portail = estPortail(r.url);
+        if (plausible(a)) { items.push(a); diag.portails[a.source] = (diag.portails[a.source] || 0) + 1; }
+      }
     }
-    if (candidats.length >= 40) break;   // borne le volume Brave
   }
-  // Ordonnancement ROUND-ROBIN par domaine : 1 URL par hôte à chaque tour, hôtes triés par
-  // priorité portail. Évite que les majors bloqués (seloger/leboncoin en 403) cramment le budget
-  // avant d'atteindre les sources permissives (DOM, agrégateurs). Max MAX_PER_HOST URLs par domaine.
-  const MAX_PER_HOST = 2;
-  const byHost = new Map();
-  for (const r of candidats) { const h = host(r.url); if (!byHost.has(h)) byHost.set(h, []); byHost.get(h).push(r); }
-  const hostOrder = [...byHost.keys()].sort((a, b) => {
-    const ra = Math.min(...byHost.get(a).map((x) => rangPortail(x.url)));
-    const rb = Math.min(...byHost.get(b).map((x) => rangPortail(x.url)));
-    return ra - rb;
-  });
-  const ordered = [];
-  for (let round = 0; round < MAX_PER_HOST; round++) {
-    for (const h of hostOrder) { const arr = byHost.get(h); if (arr[round]) ordered.push(arr[round]); }
-  }
+  diag.duree_ms = Date.now() - debut;
+  try { console.log("[veille] diag", JSON.stringify(diag)); } catch (e) { /* journal facultatif */ }
 
-  // 2) Fetch + extraction (robots.txt, 1 req/s/domaine). Round-robin => diversité d'hôtes ;
-  //    arrêt anticipé dès `cible` annonces exploitables.
-  const items = []; const lastHit = {}; let fetched = 0;
-  const diag = { candidats: candidats.length, hosts: byHost.size, robots: 0, http: 0, nothtml: 0, vide: 0, err: 0 };
-  for (const r of ordered) {
-    if (items.length >= cible || fetched >= MAX_FETCH) break;
-    try {
-      if (!(await allowedByRobots(r.url))) { diag.robots++; continue; }
-      const h = host(r.url);
-      const wait = 1000 - (Date.now() - (lastHit[h] || 0));
-      if (wait > 0) await sleep(wait);
-      lastHit[h] = Date.now();
-      fetched++;
-      const resp = await fetchTimeout(r.url);
-      if (!resp.ok) { diag.http++; continue; }
-      const ct = resp.headers.get("content-type") || "";
-      if (!/html/i.test(ct)) { diag.nothtml++; continue; }
-      const html = await resp.text();
-      const a = extractFromHtml(r.url, html, r.desc);
-      a.commune = commune; a.quartier = quartier;
-      a.portail = estPortail(r.url);
-      // Vraie ANNONCE (pas une page catégorie/accueil) : URL de type fiche + prix ET une surface.
-      // Élimine les pages d'accueil de portail (prix parasite, surface absente).
-      const vraie = estFicheAnnonce(r.url) && a.prix && (a.surface_hab || a.surface_terrain);
-      if (plausible(a) && vraie) items.push(a);
-      else diag.vide++;
-    } catch { diag.err++; }
-  }
-  try { console.log("[veille] diag", JSON.stringify({ ...diag, fetched, items: items.length, hosts: candidats.slice(0, 12).map((c) => host(c.url)) })); } catch (e) {}
-
-  // 3) Post-traitement.
+  // 3) Post-traitement : doublons, bien sujet, similarité, proches d'abord.
   const uniques = dedup(items);
-  const bienSujet = []; const reste = [];
-  for (const a of uniques) { (estBienSujet(a, criteres) ? bienSujet : reste).push(a); }
+  const bienSujet = [], reste = [];
+  for (const a of uniques) (estBienSujet(a, criteres) ? bienSujet : reste).push(a);
   reste.forEach((a) => {
     a.similarite = similarite(a, criteres);
-    a.hors_cible = !!(a.pieds_dans_eau || (criteres.budget_indicatif && a.prix && a.prix > 3 * criteres.budget_indicatif));
+    a.hors_cible = !!(criteres.budget_indicatif && a.prix && a.prix > 3 * criteres.budget_indicatif);
   });
-  reste.sort((x, y) => (y.similarite || 0) - (x.similarite || 0));
+  reste.sort((x, y) => (Number(y.proche) - Number(x.proche)) || ((y.similarite || 0) - (x.similarite || 0)));
   const comparables = reste.filter((a) => a.nature === "annonce");
   const terrains = reste.filter((a) => a.nature === "terrain");
   bienSujet.forEach((a) => { a.est_bien_sujet = true; });
+
+  // Motif en clair quand rien ne sort.
+  let motif = "";
+  if (!uniques.length) {
+    if (diag.refus[429]) motif = "Le service de recherche a atteint sa limite de requêtes. Réessayez dans une minute.";
+    else if (diag.refus[401] || diag.refus[403]) motif = "La clé du service de recherche est refusée (SEARCH_API_KEY à vérifier dans Netlify).";
+    else if (!diag.resultats) motif = "Le moteur de recherche n'a renvoyé aucun résultat pour cette commune.";
+    else motif = "Les résultats trouvés ne contenaient pas de prix et de surface lisibles pour ce type de bien.";
+  }
 
   return {
     statut: "termine",
@@ -312,9 +500,11 @@ export async function rechercherAnnonces(criteres) {
       prix_m2: stats(comparables.filter((a) => !a.hors_cible), "prix_m2"),
       prix_m2_terrain: stats(terrains, "prix_m2_terrain"),
       nb_comparables: comparables.length, nb_terrains: terrains.length,
-      nb_portails: uniques.filter((a) => a.portail).length,       // issus de portails prioritaires
-      nb_elargissement: uniques.filter((a) => !a.portail).length, // issus d'autres sources
+      nb_proches: uniques.filter((a) => a.proche).length,
+      nb_portails: uniques.filter((a) => a.portail).length,
+      nb_elargissement: uniques.filter((a) => !a.portail).length,
     },
+    quartiers, rayon_m: rayon, portails: choisis.map((p) => p.id), motif, diag,
     criteres, genere_le: new Date().toISOString(),
   };
 }

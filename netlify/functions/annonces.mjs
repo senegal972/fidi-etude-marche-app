@@ -1,13 +1,13 @@
-// Netlify Function — Veille annonces (mode SYNCHRONE, sans Netlify Blobs).
-// POST /api/annonces  { commune, quartier, type_bien, surface_hab, ... }
-//   → exécute la recherche et renvoie directement { statut:"termine", resultats } (< 26 s).
-//   → sans clé de recherche : { statut:"indisponible" } (pas d'erreur 500).
-// GET conservé pour compat client (polling) : renvoie l'état si un id est fourni, sinon 400.
+// Netlify Function — Recherche d'annonces similaires (synchrone, < 26 s).
+// POST /api/annonces  { commune, code_postal, type_bien, surface_hab, lat, lon, rayon_m, portails[] }
+//   → { statut:"termine", resultats } ; sans clé de recherche : { statut:"indisponible" } (pas d'erreur 500).
+// Connexion exigée, vérifiée avant tout le reste : la route consomme une clé de recherche payante
+// (SEARCH_API_KEY). Ouverte à tous, elle laisserait n'importe qui épuiser le quota.
 import { sha1, rechercherAnnonces } from "./_annonces.mjs";
+import { sessionRequise } from "./_auth.mjs";
 
 const CORS = {
   "Content-Type": "application/json; charset=utf-8",
-  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "Content-Type",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
@@ -16,8 +16,10 @@ const j = (s, b) => ({ statusCode: s, headers: CORS, body: JSON.stringify(b) });
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return j(200, {});
 
-  // Compat : l'ancien client pouvait interroger ?job_id=. En mode synchrone il n'y a plus de
-  // job persistant ; on répond "inconnu" pour que le client bascule sur le résultat direct du POST.
+  const acces = await sessionRequise(event);
+  if (acces.refus) return acces.refus;
+
+  // Compat : l'ancien client interrogeait ?job_id=. Il n'y a plus de tâche de fond.
   if (event.httpMethod === "GET") {
     const id = (event.queryStringParameters || {}).job_id || "";
     if (!id) return j(400, { error: "job_id requis" });
@@ -27,8 +29,9 @@ export const handler = async (event) => {
   if (event.httpMethod !== "POST") return j(405, { error: "GET ou POST requis" });
 
   let criteres; try { criteres = JSON.parse(event.body || "{}"); } catch { return j(400, { error: "JSON invalide" }); }
+  if (!criteres || typeof criteres !== "object" || !String(criteres.commune || "").trim()) return j(400, { error: "Commune requise" });
 
-  if (!process.env.SEARCH_API_KEY && !process.env.ANTHROPIC_API_KEY) {
+  if (!process.env.SEARCH_API_KEY) {
     return j(200, { statut: "indisponible", raison: "Aucune clé de recherche configurée (SEARCH_API_KEY).", job_id: null });
   }
 

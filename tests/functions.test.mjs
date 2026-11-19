@@ -56,14 +56,11 @@ test("avis-de-valeur : cadastre multi-parcelles → contenance totale sommée", 
   assert.equal(b.foncier.contenance_totale, 2000);
 });
 
-test("annonces : repli sans clé → statut indisponible, pas de 500", async () => {
+test("annonces : sans connexion → 401, jamais de recherche (clé payante protégée)", async () => {
   delete process.env.SEARCH_API_KEY;
-  delete process.env.ANTHROPIC_API_KEY;
   const { handler } = await import("../netlify/functions/annonces.mjs");
   const r = await handler(ev("POST", { commune: "Saint-Barthélemy" }));
-  assert.equal(r.statusCode, 200);
-  const b = JSON.parse(r.body);
-  assert.equal(b.statut, "indisponible");
+  assert.equal(r.statusCode, 401);
 });
 
 test("annonces : OPTIONS → 200 CORS", async () => {

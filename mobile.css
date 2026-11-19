@@ -160,3 +160,8 @@
 @media (max-width: 768px){
   #avisModal .av-form .av-tip{font-size:.78rem;line-height:1.35;}
 }
+@media (max-width: 768px){
+  #avisModal .av-veille-opts select{font-size:16px;min-height:42px;}
+  #avisModal .av-veille-opts label{min-height:40px;}
+  #avisModal .av-veille-opts a.btn{white-space:normal;text-align:left;}
+}

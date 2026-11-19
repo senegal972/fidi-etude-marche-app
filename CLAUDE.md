@@ -21,10 +21,14 @@ Les redirections `/api/<nom>` sont déclarées dans `netlify.toml`.
   (objectif, présentation, comparatif ancien / neuf) passe par `strategieCalc(data)`, jamais par la synthèse brute.
   L'API `/api/avis-de-valeur` n'applique pas ces décotes. **Neuf / ancien** : `segmentComparable(cp)` ; un comparable de
   l'autre catégorie que le bien (`bien.segment`) est écarté du calcul (vente d'un bien bâti seulement). Tests : `tests/avis-synthese.test.mjs`.
-- `POST /api/annonces` — lance la veille d'annonces (job de fond), renvoie `{ job_id, statut }`.
-  `GET /api/annonces?job_id=…` — état + résultats. Sans clé de recherche : `{ statut: "indisponible" }`
-  (pas d'erreur 500 ; l'UI propose la saisie manuelle). Cœur : `_annonces.mjs`. Job de fond :
-  `annonces-background.mjs` (Background Function, jusqu'à 15 min). Cache : `_cache.mjs` (Netlify Blobs).
+- `POST /api/annonces` — recherche d'annonces similaires, **synchrone**, **connexion exigée** (401 sinon : la route consomme
+  la clé payante `SEARCH_API_KEY`, Brave Search). Corps : `{ commune, code_postal, type_bien, surface_hab, lat, lon, rayon_m, portails[] }`.
+  Sans clé : `{ statut:"indisponible" }`. Cœur : `_annonces.mjs`. **Les portails refusent la lecture automatique de leurs pages** :
+  les annonces sont lues dans les résultats du moteur (`annoncesDuResultat`, titre + extrait), aucune page de portail n'est ouverte.
+  `quartiersProches(lat, lon, rayon)` (IGN BD TOPO, sans clé) donne les quartiers du périmètre ; une annonce qui en cite un est
+  `proche:true`. Une requête Brave par portail coché, espacées de 1,1 s (palier gratuit). `resultats.motif` explique un résultat vide.
+  Liens directs côté navigateur : `veilleLiens()` (Leboncoin avec rayon, Bien'ici commune, autres par recherche web).
+  `/api/annonces-background` est retirée (410). Tests : `tests/annonces-recherche.test.mjs` (extraits réels).
 
 ### Charte de marque
 - `GET /api/marque` · `POST /api/marque` — charte du compte connecté (cookie `fidi_session`).

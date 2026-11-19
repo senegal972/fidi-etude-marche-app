@@ -1305,6 +1305,8 @@
     var nav = document.querySelector('#avisModal .av-nav-mobile');
     if (nav) nav.innerHTML = navMobileHTML();
   }
+  // Fenêtre redimensionnée ou téléphone tourné : le libellé du bouton suit.
+  try { window.addEventListener('resize', function () { majBoutonApercu(); }); } catch (e) {}
   // Bouton « Aperçu » : sur téléphone l'aperçu remplace la saisie, le bouton sert alors à y revenir.
   function majBoutonApercu() {
     var b = document.querySelector('#avisModal [data-action="toggle-preview"]');
@@ -1790,7 +1792,7 @@
         // Deux voies pour collecter les comparables — au choix de l'utilisateur.
         '<div class="av-box" style="background:#eef4ff;border:1px solid #b6d0ff;margin-bottom:.6rem;padding:.5rem .7rem;">' +
           '<div style="font-weight:600;font-size:.82rem;color:#1a4b8e;margin-bottom:.2rem;">Deux façons de récupérer les comparables (au choix) :</div>' +
-          '<div style="font-size:.78rem;">1. <b>Automatique</b> — bouton « ' + esc(veilleLbl) + ' » : l\'outil cherche seul en ligne (nécessite la clé de recherche côté serveur).<br/>' +
+          '<div style="font-size:.78rem;">1. <b>Automatique</b> — bouton « ' + esc(veilleLbl) + ' » : l\'outil relève les annonces affichées par les portails cochés ci-dessous.<br/>' +
           '2. <b>Extension FIDI ACM</b> (gratuite) — vous collectez les annonces depuis SeLoger / LeBonCoin / DomImmo, puis « Importer depuis l\'extension ».</div>' +
         '</div>' +
         '<div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.6rem;">' +
@@ -2615,6 +2617,17 @@
 
   function onInput(e) {
     var el = e.target;
+    // Réglages de la recherche d'annonces (portails, périmètre) : préférences du poste, pas une saisie de l'avis.
+    if (el.dataset && (el.dataset.veillePortail || el.dataset.veilleRayon)) {
+      if (e.type !== 'change') return;
+      var vo = veilleOpts();
+      if (el.dataset.veillePortail) {
+        vo.portails = vo.portails.filter(function (x) { return x !== el.dataset.veillePortail; });
+        if (el.checked) vo.portails.push(el.dataset.veillePortail);
+      } else vo.rayon = num(el.value) || 1000;
+      veilleOptsSave(vo); refreshVeilleBox();
+      return;
+    }
     // Liste des rubriques (téléphone) : navigation, pas une saisie.
     if (el.id === 'avSecSelect') { if (e.type === 'change') showSection(el.value); return; }
     // Upload photo (input file avec data-action="photo-add")
@@ -2988,21 +3001,111 @@
     var lieuDit = (state.data.metadata && state.data.metadata.lieuDit) || '';
     var terrainSurf = num(getPath(state.data, 'expert.sc.terrain.surfTotale'));
     var estTerrain = (typeof isTerrain === 'function' && isTerrain(b.type)) || (!num(b.surfaceCarrez) && !!terrainSurf);
+    var pt = veillePoint(), o = veilleOpts();
     return {
       commune: b.commune || '',
-      quartier: lieuDit || b.immeuble || '',
+      quartier: lieuDit || '',
       code_postal: b.cp || '',
       type_bien: b.type || (estTerrain ? 'terrain' : 'maison'),
-      surface_hab: num(b.surfaceCarrez) || null,
-      surface_terrain: terrainSurf || null,
+      surface_hab: (typeof isTerrain === 'function' && isTerrain(b.type)) ? null : (num(b.surfaceCarrez) || null),
+      surface_terrain: terrainSurf || ((typeof isTerrain === 'function' && isTerrain(b.type)) ? (contenanceTotale(state.data.cadastre) || num(b.surfaceCarrez) || null) : null),
       budget_indicatif: num(b.prixVente) || null,
       inclure_terrains: !!estTerrain || !!terrainSurf,
+      lat: pt.lat, lon: pt.lon, rayon_m: o.rayon, portails: o.portails,
     };
+  }
+
+  // ── Recherche d'annonces : réglages (portails, rayon) et liens directs ─────────
+  var VEILLE_PORTAILS = [
+    { id: 'leboncoin', nom: 'Leboncoin', domaine: 'leboncoin.fr' },
+    { id: 'seloger', nom: 'SeLoger', domaine: 'seloger.com' },
+    { id: 'bienici', nom: 'Bien\'ici', domaine: 'bienici.com' },
+    { id: 'logicimmo', nom: 'Logic-Immo', domaine: 'logic-immo.com' },
+    { id: 'pap', nom: 'PAP', domaine: 'pap.fr' },
+    { id: 'figaro', nom: 'Figaro Immo', domaine: 'immobilier.lefigaro.fr' },
+    { id: 'domimmo', nom: 'DomImmo', domaine: 'domimmo.com' }
+  ];
+  var VEILLE_RAYONS = [[500, '500 m'], [1000, '1 km'], [2000, '2 km'], [5000, '5 km']];
+  function veilleOpts() {
+    var o = null;
+    try { o = JSON.parse(localStorage.getItem('fidi:veille:opts') || 'null'); } catch (e) {}
+    var ids = VEILLE_PORTAILS.map(function (p) { return p.id; });
+    var portails = (o && Array.isArray(o.portails) ? o.portails : ['leboncoin', 'seloger', 'bienici', 'logicimmo', 'domimmo']).filter(function (x) { return ids.indexOf(x) >= 0; });
+    var rayon = o && num(o.rayon) ? num(o.rayon) : 1000;
+    return { portails: portails, rayon: rayon };
+  }
+  function veilleOptsSave(o) { try { localStorage.setItem('fidi:veille:opts', JSON.stringify(o)); } catch (e) {} }
+  // Position du bien : celle de l'avis (rubrique Localisation), sinon celle de l'étude en cours.
+  function veillePoint() {
+    var l = (state.data && state.data.loc) || {}, e = (window.__fidiData && window.__fidiData.localisation) || {};
+    var lat = num(l.lat) || num(e.lat), lon = num(l.lon) || num(e.lon);
+    return (lat || lon) ? { lat: lat, lon: lon } : { lat: null, lon: null };
+  }
+  function veilleFamille(type) {
+    var t = String(type || '').toLowerCase();
+    if (t.indexOf('terrain') >= 0) return 'terrain';
+    if (/appart|studio|duplex/.test(t)) return 'appartement';
+    if (/maison|villa/.test(t)) return 'maison';
+    return '';
+  }
+  // Liens qui ouvrent la recherche sur chaque portail choisi. Seuls Leboncoin (rayon autour du bien)
+  // et Bien'ici (commune) acceptent une adresse construite ; les autres passent par une recherche web.
+  function veilleLiens(c) {
+    var o = veilleOpts(), fam = veilleFamille(c.type_bien);
+    var slug = String(c.commune || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    var mot = fam || 'immobilier';
+    var out = [];
+    o.portails.forEach(function (id) {
+      var p = VEILLE_PORTAILS.filter(function (x) { return x.id === id; })[0]; if (!p) return;
+      var url = '', precision = '';
+      if (id === 'leboncoin') {
+        var n = fam === 'maison' ? 1 : fam === 'appartement' ? 2 : fam === 'terrain' ? 3 : 0;
+        if (c.lat && c.lon && c.commune) {
+          url = 'https://www.leboncoin.fr/recherche?category=9&locations=' + encodeURIComponent(c.commune + (c.code_postal ? '_' + c.code_postal : '')) +
+            '__' + Number(c.lat).toFixed(5) + '_' + Number(c.lon).toFixed(5) + '_' + o.rayon + (n ? '&real_estate_type=' + n : '');
+          precision = 'rayon ' + (o.rayon >= 1000 ? (o.rayon / 1000) + ' km' : o.rayon + ' m');
+        } else if (slug && c.code_postal) {
+          url = 'https://www.leboncoin.fr/cl/ventes_immobilieres/cp_' + slug + '_' + c.code_postal + (n ? '/real_estate_type:' + n : '');
+          precision = 'commune';
+        }
+      } else if (id === 'bienici' && slug && c.code_postal) {
+        url = 'https://www.bienici.com/recherche/achat/' + slug + '-' + c.code_postal + (fam ? '/' + fam : '');
+        precision = 'commune';
+      }
+      if (!url) {
+        url = 'https://www.google.com/search?q=' + encodeURIComponent('site:' + p.domaine + ' ' + mot + ' vente ' + [c.commune, c.code_postal].filter(Boolean).join(' '));
+        precision = 'recherche web';
+      }
+      out.push({ id: id, nom: p.nom, url: url, precision: precision });
+    });
+    return out;
+  }
+  function renderVeilleOptions() {
+    var o = veilleOpts(), c = veilleCriteres(), liens = c.commune ? veilleLiens(c) : [];
+    return '<div class="av-box av-veille-opts" style="background:#f6f9ff;border:1px solid #c9d9f5;margin-bottom:.5rem;">' +
+      '<div class="av-box-title">Recherche d\'annonces — portails et périmètre</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:.35rem .9rem;align-items:center;">' +
+        VEILLE_PORTAILS.map(function (p) {
+          return '<label style="display:inline-flex;align-items:center;gap:.3rem;font-size:.82rem;cursor:pointer;min-height:32px;"><input type="checkbox" data-veille-portail="' + p.id + '"' + (o.portails.indexOf(p.id) >= 0 ? ' checked' : '') + '/> ' + esc(p.nom) + '</label>';
+        }).join('') +
+      '</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin-top:.4rem;font-size:.82rem;">' +
+        '<label for="avVeilleRayon" style="font-weight:600;">Périmètre autour du bien</label>' +
+        '<select id="avVeilleRayon" data-veille-rayon="1" style="width:auto;padding:.3rem .5rem;border:1px solid #ced4da;border-radius:6px;">' +
+          VEILLE_RAYONS.map(function (r) { return '<option value="' + r[0] + '"' + (r[0] === o.rayon ? ' selected' : '') + '>' + r[1] + '</option>'; }).join('') +
+        '</select>' +
+        '<span class="text-muted">' + (c.lat && c.lon ? 'position du bien connue' : 'position du bien inconnue : recherche sur la commune (renseignez « Localisation & risques »)') + '</span>' +
+      '</div>' +
+      (liens.length ? '<div style="margin-top:.5rem;font-size:.82rem;"><b>Ouvrir la recherche sur le portail :</b> ' +
+        liens.map(function (l) { return '<a href="' + esc(l.url) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary" style="margin:.15rem .15rem 0 0;">' + esc(l.nom) + ' <span style="font-weight:400;opacity:.8;">· ' + esc(l.precision) + '</span> ↗</a>'; }).join('') +
+        '<div class="av-tip" style="margin-top:.3rem;">Le portail affiche toutes ses annonces. Reportez celles qui vous intéressent avec « Coller une annonce » ou l\'extension.</div></div>' : '') +
+      '</div>';
   }
 
   function launchVeille() {
     var c = veilleCriteres();
     if (!c.commune) { toast('Renseignez au moins la commune du bien', true); return; }
+    if (!c.portails.length) { toast('Cochez au moins un portail', true); return; }
     stopVeillePoll();
     veilleMem = { statut: 'en_cours', job_id: null };
     refreshVeilleBox();
@@ -3013,9 +3116,13 @@
       credentials: 'same-origin',
       body: JSON.stringify(c),
     })
-      .then(function (r) { return r.json(); })
+      .then(function (r) {
+        if (r.status === 401) return { statut: 'erreur', raison: 'connexion requise : ouvrez votre compte puis relancez' };
+        return r.json();
+      })
       .then(function (j) {
         if (j.statut === 'indisponible') { veilleMem = j; refreshVeilleBox(); return; }
+        if (j.statut === 'erreur' && j.raison && !j.resultats) { veilleMem = j; refreshVeilleBox(); if (window.Compte && /connexion/.test(j.raison)) window.Compte.open(); return; }
         // Mode synchrone : le POST renvoie directement les résultats (statut termine/erreur + resultats).
         if (j.resultats || j.statut === 'termine' || j.statut === 'erreur') {
           veilleMem = j; refreshVeilleBox();
@@ -3068,13 +3175,14 @@
       .concat((res.terrains || []).map(function (x) { return Object.assign({ __grp: 'terrain' }, x); }));
   }
 
-  function renderVeilleBox() {
+  function renderVeilleBox() { return renderVeilleOptions() + renderVeilleEtat(); }
+  function renderVeilleEtat() {
     if (!veilleMem) return '';
     var s = veilleMem.statut;
     if (s === 'en_cours') {
       return '<div class="av-box" style="background:#eef4ff;border:1px solid #b6d0ff;">' +
         '<span class="spinner-border spinner-border-sm me-2" role="status"></span>' +
-        'Recherche des annonces similaires en cours… (jusqu\'à ~1 min)' +
+        'Recherche des annonces en cours sur les portails choisis… (10 à 20 secondes)' +
         '</div>';
     }
     if (s === 'indisponible') {
@@ -3095,8 +3203,8 @@
     var st = res.stats || {};
     var constat = renderConstatMarche(st, items);
     if (!items.length) {
-      return constat + '<div class="av-box" style="background:#f4f6fa;">Aucune annonce exploitable trouvée. ' +
-        'Essayez la saisie manuelle, ou relancez avec une commune/quartier plus précis. ' +
+      return constat + '<div class="av-box" style="background:#f4f6fa;"><b>Aucune annonce trouvée automatiquement.</b> ' + esc(res.motif || '') + ' ' +
+        'Ouvrez la recherche sur un portail avec les boutons ci-dessus, puis utilisez « Coller une annonce ». ' +
         '<button class="btn btn-sm btn-outline-primary ms-2" data-action="veille-annonces">Relancer</button></div>';
     }
     var rows = items.map(function (a, i) {
@@ -3105,6 +3213,11 @@
         : a.__grp === 'terrain'
           ? '<span style="background:#6c757d;color:#fff;font-size:.55rem;font-weight:700;border-radius:3px;padding:1px 5px;">TERRAIN</span>'
           : '<span style="background:#0d6efd;color:#fff;font-size:.55rem;font-weight:700;border-radius:3px;padding:1px 5px;">ANNONCE</span>';
+      // Proximité : un quartier situé dans le périmètre est cité dans l'annonce, sinon seule la commune est sûre.
+      grpBadge += a.proche
+        ? ' <span style="background:#198754;color:#fff;font-size:.55rem;font-weight:700;border-radius:3px;padding:1px 5px;" title="Quartier situé dans le périmètre choisi">DANS LE PÉRIMÈTRE · ' + esc(String(a.quartier || '').toUpperCase()) + '</span>'
+        : ' <span style="background:#eceff4;color:#525c6d;font-size:.55rem;font-weight:700;border-radius:3px;padding:1px 5px;" title="Le portail ne publie pas l\'adresse : seule la commune est certaine">COMMUNE</span>';
+      if (a.neuf) grpBadge += ' <span style="background:#b8860b;color:#fff;font-size:.55rem;font-weight:700;border-radius:3px;padding:1px 5px;">NEUF ?</span>';
       var sim = (a.similarite != null) ? '<span title="Similarité estimée" style="font-weight:700;color:' + (a.similarite >= 60 ? '#198754' : a.similarite >= 40 ? '#b8860b' : '#999') + ';">' + a.similarite + '/100</span>' : '';
       var pM2 = a.prix_m2 ? fmt(a.prix_m2) + ' €/m²' : (a.prix_m2_terrain ? fmt(a.prix_m2_terrain) + ' €/m² terrain' : '—');
       var meta = [];
@@ -3122,7 +3235,7 @@
           '<div style="font-size:.85rem;">' + (a.prix ? '<b>' + fmt(a.prix) + ' €</b>' : 'prix ?') + ' · ' + pM2 +
             (meta.length ? ' · ' + esc(meta.join(' · ')) : '') + '</div>' +
           (a.description_courte ? '<div style="font-size:.72rem;color:#888;">' + esc(a.description_courte) + '</div>' : '') +
-          '<a href="' + esc(a.url) + '" target="_blank" rel="noopener" style="font-size:.7rem;">Voir l\'annonce ↗</a>' +
+          '<a href="' + esc(a.url) + '" target="_blank" rel="noopener" style="font-size:.7rem;">' + (a.page_resultats ? 'Voir la page du portail où elle figure ↗' : 'Voir l\'annonce ↗') + '</a>' +
         '</div></div>';
     }).join('');
     return constat +
@@ -3135,7 +3248,9 @@
           '<button class="btn btn-sm btn-outline-primary" data-action="veille-annonces">Relancer</button>' +
         '</span>' +
       '</div>' +
-      '<div class="av-tip" style="margin-bottom:.3rem;">Sources publiques (portails). Vérifiez chaque annonce avant de l\'inclure : l\'extraction automatique peut se tromper.</div>' +
+      '<div class="av-tip" style="margin-bottom:.3rem;">Annonces lues dans les résultats de recherche des portails choisis (type, surface, prix affiché). ' +
+        (res.quartiers && res.quartiers.length ? 'Quartiers dans le périmètre : ' + esc(res.quartiers.slice(0, 8).map(function (q) { return q.nom; }).join(', ')) + '. ' : '') +
+        'La liste n\'est pas complète et le lien mène à la page du portail : vérifiez chaque annonce avant de l\'inclure.</div>' +
       rows +
       '</div>';
   }
@@ -3155,50 +3270,47 @@
       '</div>';
   }
 
-  // Convertit une annonce trouvée en comparable et l'ajoute (si pas déjà présent via son URL).
-  function addVeilleItem(idx) {
-    var items = veilleItems();
-    var a = items[idx];
-    if (!a) return;
-    var exists = (state.data.comparables || []).some(function (c) { return c.lien && a.url && c.lien === a.url; });
-    if (exists) { toast('Annonce déjà ajoutée', true); return; }
-    state.data.comparables.push(comparableTemplate({
+  // Une annonce trouvée devient un comparable. Plusieurs annonces peuvent venir de la même page
+  // de portail : elles se distinguent par leur prix et leur surface, pas par leur lien.
+  function veilleCle(lien, prix, surface) { return String(lien || '') + '|' + (num(prix) || '') + '|' + (num(surface) || ''); }
+  function veilleSurface(a) { return a.surface_hab || (a.nature === 'terrain' ? a.surface_terrain : '') || ''; }
+  function veilleDejaLa(a) {
+    var k = veilleCle(a.url, a.prix, veilleSurface(a));
+    return (state.data.comparables || []).some(function (c) { return veilleCle(c.lien, c.prix, c.surface) === k; });
+  }
+  function veilleVersComparable(a) {
+    var portail = VEILLE_PORTAILS.filter(function (p) { return String(a.source || '').indexOf(p.domaine) >= 0; })[0];
+    var source = portail ? portail.nom.replace('\'', '’') : 'Autre';
+    if (PORTAILS.indexOf(source) < 0) source = 'Autre';
+    return comparableTemplate({
       nature: 'annonce',
-      source: (a.source || '').replace(/\..*$/, '') || 'Annonce',
-      type: a.type && a.type !== 'bien' ? String(a.type) : '',
+      source: source,
+      type: [a.type && a.type !== 'bien' && a.type !== 'Bien' ? String(a.type) : '', a.pieces ? a.pieces + ' p.' : ''].filter(Boolean).join(' '),
       secteur: a.quartier || a.commune || '',
-      surface: a.surface_hab || (a.nature === 'terrain' ? a.surface_terrain : '') || '',
+      surface: veilleSurface(a),
       prix: a.prix || '',
       lien: a.url || '',
-      note: 'Veille auto ' + (a.date_releve || ''),
-      inclus: a.__grp !== 'terrain' && !a.hors_cible,   // terrains et hors-cible non inclus par défaut
-    }));
+      // « Neuf ? » repéré dans l'annonce : proposé comme neuf, à confirmer (un comparable neuf sort du calcul d'un bien ancien).
+      segment: a.neuf ? 'neuf' : '',
+      note: 'Veille auto ' + (a.date_releve || '') + (portail && !PORTAILS.some(function (x) { return x === source; }) ? ' · ' + portail.nom : '') +
+        (a.proche ? ' · dans le périmètre' : ' · commune'),
+      inclus: a.__grp !== 'terrain' && !a.hors_cible   // terrains et hors-cible non inclus par défaut
+    });
+  }
+
+  function addVeilleItem(idx) {
+    var a = veilleItems()[idx];
+    if (!a) return;
+    if (veilleDejaLa(a)) { toast('Annonce déjà ajoutée', true); return; }
+    state.data.comparables.push(veilleVersComparable(a));
     toast('Annonce ajoutée aux comparables');
     showSection('comparables');
   }
 
   function addVeilleAll() {
-    var items = veilleItems();
-    var before = (state.data.comparables || []).length;
-    var existing = {};
-    (state.data.comparables || []).forEach(function (c) { if (c.lien) existing[c.lien] = true; });
-    items.forEach(function (a) {
-      if (!a.url || existing[a.url]) return;
-      existing[a.url] = true;
-      state.data.comparables.push(comparableTemplate({
-        nature: 'annonce',
-        source: (a.source || '').replace(/\..*$/, '') || 'Annonce',
-        type: a.type && a.type !== 'bien' ? String(a.type) : '',
-        secteur: a.quartier || a.commune || '',
-        surface: a.surface_hab || (a.nature === 'terrain' ? a.surface_terrain : '') || '',
-        prix: a.prix || '',
-        lien: a.url || '',
-        note: 'Veille auto ' + (a.date_releve || ''),
-        inclus: a.__grp !== 'terrain' && !a.hors_cible,
-      }));
-    });
-    var added = (state.data.comparables || []).length - before;
-    toast(added + ' annonce(s) ajoutée(s)');
+    var avant = (state.data.comparables || []).length;
+    veilleItems().forEach(function (a) { if (!veilleDejaLa(a)) state.data.comparables.push(veilleVersComparable(a)); });
+    toast(((state.data.comparables || []).length - avant) + ' annonce(s) ajoutée(s)');
     showSection('comparables');
   }
 
@@ -6348,6 +6460,7 @@
     // Pour les tests (tests/avis-synthese.test.mjs)
     _defaut: function () { return ensureExpertBlock(defaultData()); }, _synthese: syntheseFinale, _strategie: strategieCalc,
     _comparatif: comparatifAncienNeuf, _lecture: lectureComparables, _remarques: remarquesComparables,
+    _veilleLiens: veilleLiens, _veilleVersComparable: veilleVersComparable,
     // Pour avis-dossiers.js (fenêtre « Mes avis & versions »)
     lireLocal: lireLocal, supprimerLocal: supprimerLocal, charger: chargerAvis, resume: resumeAvis,
     documentHTML: function (d) { var x = ensureExpertBlock(JSON.parse(JSON.stringify(d))); return buildAvisDocHTML(x, compute(x)); },
