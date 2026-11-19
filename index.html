@@ -7115,7 +7115,7 @@ window.Compte = (function(){
     const {ok,data} = await admin('list');
     if(!ok){ body.innerHTML = '<tr><td colspan="8" class="text-danger p-3">'+esc(data.error||'Erreur.')+'</td></tr>'; return; }
     _adminUsersCache = data.users || [];
-    state.superAdmin = data.super_admin || 'contact@fidiconseil.com';
+    state.superAdmin = data.super_admin || ''; // variable Netlify SUPER_ADMIN_EMAIL ; vide = aucun super-administrateur
     // Alimente le sélecteur réseau
     const sel = document.getElementById('adFilterReseau');
     if(sel){
@@ -7130,7 +7130,7 @@ window.Compte = (function(){
     const q = ((document.getElementById('adFilterQ')||{}).value||'').toLowerCase().trim();
     const rsFilter = ((document.getElementById('adFilterReseau')||{}).value||'').trim();
     const moi = (state.user && state.user.email) || '';
-    const isSA = moi === (state.superAdmin || 'contact@fidiconseil.com');
+    const isSA = !!state.superAdmin && moi.toLowerCase() === state.superAdmin;
     const rows = _adminUsersCache.filter(u => {
       if(rsFilter && u.reseau !== rsFilter) return false;
       if(!q) return true;
@@ -7224,7 +7224,7 @@ window.Compte = (function(){
     }
     // Réseaux déjà enregistrés (pour le menu déroulant).
     const reseaux = Array.from(new Set((_adminUsersCache||[]).map(x=>x.reseau).filter(Boolean))).sort();
-    const isSA = (state.user && state.user.email) === (state.superAdmin || 'contact@fidiconseil.com');
+    const isSA = !!state.superAdmin && String((state.user && state.user.email) || '').toLowerCase() === state.superAdmin;
     const roleOpts = [['Collaborateur','Collaborateur'],['Test','Test (jetable)'],['Éphémère','Éphémère (accès temporaire)']];
     if(isSA) roleOpts.splice(1,0,['Administrateur','Administrateur']);
     const roleSel = roleOpts.map(function(o){ return '<option value="'+o[0]+'"'+(u.role===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('');
@@ -7979,7 +7979,7 @@ window.Compte = (function(){
       '<table><thead><tr><th>Réf</th><th>Date</th><th>Client</th><th>Type</th><th style="text-align:right">TTC</th></tr></thead><tbody>'+(paidRows||'<tr><td colspan="5" style="color:#888">Aucune</td></tr>')+'</tbody></table>'+
       '<h2>Factures en attente de règlement ('+pend.length+')</h2>'+
       '<table><thead><tr><th>Réf</th><th>Date</th><th>Client</th><th style="text-align:right">TTC</th><th style="text-align:center">Relances</th></tr></thead><tbody>'+(pendRows||'<tr><td colspan="5" style="color:#888">Aucune</td></tr>')+'</tbody></table>'+
-      '<p style="margin-top:20px;color:#888;font-size:10px;">Document indicatif pour la comptabilité et les déclarations. Les montants sont TTC. À rapprocher des justificatifs de paiement. OPTIMMO DOM · contact@fidiconseil.com</p>'+
+      '<p style="margin-top:20px;color:#888;font-size:10px;">Document indicatif pour la comptabilité et les déclarations. Les montants sont TTC. À rapprocher des justificatifs de paiement.</p>'+
       '<button onclick="window.print()" style="margin:16px 0;padding:8px 16px;background:#1a3a6e;color:#fff;border:none;border-radius:5px;cursor:pointer;">Imprimer / PDF</button>'+
       '</body></html>');
     w.document.close();

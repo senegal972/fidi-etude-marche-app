@@ -8,8 +8,11 @@
 import { renderFactureHTML } from "./_facture_doc.mjs";
 import { getNamedStore } from "./_blobs.mjs";
 import { currentUser } from "./_auth.mjs";
+import { adresseContact } from "./send-email.mjs";
 
 const FACTURES_STORE = "fidi-factures"; // même nom que dans facture.mjs
+// Adresse de contact de l'ancien modèle à une ligne : variable Netlify FIDI_CONTACT_EMAIL (rien dans le code).
+const CONTACT = adresseContact().replace(/[<>&"]/g, "");
 
 const CORS_HEADERS = {
   "Content-Type": "text/html; charset=utf-8",
@@ -124,7 +127,7 @@ export const handler = async (event) => {
   <div class="fac-emetteur">
     <strong>FIDI Conseil</strong><br>
     Franck FIDI — Mandataire en immobilier<br>
-    contact@fidiconseil.com<br>
+    ${CONTACT ? CONTACT + "<br>" : ""}
     Martinique (972)
   </div>
 </div>
@@ -174,7 +177,7 @@ export const handler = async (event) => {
   En cas de retard de paiement, des pénalités de 3× le taux d'intérêt légal seront appliquées (art. L441-6 C.com.). Indemnité forfaitaire : 40 €.
 </div>
 
-<div class="fac-footer">FIDI Conseil · Martinique (972) · contact@fidiconseil.com · SIRET : (à compléter)</div>
+<div class="fac-footer">FIDI Conseil · Martinique (972)${CONTACT ? " · " + CONTACT : ""} · SIRET : (à compléter)</div>
 
 </body>
 </html>`;

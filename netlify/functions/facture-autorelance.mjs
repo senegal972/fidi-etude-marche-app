@@ -8,12 +8,14 @@
 //   AUTORELANCE_JOURS   = "3,7,15"   → seuils (jours) des niveaux de relance 1/2/3 (défaut 3,7,15)
 //   AUTORELANCE_MAX     = "3"        → nombre maximum de relances par facture (défaut 3)
 //   RESEND_API_KEY / RESEND_FROM     → requis pour l'envoi (voir send-email.mjs)
+//   RESEND_REPLY_TO ou FIDI_CONTACT_EMAIL → adresse qui reçoit les réponses des clients
 //   URL                              → fourni par Netlify (origine du site, pour le lien /l/)
 //
 // Chaque relance envoie un e-mail avec le lien de paiement carte/PayPal (?pay=1),
 // puis incrémente « Relances » et « Dernière relance » sur la facture Notion.
 
 import { DB, queryDatabase, updatePage, ensureProperty, P, hasToken } from "./_notion.mjs";
+import { adresseReponse } from "./send-email.mjs";
 
 export const config = { schedule: "@daily" };
 
@@ -26,7 +28,9 @@ function daysBetween(iso, now) {
 async function sendResend({ to, subject, lien, message }) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) return { ok: false, error: "RESEND_API_KEY manquant" };
-  const from = process.env.RESEND_FROM || "FIDI Conseil <contact@fidiconseil.com>";
+  const from = process.env.RESEND_FROM;
+  if (!from) return { ok: false, error: "RESEND_FROM manquant" };
+  const replyTo = adresseReponse();
   const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#1a2233;">
     <div style="background:#1a3a6e;padding:20px 28px;border-radius:8px 8px 0 0;"><h2 style="color:#fff;margin:0;font-size:1.3rem;">FIDI Conseil</h2></div>
@@ -39,7 +43,7 @@ async function sendResend({ to, subject, lien, message }) {
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to: [to], subject, html, reply_to: process.env.RESEND_REPLY_TO || "contact@fidiconseil.com" }),
+      body: JSON.stringify({ from, to: [to], subject, html, ...(replyTo ? { reply_to: replyTo } : {}) }),
     });
     const j = await r.json().catch(() => ({}));
     return r.ok ? { ok: true, id: j.id } : { ok: false, error: j.message || ("HTTP " + r.status) };

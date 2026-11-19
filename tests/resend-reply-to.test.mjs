@@ -1,5 +1,5 @@
-// Les réponses des clients doivent arriver dans la vraie boîte (contact@fidiconseil.com) :
-// l'expéditeur, sur mail.fidiconseil.com, n'a pas de boîte. Champ reply_to de l'API Resend,
+// Les réponses des clients doivent arriver dans la vraie boîte (variable FIDI_CONTACT_EMAIL ou
+// RESEND_REPLY_TO) : l'expéditeur n'a pas de boîte. Aucune adresse n'est écrite dans le code. Champ reply_to de l'API Resend,
 // présent dans l'envoi d'un document (send-email) et dans la relance automatique de facture.
 // Aucun réseau réel : fetch est remplacé (Notion et Resend simulés).
 import test, { beforeEach, after } from "node:test";
@@ -8,6 +8,8 @@ import assert from "node:assert/strict";
 process.env.JWT_SECRET = "secret-de-test-seulement";
 process.env.NOTION_TOKEN = "notion-de-test";
 process.env.RESEND_API_KEY = "re_cle_de_test";
+process.env.RESEND_FROM = "Cabinet Test <envoi@mail.exemple.fr>";
+process.env.FIDI_CONTACT_EMAIL = "accueil@exemple.fr";
 
 const { envoyerEmail } = await import("../netlify/functions/send-email.mjs");
 const autorelance = await import("../netlify/functions/facture-autorelance.mjs");
@@ -47,6 +49,8 @@ after(() => { globalThis.fetch = vraiFetch; });
 beforeEach(() => {
   envoisResend = [];
   delete process.env.RESEND_REPLY_TO;
+  process.env.RESEND_FROM = "Cabinet Test <envoi@mail.exemple.fr>";
+  process.env.FIDI_CONTACT_EMAIL = "accueil@exemple.fr";
   process.env.RESEND_API_KEY = "re_cle_de_test";
   process.env.AUTORELANCE_ENABLED = "1";
   process.env.URL = "https://exemple.netlify.app";
@@ -54,11 +58,12 @@ beforeEach(() => {
 
 const document = { to: "client@exemple.fr", subject: "Document", lien: "https://exemple.fr/l/abc", message: "Bonjour" };
 
-test("envoi d'un document : reply_to par défaut = contact@fidiconseil.com", async () => {
+test("envoi d'un document : reply_to par défaut = FIDI_CONTACT_EMAIL", async () => {
   const r = await envoyerEmail(document);
   assert.equal(r.statusCode, 200);
   assert.equal(envoisResend.length, 1);
-  assert.equal(envoisResend[0].reply_to, "contact@fidiconseil.com");
+  assert.equal(envoisResend[0].reply_to, "accueil@exemple.fr");
+  assert.match(envoisResend[0].html, /mailto:accueil@exemple\.fr/);
   assert.deepEqual(envoisResend[0].to, ["client@exemple.fr"]);
 });
 
@@ -68,12 +73,12 @@ test("envoi d'un document : RESEND_REPLY_TO prime sur la valeur par défaut", as
   assert.equal(envoisResend[0].reply_to, "service@exemple.fr");
 });
 
-test("relance automatique : reply_to par défaut = contact@fidiconseil.com", async () => {
+test("relance automatique : reply_to par défaut = FIDI_CONTACT_EMAIL", async () => {
   const r = await autorelance.handler();
   const sortie = JSON.parse(r.body);
   assert.equal(sortie.errors.length, 0, JSON.stringify(sortie.errors));
   assert.equal(envoisResend.length, 1);
-  assert.equal(envoisResend[0].reply_to, "contact@fidiconseil.com");
+  assert.equal(envoisResend[0].reply_to, "accueil@exemple.fr");
   assert.deepEqual(envoisResend[0].to, ["client@exemple.fr"]);
 });
 
@@ -88,4 +93,28 @@ test("relance automatique désactivée (AUTORELANCE_ENABLED absent) : simulation
   const r = await autorelance.handler();
   assert.equal(JSON.parse(r.body).enabled, false);
   assert.equal(envoisResend.length, 0);
+});
+
+test("sans adresse configurée : aucun reply_to, aucune adresse dans le message ; sans RESEND_FROM : refus net", async () => {
+  delete process.env.FIDI_CONTACT_EMAIL;
+  const r = await envoyerEmail(document);
+  assert.equal(r.statusCode, 200);
+  assert.equal("reply_to" in envoisResend[0], false);
+  assert.doesNotMatch(envoisResend[0].html, /mailto:/);
+  delete process.env.RESEND_FROM; envoisResend = [];
+  const s = await envoyerEmail(document);
+  assert.equal(s.statusCode, 503);
+  assert.equal(envoisResend.length, 0);
+});
+
+test("dépôt public : aucune adresse e-mail réelle dans le code (hors domaines d'exemple)", async () => {
+  const { readFileSync, readdirSync } = await import("node:fs");
+  const racine = new URL("../", import.meta.url);
+  const fichiers = ["index.html", "marque.json", "marque.js", "facture.js", "emetteurs.js", "avis-valeur.js", "version.json", "CLAUDE.md"]
+    .concat(readdirSync(new URL("netlify/functions/", racine)).map((f) => "netlify/functions/" + f));
+  const admis = /@(exemple\.(fr|com)|example\.(com|org)|anthropic\.com|netlify\/|[0-9])/;
+  for (const f of fichiers) {
+    const trouve = (readFileSync(new URL(f, racine), "utf8").match(/[A-Za-z0-9._-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.(com|fr|net|org)\b/g) || []).filter((a) => !admis.test(a));
+    assert.deepEqual(trouve, [], "adresse trouvée dans " + f);
+  }
 });

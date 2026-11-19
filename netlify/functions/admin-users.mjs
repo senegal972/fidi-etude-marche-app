@@ -31,10 +31,11 @@ function genPassword() {
   return pw.join("");
 }
 
-// Super-admin : seul contact@fidiconseil.com peut supprimer, promouvoir Administrateur,
-// changer les réseaux. Les autres Administrateurs peuvent gérer crédits/statut.
-const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || "contact@fidiconseil.com").toLowerCase();
-function isSuperAdmin(email) { return String(email || "").toLowerCase() === SUPER_ADMIN_EMAIL; }
+// Super-admin : seul le compte désigné par la variable Netlify SUPER_ADMIN_EMAIL peut supprimer, promouvoir
+// Administrateur, changer les réseaux. Les autres Administrateurs peuvent gérer crédits/statut.
+// Aucune adresse dans le code (dépôt public) : sans la variable, personne n'a ces droits.
+const SUPER_ADMIN_EMAIL = String(process.env.SUPER_ADMIN_EMAIL || "").trim().toLowerCase();
+function isSuperAdmin(email) { return !!SUPER_ADMIN_EMAIL && String(email || "").trim().toLowerCase() === SUPER_ADMIN_EMAIL; }
 
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return authResp(200, {});
