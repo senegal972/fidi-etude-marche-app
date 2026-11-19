@@ -228,6 +228,14 @@ body.map-fs-on{overflow:hidden;}
 .pdf-mode .card{box-shadow:none;border:1px solid #dee2e6;break-inside:avoid;}
 .pdf-mode #pdfMapNote{display:flex!important;}
 #pdfMapNote{display:none;}
+/* Fiche d'une parcelle au clic sur la carte */
+.fiche-parc{font-size:.84rem;line-height:1.4;overflow-wrap:anywhere;}
+#ficheParcPanneau{display:none;background:#f6f9ff;border:1px solid #c9d9f5;border-left:4px solid #0d6efd;border-radius:8px;padding:.6rem .7rem;margin:.5rem .5rem 0;}
+#ficheParcPanneau .fiche-parc{font-size:.9rem;}
+#ficheParcPanneau .btn{min-height:42px;}
+@media print{ #ficheParcPanneau,#carteAstuce{display:none!important;} }
+.pdf-mode #ficheParcPanneau,.pdf-mode #carteAstuce{display:none!important;}
+.fiche-parc-t{font-weight:800;color:var(--fidi-blue);font-size:.95rem;margin-bottom:.15rem;}
 /* Impression ciblée d'un document de partage (avis) : on n'imprime que #sharePrintRoot */
 #sharePrintRoot{display:none;}
 /* Rapport A4 (moteur rapport-a4.js) : on n'imprime que #rapportRoot */
@@ -733,6 +741,7 @@ body.map-fs-on{overflow:hidden;}
             </button>
           </div>
           <div id="map"></div>
+          <div class="no-print small text-muted px-2 pt-1" id="carteAstuce"><i class="bi bi-hand-index me-1"></i>Cliquez sur une parcelle pour afficher sa fiche : référence, surface, zonage, ventes.</div>
           <div id="pdfMapNote" class="align-items-center justify-content-center text-muted text-center p-4"
                style="min-height:180px;background:#f8f9fa;border:1px dashed #ced4da;border-radius:6px;">
             <div>
@@ -3117,9 +3126,7 @@ function drawExtraParcelles(){
     style:{ color:'#8e44ad', weight:3, fillColor:'#8e44ad', fillOpacity:0.14, dashArray:'4 3' },
     onEachFeature: function(f, lyr){
       const pp = f.properties || {};
-      const r  = ((pp.section||'')+' '+(pp.numero||'')).trim();
-      lyr.bindPopup('<strong>Parcelle '+escHtml(r)+'</strong>'
-        + (pp.contenance ? '<br>'+Number(pp.contenance).toLocaleString('fr-FR')+' m²' : ''));
+      lyr.on('click', function(e){ L.DomEvent.stop(e); ficheParcelleAuClic(e.latlng); });
     }
   }).addTo(mapInstance);
   try{
@@ -3262,10 +3269,18 @@ function renderMap(lat, lon, city){
     mapInstance.on('overlayadd', (e)=>{ if(e.layer===zonageLayer){ _zonageOn=true; loadZonage(); } });
     mapInstance.on('overlayremove', (e)=>{ if(e.layer===zonageLayer){ _zonageOn=false; } });
     mapInstance.on('moveend', ()=>{ if(_zonageOn) loadZonage(); });
+    // Clic sur le fond de carte : fiche de la parcelle. Les repères et contours déjà cliquables
+    // (ventes, parcelle étudiée) gardent leur propre bulle.
+    mapInstance.on('click', (e)=>{
+      const cible = e.originalEvent && e.originalEvent.target;
+      if(cible && cible.closest && cible.closest('.leaflet-interactive, .leaflet-control, .leaflet-popup')) return;
+      ficheParcelleAuClic(e.latlng);
+    });
   } else {
     mapInstance.setView([lat,lon],16);
     if(markerInstance) mapInstance.removeLayer(markerInstance);
     if(radiusCircle){ mapInstance.removeLayer(radiusCircle); radiusCircle=null; }
+    try{ ficheParcFermer(); mapInstance.closePopup(); }catch(e){}
     transMarkers.forEach(m=>mapInstance.removeLayer(m));
     transMarkers=[];
   }
@@ -3636,9 +3651,8 @@ async function loadGpuInfo(lat, lon){
           parcelleLayer = L.geoJSON(f, {
             style:{ color:'#d6336c', weight:3, fillColor:'#d6336c', fillOpacity:0.18 }
           }).addTo(mapInstance);
-          parcelleLayer.bindPopup(`<strong>Parcelle ${escHtml(ref)}</strong>`
-            + (p.contenance?`<br>${Number(p.contenance).toLocaleString('fr-FR')} m²`:'')
-            + (p.idu?`<br><small>${escHtml(p.idu)}</small>`:''));
+          // Clic sur la parcelle étudiée : même fiche que pour les parcelles voisines.
+          parcelleLayer.on('click', (e)=>{ L.DomEvent.stop(e); ficheParcelleAuClic(e.latlng); });
           // Recentre sur la parcelle si elle tient dans la vue
           try{ mapInstance.fitBounds(parcelleLayer.getBounds(), { maxZoom:18, padding:[40,40] }); }catch(e){}
         }
@@ -3676,14 +3690,169 @@ async function loadZonage(){
       style: (feat)=>{ const col=zoneColor(feat.properties.typezone);
         return { color:col, weight:1, fillColor:col, fillOpacity:0.28 }; },
       onEachFeature: (feat, lyr)=>{
-        const p = feat.properties;
-        lyr.bindPopup(`<strong>${escHtml(p.libelle||'?')}</strong>`
-          + (p.libelong?`<br>${escHtml(p.libelong)}`:'')
-          + `<br><small>Type ${escHtml(p.typezone||'')}</small>`);
+        // Clic sur une zone : fiche de la parcelle cliquée, zonage compris (la zone seule ne disait rien de la parcelle).
+        lyr.on('click', (e)=>{ L.DomEvent.stop(e); ficheParcelleAuClic(e.latlng, feat.properties); });
       }
     });
     zonageLayer.addLayer(gj);
   }catch(e){ /* silencieux */ }
+}
+
+// ─── Fiche d'une parcelle au clic sur la carte ───────────────────────────────
+// Un clic sur la carte (fond, calque Cadastre ou Zonage) ouvre une bulle : référence, commune,
+// surface, zonage PLU, distance au bien étudié. « Détail » ouvre la fiche complète.
+// Sources : API Carto IGN (cadastre et Géoportail de l'urbanisme), sans clé.
+let ficheParcLayer = null, _ficheParcReq = 0;
+window.__ficheParcelle = null;
+
+function ficheParcDistance(lat, lon){
+  const loc = (window.__fidiData && window.__fidiData.localisation) || {};
+  if(!loc.lat || !loc.lon) return null;
+  const R = 6371000, r = Math.PI/180;
+  const a = Math.sin((lat-loc.lat)*r/2)**2 + Math.cos(loc.lat*r)*Math.cos(lat*r)*Math.sin((lon-loc.lon)*r/2)**2;
+  return Math.round(2*R*Math.asin(Math.sqrt(a)));
+}
+function ficheParcFmtDist(d){ return d == null ? '' : (d < 1000 ? d+' m' : (d/1000).toLocaleString('fr-FR',{maximumFractionDigits:1})+' km'); }
+function ficheParcDate(s){ s = String(s||''); return /^\d{8}$/.test(s) ? s.slice(6,8)+'/'+s.slice(4,6)+'/'+s.slice(0,4) : s; }
+// Ventes déjà chargées par l'étude (DVF) sur cette parcelle.
+function ficheParcVentes(idu){
+  if(!idu) return [];
+  return (window.__fidiTransactions || []).filter(function(t){ return t && t.id_parcelle === idu; });
+}
+function ficheParcLiens(lat, lon){
+  return {
+    urbanisme: 'https://www.geoportail-urbanisme.gouv.fr/map/#tile=1&lon='+lon+'&lat='+lat+'&zoom=18&mlon='+lon+'&mlat='+lat,
+    cadastre: 'https://www.geoportail.gouv.fr/carte?c='+lon+','+lat+'&z=19&l0=CADASTRALPARCELS.PARCELLAIRE_EXPRESS::GEOPORTAIL:OGC:WMTS(1)&permalink=yes'
+  };
+}
+// Contenu de la bulle. p : parcelle (ou null), z : zone PLU (ou null).
+function ficheParcBulleHTML(p, z, lat, lon){
+  const d = ficheParcDistance(lat, lon);
+  const principale = p && ((window.__fidiGpu||{}).parcelle||{}).idu === p.idu;
+  let h = '<div class="fiche-parc">';
+  if(p){
+    const ref = ((p.section||'')+' '+(p.numero||'')).trim();
+    const ventes = ficheParcVentes(p.idu);
+    h += '<div class="fiche-parc-t">Parcelle '+escHtml(ref||'—')+(principale?' <span class="badge bg-danger" style="font-size:.6rem;">bien étudié</span>':'')+'</div>'
+      + '<div>'+escHtml(p.nom_com||'')+(p.code_insee?' <span class="text-muted">('+escHtml(p.code_insee)+')</span>':'')+'</div>'
+      + (p.contenance?'<div><b>'+Number(p.contenance).toLocaleString('fr-FR')+' m²</b> au cadastre</div>':'')
+      + (ventes.length?'<div><i class="bi bi-cash-coin me-1"></i>'+ventes.length+' vente'+(ventes.length>1?'s':'')+' enregistrée'+(ventes.length>1?'s':'')+'</div>':'');
+  } else {
+    h += '<div class="fiche-parc-t">Aucune parcelle à ce point</div><div class="text-muted">Voie, domaine public ou zone non cadastrée.</div>';
+  }
+  h += z ? '<div class="mt-1"><span class="badge" style="background:'+zoneColor(z.typezone)+';">'+escHtml(z.libelle||'?')+'</span> '+escHtml(z.libelong||'Zone '+(z.typezone||''))+'</div>'
+         : '<div class="mt-1 text-muted">Zonage PLU : non numérisé à ce point</div>';
+  if(d != null && !principale) h += '<div class="text-muted">À '+ficheParcFmtDist(d)+' du bien étudié</div>';
+  if(p) h += '<button type="button" class="btn btn-sm btn-primary mt-2 w-100" onclick="ficheParcDetail()"><i class="bi bi-card-list me-1"></i>Détail de la parcelle</button>';
+  return h + '</div>';
+}
+
+// zoneConnue : zone PLU du polygone cliqué (calque Zonage actif), sinon elle est demandée.
+async function ficheParcelleAuClic(latlng, zoneConnue){
+  if(!mapInstance || !latlng) return;
+  const lat = latlng.lat, lon = latlng.lng, reqId = ++_ficheParcReq;
+  const attente = '<div class="fiche-parc"><span class="spinner-border spinner-border-sm me-2"></span>Lecture du cadastre…</div>';
+  // Téléphone : la carte est trop petite pour une bulle, la fiche s'affiche juste dessous.
+  const etroit = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+  let bulle;
+  if(etroit){
+    try{ mapInstance.closePopup(); }catch(e){}
+    let pan = document.getElementById('ficheParcPanneau');
+    if(!pan){
+      pan = document.createElement('div'); pan.id = 'ficheParcPanneau';
+      const carte = document.getElementById('map'); carte.parentNode.insertBefore(pan, carte.nextSibling);
+    }
+    bulle = { setContent: function(h){
+      pan.innerHTML = '<button type="button" class="btn-close float-end" aria-label="Fermer" onclick="ficheParcFermer()"></button>' + h;
+      pan.style.display = 'block';
+    } };
+    bulle.setContent(attente);
+  } else {
+    bulle = L.popup({ maxWidth: 290, autoPanPadding: [20, 20] }).setLatLng(latlng).setContent(attente).openOn(mapInstance);
+  }
+  const pt = encodeURIComponent(JSON.stringify({ type:'Point', coordinates:[lon, lat] }));
+  const lire = (url)=> fetch(url).then(r=> r.ok ? r.json() : null).catch(()=>null);
+  const [jp, jz] = await Promise.all([
+    lire('https://apicarto.ign.fr/api/cadastre/parcelle?geom='+pt),
+    zoneConnue ? Promise.resolve(null) : lire('https://apicarto.ign.fr/api/gpu/zone-urba?geom='+pt)
+  ]);
+  if(reqId !== _ficheParcReq) return;                 // un autre clic a pris le relais
+  const f = jp && jp.features && jp.features[0];
+  const p = f ? f.properties : null;
+  const z = zoneConnue || (jz && jz.features && jz.features[0] && jz.features[0].properties) || null;
+  if(ficheParcLayer){ mapInstance.removeLayer(ficheParcLayer); ficheParcLayer = null; }
+  if(f && f.geometry){
+    // Contour de la parcelle cliquée (non cliquable : un nouveau clic doit atteindre la carte).
+    ficheParcLayer = L.geoJSON(f, { interactive:false, style:{ color:'#0d6efd', weight:3, fillColor:'#0d6efd', fillOpacity:0.12 } }).addTo(mapInstance);
+  }
+  window.__ficheParcelle = { p:p, z:z, lat:lat, lon:lon, erreur: !jp };
+  bulle.setContent(jp ? ficheParcBulleHTML(p, z, lat, lon)
+    : '<div class="fiche-parc"><div class="fiche-parc-t">Cadastre indisponible</div><div class="text-muted">Le service du cadastre ne répond pas. Réessayez dans un instant.</div></div>');
+}
+
+function ficheParcFermer(){
+  const pan = document.getElementById('ficheParcPanneau'); if(pan){ pan.style.display = 'none'; pan.innerHTML = ''; }
+  if(ficheParcLayer && mapInstance){ mapInstance.removeLayer(ficheParcLayer); ficheParcLayer = null; }
+}
+
+// Fiche complète de la dernière parcelle cliquée.
+function ficheParcDetail(){
+  const F = window.__ficheParcelle; if(!F || !F.p) return;
+  const p = F.p, z = F.z, d = ficheParcDistance(F.lat, F.lon), liens = ficheParcLiens(F.lat, F.lon);
+  const ref = ((p.section||'')+' '+(p.numero||'')).trim();
+  const ventes = ficheParcVentes(p.idu);
+  const ligne = (k, v)=> v ? '<tr><th style="width:42%;font-weight:600;">'+k+'</th><td>'+v+'</td></tr>' : '';
+  const gpu = window.__fidiGpu || {};
+  const memeZone = z && gpu.zone && gpu.zone.libelle === z.libelle;
+  let root = document.getElementById('ficheParcRoot');
+  if(!root){ root = document.createElement('div'); root.id = 'ficheParcRoot'; document.body.appendChild(root); }
+  root.innerHTML =
+    '<div class="modal fade" id="ficheParcModal" tabindex="-1"><div class="modal-dialog modal-dialog-scrollable"><div class="modal-content">'+
+    '<div class="modal-header" style="background:#12294d;color:#fff;"><h5 class="modal-title"><i class="bi bi-geo me-2"></i>Parcelle '+escHtml(ref)+' — '+escHtml(p.nom_com||'')+'</h5>'+
+    '<button type="button" class="btn-close" style="filter:invert(1)" data-bs-dismiss="modal" aria-label="Fermer"></button></div>'+
+    '<div class="modal-body">'+
+      '<h6 class="fw-bold">Cadastre</h6>'+
+      '<table class="table table-sm mb-3"><tbody>'+
+        ligne('Référence', '<b>'+escHtml(ref)+'</b> <button type="button" class="btn btn-sm btn-link p-0 ms-1" onclick="ficheParcCopier()" title="Copier la référence"><i class="bi bi-clipboard"></i> copier</button>')+
+        ligne('Section / numéro', escHtml(p.section||'')+' / '+escHtml(p.numero||''))+
+        ligne('Feuille', p.feuille != null ? escHtml(p.feuille) : '')+
+        ligne('Commune', escHtml(p.nom_com||'')+(p.code_insee?' ('+escHtml(p.code_insee)+')':''))+
+        ligne('Surface cadastrale', p.contenance ? '<b>'+Number(p.contenance).toLocaleString('fr-FR')+' m²</b>' : '')+
+        ligne('Identifiant', p.idu ? '<code>'+escHtml(p.idu)+'</code>' : '')+
+        ligne('Distance au bien étudié', d != null ? ficheParcFmtDist(d) : '')+
+      '</tbody></table>'+
+      '<h6 class="fw-bold">Urbanisme</h6>'+
+      (z ? '<table class="table table-sm mb-3"><tbody>'+
+            ligne('Zone', '<span class="badge" style="background:'+zoneColor(z.typezone)+';">'+escHtml(z.libelle||'?')+'</span> '+escHtml(z.libelong||''))+
+            ligne('Type de zone', escHtml({U:'U — urbaine',AUc:'AU — à urbaniser',AUs:'AU — à urbaniser',AU:'AU — à urbaniser',A:'A — agricole',N:'N — naturelle'}[z.typezone] || z.typezone || ''))+
+            ligne('Document', escHtml(z.idurba||'')+(z.datvalid?' · validé le '+escHtml(ficheParcDate(z.datvalid)):''))+
+            ligne('Comparaison', gpu.zone ? (memeZone ? 'Même zone que le bien étudié' : 'Zone différente du bien étudié ('+escHtml(gpu.zone.libelle||'?')+')') : '')+
+          '</tbody></table>'
+         : '<p class="text-muted small">Aucun document d\'urbanisme numérisé à ce point.</p>')+
+      '<h6 class="fw-bold">Ventes enregistrées sur cette parcelle</h6>'+
+      (ventes.length
+        ? '<div class="table-responsive"><table class="table table-sm mb-3"><thead><tr><th>Date</th><th>Bien</th><th>Surface</th><th class="text-end">Prix</th></tr></thead><tbody>'+
+            ventes.map(function(t){
+              const s = t.surface_bati ? t.surface_bati+' m²' : (t.surface_terrain ? t.surface_terrain+' m² terrain' : '—');
+              return '<tr><td>'+escHtml(t.date||'')+'</td><td>'+escHtml(t.type_local||'Bien')+'</td><td>'+escHtml(s)+'</td><td class="text-end">'+(t.valeur?Number(t.valeur).toLocaleString('fr-FR')+' €':'—')+'</td></tr>';
+            }).join('')+'</tbody></table></div>'
+        : '<p class="text-muted small">Aucune parmi les ventes chargées par cette étude (périmètre et période de l\'étude).</p>')+
+      '<h6 class="fw-bold">Consulter</h6>'+
+      '<div class="d-flex flex-wrap gap-2">'+
+        '<a class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener" href="'+escHtml(liens.urbanisme)+'"><i class="bi bi-map me-1"></i>Règlement d\'urbanisme (Géoportail de l\'urbanisme)</a>'+
+        '<a class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener" href="'+escHtml(liens.cadastre)+'"><i class="bi bi-grid-3x3 me-1"></i>Plan cadastral (Géoportail)</a>'+
+      '</div>'+
+      '<p class="text-muted mt-3 mb-0" style="font-size:.72rem;">Sources : cadastre (IGN, Parcellaire Express) et Géoportail de l\'urbanisme. Le propriétaire d\'une parcelle n\'est pas une donnée publique.</p>'+
+    '</div></div></div></div>';
+  const el = document.getElementById('ficheParcModal');
+  el.addEventListener('hidden.bs.modal', ()=> el.remove());
+  if(typeof fidiStackModal === 'function') fidiStackModal(el);
+  new bootstrap.Modal(el).show();
+}
+function ficheParcCopier(){
+  const F = window.__ficheParcelle; if(!F || !F.p) return;
+  const txt = ((F.p.section||'')+' '+(F.p.numero||'')).trim()+' — '+(F.p.nom_com||'')+(F.p.contenance?' — '+F.p.contenance+' m²':'');
+  try { navigator.clipboard.writeText(txt); } catch(e){}
 }
 
 // Avant impression : recalcule la taille de la carte pour charger les tuiles au bon format

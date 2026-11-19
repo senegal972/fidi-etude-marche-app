@@ -176,3 +176,11 @@ tient sur une ligne et laisse la place au contenu ; un seul défilement par fen�
   L'aperçu remplace la saisie (`estMobile()`, `majBoutonApercu()`).
 - Barre du haut : libellés masquables dans `<span class="nav-lbl">`.
 - Vérifier tout changement d'interface à 360 px de large (aucun élément hors écran, aucune barre sur plusieurs lignes). Garde-fous : `tests/mobile.test.mjs`.
+
+## Carte : fiche de parcelle (index.html)
+
+Un clic sur la carte de l'étude appelle `ficheParcelleAuClic(latlng, zoneConnue?)` : parcelle (`apicarto.ign.fr/api/cadastre/parcelle`) et zone PLU
+(`/api/gpu/zone-urba`) au point, bulle Leaflet sur ordinateur, panneau `#ficheParcPanneau` sous la carte sur téléphone, contour `ficheParcLayer`
+(non cliquable). `ficheParcDetail()` ouvre la fiche complète ; les ventes viennent de `window.__fidiTransactions` (`id_parcelle` = `idu`).
+Le clic sur le fond ignore les éléments `.leaflet-interactive` : repères de ventes et contours gardent leur bulle. Tout nouveau calque de polygones
+qui couvre la carte doit appeler `ficheParcelleAuClic` au clic (comme le zonage), sinon il masque la fiche.

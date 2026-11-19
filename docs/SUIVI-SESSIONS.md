@@ -10,7 +10,8 @@ Ce dépôt est modifié depuis plusieurs outils (Claude Code sur le PC, Claude C
 | 1.12.0 | « ETUDE DE MARCHE GOUV » | Claude Code (PC) | Avis de valeur : décotes appliquées à la synthèse et à la stratégie, 5 ter réécrit, neuf / ancien, comparatif ancien / neuf | `97b8271` |
 | 1.13.0 | « ETUDE DE MARCHE GOUV » | Claude Code (PC) | Version téléphone refaite (`mobile.css`) : barres sur une ligne, liste de rubriques, menu « Plus » | `0fd5252` |
 | 1.14.0 | « ETUDE DE MARCHE GOUV » | Claude Code (PC) | Crédits : débit côté serveur après rendu (ex-1.6.3 reportée), péage désactivé | `6610789` |
-| 1.15.0 | « ETUDE DE MARCHE GOUV » | Claude Code (PC) | Recherche d'annonces similaires refaite (résultats du moteur, périmètre 1 km, liens portails) | branche `avis-refonte` |
+| 1.15.0 | « ETUDE DE MARCHE GOUV » | Claude Code (PC) | Recherche d'annonces similaires refaite (résultats du moteur, périmètre 1 km, liens portails) | `c0bbe1a` |
+| 1.16.0 | « ETUDE DE MARCHE GOUV » | Claude Code (PC) | Carte : fiche de chaque parcelle au clic (bulle, détail, ventes) | branche `avis-refonte` |
 
 ## État des branches au 2026-11-16
 
@@ -24,4 +25,4 @@ Ce dépôt est modifié depuis plusieurs outils (Claude Code sur le PC, Claude C
 2. ~~Stratégie de prix (7 ter), comparatif ancien / neuf~~ : fait en 1.12.0.
 3. ~~Recherche d'annonces similaires~~ : refaite en 1.15.0. À vérifier connecté en production (clé Brave).
 4. ~~Débit des crédits~~ : publié en 1.14.0, péage désactivé. Avant `PAYWALL_ENABLED=true` : vérifications de `docs/CONCEPTION-DEBIT-PDF.md`.
-5. Carte (Localisation, cadastre) : bulle d'information détaillée au clic sur une parcelle voisine (demande du 2026-11-16).
+5. ~~Carte : bulle détaillée au clic sur une parcelle~~ : fait en 1.16.0.
