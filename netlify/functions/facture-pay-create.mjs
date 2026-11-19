@@ -2,7 +2,7 @@
 // POST /api/facture/pay-create { token }   (public — clé = jeton de remise)
 import { hasToken } from "./_notion.mjs";
 import { jsonResp } from "./_notion.mjs";
-import { paypalConfigured, createOrder } from "./_paypal.mjs";
+import { paypalConfigured, createOrder, erreurPaypal, journalPaypal } from "./_paypal.mjs";
 import { findFactureByToken, factureFromPage } from "./_facture.mjs";
 
 export const handler = async (event) => {
@@ -20,6 +20,7 @@ export const handler = async (event) => {
     if (!pg) return jsonResp(404, { error: "Facture introuvable." });
     const f = factureFromPage(pg);
     if (f.paye) return jsonResp(409, { error: "Facture déjà réglée.", paye: true });
+    if (f.statut === "Annulée") return jsonResp(409, { error: "Cette facture a été annulée." });
     if (!(f.montant > 0)) return jsonResp(400, { error: "Montant de facture invalide." });
 
     const order = await createOrder({
@@ -29,6 +30,8 @@ export const handler = async (event) => {
     });
     return jsonResp(200, { ok: true, orderId: order.id });
   } catch (e) {
-    return jsonResp(e.status || 500, { error: e.message, paypal: e.paypal || null });
+    journalPaypal("facture-pay-create", e);
+    const x = erreurPaypal(e);
+    return jsonResp(e.status || 500, { error: x.message, code: x.code });
   }
 };

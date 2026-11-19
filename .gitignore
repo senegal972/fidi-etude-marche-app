@@ -47,3 +47,6 @@ credentials.json
 
 # graphify build artefacts
 graphify-out/
+
+# Node
+node_modules/

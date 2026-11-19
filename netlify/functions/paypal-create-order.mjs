@@ -2,7 +2,7 @@
 // POST /api/paypal/create-order { offerId }
 import { getPage, hasToken, readText, readNumber, readCheckbox } from "./_notion.mjs";
 import { authResp, currentUser } from "./_auth.mjs";
-import { paypalConfigured, createOrder } from "./_paypal.mjs";
+import { paypalConfigured, createOrder, erreurPaypal, journalPaypal } from "./_paypal.mjs";
 
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return authResp(200, {});
@@ -31,6 +31,8 @@ export const handler = async (event) => {
     const order = await createOrder({ montant: prix, description: `FIDI · ${nom} (${credits} crédits)`, custom });
     return authResp(200, { ok: true, orderId: order.id });
   } catch (e) {
-    return authResp(e.status || 500, { error: e.message, paypal: e.paypal || null });
+    journalPaypal("paypal-create-order", e);
+    const x = erreurPaypal(e);
+    return authResp(e.status || 500, { error: e.paypal ? x.message : e.message, code: x.code });
   }
 };

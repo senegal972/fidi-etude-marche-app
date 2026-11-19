@@ -38,6 +38,10 @@ function page(inner, extraHead = "") {
   .center{text-align:center}
   .btn{display:block;width:100%;text-align:center;padding:14px;border-radius:10px;border:none;
        font-size:15px;font-weight:700;cursor:pointer;text-decoration:none;margin-top:10px}
+  .btn-pay{background:#e6b53d;color:#12294d}
+  .aide{font-size:12.5px;color:#55606f;line-height:1.5;margin-top:12px}
+  .aide b{color:#12294d}
+  .lien{display:block;text-align:center;font-size:13px;color:#24508f;margin-top:14px}
   .btn-dl{background:#12294d;color:#fff}.btn-fac{background:#fff;color:#12294d;border:2px solid #12294d}
   .muted{color:#8a94a3;font-size:12px;text-align:center;margin-top:14px;line-height:1.5}
   .foot{text-align:center;font-size:11px;color:#9aa3b0;padding:6px 0 20px}
@@ -105,63 +109,106 @@ export const handler = async (event) => {
     const statut = f.paye
       ? `<div class="center" style="margin-bottom:6px"><span class="badge b-ok">✓ Payée</span></div>`
       : "";
+    // Facture émise mais pas encore réglée (paiement non exigé avant remise) : le client doit pouvoir la régler
+    // depuis cette page — les messages d'envoi et de relance le lui annoncent.
+    const aRegler = !f.paye && f.montant > 0 && f.statut !== "Annulée" && f.statut !== "Brouillon" && paypalConfigured();
+    const payBtn = aRegler
+      ? `<a class="btn btn-pay" href="/l/${encodeURIComponent(token)}?pay=1" id="btnPayer">Régler cette facture en ligne · ${eur(f.montant)} €</a>
+         <p class="muted" style="margin-top:6px">Carte bancaire (sans compte PayPal) ou compte PayPal.</p>`
+      : "";
     const inner = `<div class="card"><div class="hd"><div class="logo">FIDI<span>.</span></div><div class="sub">Vos documents sont prêts</div></div>
       <div class="bd">${statut}${recap}
-      <div style="margin-top:16px">${docBtn}${facBtn}</div>
+      <div style="margin-top:16px">${docBtn}${facBtn}${payBtn}</div>
       <p class="muted">Documents fournis par FIDI Conseil. Conservez ce lien pour y accéder à nouveau.</p>
       </div></div>`;
     return { statusCode: 200, headers: HTML, body: page(inner) };
   }
 
   // ── Cas 2 : paiement requis, non réglé → bouton Payer ───────────────────────
-  const canPay = paypalConfigured();
-  const payHead = canPay
-    ? `<script src="https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(paypalClientId())}&currency=EUR&intent=capture&enable-funding=card"></script>`
+  const canPay = paypalConfigured() && f.statut !== "Annulée";
+  // Le script PayPal est chargé par la page (et non dans l'en-tête) pour pouvoir dire au client quoi faire
+  // quand son navigateur le bloque (bloqueur de publicités, protection contre le pistage, réseau d'entreprise).
+  const sdkUrl = canPay
+    ? `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(paypalClientId())}&currency=EUR&intent=capture&enable-funding=card&locale=fr_FR`
     : "";
   const payBlock = canPay
-    ? `<p class="center" style="color:#6a7686;font-size:13.5px;margin-top:6px">Réglez pour recevoir votre document et la facture acquittée.</p>
-       <div id="ppwrap"></div><div id="msg"></div>`
-    : `<div class="alert alert-err">Le paiement en ligne est momentanément indisponible. Contactez FIDI Conseil.</div>`;
+    ? `<p class="center" style="color:#6a7686;font-size:13.5px;margin-top:6px">${f.unlocked ? "Réglez votre facture en ligne." : "Réglez pour recevoir votre document et la facture acquittée."}</p>
+       <div id="inapp"></div>
+       <div id="ppwrap"><p class="center muted" id="ppload"><span class="spin"></span>Chargement du paiement sécurisé…</p></div><div id="msg"></div>
+       <p class="aide"><b>Carte bancaire</b> : aucun compte PayPal n'est nécessaire, choisissez le bouton « Carte bancaire ».
+       Votre banque peut vous demander de confirmer le paiement dans son application.<br>
+       <b>Compte PayPal</b> : choisissez le bouton « PayPal ».</p>`
+    : `<div class="alert alert-err">${f.statut === "Annulée" ? "Cette facture a été annulée." : "Le paiement en ligne est momentanément indisponible. Contactez FIDI Conseil."}</div>`;
+  const retour = f.unlocked ? `<a class="lien" href="/l/${encodeURIComponent(token)}">← Revenir à mes documents</a>` : "";
 
   const inner = `<div class="card"><div class="hd"><div class="logo">FIDI<span>.</span></div><div class="sub">Règlement de votre facture</div></div>
     <div class="bd">
       <div class="center" style="margin-bottom:6px"><span class="badge b-wait">En attente de paiement</span></div>
       ${recap}
       <div class="amount">${eur(f.montant)} €</div>
-      ${payBlock}
+      ${payBlock}${retour}
     </div></div>
     <div id="doneCard"></div>`;
 
-  const script = `<script>
-    var TOKEN=${JSON.stringify(token)}, TYPE=${JSON.stringify(typeLabel)};
+  const script = canPay ? `<script>
+    var TOKEN=${JSON.stringify(token)}, TYPE=${JSON.stringify(typeLabel)}, SDK=${JSON.stringify(sdkUrl)};
+    function el(id){ return document.getElementById(id); }
+    function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+    function dire(html, cls){ var m=el('msg'); if(m) m.innerHTML = html ? '<div class="alert '+(cls||'')+'">'+html+'</div>' : ''; }
     function reveal(d){
-      var c=document.getElementById('doneCard');
-      var doc = d.document_url ? '<a class="btn btn-dl" href="'+d.document_url+'">⬇︎ Télécharger '+TYPE.toLowerCase()+'</a>' : '';
-      var fac = d.facture_url ? '<a class="btn btn-fac" target="_blank" href="'+d.facture_url+'">🧾 Voir / imprimer la facture acquittée</a>' : '';
+      var c=el('doneCard');
+      var doc = d.document_url ? '<a class="btn btn-dl" href="'+esc(d.document_url)+'">⬇︎ Télécharger '+esc(TYPE.toLowerCase())+'</a>' : '';
+      var fac = d.facture_url ? '<a class="btn btn-fac" target="_blank" href="'+esc(d.facture_url)+'">🧾 Voir / imprimer la facture acquittée</a>' : '';
       c.innerHTML='<div class="card"><div class="bd"><div class="alert alert-ok">✓ Paiement confirmé. Merci !</div>'+doc+fac+
         '<p class="muted">Conservez ce lien pour retrouver vos documents.</p></div></div>';
       c.scrollIntoView({behavior:'smooth'});
     }
-    if(window.paypal){
+    // Navigateur intégré d'une application (Facebook, Messenger, Instagram…) : les fenêtres de paiement y sont souvent bloquées.
+    if(/FBAN|FBAV|FB_IAB|Instagram|Messenger|TikTok|Snapchat/i.test(navigator.userAgent||'')){
+      el('inapp').innerHTML='<div class="alert" style="background:#fff4d6;color:#8a6100">Vous lisez cette page à l\\'intérieur d\\'une application. Si le paiement ne s\\'ouvre pas, ouvrez ce lien dans votre navigateur habituel (menu ⋮ ou ⋯ puis « Ouvrir dans le navigateur »).</div>';
+    }
+    function bloque(){
+      var w=el('ppwrap'); if(w) w.innerHTML='';
+      dire('Le module de paiement n\\'a pas pu se charger. Causes fréquentes : un bloqueur de publicités, la protection contre le pistage du navigateur, ou un réseau qui filtre PayPal.<br><br>Désactivez le bloqueur pour cette page, ou ouvrez ce lien dans un autre navigateur ou sur votre téléphone, puis <a href="'+esc(location.href)+'">rechargez la page</a>. Si cela persiste, contactez-nous : nous vous proposerons un autre moyen de règlement.','alert-err');
+    }
+    function monter(){
+      if(!window.paypal || !paypal.Buttons){ bloque(); return; }
+      var l=el('ppload'); if(l) l.remove();
       paypal.Buttons({
-        style:{layout:'vertical',label:'pay',height:44},
+        style:{layout:'vertical',label:'pay',height:48},
+        onClick:function(){ dire(''); },
         createOrder:function(){
           return fetch('/api/facture/pay-create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:TOKEN})})
-            .then(function(r){return r.json();}).then(function(d){ if(!d.orderId) throw new Error(d.error||'Erreur'); return d.orderId; });
+            .then(function(r){return r.json();}).then(function(d){
+              if(d.paye){ location.href='/l/'+encodeURIComponent(TOKEN); throw new Error('deja-regle'); }
+              if(!d.orderId){ var e=new Error(d.error||'Erreur'); e.pourClient=d.error; throw e; }
+              return d.orderId; });
         },
-        onApprove:function(data){
-          var m=document.getElementById('msg'); if(m) m.innerHTML='<div class="alert"><span class="spin"></span>Validation du paiement…</div>';
+        onApprove:function(data, actions){
+          dire('<span class="spin"></span>Validation du paiement… ne fermez pas cette page.');
           return fetch('/api/facture/pay-capture',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:TOKEN,orderId:data.orderID})})
             .then(function(r){return r.json();}).then(function(d){
-              if(m) m.innerHTML='';
-              if(d.ok){ document.getElementById('ppwrap').style.display='none'; reveal(d); }
-              else { if(m) m.innerHTML='<div class="alert alert-err">'+((d&&d.error)||'Paiement non finalisé')+'</div>'; }
+              if(d.ok){ dire(''); el('ppwrap').style.display='none'; reveal(d); return; }
+              dire(esc((d&&d.error)||'Le paiement n\\'a pas abouti. Réessayez.'), d.en_attente ? '' : 'alert-err');
+              // Moyen de paiement refusé : PayPal rouvre le choix du moyen de paiement, sans tout recommencer.
+              if(d.restart && actions && actions.restart){ return actions.restart(); }
+            }).catch(function(){
+              dire('La connexion a été interrompue pendant la validation. <a href="'+esc(location.href)+'">Rechargez la page</a> avant de payer de nouveau : si votre paiement est passé, vos documents s\\'afficheront.','alert-err');
             });
         },
-        onError:function(err){ var m=document.getElementById('msg'); if(m) m.innerHTML='<div class="alert alert-err">Erreur de paiement. Réessayez.</div>'; }
-      }).render('#ppwrap');
+        onCancel:function(){ dire('Paiement interrompu : rien n\\'a été débité. Vous pouvez reprendre quand vous voulez, par carte bancaire ou avec un compte PayPal.'); },
+        onError:function(err){
+          if(err && err.message==='deja-regle') return;
+          dire(esc((err && err.pourClient) || 'Le paiement n\\'a pas pu démarrer ou a été interrompu. Rien n\\'a été débité tant que la confirmation ne s\\'affiche pas. Réessayez, ou choisissez l\\'autre bouton (carte bancaire / PayPal).'),'alert-err');
+        }
+      }).render('#ppwrap').catch(function(){ bloque(); });
     }
-  </script>`;
+    (function(){
+      var s=document.createElement('script'); s.src=SDK; s.onload=monter; s.onerror=bloque;
+      document.head.appendChild(s);
+      setTimeout(function(){ if(!window.paypal) bloque(); }, 20000);
+    })();
+  </script>` : "";
 
-  return { statusCode: 200, headers: HTML, body: page(inner + script, payHead) };
+  return { statusCode: 200, headers: HTML, body: page(inner + script) };
 };

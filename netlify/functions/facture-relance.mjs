@@ -54,7 +54,7 @@ export const handler = async (event) => {
     if (b.envoyer_email && f.email) {
       try {
         const origin = reqOrigin(event);
-        const lien = f.jeton ? `${origin}/l/${f.jeton}` : "";
+        const lien = f.jeton ? `${origin}/l/${f.jeton}?pay=1` : "";
         const r = await fetch(`${origin}/.netlify/functions/send-email`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Cookie": event.headers.cookie || "" },

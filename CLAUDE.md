@@ -68,6 +68,19 @@ Les redirections `/api/<nom>` sont déclarées dans `netlify.toml`.
 - Hors périmètre à ce jour : paiement partiel / acompte (le paiement en ligne encaisse toujours le TTC) ;
   les préfixes ne sont uniques qu'au sein d'un compte (deux comptes d'un même déploiement doivent en choisir de différents).
 
+### Paiement en ligne (PayPal)
+- `_paypal.mjs` : `createOrder` (toujours `NO_SHIPPING` + `PAY_NOW` : sans cela le formulaire carte exige une adresse complète),
+  `lireCapture(cap)` (**seule une capture `COMPLETED` vaut paiement** : une commande peut revenir `COMPLETED` avec une capture
+  `DECLINED` ou `PENDING`), `erreurPaypal(e)` (message français pour le client, `restart` si le moyen est refusé), `journalPaypal`
+  (journal des fonctions Netlify : code PayPal et `debug_id`, aucune donnée personnelle). La réponse brute de PayPal n'est jamais renvoyée au navigateur.
+- Factures : `POST /api/facture/pay-create { token }` puis `POST /api/facture/pay-capture { token, orderId }` (publics, clé = jeton de remise).
+  Crédits : `/api/paypal/create-order`, `/api/paypal/capture-order` (session exigée).
+- Page du client `/l/<jeton>` (`livraison.mjs`) : facture impayée sans paiement préalable → documents + bouton `#btnPayer` vers `?pay=1` ;
+  le script PayPal est chargé par la page pour afficher un message s'il est bloqué. Le script en ligne est écrit dans un gabarit JavaScript :
+  **toute apostrophe y est écrite `\\'`** (vérifié par `tests/paypal.test.mjs`, qui compile le script produit).
+- Variables : `PAYPAL_CLIENT_ID`, `PAYPAL_SECRET`, `PAYPAL_ENV` (`live` ou `sandbox` ; absent = `sandbox`).
+- Non couvert : virement, paiement partiel, notification PayPal différée (webhook) pour un paiement resté « en attente ».
+
 ## Modules d'interface
 
 L'interface est découpée en modules chargés par `index.html`. **Toute évolution de l'écran de saisie

@@ -6,7 +6,7 @@
 // connecté. Journalisé dans la base « Paiements ».
 import { DB, createPage, P, hasToken } from "./_notion.mjs";
 import { authResp, currentUser, setCredits } from "./_auth.mjs";
-import { paypalConfigured, captureOrder } from "./_paypal.mjs";
+import { paypalConfigured, captureOrder, lireCapture, erreurPaypal, journalPaypal } from "./_paypal.mjs";
 
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return authResp(200, {});
@@ -23,11 +23,20 @@ export const handler = async (event) => {
 
   try {
     const cap = await captureOrder(orderId);
-    if (cap.status !== "COMPLETED") {
-      return authResp(402, { error: "Paiement non finalisé (" + cap.status + ").", statut: cap.status });
+    const lu = lireCapture(cap);
+    if (!lu.ok) {
+      console.error("[paypal] paypal-capture-order non finalisée", JSON.stringify({ commande: cap.status, capture: lu.statut }));
+      const refuse = lu.statut === "DECLINED" || lu.statut === "FAILED";
+      return authResp(402, {
+        error: refuse
+          ? "Votre banque ou PayPal a refusé ce moyen de paiement. Choisissez-en un autre (autre carte, ou compte PayPal)."
+          : lu.statut === "PENDING"
+            ? "Votre paiement est en attente de validation par PayPal. Les crédits ne sont pas encore ajoutés ; ne payez pas une seconde fois et contactez l'administrateur."
+            : "Le paiement n'a pas été validé jusqu'au bout. Reprenez le paiement.",
+        statut: lu.statut, restart: refuse,
+      });
     }
-    const pu = (cap.purchase_units || [])[0] || {};
-    const capture = (((pu.payments || {}).captures) || [])[0] || {};
+    const { pu, capture } = lu;
     const custom = pu.custom_id || capture.custom_id || "";
     const paid = parseFloat(((capture.amount || {}).value) || "0");
     const [userPageId, offerId, creditsStr, prixStr] = String(custom).split("|");
@@ -64,6 +73,8 @@ export const handler = async (event) => {
     return authResp(200, { ok: true, credits: nouveauSolde, ajoutes: credits, transaction: capture.id });
   } catch (e) {
     // PayPal renvoie une erreur si la commande est déjà capturée : pas de double-crédit.
-    return authResp(e.status || 500, { error: e.message, paypal: e.paypal || null });
+    journalPaypal("paypal-capture-order", e);
+    const x = erreurPaypal(e);
+    return authResp(e.status || 500, { error: e.paypal ? x.message : e.message, code: x.code, restart: x.restart });
   }
 };

@@ -39,7 +39,7 @@ async function ppFetch(path, method, body) {
 }
 
 // Crée une commande CAPTURE. montant en euros (nombre). custom = données de suivi.
-export async function createOrder({ montant, description, custom }) {
+export async function createOrder({ montant, description, custom, marque }) {
   return ppFetch("/v2/checkout/orders", "POST", {
     intent: "CAPTURE",
     purchase_units: [{
@@ -47,7 +47,62 @@ export async function createOrder({ montant, description, custom }) {
       description: String(description || "").slice(0, 127),
       custom_id: String(custom || "").slice(0, 127),
     }],
+    // Prestation sans livraison : sans « NO_SHIPPING », le formulaire carte (paiement sans compte PayPal)
+    // exige une adresse postale complète ; avec, seul le code postal est demandé (vérifié en bac à sable).
+    // « PAY_NOW » : le bouton final dit « Payer » et non « Continuer ». Bloc valable pour le compte PayPal
+    // comme pour la carte.
+    application_context: {
+      shipping_preference: "NO_SHIPPING",
+      user_action: "PAY_NOW",
+      locale: "fr-FR",
+      ...(marque ? { brand_name: String(marque).slice(0, 127) } : {}),
+    },
   });
+}
+
+// Lecture d'une capture : { ok, statut, capture, pu }. Une commande peut revenir « COMPLETED » alors que
+// la capture elle-même est refusée (DECLINED) ou en attente (PENDING) : seul capture.status fait foi.
+export function lireCapture(cap) {
+  const pu = ((cap && cap.purchase_units) || [])[0] || {};
+  const capture = (((pu.payments || {}).captures) || [])[0] || {};
+  const statut = capture.status || (cap && cap.status) || "";
+  return { ok: !!cap && cap.status === "COMPLETED" && capture.status === "COMPLETED", statut, capture, pu };
+}
+
+// Erreur PayPal → { code, message (français, pour le client), restart }.
+// restart : le moyen de paiement a été refusé, le client peut en choisir un autre sans tout recommencer.
+export function erreurPaypal(e) {
+  const d = (e && e.paypal) || {};
+  const code = String((d.details && d.details[0] && d.details[0].issue) || d.name || d.error || "");
+  const T = {
+    INSTRUMENT_DECLINED: "Votre banque ou PayPal a refusé ce moyen de paiement. Choisissez-en un autre (autre carte, ou compte PayPal).",
+    PAYER_ACTION_REQUIRED: "Une validation est encore demandée (par exemple la confirmation dans l'application de votre banque). Reprenez le paiement.",
+    ORDER_NOT_APPROVED: "Le paiement n'a pas été validé jusqu'au bout. Reprenez le paiement.",
+    ORDER_ALREADY_CAPTURED: "Ce paiement a déjà été enregistré. Rechargez la page.",
+    PAYEE_ACCOUNT_RESTRICTED: "Le compte d'encaissement ne peut pas recevoir ce paiement pour le moment. Contactez-nous : nous vous proposerons un autre moyen de règlement.",
+    PAYEE_ACCOUNT_LOCKED_OR_CLOSED: "Le compte d'encaissement ne peut pas recevoir ce paiement pour le moment. Contactez-nous : nous vous proposerons un autre moyen de règlement.",
+    PAYER_ACCOUNT_RESTRICTED: "Votre compte PayPal est limité. Payez par carte bancaire, ou contactez PayPal.",
+    PAYER_ACCOUNT_LOCKED_OR_CLOSED: "Votre compte PayPal est bloqué ou fermé. Payez par carte bancaire.",
+    PAYER_CANNOT_PAY: "PayPal ne permet pas ce paiement avec ce compte. Payez par carte bancaire ou avec un autre compte.",
+    TRANSACTION_REFUSED: "PayPal a refusé cette transaction. Essayez un autre moyen de paiement ou contactez-nous.",
+    COMPLIANCE_VIOLATION: "PayPal a refusé cette transaction. Contactez-nous : nous vous proposerons un autre moyen de règlement.",
+    TRANSACTION_RECEIVING_LIMIT_EXCEEDED: "Le compte d'encaissement a atteint un plafond. Contactez-nous : nous vous proposerons un autre moyen de règlement.",
+    MAX_NUMBER_OF_PAYMENT_ATTEMPTS_EXCEEDED: "Trop de tentatives. Reprenez le paiement depuis le début.",
+    invalid_client: "Le paiement en ligne est momentanément indisponible. Contactez-nous.",
+  };
+  const message = T[code] || "Le paiement n'a pas abouti. Réessayez, changez de moyen de paiement, ou contactez-nous.";
+  return { code, message, restart: code === "INSTRUMENT_DECLINED" };
+}
+
+// Trace pour le journal des fonctions Netlify : code PayPal et identifiant de débogage, aucune donnée personnelle.
+export function journalPaypal(etape, e) {
+  const d = (e && e.paypal) || {};
+  try {
+    console.error("[paypal]", etape, JSON.stringify({
+      http: e && e.status, nom: d.name || d.error || "", probleme: (d.details || []).map((x) => x.issue).join(","),
+      debug_id: d.debug_id || "", message: String((e && e.message) || "").slice(0, 200),
+    }));
+  } catch { /* le journal ne doit jamais faire échouer un paiement */ }
 }
 
 export async function captureOrder(orderId) {

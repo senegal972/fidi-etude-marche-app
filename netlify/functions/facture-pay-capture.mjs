@@ -5,7 +5,7 @@
 // jeton et que le montant payé = le montant de la facture, la facture passe
 // « Payée » : la page de remise délivre alors le document + la facture acquittée.
 import { DB, P, hasToken, updatePage, createPage, jsonResp } from "./_notion.mjs";
-import { paypalConfigured, captureOrder } from "./_paypal.mjs";
+import { paypalConfigured, captureOrder, lireCapture, erreurPaypal, journalPaypal } from "./_paypal.mjs";
 import { findFactureByToken, factureFromPage, factureHtmlUrl, reqOrigin } from "./_facture.mjs";
 import { envoyerEmail } from "./send-email.mjs";
 
@@ -32,11 +32,20 @@ export const handler = async (event) => {
     }
 
     const cap = await captureOrder(orderId);
-    if (cap.status !== "COMPLETED") {
-      return jsonResp(402, { error: "Paiement non finalisé (" + cap.status + ").", statut: cap.status });
+    const lu = lireCapture(cap);
+    if (!lu.ok) {
+      console.error("[paypal] facture-pay-capture non finalisée", JSON.stringify({ commande: cap.status, capture: lu.statut }));
+      const refuse = lu.statut === "DECLINED" || lu.statut === "FAILED";
+      return jsonResp(402, {
+        error: refuse
+          ? "Votre banque ou PayPal a refusé ce moyen de paiement. Choisissez-en un autre (autre carte, ou compte PayPal)."
+          : lu.statut === "PENDING"
+            ? "Votre paiement est en attente de validation par PayPal. Vos documents seront accessibles dès qu'il sera confirmé ; inutile de payer une seconde fois."
+            : "Le paiement n'a pas été validé jusqu'au bout. Reprenez le paiement.",
+        statut: lu.statut, restart: refuse, en_attente: lu.statut === "PENDING",
+      });
     }
-    const pu = (cap.purchase_units || [])[0] || {};
-    const capture = (((pu.payments || {}).captures) || [])[0] || {};
+    const { pu, capture } = lu;
     const custom = pu.custom_id || capture.custom_id || "";
     const paid = parseFloat(((capture.amount || {}).value) || "0");
 
@@ -102,6 +111,8 @@ export const handler = async (event) => {
       document_url,
     });
   } catch (e) {
-    return jsonResp(e.status || 500, { error: e.message, paypal: e.paypal || null });
+    journalPaypal("facture-pay-capture", e);
+    const x = erreurPaypal(e);
+    return jsonResp(e.status || 500, { error: x.message, code: x.code, restart: x.restart });
   }
 };
