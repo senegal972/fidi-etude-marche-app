@@ -30,6 +30,7 @@
 <link href="/saisie.css" rel="stylesheet"/>
 <link href="/marque.css" rel="stylesheet"/>
 <link href="/facture.css" rel="stylesheet"/>
+<link href="/compte.css" rel="stylesheet"/>
 <link href="/mobile.css" rel="stylesheet"/>
 <style>
 :root{
@@ -6824,13 +6825,18 @@ window.Compte = (function(){
     let root = document.getElementById('compteModalRoot');
     if(!root.dataset.built){
       root.innerHTML =
-        '<div class="modal fade" id="compteModal" tabindex="-1"><div class="modal-dialog modal-xl modal-dialog-scrollable">'+
-        '<div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="compteTitre">Mon compte</h5>'+
-        '<button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>'+
+        '<div class="modal fade" id="compteModal" tabindex="-1" aria-labelledby="compteTitre"><div class="modal-dialog modal-xl modal-dialog-scrollable" id="compteDialog">'+
+        '<div class="modal-content"><div class="modal-header cpt-entete"><h5 class="modal-title" id="compteTitre">Mon compte</h5>'+
+        '<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button></div>'+
         '<div class="modal-body" id="compteBody"></div></div></div></div>';
       root.dataset.built = '1';
+      // Téléphone : la rubrique ouverte reste visible dans la barre défilante.
+      document.getElementById('compteBody').addEventListener('shown.bs.tab', function(e){
+        try{ e.target.scrollIntoView({ inline:'center', block:'nearest' }); }catch(_){}
+        const c = document.querySelector('#compteModal .modal-body'); if(c) c.scrollTop = 0;
+      });
     }
-    return new bootstrap.Modal(document.getElementById('compteModal'));
+    return bootstrap.Modal.getOrCreateInstance(document.getElementById('compteModal'));
   }
 
   function open(){
@@ -6838,17 +6844,44 @@ window.Compte = (function(){
     const m = modal();
     document.getElementById('compteBody').innerHTML = state.authenticated ? viewAccount() : viewLogin();
     document.getElementById('compteTitre').textContent = state.authenticated ? 'Mon compte' : 'Connexion';
+    habiller();
     m.show();
     if(state.authenticated && state.user && state.user.role === 'Administrateur'){ adminList(); loadTarifsAdmin(); }
   }
 
+  // Largeur de la fenêtre : étroite pour la connexion, large pour le compte.
+  function habiller(){
+    const d = document.getElementById('compteDialog'); if(!d) return;
+    d.classList.toggle('modal-xl', !!state.authenticated);
+    d.classList.toggle('cpt-connexion', !state.authenticated);
+    const m = document.getElementById('compteModal'); if(m) m.classList.toggle('cpt-ouvert', !!state.authenticated);
+  }
+  // Ouvre une rubrique de la fenêtre (identifiant du panneau : tabIdent, tabSolde, tabOffres…).
+  function rubrique(id){
+    const b = document.querySelector('#compteBody [data-bs-target="#'+id+'"]');
+    if(b && window.bootstrap) bootstrap.Tab.getOrCreateInstance(b).show();
+    if(id === 'tabOffres') loadOffres();
+    if(id === 'tabFactAdmin') loadFactAdmin();
+  }
+  function miseEnPage(){
+    const m = bootstrap.Modal.getInstance(document.getElementById('compteModal')); if(m) m.hide();
+    setTimeout(function(){ const b = document.getElementById('btnMarque'); if(b) b.click(); }, 250);
+  }
+  function initiales(u){
+    const t = String((u && (u.nom || u.email)) || '?').trim().split(/[\s.@_-]+/).filter(Boolean);
+    return ((t[0]||'?').charAt(0) + (t.length>1 ? t[1].charAt(0) : '')).toUpperCase();
+  }
+
   function viewLogin(){
     return ''+
-      '<p class="text-muted small">Connectez-vous avec le compte fourni par votre administrateur.</p>'+
-      '<div class="mb-2"><label class="form-label small">E-mail</label><input type="email" class="form-control" id="cpEmail" autocomplete="username"></div>'+
-      '<div class="mb-2"><label class="form-label small">Mot de passe</label><input type="password" class="form-control" id="cpPwd" autocomplete="current-password"></div>'+
-      '<div class="text-danger small mb-2 d-none" id="cpErr"></div>'+
-      '<button class="btn btn-primary w-100" onclick="Compte.doLogin()">Se connecter</button>';
+      '<form class="cpt-login" onsubmit="Compte.doLogin();return false;">'+
+      '<div class="cpt-login-ico"><i class="bi bi-person-lock"></i></div>'+
+      '<p class="cpt-login-txt">Connectez-vous avec le compte fourni par votre administrateur.</p>'+
+      '<div class="mb-3"><label class="cpt-label" for="cpEmail">E-mail</label><input type="email" class="form-control cpt-input" id="cpEmail" autocomplete="username" inputmode="email"></div>'+
+      '<div class="mb-3"><label class="cpt-label" for="cpPwd">Mot de passe</label><input type="password" class="form-control cpt-input" id="cpPwd" autocomplete="current-password"></div>'+
+      '<div class="cpt-erreur d-none" id="cpErr" role="alert"></div>'+
+      '<button type="submit" class="btn cpt-btn cpt-btn-plein w-100">Se connecter</button>'+
+      '</form>';
   }
 
   function viewAccount(){
@@ -6856,47 +6889,91 @@ window.Compte = (function(){
     const admin = u.role === 'Administrateur';
     const unlimited = admin || u.illimite;
     return ''+
-      '<ul class="nav nav-tabs mb-3" role="tablist">'+
-        '<li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabIdent">Identité</button></li>'+
-        '<li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabSolde">Mon solde</button></li>'+
-        '<li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabOffres" onclick="Compte.loadOffres()">Offres & crédits</button></li>'+
-        (admin ? '<li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabAdmin" title="Gestion des comptes et de la grille tarifaire">Administration</button></li>' : '')+
-        (admin ? '<li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabFactAdmin" onclick="Compte.loadFactAdmin()" title="Suivi des règlements + commissions (facturation OPTIMMO DOM)">Facturation</button></li>' : '')+
-      '</ul>'+
-      '<div class="tab-content">'+
+      '<div class="cpt">'+
+      '<aside class="cpt-cote">'+
+        '<div class="cpt-qui"><div class="cpt-avatar" aria-hidden="true">'+esc(initiales(u))+'</div>'+
+          '<div class="cpt-qui-txt"><div class="cpt-qui-nom">'+esc(u.nom||u.email)+'</div><div class="cpt-qui-mail">'+esc(u.email)+'</div>'+
+          '<span class="cpt-badge'+(admin?' cpt-badge-or':'')+'">'+esc(u.role||'Collaborateur')+'</span></div></div>'+
+        '<nav class="nav cpt-nav" role="tablist" aria-label="Rubriques du compte">'+
+          '<div class="cpt-nav-titre">Mon espace</div>'+
+          '<button type="button" class="nav-link cpt-lien active" data-bs-toggle="tab" data-bs-target="#tabIdent"><i class="bi bi-person-badge"></i><span>Identité</span></button>'+
+          '<button type="button" class="nav-link cpt-lien" data-bs-toggle="tab" data-bs-target="#tabSolde"><i class="bi bi-wallet2"></i><span>Mon solde</span></button>'+
+          '<button type="button" class="nav-link cpt-lien" data-bs-toggle="tab" data-bs-target="#tabOffres" onclick="Compte.loadOffres()"><i class="bi bi-bag-plus"></i><span>Offres &amp; crédits</span></button>'+
+          (admin ? '<div class="cpt-nav-titre">Administration</div>'+
+            '<button type="button" class="nav-link cpt-lien" data-bs-toggle="tab" data-bs-target="#tabAdmin" title="Créer, modifier et suivre les comptes"><i class="bi bi-people"></i><span>Comptes</span></button>'+
+            '<button type="button" class="nav-link cpt-lien" data-bs-toggle="tab" data-bs-target="#tabTarifs" title="Prestations proposées dans « Nouvelle facture »"><i class="bi bi-tags"></i><span>Grille tarifaire</span></button>'+
+            '<button type="button" class="nav-link cpt-lien" data-bs-toggle="tab" data-bs-target="#tabFactAdmin" onclick="Compte.loadFactAdmin()" title="Suivi des règlements et des commissions"><i class="bi bi-receipt"></i><span>Facturation</span></button>' : '')+
+        '</nav>'+
+        '<button type="button" class="cpt-sortie" onclick="Compte.logout()"><i class="bi bi-box-arrow-right"></i><span>Se déconnecter</span></button>'+
+      '</aside>'+
+      '<div class="tab-content cpt-corps">'+
+
+        // ─── Identité ───
         '<div class="tab-pane fade show active" id="tabIdent">'+
-          '<table class="table table-sm"><tbody>'+
-          '<tr><th>Nom</th><td>'+esc(u.nom||'—')+'</td></tr>'+
-          '<tr><th>E-mail</th><td>'+esc(u.email)+'</td></tr>'+
-          '<tr><th>Rôle</th><td>'+esc(u.role)+'</td></tr>'+
-          '<tr><th>Statut</th><td>'+esc(u.statut||'Actif')+'</td></tr>'+
-          '</tbody></table>'+
-          '<button class="btn btn-outline-secondary btn-sm" onclick="Compte.logout()"><i class="bi bi-box-arrow-right me-1"></i>Se déconnecter</button>'+
+          '<header class="cpt-titre"><h2>Identité</h2><p>Les informations de votre compte. Elles sont gérées par votre administrateur.</p></header>'+
+          '<section class="cpt-carte"><h3>Profil</h3>'+
+            '<dl class="cpt-fiche">'+
+              '<div><dt>Nom</dt><dd>'+esc(u.nom||'—')+'</dd></div>'+
+              '<div><dt>E-mail de connexion</dt><dd>'+esc(u.email)+'</dd></div>'+
+              '<div><dt>Rôle</dt><dd>'+esc(u.role||'—')+'</dd></div>'+
+              '<div><dt>Statut</dt><dd><span class="cpt-etat"><i></i>'+esc(u.statut||'Actif')+'</span></dd></div>'+
+              (u.template ? '<div><dt>Profil d\'accès</dt><dd>'+esc(u.template)+'</dd></div>' : '')+
+            '</dl>'+
+            '<p class="cpt-note">Une information à corriger ou un mot de passe à changer ? Adressez-vous à votre administrateur.</p>'+
+          '</section>'+
+          '<section class="cpt-carte cpt-carte-ligne"><div><h3>Mise en page des documents</h3><p>Enseigne, logo, couleurs, coordonnées et sociétés émettrices de vos factures.</p></div>'+
+            '<button type="button" class="btn cpt-btn" onclick="Compte.miseEnPage()"><i class="bi bi-palette me-1"></i>Ouvrir la mise en page</button></section>'+
+          '<section class="cpt-carte cpt-carte-ligne"><div><h3>Session</h3><p>Vous êtes connecté sur cet appareil.</p></div>'+
+            '<button type="button" class="btn cpt-btn cpt-btn-sobre" onclick="Compte.logout()"><i class="bi bi-box-arrow-right me-1"></i>Se déconnecter</button></section>'+
         '</div>'+
+
+        // ─── Mon solde ───
         '<div class="tab-pane fade" id="tabSolde">'+
-          (unlimited
-            ? '<div class="display-6 fw-bold">∞ <span class="fs-6 text-muted">illimité</span></div><p class="text-muted small">'+(admin?'Administrateur':'Accès illimité (partenaire)')+' : recherches et éditions sans consommer de crédit.</p>'
-            : '<div class="display-6 fw-bold">'+esc(u.credits)+' <span class="fs-6 text-muted">crédits</span></div>'+
-              '<p class="text-muted small mb-1"><b>1 crédit</b> se débite à l\'<b>édition / impression</b> d\'un document (étude ou avis). Ré-imprimer le même document est gratuit.</p>'+
-              '<p class="text-muted small">Essais de recherche : <b>'+(u.recherches||0)+' / '+(u.quota!=null?u.quota:5)+'</b> utilisés dans le cycle courant. Passé ce seuil, éditez un document pour relancer des recherches.'+
-              (state.paywall?'':'<br><span class="text-success">Le péage est actuellement désactivé (accès libre).</span>')+'</p>')+
+          '<header class="cpt-titre"><h2>Mon solde</h2><p>Vos crédits et vos essais de recherche.</p></header>'+
+          '<div class="cpt-tuiles">'+
+            '<div class="cpt-tuile cpt-tuile-forte"><div class="cpt-tuile-k">Crédits disponibles</div>'+
+              (unlimited
+                ? '<div class="cpt-tuile-v">∞</div><div class="cpt-tuile-s">'+(admin?'Administrateur':'Accès illimité (partenaire)')+' : aucun crédit consommé.</div>'
+                : '<div class="cpt-tuile-v">'+esc(u.credits)+'</div><div class="cpt-tuile-s">'+(Number(u.credits)>1?'crédits':'crédit')+' à utiliser</div>')+
+            '</div>'+
+            (unlimited ? '' :
+              '<div class="cpt-tuile"><div class="cpt-tuile-k">Essais de recherche</div>'+
+                '<div class="cpt-tuile-v">'+(u.recherches||0)+'<small> / '+(u.quota!=null?u.quota:5)+'</small></div>'+
+                '<div class="cpt-jauge"><i style="width:'+Math.min(100,Math.round(100*(u.recherches||0)/Math.max(1,(u.quota!=null?u.quota:5))))+'%"></i></div>'+
+                '<div class="cpt-tuile-s">utilisés dans le cycle en cours</div></div>')+
+            '<div class="cpt-tuile"><div class="cpt-tuile-k">Débit des crédits</div>'+
+              '<div class="cpt-tuile-v cpt-tuile-v-txt">'+(state.paywall?'Actif':'Désactivé')+'</div>'+
+              '<div class="cpt-tuile-s">'+(state.paywall?'Chaque document édité consomme un crédit.':'Accès libre pour le moment : rien n\'est débité.')+'</div></div>'+
+          '</div>'+
+          (unlimited ? '' :
+            '<section class="cpt-carte"><h3>Comment sont comptés les crédits</h3>'+
+              '<ul class="cpt-liste">'+
+                '<li><b>1 crédit</b> est débité à l\'<b>édition ou l\'impression</b> d\'un document (étude de marché ou avis de valeur).</li>'+
+                '<li>Ré-éditer le <b>même document</b> est gratuit.</li>'+
+                '<li>Les recherches sont gratuites dans la limite des essais ci-dessus ; une fois la limite atteinte, éditez un document pour relancer des recherches.</li>'+
+              '</ul></section>'+
+            '<section class="cpt-carte cpt-carte-ligne"><div><h3>Besoin de crédits ?</h3><p>Les packs disponibles et leurs tarifs sont dans la rubrique « Offres &amp; crédits ».</p></div>'+
+              '<button type="button" class="btn cpt-btn cpt-btn-plein" onclick="Compte.rubrique(\'tabOffres\')"><i class="bi bi-bag-plus me-1"></i>Voir les offres</button></section>')+
         '</div>'+
-        '<div class="tab-pane fade" id="tabOffres"><div id="offresBox" class="small text-muted">Chargement…</div></div>'+
+
+        // ─── Offres & crédits ───
+        '<div class="tab-pane fade" id="tabOffres">'+
+          '<header class="cpt-titre"><h2>Offres &amp; crédits</h2><p>'+(admin?'Les packs de crédits proposés aux comptes, par grille tarifaire.':'Rechargez votre compte en crédits.')+'</p></header>'+
+          '<div id="offresBox" class="cpt-offres"><p class="cpt-attente">Chargement…</p></div></div>'+
         (admin ? '<div class="tab-pane fade" id="tabAdmin">'+
-          // ── Header actions : créer compte + copier lien signup + filtres ───
-          '<div class="d-flex flex-wrap gap-2 align-items-center mb-3 pb-2 border-bottom">'+
-            '<div class="fw-bold" style="font-size:1.05rem;color:#1f1a14;"><i class="bi bi-people-fill me-2" style="color:#b87333;"></i>Gestion des comptes</div>'+
-            '<div class="ms-auto d-flex gap-2 flex-wrap">'+
+          '<header class="cpt-titre"><h2>Comptes</h2><p>Créez, modifiez et suivez les comptes des utilisateurs.</p></header>'+
+          '<div class="cpt-outils">'+
+            '<div class="cpt-outils-g">'+
               '<input type="search" class="form-control form-control-sm" id="adFilterQ" placeholder="🔍 Rechercher (nom, email, réseau)" oninput="Compte.adminRefresh()" style="max-width:260px;">'+
               '<select class="form-select form-select-sm" id="adFilterReseau" onchange="Compte.adminRefresh()" style="max-width:180px;"><option value="">Tous réseaux</option></select>'+
               '<button class="btn btn-sm btn-outline-primary" onclick="Compte.copySignupLink()"><i class="bi bi-link-45deg me-1"></i>Copier lien inscription</button>'+
               '<button class="btn btn-sm btn-primary" onclick="Compte.openCreateForm()"><i class="bi bi-person-plus-fill me-1"></i>Créer un compte</button>'+
-              '<button class="btn btn-sm btn-outline-primary ms-2" onclick="Templates.open()" title="Gérer les profils types (modules visibles par client)"><i class="bi bi-grid-3x3-gap me-1"></i>Templates</button>'+
+              '<button class="btn btn-sm btn-outline-primary" onclick="Templates.open()" title="Gérer les profils types (modules visibles par client)"><i class="bi bi-grid-3x3-gap me-1"></i>Profils types</button>'+
             '</div>'+
           '</div>'+
 
           // ── Formulaire création (initialement caché, révélé sur clic) ───
-          '<div class="border rounded p-3 mb-3 d-none" id="adCreateForm" style="background:#f8f9fa;border-left:3px solid #b87333!important;">'+
+          '<div class="cpt-carte cpt-form d-none" id="adCreateForm">'+
             '<div class="d-flex align-items-center mb-2"><div class="fw-semibold">Nouveau compte</div>'+
               '<button class="btn btn-sm btn-outline-secondary ms-auto" onclick="Compte.closeCreateForm()"><i class="bi bi-x"></i></button>'+
             '</div>'+
@@ -6930,21 +7007,24 @@ window.Compte = (function(){
           '</div>'+
 
           // ── Tableau Comptes ───
-          '<div class="table-responsive mb-4"><table class="table table-sm table-hover align-middle" style="font-size:.85rem;"><thead style="background:#efe9d9;color:#4a4238;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;">'+
-            '<tr><th style="padding:.6rem .5rem;">Compte</th><th>Réseau</th><th>Rôle</th><th>Statut</th><th class="text-center">Crédits</th><th class="text-center">Essais</th><th>Grille tarif.</th><th class="text-end">Actions</th></tr>'+
-          '</thead><tbody id="adListBody"><tr><td colspan="8" class="text-muted small p-3">Chargement…</td></tr></tbody></table></div>'+
+          '<div class="cpt-carte cpt-carte-table"><div class="table-responsive"><table class="table table-sm table-hover align-middle cpt-table"><thead>'+
+            '<tr><th>Compte</th><th>Réseau</th><th>Rôle</th><th>Statut</th><th class="text-center">Crédits</th><th class="text-center">Essais</th><th>Grille tarif.</th><th class="text-end">Actions</th></tr>'+
+          '</thead><tbody id="adListBody"><tr><td colspan="8" class="text-muted small p-3">Chargement…</td></tr></tbody></table></div></div>'+
+        '</div>' : '')+
 
-          // ── Section Grille tarifaire ───
-          '<div class="d-flex flex-wrap gap-2 align-items-center mb-3 pb-2 border-bottom mt-4">'+
-            '<div class="fw-bold" style="font-size:1.05rem;color:#1f1a14;"><i class="bi bi-tags-fill me-2" style="color:#b87333;"></i>Grille tarifaire (facturation client)</div>'+
-            '<div class="ms-auto d-flex gap-2">'+
+        // ─── Grille tarifaire (prestations facturées aux clients) ───
+        (admin ? '<div class="tab-pane fade" id="tabTarifs">'+
+          '<header class="cpt-titre"><h2>Grille tarifaire</h2><p>Les prestations et leurs prix, proposés dans la fenêtre « Nouvelle facture ».</p></header>'+
+          '<div class="cpt-outils">'+
+            '<div class="cpt-outils-g">'+
+              '<label class="cpt-label mb-0" for="tfGroup">Grille</label>'+
               '<select class="form-select form-select-sm" id="tfGroup" onchange="Compte.loadTarifsAdmin()" style="max-width:180px;">'+
                 '<option value="">Standard</option><option value="Sextant">Sextant</option><option value="Partenaire">Partenaire</option>'+
               '</select>'+
               '<button class="btn btn-sm btn-primary" onclick="Compte.openTarifForm()"><i class="bi bi-plus-lg me-1"></i>Ajouter une prestation</button>'+
             '</div>'+
           '</div>'+
-          '<div class="border rounded p-3 mb-3 d-none" id="tfCreateForm" style="background:#f8f9fa;border-left:3px solid #b87333!important;">'+
+          '<div class="cpt-carte cpt-form d-none" id="tfCreateForm">'+
             '<div class="row g-2">'+
               '<div class="col-md-5"><input class="form-control form-control-sm" id="tfNom" placeholder="Nom de la prestation"></div>'+
               '<div class="col-md-3"><select class="form-select form-select-sm" id="tfCat"><option>Avis de valeur</option><option>Étude de marché</option><option>Option</option><option>Forfait</option></select></div>'+
@@ -6953,30 +7033,25 @@ window.Compte = (function(){
             '</div>'+
             '<div class="small mt-1" id="tfMsg"></div>'+
           '</div>'+
-          '<div class="table-responsive"><table class="table table-sm align-middle" style="font-size:.85rem;"><thead style="background:#efe9d9;color:#4a4238;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;">'+
-            '<tr><th style="padding:.6rem .5rem;">Prestation</th><th>Catégorie</th><th class="text-end">Prix TTC</th><th>Statut</th><th class="text-end">Actions</th></tr>'+
-          '</thead><tbody id="adTarifsBody"><tr><td colspan="5" class="text-muted small p-3">Chargement…</td></tr></tbody></table></div>'+
+          '<div class="cpt-carte cpt-carte-table"><div class="table-responsive"><table class="table table-sm align-middle cpt-table"><thead>'+
+            '<tr><th>Prestation</th><th>Catégorie</th><th class="text-end">Prix TTC</th><th>Statut</th><th class="text-end">Actions</th></tr>'+
+          '</thead><tbody id="adTarifsBody"><tr><td colspan="5" class="text-muted small p-3">Chargement…</td></tr></tbody></table></div></div>'+
         '</div>' : '')+
 
         // ─── Onglet Facturation FIDI (encaissement + commissions) ───
         (admin ? '<div class="tab-pane fade" id="tabFactAdmin">'+
-          '<div class="d-flex flex-wrap gap-2 align-items-center mb-3 pb-2 border-bottom">'+
-            '<div class="fw-bold" style="font-size:1.05rem;color:#1f1a14;"><i class="bi bi-bank2 me-2" style="color:#b87333;"></i>Facturation — encaissement pour compte de (OPTIMMO DOM)</div>'+
-          '</div>'+
-          '<div class="alert alert-light border small mb-3" style="background:#f5f1e8;border-left:3px solid #b87333!important;">'+
-            '<div class="fw-semibold mb-1">Comment ça marche</div>'+
-            'Pour chaque collaborateur, tu peux choisir si <b>FIDI encaisse à sa place</b> (bouton <i class="bi bi-bank"></i> dans la table Comptes). '+
-            'Par défaut la commission FIDI est de <b>25 %</b>, modifiable individuellement. Ce que le collaborateur touche = Prix TTC − Commission.'+
-          '</div>'+
-          '<h6 class="mt-3">Collaborateurs en mode « FIDI encaisse »</h6>'+
-          '<div class="table-responsive"><table class="table table-sm align-middle" style="font-size:.85rem;">'+
-            '<thead style="background:#efe9d9;color:#4a4238;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;">'+
+          '<header class="cpt-titre"><h2>Facturation</h2><p>Encaissement pour le compte des collaborateurs, commissions et suivi des règlements.</p></header>'+
+          '<section class="cpt-carte"><h3>Encaissement pour compte</h3>'+
+            '<p class="cpt-note cpt-note-haut">Pour chaque collaborateur, vous choisissez si <b>FIDI encaisse à sa place</b> (bouton <i class="bi bi-bank"></i> dans la rubrique Comptes). '+
+            'La commission est de <b>25 %</b> par défaut, modifiable pour chacun. Le collaborateur perçoit le prix TTC moins la commission.</p>'+
+          '<div class="table-responsive"><table class="table table-sm align-middle cpt-table">'+
+            '<thead>'+
               '<tr><th>Collaborateur</th><th>Réseau</th><th class="text-center">Commission FIDI</th><th class="text-end">Actions</th></tr>'+
             '</thead><tbody id="factCollabBody"><tr><td colspan="4" class="text-muted small p-3">Chargement…</td></tr></tbody>'+
-          '</table></div>'+
-          '<div class="d-flex align-items-center gap-2 mt-4 mb-2">'+
-            '<h6 class="mb-0">Historique des factures</h6>'+
-            '<div class="btn-group btn-group-sm ms-2">'+
+          '</table></div></section>'+
+          '<section class="cpt-carte"><h3>Historique des factures</h3>'+
+          '<div class="cpt-outils cpt-outils-serre">'+
+            '<div class="btn-group btn-group-sm">'+
               '<button class="btn btn-outline-secondary" data-fact-filter="all" onclick="Compte.loadFactAdmin(\'all\')">Toutes</button>'+
               '<button class="btn btn-outline-secondary" data-fact-filter="fidi" onclick="Compte.loadFactAdmin(\'fidi\')" title="Uniquement factures marquées FIDI encaisse">FIDI encaisse</button>'+
               '<button class="btn btn-outline-success" data-fact-filter="paid" onclick="Compte.loadFactAdmin(\'paid\')">Payées</button>'+
@@ -6987,23 +7062,23 @@ window.Compte = (function(){
           '</div>'+
           '<div id="factStatsBox" class="row g-2 mb-2"></div>'+
           // ─── Alertes règlements : retard + config seuils (relances gérées par l'admin) ───
-          '<div class="border rounded p-2 mb-2" style="background:#fbf7ef;border-left:3px solid #b87333!important;">'+
+          '<div class="cpt-bandeau">'+
             '<div class="d-flex flex-wrap gap-2 align-items-center">'+
-              '<span class="fw-semibold small"><i class="bi bi-bell me-1" style="color:#b87333;"></i>Alertes règlements — me prévenir dès :</span>'+
+              '<span class="fw-semibold small"><i class="bi bi-bell me-1"></i>Alertes de règlement — me prévenir dès :</span>'+
               '<span class="small">Rappel J+<input type="number" id="factSeuilA" min="1" class="form-control form-control-sm d-inline-block" style="width:64px;" value="3"></span>'+
               '<span class="small">Relance J+<input type="number" id="factSeuilB" min="1" class="form-control form-control-sm d-inline-block" style="width:64px;" value="7"></span>'+
               '<button class="btn btn-sm btn-outline-secondary" onclick="Compte.factSaveSeuils()">Appliquer</button>'+
-              '<span class="text-muted small">Les relances restent manuelles (bouton Relancer). Auto-relance cloud : voir AUTORELANCE_ENABLED.</span>'+
+              '<span class="text-muted small">Les relances restent manuelles (bouton Relancer).</span>'+
             '</div>'+
           '</div>'+
           '<div id="factAlertsBox" class="mb-2"></div>'+
-          '<div class="table-responsive"><table class="table table-sm align-middle" style="font-size:.85rem;">'+
-            '<thead style="background:#efe9d9;color:#4a4238;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;">'+
+          '<div class="table-responsive"><table class="table table-sm align-middle cpt-table">'+
+            '<thead>'+
               '<tr><th>Réf</th><th>Date</th><th>Client</th><th>Type</th><th class="text-end">TTC</th><th class="text-center" title="Nombre de relances envoyées">Relances</th><th class="text-end" title="Commission FIDI si mode encaissement">Comm.</th><th class="text-end" title="À reverser au collaborateur">À reverser</th><th>Statut</th><th class="text-end">Actions</th></tr>'+
             '</thead><tbody id="factListBody"><tr><td colspan="10" class="text-muted small p-3">Cliquez sur un filtre pour charger.</td></tr></tbody>'+
-          '</table></div>'+
+          '</table></div></section>'+
         '</div>' : '')+
-      '</div>';
+      '</div></div>';
   }
 
   async function doLogin(){
@@ -7018,6 +7093,7 @@ window.Compte = (function(){
       await refresh();
       document.getElementById('compteTitre').textContent = 'Mon compte';
       document.getElementById('compteBody').innerHTML = viewAccount();
+      habiller();
       if(state.user && state.user.role==='Administrateur'){ adminList(); loadTarifsAdmin(); }
     }catch(e){ err.textContent = 'Erreur réseau.'; err.classList.remove('d-none'); }
   }
@@ -7338,20 +7414,19 @@ window.Compte = (function(){
     const sel = window._offresGrilleSel || 'Standard';
     const groups = {};
     offres.forEach(o => { (groups[o.module] = groups[o.module]||[]).push(o); });
-    let html = '<p class="text-muted">1 crédit = 1 étude de marché OU 1 avis de valeur. Crédits valables 12 mois, sans engagement.</p>';
+    let html = '<p class="cpt-regle"><i class="bi bi-info-circle"></i><span><b>1 crédit</b> = 1 étude de marché ou 1 avis de valeur. Crédits valables 12 mois, sans engagement.</span></p>';
     if(admin){
-      html += '<div class="d-flex flex-wrap gap-2 align-items-center mb-2">'+
-        '<span class="fw-semibold small"><i class="bi bi-grid-3x3-gap me-1" style="color:#b87333;"></i>Grille tarifaire :</span>'+
+      html += '<div class="cpt-outils"><div class="cpt-outils-g">'+
+        '<span class="cpt-label mb-0">Grille</span>'+
         '<select class="form-select form-select-sm" style="max-width:220px;" onchange="Compte.offresSelectGrille(this.value)">'+
           grilles.map(g => '<option value="'+esc(g)+'"'+(g===sel?' selected':'')+'>'+esc(g)+'</option>').join('')+
         '</select>'+
         '<button class="btn btn-sm btn-outline-primary" onclick="Compte.offresCreateGrid()"><i class="bi bi-plus-lg me-1"></i>Nouvelle grille (copie de la sélection)</button>'+
-        '<span class="text-muted small">Les comptes voient la grille assignée dans leur fiche (champ « Grille tarifaire »).</span>'+
-      '</div>';
+        '</div></div><p class="cpt-note cpt-note-haut">Chaque compte voit la grille indiquée dans sa fiche (champ « Grille tarifaire »).</p>';
     }
     if(admin){
-      html += '<div class="border rounded p-2 mb-3" style="background:#f5f1e8;border-left:3px solid #b87333!important;">'+
-        '<div class="fw-semibold small mb-2"><i class="bi bi-magic me-1" style="color:#b87333;"></i>Recalcul global — prix par crédit de base, par module :</div>'+
+      html += '<section class="cpt-carte"><h3>Recalcul global des prix</h3>'+
+        '<p class="cpt-note cpt-note-haut">Prix de base d\'un crédit, par module.</p>'+
         '<div class="d-flex flex-wrap gap-3 align-items-end mb-2">'+
           '<div><label class="small text-muted d-block">Avis de valeur</label><input type="number" step="0.01" id="bulkBaseAvis" class="form-control form-control-sm" value="45" style="max-width:110px;" oninput="Compte.bulkSyncCumul()"> €/cr</div>'+
           '<div><label class="small text-muted d-block">Études de marché</label><input type="number" step="0.01" id="bulkBaseEtude" class="form-control form-control-sm" value="45" style="max-width:110px;" oninput="Compte.bulkSyncCumul()"> €/cr</div>'+
@@ -7359,34 +7434,46 @@ window.Compte = (function(){
           '<button class="btn btn-sm btn-outline-secondary" onclick="Compte.bulkRecalc(true)"><i class="bi bi-eye me-1"></i>Simuler</button>'+
           '<button class="btn btn-sm btn-primary" onclick="Compte.bulkRecalc(false)"><i class="bi bi-check-lg me-1"></i>Appliquer à la grille « '+esc(sel)+' »</button>'+
         '</div>'+
-        '<div class="small text-muted">Formule : Prix TTC = round(Crédits × prix_base × (1 − Économie %)). Recalcul limité à la grille <b>'+esc(sel)+'</b>. Économies (%) par palier conservées.</div>'+
-      '</div>';
+        '<p class="cpt-note">Prix TTC = crédits × prix de base × (1 − économie du palier), arrondi. Seule la grille <b>'+esc(sel)+'</b> est recalculée ; les économies par palier sont conservées.</p>'+
+      '</section>';
     }
     ['Cumulatif','Études de marché','Avis de valeur'].forEach(mod => {
       const list = groups[mod]; if(!list||!list.length) return;
-      html += '<h6 class="fw-bold mt-3">'+esc(MODLABEL[mod]||mod)+'</h6>';
-      html += '<div class="table-responsive"><table class="table table-sm align-middle mb-1"><tbody>';
-      list.forEach(o => {
-        const reco = o.recommande ? ' <span class="badge bg-warning text-dark">★ conseillé</span>' : '';
-        const eco = o.economie ? ' <span class="text-success small">'+o.economie+'%</span>' : '';
-        const inactive = admin && !o.active ? ' style="opacity:.45;"' : '';
-        html += '<tr'+inactive+'><td><b>'+esc(o.palier)+'</b>'+reco+'<br><span class="text-muted small">'+o.credits+' crédits'+eco+'</span></td>'+
-          '<td class="text-end"><span class="fw-bold">'+o.prix+' €</span><br><span class="text-muted small">'+(o.prix_credit||'')+' €/cr.</span></td>'+
-          '<td class="text-end" style="min-width:120px;">'+
-            (admin
-              ? '<div class="btn-group btn-group-sm"><button class="btn btn-outline-secondary py-0" onclick="Compte.offerPrice(\''+o.id+'\','+o.credits+','+o.prix+')">Prix</button>'+
-                '<button class="btn btn-outline-'+(o.active?'success':'secondary')+' py-0" onclick="Compte.offerToggle(\''+o.id+'\','+(o.active?'false':'true')+')">'+(o.active?'Active':'Inactive')+'</button></div>'
-              : (state.paypal && state.paypal.configured
-                  ? '<button class="btn btn-sm btn-primary py-0" onclick="Compte.payOffer(\''+o.id+'\',\''+esc(o.palier)+'\','+o.credits+','+o.prix+')">Acheter</button>'
-                  : '<button class="btn btn-sm btn-primary py-0" onclick="Compte.chooseOffer(\''+esc(o.palier)+'\','+o.credits+','+o.prix+')">Choisir</button>'))+
-          '</td></tr>';
-      });
-      html += '</tbody></table></div>';
+      html += '<section class="cpt-carte"><h3>'+esc(MODLABEL[mod]||mod)+'</h3>';
+      if(admin){
+        html += '<div class="table-responsive"><table class="table table-sm align-middle mb-0 cpt-table"><thead><tr><th>Pack</th><th class="text-end">Prix TTC</th><th class="text-end">Réglages</th></tr></thead><tbody>';
+        list.forEach(o => {
+          const reco = o.recommande ? ' <span class="cpt-badge cpt-badge-or">Conseillé</span>' : '';
+          const eco = o.economie ? ' · <span class="text-success">'+o.economie+' % d\'économie</span>' : '';
+          html += '<tr'+(o.active?'':' class="cpt-inactif"')+'><td><b>'+esc(o.palier)+'</b>'+reco+'<br><span class="text-muted small">'+o.credits+' crédits'+eco+'</span></td>'+
+            '<td class="text-end"><span class="fw-bold">'+o.prix+' €</span><br><span class="text-muted small">'+(o.prix_credit||'')+' € / crédit</span></td>'+
+            '<td class="text-end"><div class="btn-group btn-group-sm"><button class="btn btn-outline-secondary" onclick="Compte.offerPrice(\''+o.id+'\','+o.credits+','+o.prix+')">Prix</button>'+
+            '<button class="btn btn-outline-'+(o.active?'success':'secondary')+'" onclick="Compte.offerToggle(\''+o.id+'\','+(o.active?'false':'true')+')">'+(o.active?'Active':'Inactive')+'</button></div></td></tr>';
+        });
+        html += '</tbody></table></div>';
+      } else {
+        html += '<div class="cpt-packs">';
+        list.forEach(o => {
+          const payable = state.paypal && state.paypal.configured;
+          html += '<div class="cpt-pack'+(o.recommande?' cpt-pack-reco':'')+'">'+
+            (o.recommande ? '<span class="cpt-pack-ruban">Conseillé</span>' : '')+
+            '<div class="cpt-pack-nom">'+esc(o.palier)+'</div>'+
+            '<div class="cpt-pack-cr">'+o.credits+' crédit'+(o.credits>1?'s':'')+'</div>'+
+            '<div class="cpt-pack-prix">'+o.prix+' €<small> TTC</small></div>'+
+            '<div class="cpt-pack-det">'+(o.prix_credit?String(o.prix_credit).replace('.',',')+' € / crédit':'')+(o.economie?' · <span class="text-success">−'+String(o.economie).replace(/^-/,'')+' %</span>':'')+'</div>'+
+            (payable
+              ? '<button class="btn cpt-btn cpt-btn-plein w-100" onclick="Compte.payOffer(\''+o.id+'\',\''+esc(o.palier)+'\','+o.credits+','+o.prix+')">Acheter</button>'
+              : '<button class="btn cpt-btn w-100" onclick="Compte.chooseOffer(\''+esc(o.palier)+'\','+o.credits+','+o.prix+')">Choisir</button>')+
+          '</div>';
+        });
+        html += '</div>';
+      }
+      html += '</section>';
     });
     if(!admin){
       html += '<div id="ppBuyBox" class="mt-2"></div>';
       html += (state.paypal && state.paypal.configured)
-        ? '<p class="text-muted small mt-2"><i class="bi bi-shield-lock me-1"></i>Paiement sécurisé par PayPal — carte bancaire acceptée sans compte PayPal.'+(state.paypal.env==='sandbox'?' <b>(mode test)</b>':'')+'</p>'
+        ? '<p class="cpt-note"><i class="bi bi-shield-lock me-1"></i>Paiement sécurisé par PayPal — carte bancaire acceptée sans compte PayPal.'+(state.paypal.env==='sandbox'?' <b>(mode test)</b>':'')+'</p>'
         : '<p class="text-muted small mt-2"><i class="bi bi-info-circle me-1"></i>Le paiement en ligne sera bientôt disponible ici.</p>';
     }
     box.innerHTML = html;
@@ -7586,7 +7673,7 @@ window.Compte = (function(){
         await adminList();
       }
       const list = (_adminUsersCache||[]).filter(u => u.fidi_encaisse);
-      if(!list.length){ bodyC.innerHTML = '<tr><td colspan="4" class="text-muted small p-3">Aucun collaborateur en mode « FIDI encaisse ». Activez via le bouton <i class="bi bi-bank"></i> dans Administration.</td></tr>'; }
+      if(!list.length){ bodyC.innerHTML = '<tr><td colspan="4" class="text-muted small p-3">Aucun collaborateur en mode « FIDI encaisse ». Activez-le avec le bouton <i class="bi bi-bank"></i> de la rubrique Comptes.</td></tr>'; }
       else bodyC.innerHTML = list.map(u =>
         '<tr>'+
           '<td><div class="fw-semibold">'+esc(u.nom||u.email.split('@')[0])+'</div><div class="text-muted small">'+esc(u.email)+'</div></td>'+
@@ -7924,7 +8011,7 @@ window.Compte = (function(){
     if(!dryRun){ const box=document.getElementById('offresBox'); if(box) box.dataset.loaded=''; loadOffres(); }
   }
 
-  return { open, doLogin, logout, refresh, setCredits, setRecherches, consume, renduPdf, confirmerCredit, adminCreate, adminCredit, adminToggle,
+  return { open, rubrique, miseEnPage, doLogin, logout, refresh, setCredits, setRecherches, consume, renduPdf, confirmerCredit, adminCreate, adminCredit, adminToggle,
            adminIllimite, adminQuota, adminDelete, adminReseau, adminTarifGroup, adminRefresh,
            adminEditNom, adminCommission, openFiche, ficheRoleChange, ficheSave, loadFactAdmin, factSaveSeuils, factRelance, relanceVia, factDelete, factFicheClient,
            openRapportCompta, rcSetMonth, rcSetYear, genRapportCompta, factSaveContact,

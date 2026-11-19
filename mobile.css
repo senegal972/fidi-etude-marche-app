@@ -165,3 +165,29 @@
   #avisModal .av-veille-opts label{min-height:40px;}
   #avisModal .av-veille-opts a.btn{white-space:normal;text-align:left;}
 }
+
+/* ─ Fenêtre « Mon compte » : plein écran, rubriques sur une ligne défilante ─ */
+@media (max-width:768px){
+  #compteModal.cpt-ouvert .modal-dialog{max-width:none;margin:0;height:100%;}
+  #compteModal.cpt-ouvert .modal-content{height:100%;border-radius:0;}
+  #compteModal .cpt{display:block;min-height:0;}
+  #compteModal .cpt-cote{position:sticky;top:0;z-index:3;display:block;padding:0;border-right:0;border-bottom:1px solid #dfe3e9;min-height:0;}
+  #compteModal .cpt-qui,#compteModal .cpt-nav-titre,#compteModal .cpt-sortie{display:none;}
+  #compteModal .cpt-nav{flex-direction:row;flex-wrap:nowrap;overflow-x:auto;gap:.3rem;padding:.4rem .5rem;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
+  #compteModal .cpt-nav::-webkit-scrollbar{display:none;}
+  #compteModal .cpt-nav .cpt-lien{flex:0 0 auto;width:auto;white-space:nowrap;min-height:40px;padding:.4rem .7rem;font-size:.84rem;gap:.4rem;border:1px solid #dfe3e9;border-radius:999px;}
+  #compteModal .cpt-nav .cpt-lien.active{border-color:var(--fidi-blue);}
+  #compteModal .cpt-corps{padding:.9rem .7rem 1.5rem;}
+  #compteModal .cpt-titre h2{font-size:1.15rem;}
+  #compteModal .cpt-carte{padding:.9rem .85rem 1rem;border-radius:12px;}
+  #compteModal .cpt-carte-table{padding:0;}
+  #compteModal .cpt-fiche{grid-template-columns:1fr;gap:.7rem;}
+  #compteModal .cpt-carte-ligne .btn{width:100%;}
+  #compteModal .cpt-tuiles{grid-template-columns:1fr;gap:.6rem;}
+  #compteModal .cpt-packs{grid-template-columns:repeat(2,minmax(0,1fr));gap:.6rem;}
+  #compteModal .cpt-btn,#compteModal .cpt-corps .btn{min-height:40px;}
+  #compteModal .cpt-corps .btn-group-sm .btn{min-height:36px;}
+  #compteModal input,#compteModal select{font-size:16px;}
+  #compteModal .cpt-outils-g{width:100%;}
+  #compteModal .cpt-outils-g .form-control,#compteModal .cpt-outils-g .form-select{max-width:none!important;flex:1 1 100%;}
+}

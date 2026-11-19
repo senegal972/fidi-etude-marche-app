@@ -12,7 +12,8 @@ Ce dépôt est modifié depuis plusieurs outils (Claude Code sur le PC, Claude C
 | 1.14.0 | « ETUDE DE MARCHE GOUV » | Claude Code (PC) | Crédits : débit côté serveur après rendu (ex-1.6.3 reportée), péage désactivé | `6610789` |
 | 1.15.0 | « ETUDE DE MARCHE GOUV » | Claude Code (PC) | Recherche d'annonces similaires refaite (résultats du moteur, périmètre 1 km, liens portails) | `c0bbe1a` |
 | 1.16.0 | « ETUDE DE MARCHE GOUV » | Claude Code (PC) | Carte : fiche de chaque parcelle au clic (bulle, détail, ventes) | `dd4aaea` |
-| 1.17.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | Paiement PayPal : diagnostic et corrections (page du client, commande sans adresse, capture vérifiée, messages) | voir `git log` |
+| 1.17.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | Paiement PayPal : diagnostic et corrections (page du client, commande sans adresse, capture vérifiée, messages) | `f839ca9` |
+| 1.18.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | Fenêtre « Mon compte » refaite (`compte.css`, rubriques séparées, version téléphone) | voir `git log` |
 
 ## État des branches au 2026-11-16
 

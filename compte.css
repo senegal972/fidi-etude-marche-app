@@ -1,0 +1,121 @@
+/* ════════════════════════════════════════════════════════════════════════
+   Fenêtre « Mon compte » (window.Compte dans index.html)
+   Navigation latérale + rubriques en cartes, dans l'esprit de l'écran de saisie.
+   Les règles propres au téléphone sont dans mobile.css.
+   ════════════════════════════════════════════════════════════════════════ */
+
+#compteModal .modal-content{border:0;border-radius:16px;overflow:hidden;box-shadow:0 24px 60px rgba(15,30,60,.28);}
+#compteModal .cpt-entete{background:var(--fidi-blue);color:#fff;border:0;padding:.85rem 1.25rem;}
+#compteModal .cpt-entete .modal-title{font-size:1.05rem;font-weight:700;letter-spacing:-.1px;}
+#compteModal .cpt-entete .btn-close{filter:invert(1) grayscale(1) brightness(2);opacity:.85;}
+#compteModal .modal-body{padding:0;background:#f3f5f9;}
+#compteModal .cpt-connexion{max-width:420px;}
+#compteModal button:focus-visible,#compteModal input:focus-visible,#compteModal select:focus-visible{outline:3px solid rgba(38,82,160,.45);outline-offset:2px;}
+
+/* ─ Connexion ─ */
+.cpt-login{padding:1.75rem 1.5rem 1.5rem;background:#fff;}
+.cpt-login-ico{width:52px;height:52px;border-radius:50%;background:#eaf0f8;color:var(--fidi-blue);display:flex;align-items:center;justify-content:center;font-size:1.5rem;margin:0 auto .9rem;}
+.cpt-login-txt{text-align:center;color:#5b6573;font-size:.9rem;margin-bottom:1.25rem;}
+.cpt-label{display:block;font-size:.78rem;font-weight:600;color:#4a5462;margin-bottom:.3rem;}
+.cpt-input{border:1px solid #c9d0da;border-radius:10px;padding:.7rem .9rem;font-size:.95rem;}
+.cpt-input:focus{border-color:var(--fidi-blue-light);box-shadow:0 0 0 3px rgba(38,82,160,.15);}
+.cpt-erreur{background:#fdecec;color:#a12020;border-radius:8px;padding:.5rem .75rem;font-size:.85rem;margin-bottom:.9rem;}
+
+/* ─ Boutons ─ */
+.cpt-btn{border-radius:999px;padding:.5rem 1.1rem;font-size:.85rem;font-weight:600;background:#fff;border:1px solid #c9d0da;color:#1f2a3a;white-space:nowrap;}
+.cpt-btn:hover{border-color:var(--fidi-blue);color:var(--fidi-blue);background:#fff;}
+.cpt-btn-plein{background:var(--fidi-blue);border-color:var(--fidi-blue);color:#fff;}
+.cpt-btn-plein:hover{background:var(--fidi-blue-light);border-color:var(--fidi-blue-light);color:#fff;}
+.cpt-btn-sobre{color:#8a2c2c;border-color:#e3c9c9;}
+.cpt-btn-sobre:hover{color:#a12020;border-color:#a12020;}
+
+/* ─ Structure : colonne de navigation + contenu ─ */
+.cpt{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:min(640px,calc(100vh - 9rem));}
+.cpt-cote{background:#fff;border-right:1px solid #dfe3e9;padding:1.25rem .9rem 1rem;display:flex;flex-direction:column;gap:1rem;position:sticky;top:0;align-self:start;min-height:100%;}
+.cpt-qui{display:flex;gap:.75rem;align-items:center;padding:0 .35rem .9rem;border-bottom:1px solid #eef1f5;}
+.cpt-avatar{flex:0 0 44px;height:44px;border-radius:50%;background:var(--fidi-blue);color:#fff;font-weight:700;font-size:.95rem;display:flex;align-items:center;justify-content:center;letter-spacing:.5px;}
+.cpt-qui-txt{min-width:0;}
+.cpt-qui-nom{font-weight:700;color:#1f2a3a;font-size:.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cpt-qui-mail{font-size:.74rem;color:#6c757d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:.3rem;}
+.cpt-badge{display:inline-block;font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:.15rem .5rem;border-radius:999px;background:#eaf0f8;color:var(--fidi-blue);vertical-align:middle;}
+.cpt-badge-or{background:#fbf1d6;color:#7a5600;}
+.cpt-nav{flex-direction:column;gap:.15rem;flex-wrap:nowrap;}
+.cpt-nav-titre{font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#8a94a3;padding:.6rem .6rem .25rem;}
+.cpt-nav-titre:first-child{padding-top:0;}
+.cpt-nav .cpt-lien{display:flex;align-items:center;gap:.65rem;width:100%;text-align:left;border:0;background:none;border-radius:10px;padding:.55rem .65rem;font-size:.88rem;font-weight:600;color:#3a4553;}
+.cpt-nav .cpt-lien i{font-size:1.05rem;color:#7b8696;width:1.2rem;text-align:center;}
+.cpt-nav .cpt-lien:hover{background:#f3f5f9;color:#1f2a3a;}
+.cpt-nav .cpt-lien.active{background:#eaf0f8;color:var(--fidi-blue);}
+.cpt-nav .cpt-lien.active i{color:var(--fidi-blue);}
+.cpt-sortie{margin-top:auto;display:flex;align-items:center;gap:.65rem;border:0;background:none;border-top:1px solid #eef1f5;padding:.85rem .65rem 0;font-size:.85rem;font-weight:600;color:#6c757d;text-align:left;}
+.cpt-sortie:hover{color:#a12020;}
+.cpt-corps{padding:1.5rem 1.5rem 2rem;min-width:0;}
+
+/* ─ Rubrique ─ */
+.cpt-titre{margin-bottom:1.1rem;}
+.cpt-titre h2{font-size:1.4rem;font-weight:800;color:var(--fidi-blue);margin:0;letter-spacing:-.3px;}
+.cpt-titre p{color:#5b6573;font-size:.88rem;margin:.2rem 0 0;}
+.cpt-carte{background:#fff;border:1px solid #dfe3e9;border-radius:14px;padding:1.15rem 1.25rem 1.25rem;margin-bottom:1rem;}
+.cpt-carte h3{font-size:.98rem;font-weight:700;color:#1f2a3a;margin:0 0 .8rem;}
+.cpt-carte-ligne{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;}
+.cpt-carte-ligne h3{margin-bottom:.15rem;}
+.cpt-carte-ligne p{margin:0;color:#5b6573;font-size:.84rem;}
+.cpt-carte-table{padding:0;overflow:hidden;}
+.cpt-carte-table .table{margin:0;}
+.cpt-note{font-size:.8rem;color:#6c757d;margin:.85rem 0 0;}
+.cpt-note-haut{margin:0 0 .85rem;}
+.cpt-attente{color:#6c757d;font-size:.88rem;}
+.cpt-fiche{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.9rem 1.5rem;margin:0;}
+.cpt-fiche dt{font-size:.72rem;font-weight:600;color:#6c757d;text-transform:uppercase;letter-spacing:.5px;margin-bottom:.15rem;}
+.cpt-fiche dd{margin:0;font-size:.95rem;font-weight:600;color:#1f2a3a;overflow-wrap:anywhere;}
+.cpt-etat{display:inline-flex;align-items:center;gap:.4rem;}
+.cpt-etat i{width:8px;height:8px;border-radius:50%;background:#2e9e55;display:inline-block;}
+.cpt-liste{margin:0;padding-left:1.1rem;font-size:.88rem;color:#3a4553;}
+.cpt-liste li{margin-bottom:.4rem;}
+.cpt-liste li:last-child{margin-bottom:0;}
+
+/* ─ Tuiles du solde ─ */
+.cpt-tuiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1rem;margin-bottom:1rem;}
+.cpt-tuile{background:#fff;border:1px solid #dfe3e9;border-radius:14px;padding:1.05rem 1.15rem;}
+.cpt-tuile-forte{background:var(--fidi-blue);border-color:var(--fidi-blue);color:#fff;}
+.cpt-tuile-k{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#6c757d;}
+.cpt-tuile-forte .cpt-tuile-k{color:rgba(255,255,255,.75);}
+.cpt-tuile-v{font-size:2.2rem;font-weight:800;line-height:1.15;color:#1f2a3a;margin:.25rem 0 .1rem;font-variant-numeric:tabular-nums;}
+.cpt-tuile-v small{font-size:1rem;font-weight:600;color:#8a94a3;}
+.cpt-tuile-v-txt{font-size:1.35rem;margin:.55rem 0 .35rem;}
+.cpt-tuile-forte .cpt-tuile-v{color:#fff;}
+.cpt-tuile-s{font-size:.8rem;color:#6c757d;}
+.cpt-tuile-forte .cpt-tuile-s{color:rgba(255,255,255,.8);}
+.cpt-jauge{height:6px;border-radius:999px;background:#e6eaf0;overflow:hidden;margin:.35rem 0 .45rem;}
+.cpt-jauge i{display:block;height:100%;background:var(--fidi-blue-light);border-radius:999px;}
+
+/* ─ Barres d'outils, formulaires et tableaux de l'administration ─ */
+.cpt-outils{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;justify-content:space-between;margin-bottom:1rem;}
+.cpt-outils-g{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;}
+.cpt-outils-serre{justify-content:flex-start;margin-bottom:.75rem;}
+.cpt-corps .cpt-outils .btn,.cpt-corps .cpt-outils .form-control,.cpt-corps .cpt-outils .form-select{border-radius:8px;}
+.cpt-form{border-left:3px solid var(--fidi-blue-light);}
+.cpt-bandeau{background:#f6f8fb;border:1px solid #dfe3e9;border-radius:10px;padding:.6rem .75rem;margin-bottom:.75rem;}
+.cpt-bandeau i{color:var(--fidi-blue-light);}
+.cpt-table{font-size:.85rem;}
+.cpt-table thead th{background:#f3f5f9;color:#5b6573;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;padding:.6rem .6rem;border-bottom:1px solid #dfe3e9;white-space:nowrap;}
+.cpt-table td{padding:.55rem .6rem;}
+.cpt-table tr.cpt-inactif{opacity:.5;}
+.cpt-corps .btn-primary{background:var(--fidi-blue);border-color:var(--fidi-blue);}
+.cpt-corps .btn-primary:hover{background:var(--fidi-blue-light);border-color:var(--fidi-blue-light);}
+.cpt-corps .btn-outline-primary{color:var(--fidi-blue);border-color:#b9c6da;}
+.cpt-corps .btn-outline-primary:hover{background:var(--fidi-blue);border-color:var(--fidi-blue);color:#fff;}
+
+/* ─ Offres ─ */
+.cpt-regle{display:flex;gap:.55rem;align-items:flex-start;background:#eaf0f8;color:#1f2a3a;border-radius:10px;padding:.65rem .85rem;font-size:.86rem;margin-bottom:1rem;}
+.cpt-regle i{color:var(--fidi-blue);margin-top:.1rem;}
+.cpt-packs{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:.85rem;}
+.cpt-pack{position:relative;border:1px solid #dfe3e9;border-radius:12px;padding:1rem .9rem .9rem;display:flex;flex-direction:column;gap:.15rem;background:#fff;}
+.cpt-pack-reco{border-color:var(--fidi-gold,#b8860b);box-shadow:0 0 0 1px var(--fidi-gold,#b8860b);}
+.cpt-pack-ruban{position:absolute;top:-.6rem;left:.8rem;background:var(--fidi-gold,#b8860b);color:var(--fidi-on-gold,#fff);font-size:.64rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:.12rem .5rem;border-radius:999px;}
+.cpt-pack-nom{font-weight:700;color:#1f2a3a;font-size:.92rem;}
+.cpt-pack-cr{font-size:.8rem;color:#5b6573;}
+.cpt-pack-prix{font-size:1.5rem;font-weight:800;color:var(--fidi-blue);margin-top:.35rem;font-variant-numeric:tabular-nums;}
+.cpt-pack-prix small{font-size:.72rem;font-weight:600;color:#8a94a3;}
+.cpt-pack-det{font-size:.76rem;color:#6c757d;min-height:1.1rem;margin-bottom:.6rem;}
+.cpt-pack .cpt-btn{margin-top:auto;}

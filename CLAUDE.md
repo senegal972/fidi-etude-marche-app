@@ -105,6 +105,17 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
 - Le formulaire se replie en résumé quand `#results-panel` devient visible (MutationObserver) ;
   « Nouvelle étude » demande un second clic si `FidiGuard.isDirty()`.
 
+### Fenêtre « Mon compte » — `window.Compte` (index.html) / `compte.css`
+- Colonne de navigation `.cpt-cote` (identité + `nav.cpt-nav`, boutons `.nav-link.cpt-lien` pilotés par les onglets Bootstrap) et
+  contenu `.cpt-corps` ; une rubrique = un panneau `.tab-pane` avec `header.cpt-titre` puis des blocs `.cpt-carte`.
+- **Contrat des identifiants** : `compteModal`, `compteDialog`, `compteTitre`, `compteBody`, `cpEmail`, `cpPwd`, `cpErr` ; panneaux `tabIdent`,
+  `tabSolde`, `tabOffres`, `tabAdmin` (comptes), `tabTarifs` (grille tarifaire), `tabFactAdmin` ; `offresBox`, `ppBuyBox`, `adListBody`,
+  `adCreateForm`, `adTarifsBody`, `tfCreateForm`, `tfGroup`, `factCollabBody`, `factListBody`, `factStatsBox`, `factAlertsBox`.
+  Vérifié par `tests/interface.test.mjs`.
+- `Compte.rubrique(id)` ouvre une rubrique ; `Compte.miseEnPage()` ferme la fenêtre puis ouvre « Mise en page ».
+- Toute nouvelle rubrique : un bouton dans `nav.cpt-nav` + un panneau ; pas de style en ligne, les classes sont dans `compte.css`
+  et les règles ≤ 768 px dans `mobile.css` (barre de rubriques sur une ligne défilante).
+
 ### Écran de facturation — `facture.js` / `facture.css`
 - `window.proposerFacture(kind)` ouvre « Nouvelle facture » : client, articles (montant / quantité / heures, prix TTC ou HT,
   grille tarifaire), remise, note ; colonne d'options (échéance, paiement préalable, canaux, émetteur) ; aperçu.
