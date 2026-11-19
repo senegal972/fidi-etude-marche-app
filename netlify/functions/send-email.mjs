@@ -10,12 +10,18 @@
 //
 // Prérequis :
 //   1. Créer un compte sur resend.com (gratuit — 100 emails/jour)
-//   2. Vérifier le domaine d'envoi chez Resend (ici mail.fidiconseil.com, pas la racine)
+//   2. Vérifier le domaine d'envoi chez Resend (un sous-domaine d'envoi, pas la racine)
 //   3. Ajouter RESEND_API_KEY dans les variables Netlify (clé « Sending access », secrète)
-//   4. RESEND_FROM = "FIDI Conseil <contact@mail.fidiconseil.com>" : adresse d'un domaine
-//      vérifié (la valeur par défaut plus bas est sur la racine, non vérifiée chez Resend)
-//   5. Optionnel : RESEND_REPLY_TO (défaut contact@fidiconseil.com) : adresse où arrivent
-//      les réponses des clients ; l'expéditeur, sur mail.fidiconseil.com, n'a pas de boîte
+//   4. RESEND_FROM = "Nom <adresse@domaine-vérifié>" : obligatoire, adresse d'un domaine vérifié chez Resend
+//   5. RESEND_REPLY_TO : adresse où arrivent les réponses des clients (l'expéditeur n'a pas de boîte) ;
+//      à défaut FIDI_CONTACT_EMAIL. Sans aucune des deux, les réponses partent vers l'expéditeur.
+//   6. FIDI_CONTACT_EMAIL : adresse de contact affichée en pied des e-mails et de l'ancien modèle de facture.
+// Aucune adresse n'est écrite dans le code : le dépôt est public.
+
+const ADRESSE_OK = /^[^\s@<>"']+@[^\s@<>"']+\.[a-z]{2,}$/i;
+const lireAdresse = (v) => { const s = String(v || "").trim(); return ADRESSE_OK.test(s) ? s : ""; };
+export const adresseContact = () => lireAdresse(process.env.FIDI_CONTACT_EMAIL);
+export const adresseReponse = () => lireAdresse(process.env.RESEND_REPLY_TO) || adresseContact();
 
 import { currentUser } from "./_auth.mjs";
 
@@ -55,7 +61,12 @@ export async function envoyerEmail(b) {
   const filename = (b.filename || "document.pdf").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 100);
   const kind     = escHtml(b.kind  || "document");
   const titre    = escHtml(b.titre || "");
-  const from     = process.env.RESEND_FROM || "FIDI Conseil <contact@fidiconseil.com>";
+  const from     = process.env.RESEND_FROM;
+  if (!from) {
+    return jsonResp(503, { error: "Envoi email non configuré. Ajoutez RESEND_FROM dans les variables Netlify.", not_configured: true });
+  }
+  const contact  = adresseContact();
+  const replyTo  = adresseReponse();
 
   // Lien de remise (page /l/<jeton>) : e-mail « avec bouton » plutôt que pièce jointe.
   let lien = String(b.lien || "").trim();
@@ -84,7 +95,7 @@ export async function envoyerEmail(b) {
     ${corps}
     <hr style="margin:20px 0;border:none;border-top:1px solid #dee2e6;">
     <p style="color:#6c757d;font-size:11px;margin:0;">
-      FIDI Conseil · <a href="mailto:contact@fidiconseil.com" style="color:#1a3a6e;">contact@fidiconseil.com</a><br>
+      FIDI Conseil${contact ? ` · <a href="mailto:${contact}" style="color:#1a3a6e;">${contact}</a>` : ""}<br>
       Ce message a été envoyé automatiquement depuis l'application FIDI.
     </p>
   </div>
@@ -96,7 +107,7 @@ export async function envoyerEmail(b) {
     subject,
     html: htmlBody,
     // Les réponses des clients vont dans la vraie boîte : l'expéditeur n'en a pas.
-    reply_to: process.env.RESEND_REPLY_TO || "contact@fidiconseil.com",
+    ...(replyTo ? { reply_to: replyTo } : {}),
   };
 
   // Pièces jointes : tableau b.attachments [{ filename, content(base64) }]

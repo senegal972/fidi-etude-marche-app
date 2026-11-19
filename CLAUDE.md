@@ -176,6 +176,11 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
   (`/api/facture-auto`, ex. achats de crédits REA). Même clé à poser dans l'application appelante.
 - `FIDI_VIREMENT_IBAN`, `FIDI_VIREMENT_BIC`, `FIDI_VIREMENT_TITULAIRE` — *optionnelles*, coordonnées bancaires affichées sur la page
   du client quand la société émettrice de la facture n'en porte pas (factures antérieures à la 1.19.0).
+- **Adresses e-mail — aucune dans le code** (dépôt public ; garde-fou : `tests/resend-reply-to.test.mjs`) :
+  `SUPER_ADMIN_EMAIL` (seul compte pouvant supprimer un compte ou nommer un administrateur ; absente ⇒ personne),
+  `RESEND_FROM` (expéditeur, domaine vérifié chez Resend ; absente ⇒ 503, aucun envoi), `RESEND_REPLY_TO` (réponses des clients ;
+  à défaut `FIDI_CONTACT_EMAIL`), `FIDI_CONTACT_EMAIL` (contact affiché en pied des e-mails et de l'ancien modèle de facture ;
+  absente ⇒ rien n'est affiché). Lecture : `adresseContact()` / `adresseReponse()` dans `send-email.mjs`.
 - `NOTION_TOKEN`, `NOTION_DB_*` — intégration Notion (CRM, templates, dossiers).
 
 **Aucune clé API en dur dans le code.** Si les clés sont absentes, l'application se dégrade proprement.

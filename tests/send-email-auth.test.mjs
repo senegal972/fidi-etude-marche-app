@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 process.env.JWT_SECRET = "secret-de-test-seulement";
 process.env.NOTION_TOKEN = "notion-de-test";
 process.env.RESEND_API_KEY = "re_cle_de_test";
+process.env.RESEND_FROM = "Cabinet Test <envoi@mail.exemple.fr>";
 
 const { handler, envoyerEmail } = await import("../netlify/functions/send-email.mjs");
 const { signJWT } = await import("../netlify/functions/_auth.mjs");
