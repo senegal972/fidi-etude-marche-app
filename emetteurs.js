@@ -63,8 +63,18 @@
       coordonnees: { raisonSociale: e.raisonSociale, adresse: e.adresse, telephone: e.telephone, email: e.email,
                      mentions: e.avecLogo ? (co.mentions || '') : '' },
       facturation: { formeJuridique: e.formeJuridique, capital: e.capital, siren: e.siret || e.siren, registre: e.registre,
-                     tvaIntra: e.tvaIntra, regimeTva: e.regimeTva, tauxTva: e.tauxTva, conditions: fa.conditions || '' }
+                     tvaIntra: e.tvaIntra, regimeTva: e.regimeTva, tauxTva: e.tauxTva, conditions: fa.conditions || '' },
+      banque: e.iban ? { iban: e.iban, bic: e.bic || '', titulaire: e.titulaire || e.raisonSociale } : null
     };
+  }
+  // Contrôle de la clé d'un IBAN (modulo 97) — mêmes règles que le serveur (marque.mjs).
+  function estIban(v) {
+    var s = String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(s)) return false;
+    var r = (s.slice(4) + s.slice(0, 4)).replace(/[A-Z]/g, function (c) { return String(c.charCodeAt(0) - 55); });
+    var reste = 0;
+    for (var i = 0; i < r.length; i++) reste = (reste * 10 + Number(r.charAt(i))) % 97;
+    return reste === 1;
   }
   function manquantes(e) {
     if (!e) return ['société émettrice'];
@@ -222,6 +232,11 @@
           '<input type="number" id="em_tauxTva" data-k="tauxTva" class="form-control form-control-sm d-inline-block" style="width:4.8rem" min="0" max="30" step="0.1" value="' + esc(b.tauxTva) + '" aria-label="Taux de TVA en %"> %</label>' +
         '<div class="row g-2"><div class="col-6">' + champ('email', 'E-mail', '', 80) + '</div>' +
           '<div class="col-6">' + champ('telephone', 'Téléphone', '', 30) + '</div></div>' +
+        '<div class="fx-label mt-3">Règlement par virement (facultatif)</div>' +
+        '<div class="fx-tile-s">Ces coordonnées bancaires figurent sur les factures de cette société et sur la page de règlement du client.</div>' +
+        champ('iban', 'IBAN', 'FR76 …', 42) +
+        '<div class="row g-2"><div class="col-6">' + champ('bic', 'BIC', '8 ou 11 caractères', 11) + '</div>' +
+          '<div class="col-6">' + champ('titulaire', 'Titulaire du compte', 'par défaut : la raison sociale', 80) + '</div></div>' +
         champ('prefixe', 'Préfixe de numérotation', 'ex : OD-FAC', 16) +
         '<div class="fx-tile-s">Factures numérotées ' + esc((b.prefixe || 'PREFIXE').toUpperCase()) + '-' + new Date().getFullYear() + '-001, 002… — une suite propre à cette société.</div>' +
         '<label class="fx-radio mt-2"><input type="checkbox" id="em_avecLogo"' + (b.avecLogo ? ' checked' : '') + '> Logo et mentions de la charte sur ses factures</label>' +
@@ -242,6 +257,9 @@
       else if (p === 'FIDI-FAC' && liste().some(function (e) { return e.id !== b.id && e.prefixe === 'FIDI-FAC'; })) err.push('un préfixe différent');
       else if (liste().some(function (e) { return e.id !== b.id && e.prefixe === p; })) err.push('un préfixe qui n\'est pas déjà utilisé par une autre société');
       if (!b.regimeTva) err.push('le régime de TVA');
+      var ibanSaisi = String(b.iban || '').replace(/\s/g, '');
+      if (ibanSaisi && !estIban(ibanSaisi)) err.push('un IBAN valide (ou laissez le champ vide)');
+      if (String(b.bic || '').trim() && !/^[A-Za-z]{6}[A-Za-z0-9]{2}([A-Za-z0-9]{3})?$/.test(String(b.bic).replace(/\s/g, ''))) err.push('un BIC valide (8 ou 11 caractères)');
       return err;
     }
 

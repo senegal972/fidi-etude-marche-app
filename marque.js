@@ -48,7 +48,20 @@
   var LIMITES = { enseigne: 40, produit: 60, baseline: 80, raisonSociale: 80, adresse: 160,
                   telephone: 30, email: 80, mentions: 240,
                   formeJuridique: 60, capital: 40, siren: 20, registre: 80, tvaIntra: 20, conditions: 400,
-                  siret: 20, prefixe: 16 };
+                  siret: 20, prefixe: 16, titulaire: 80 };
+  // Mêmes règles que ibanValide() / bicValide() dans netlify/functions/marque.mjs.
+  function ibanValide(v) {
+    var s = String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(s)) return '';
+    var r = (s.slice(4) + s.slice(0, 4)).replace(/[A-Z]/g, function (c) { return String(c.charCodeAt(0) - 55); });
+    var reste = 0;
+    for (var i = 0; i < r.length; i++) reste = (reste * 10 + Number(r.charAt(i))) % 97;
+    return reste === 1 ? s : '';
+  }
+  function bicValide(v) {
+    var s = String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    return /^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(s) ? s : '';
+  }
   var MAX_EMETTEURS = 10;
 
   var base = clone(DEFAUT);      // DEFAUT + marque.json
@@ -123,6 +136,10 @@
     var pre = String(src.prefixe || '').toUpperCase().replace(/[^A-Z0-9-]/g, '').replace(/^-+|-+$/g, '').slice(0, LIMITES.prefixe);
     o.prefixe = pre.length >= 2 ? pre : '';
     o.avecLogo = !!src.avecLogo;
+    o.iban = ibanValide(src.iban);
+    o.bic = o.iban ? bicValide(src.bic) : '';
+    var tit = texte(src.titulaire, LIMITES.titulaire);
+    o.titulaire = o.iban && tit ? tit : '';
     return o;
   }
   function fusion(a, b) {

@@ -53,6 +53,8 @@ async function emetteurDe(event, me, b) {
         facturation: { formeJuridique: e.formeJuridique, capital: e.capital, siren: e.siret || e.siren,
                        registre: e.registre, tvaIntra: e.tvaIntra, regimeTva: e.regimeTva, tauxTva: e.tauxTva,
                        conditions: fa.conditions || "" },
+        // Virement : figé avec la facture, repris par le document et par la page du client.
+        ...(e.iban ? { banque: { iban: e.iban, bic: e.bic || "", titulaire: e.titulaire || e.raisonSociale } } : {}),
       },
     };
   }

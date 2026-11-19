@@ -30,7 +30,7 @@ export function mentionsManquantes(emetteur) {
 //          facture:{ lignes, mode, prixSaisis, remise, tva }, notes, emetteur, acquittee, apercu }
 export function renderFactureHTML(data) {
   const d = data || {};
-  const e = d.emetteur || {}, co = e.coordonnees || {}, fa = e.facturation || {};
+  const e = d.emetteur || {}, co = e.coordonnees || {}, fa = e.facturation || {}, bq = e.banque || {};
   const c = d.client || {};
   const calc = calculerFacture(d.facture || {});
   const t = calc.totaux;
@@ -112,6 +112,7 @@ export function renderFactureHTML(data) {
   .notes { border-left: 3px solid ${coul}; background: #f8fafc; padding: 10px 14px; margin: 6px 0 18px; font-size: 12px; white-space: pre-line; }
   .legal { font-size: 10.5px; color: #666; line-height: 1.6; border-top: 1px solid #eee; padding-top: 12px; }
   .btn-print { display: block; margin: 0 auto 20px; padding: 10px 26px; background: ${coul}; color: #fff; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; }
+  .virement{margin-top:14px;padding:10px 12px;border:1px solid #d5dbe4;border-radius:6px;font-size:11.5px;line-height:1.6;page-break-inside:avoid}
 </style>
 </head>
 <body>
@@ -146,6 +147,10 @@ ${manque.length ? `<div class="apercu no-print">Aperçu — mentions obligatoire
 <table class="totaux"><tbody>${lignesTotaux}</tbody></table>
 
 ${d.notes ? `<div class="notes">${esc(d.notes)}</div>` : ""}
+
+${bq.iban && !d.acquittee ? `<div class="virement"><strong>Règlement par virement</strong><br>
+  Titulaire : ${esc(bq.titulaire || nomEmetteur)}<br>IBAN : ${esc(bq.iban.replace(/(.{4})/g, "$1 ").trim())}${bq.bic ? `<br>BIC : ${esc(bq.bic)}` : ""}
+  <br>Référence à indiquer : ${esc(d.numero || "")}</div>` : ""}
 
 <div class="legal">
   ${esc(mentionTva)}Règlement ${esc(echeanceTxt)}. Pas d'escompte pour paiement anticipé.<br>

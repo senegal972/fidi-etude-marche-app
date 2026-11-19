@@ -13,7 +13,8 @@ Ce dépôt est modifié depuis plusieurs outils (Claude Code sur le PC, Claude C
 | 1.15.0 | « ETUDE DE MARCHE GOUV » | Claude Code (PC) | Recherche d'annonces similaires refaite (résultats du moteur, périmètre 1 km, liens portails) | `c0bbe1a` |
 | 1.16.0 | « ETUDE DE MARCHE GOUV » | Claude Code (PC) | Carte : fiche de chaque parcelle au clic (bulle, détail, ventes) | `dd4aaea` |
 | 1.17.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | Paiement PayPal : diagnostic et corrections (page du client, commande sans adresse, capture vérifiée, messages) | `f839ca9` |
-| 1.18.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | Fenêtre « Mon compte » refaite (`compte.css`, rubriques séparées, version téléphone) | voir `git log` |
+| 1.18.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | Fenêtre « Mon compte » refaite (`compte.css`, rubriques séparées, version téléphone) | `6b3524c` |
+| 1.19.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | Règlement par virement (IBAN par société, page du client, facture) ; adresse retirée du pied de page public | voir `git log` |
 
 ## État des branches au 2026-11-16
 

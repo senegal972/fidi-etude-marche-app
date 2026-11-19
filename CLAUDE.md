@@ -79,7 +79,11 @@ Les redirections `/api/<nom>` sont déclarées dans `netlify.toml`.
   le script PayPal est chargé par la page pour afficher un message s'il est bloqué. Le script en ligne est écrit dans un gabarit JavaScript :
   **toute apostrophe y est écrite `\\'`** (vérifié par `tests/paypal.test.mjs`, qui compile le script produit).
 - Variables : `PAYPAL_CLIENT_ID`, `PAYPAL_SECRET`, `PAYPAL_ENV` (`live` ou `sandbox` ; absent = `sandbox`).
-- Non couvert : virement, paiement partiel, notification PayPal différée (webhook) pour un paiement resté « en attente ».
+- **Virement** : une société émettrice porte `iban`, `bic`, `titulaire` (`assainirEmetteur`, `ibanValide` / `bicValide` — en double dans
+  `marque.js` et `marque.mjs`). `emetteurDe()` les fige dans `emetteur.banque` ; `_facture_doc.mjs` les affiche tant que la facture n'est pas
+  acquittée ; `livraison.mjs` (`banqueDe`, `blocVirement`) les lit dans le détail figé, à défaut dans `FIDI_VIREMENT_IBAN` / `_BIC` / `_TITULAIRE`.
+  **Aucun IBAN dans le dépôt.** Un virement ne débloque rien automatiquement : la facture est marquée payée à la main.
+- Non couvert : paiement partiel, notification PayPal différée (webhook) pour un paiement resté « en attente », rapprochement bancaire.
 
 ## Modules d'interface
 

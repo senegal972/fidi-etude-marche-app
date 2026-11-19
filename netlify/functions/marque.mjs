@@ -18,9 +18,24 @@ const LIMITES = {
   enseigne: 40, produit: 60, baseline: 80,
   raisonSociale: 80, adresse: 160, telephone: 30, email: 80, mentions: 240,
   formeJuridique: 60, capital: 40, siren: 20, registre: 80, tvaIntra: 20, conditions: 400,
-  siret: 20, prefixe: 16,
+  siret: 20, prefixe: 16, titulaire: 80,
 };
 export const MAX_EMETTEURS = 10;
+
+// IBAN : espaces retirés, majuscules, contrôle de la clé (modulo 97). Renvoie "" si invalide.
+// Mêmes règles que ibanValide() dans marque.js.
+export function ibanValide(v) {
+  const s = String(v || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(s)) return "";
+  const r = (s.slice(4) + s.slice(0, 4)).replace(/[A-Z]/g, (c) => String(c.charCodeAt(0) - 55));
+  let reste = 0;
+  for (const ch of r) reste = (reste * 10 + Number(ch)) % 97;
+  return reste === 1 ? s : "";
+}
+export function bicValide(v) {
+  const s = String(v || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return /^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(s) ? s : "";
+}
 
 // Une société émettrice de factures (plusieurs par compte, choisie au moment de facturer).
 // Mêmes règles que assainirEmetteur() dans marque.js — à faire évoluer ensemble.
@@ -41,6 +56,11 @@ export function assainirEmetteur(src) {
   const pre = String(src.prefixe || "").toUpperCase().replace(/[^A-Z0-9-]/g, "").replace(/^-+|-+$/g, "").slice(0, LIMITES.prefixe);
   o.prefixe = pre.length >= 2 ? pre : "";
   o.avecLogo = !!src.avecLogo;
+  // Coordonnées bancaires pour le règlement par virement (affichées sur la facture et la page du client).
+  o.iban = ibanValide(src.iban);
+  o.bic = o.iban ? bicValide(src.bic) : "";
+  const tit = texte(src.titulaire, LIMITES.titulaire);
+  o.titulaire = o.iban && tit ? tit : "";
   return o;
 }
 

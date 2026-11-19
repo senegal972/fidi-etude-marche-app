@@ -131,3 +131,55 @@ test("facture payée ou annulée : aucun bouton de règlement", async () => {
   facture = { requis: true, statut: "Annulée", montant: 450 };
   assert.doesNotMatch((await liv.handler(ev())).body, /paypal\.com\/sdk/);
 });
+
+// ─── Virement bancaire ─────────────────────────────────────────────────────────
+const IBAN_TEST = "FR7630006000011234567890189"; // IBAN d'exemple public (clé valide), aucun compte réel
+
+test("IBAN : clé contrôlée, espaces admis, IBAN faux rejeté", async () => {
+  const m = await import("../netlify/functions/marque.mjs");
+  assert.equal(m.ibanValide("fr76 3000 6000 0112 3456 7890 189"), IBAN_TEST);
+  assert.equal(m.ibanValide("FR7630006000011234567890188"), "");
+  assert.equal(m.ibanValide(""), "");
+  assert.equal(m.bicValide("agrifrpp"), "AGRIFRPP");
+  assert.equal(m.bicValide("XX"), "");
+  const e = m.assainirEmetteur({ id: "a1", raisonSociale: "Société Test", iban: "FR76 3000 6000 0112 3456 7890 189", bic: "AGRIFRPP", titulaire: "Société Test" });
+  assert.equal(e.iban, IBAN_TEST); assert.equal(e.bic, "AGRIFRPP");
+  const f = m.assainirEmetteur({ id: "a2", raisonSociale: "Société Test", iban: "FR00", bic: "AGRIFRPP", titulaire: "X" });
+  assert.equal(f.iban, ""); assert.equal(f.bic, ""); assert.equal(f.titulaire, "");
+});
+
+test("page du client : virement proposé quand un IBAN est configuré, absent sinon", async () => {
+  facture = { requis: true, statut: "À payer", montant: 450 };
+  delete process.env.FIDI_VIREMENT_IBAN;
+  assert.doesNotMatch((await liv.handler(ev())).body, /id="virement"/);
+  process.env.FIDI_VIREMENT_IBAN = IBAN_TEST; process.env.FIDI_VIREMENT_BIC = "AGRIFRPP"; process.env.FIDI_VIREMENT_TITULAIRE = "Société Test";
+  const r = await liv.handler(ev());
+  assert.match(r.body, /id="virement"/);
+  assert.match(r.body, /FR76 3000 6000 0112 3456 7890 189/);
+  assert.match(r.body, /data-copie="FR7630006000011234567890189"/);
+  assert.match(r.body, /data-copie="450\.00"/);
+  assert.match(r.body, /FIDI-FAC-2026-099/);
+  assert.match(r.body, /dès réception du virement/);
+  assert.doesNotMatch(r.body, /example\.org\/doc\.pdf/, "le virement ne délivre pas le document avant réception");
+  assert.ok(scriptsValides(r.body) >= 2);
+  facture = { requis: false, statut: "À payer", montant: 450 };
+  assert.match((await liv.handler(ev())).body, /id="virement"/);
+  facture = { requis: false, statut: "Payée", montant: 450 };
+  assert.doesNotMatch((await liv.handler(ev())).body, /id="virement"/);
+  delete process.env.FIDI_VIREMENT_IBAN;
+});
+
+test("page du client : aucune adresse e-mail en pied de page", async () => {
+  facture = { requis: true, statut: "À payer", montant: 450 };
+  assert.doesNotMatch((await liv.handler(ev())).body, /class="foot">[^<]*(<br>)?[^<]*@/);
+});
+
+test("facture : bloc virement sur une facture à payer, pas sur une facture acquittée", async () => {
+  const { renderFactureHTML } = await import("../netlify/functions/_facture_doc.mjs");
+  const base = { numero: "OD-FAC-2026-001", client: { nom: "Client Test" }, facture: { lignes: [{ designation: "Avis de valeur", montant: 250 }], mode: "montant", tva: { regime: "franchise" } },
+    emetteur: { coordonnees: { raisonSociale: "Société Test" }, facturation: { regimeTva: "franchise" }, banque: { iban: IBAN_TEST, bic: "AGRIFRPP", titulaire: "Société Test" } } };
+  const h = renderFactureHTML(base);
+  assert.match(h, /Règlement par virement/); assert.match(h, /FR76 3000 6000 0112 3456 7890 189/); assert.match(h, /Référence à indiquer : OD-FAC-2026-001/);
+  assert.doesNotMatch(renderFactureHTML({ ...base, acquittee: true }), /Règlement par virement/);
+  assert.doesNotMatch(renderFactureHTML({ ...base, emetteur: { ...base.emetteur, banque: undefined } }), /Règlement par virement/);
+});

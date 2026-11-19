@@ -7,6 +7,51 @@
 import { hasToken } from "./_notion.mjs";
 import { paypalConfigured, paypalClientId, paypalEnv } from "./_paypal.mjs";
 import { findFactureByToken, factureFromPage, factureHtmlUrl, reqOrigin } from "./_facture.mjs";
+import { getNamedStore } from "./_blobs.mjs";
+import { ibanValide, bicValide } from "./marque.mjs";
+
+// Coordonnées bancaires du virement : celles de la société émettrice, figées avec la facture (store « fidi-factures ») ;
+// à défaut (facture antérieure, ou société sans IBAN), celles du déploiement : FIDI_VIREMENT_IBAN / _BIC / _TITULAIRE.
+// Jamais d'IBAN en dur dans le code : le dépôt est public.
+async function banqueDe(event, token) {
+  try {
+    const store = await getNamedStore(event, "fidi-factures");
+    const detail = await store.get(String(token), { type: "json" });
+    const b = detail && detail.emetteur && detail.emetteur.banque;
+    const iban = ibanValide(b && b.iban);
+    if (iban) return { iban, bic: bicValide(b.bic), titulaire: String(b.titulaire || "").slice(0, 80) };
+  } catch (e) { /* stockage indisponible : repli sur les variables */ }
+  const iban = ibanValide(process.env.FIDI_VIREMENT_IBAN);
+  if (!iban) return null;
+  return { iban, bic: bicValide(process.env.FIDI_VIREMENT_BIC), titulaire: String(process.env.FIDI_VIREMENT_TITULAIRE || "").slice(0, 80) };
+}
+
+function blocVirement(bq, f, bloquant) {
+  if (!bq) return "";
+  const iban4 = bq.iban.replace(/(.{4})/g, "$1 ").trim();
+  const ligne = (k, v, copie) => `<div class="vr"><span class="k">${k}</span><span class="v">${esc(v)}</span>` +
+    `<button type="button" class="cp" data-copie="${esc(copie || v)}" aria-label="Copier ${k.toLowerCase()}">Copier</button></div>`;
+  return `<details class="vir" id="virement"><summary>Payer par virement bancaire</summary>
+    <div class="vir-in">
+      ${bq.titulaire ? ligne("Titulaire", bq.titulaire) : ""}
+      ${ligne("IBAN", iban4, bq.iban)}
+      ${bq.bic ? ligne("BIC", bq.bic) : ""}
+      ${ligne("Montant", eur(f.montant) + " €", Number(f.montant || 0).toFixed(2))}
+      ${ligne("Référence", f.numero)}
+      <p class="aide">Indiquez la <b>référence</b> dans le libellé du virement : elle permet de rattacher votre paiement à la facture.
+      ${bloquant ? "Vos documents seront accessibles sur cette page dès réception du virement (en général 1 à 2 jours ouvrés)."
+                 : "Un virement est enregistré à sa réception, en général sous 1 à 2 jours ouvrés."}</p>
+    </div></details>`;
+}
+const SCRIPT_COPIE = `<script>
+  document.addEventListener('click', function(e){
+    var b = e.target.closest ? e.target.closest('[data-copie]') : null; if(!b) return;
+    var t = b.getAttribute('data-copie');
+    function fait(){ var o=b.textContent; b.textContent='Copié'; setTimeout(function(){ b.textContent=o; }, 1500); }
+    if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(t).then(fait, function(){}); }
+    else { var a=document.createElement('textarea'); a.value=t; document.body.appendChild(a); a.select(); try{ document.execCommand('copy'); fait(); }catch(_){} a.remove(); }
+  });
+</script>`;
 
 const HTML = { "Content-Type": "text/html; charset=utf-8", "Access-Control-Allow-Origin": "*" };
 const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -42,6 +87,13 @@ function page(inner, extraHead = "") {
   .aide{font-size:12.5px;color:#55606f;line-height:1.5;margin-top:12px}
   .aide b{color:#12294d}
   .lien{display:block;text-align:center;font-size:13px;color:#24508f;margin-top:14px}
+  .vir{margin-top:16px;border:1px solid #dfe3e9;border-radius:10px;background:#f8fafc}
+  .vir summary{cursor:pointer;padding:13px 14px;font-size:14px;font-weight:700;color:#12294d;list-style-position:inside}
+  .vir-in{padding:0 14px 12px}
+  .vr{display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid #e6eaf0;font-size:13.5px}
+  .vr .k{flex:0 0 74px;color:#6a7686}
+  .vr .v{flex:1 1 auto;min-width:0;font-weight:600;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+  .vr .cp{flex:0 0 auto;border:1px solid #c9d0da;background:#fff;color:#12294d;border-radius:8px;padding:7px 10px;font-size:12px;font-weight:600;cursor:pointer;min-height:36px}
   .btn-dl{background:#12294d;color:#fff}.btn-fac{background:#fff;color:#12294d;border:2px solid #12294d}
   .muted{color:#8a94a3;font-size:12px;text-align:center;margin-top:14px;line-height:1.5}
   .foot{text-align:center;font-size:11px;color:#9aa3b0;padding:6px 0 20px}
@@ -52,7 +104,7 @@ function page(inner, extraHead = "") {
         border-radius:50%;animation:sp .7s linear infinite;vertical-align:-3px;margin-right:6px}
   @keyframes sp{to{transform:rotate(360deg)}}
 </style>${extraHead}</head><body><div class="wrap">${inner}
-<div class="foot">FIDI Conseil · Cabinet conseil en immobilier · Martinique (972)<br>contact@fidiconseil.com</div>
+<div class="foot">FIDI Conseil · Cabinet conseil en immobilier · Martinique (972)</div>
 </div></body></html>`;
 }
 
@@ -111,17 +163,19 @@ export const handler = async (event) => {
       : "";
     // Facture émise mais pas encore réglée (paiement non exigé avant remise) : le client doit pouvoir la régler
     // depuis cette page — les messages d'envoi et de relance le lui annoncent.
-    const aRegler = !f.paye && f.montant > 0 && f.statut !== "Annulée" && f.statut !== "Brouillon" && paypalConfigured();
+    const du = !f.paye && f.montant > 0 && f.statut !== "Annulée" && f.statut !== "Brouillon";
+    const aRegler = du && paypalConfigured();
+    const virement = du ? blocVirement(await banqueDe(event, token), f, false) : "";
     const payBtn = aRegler
       ? `<a class="btn btn-pay" href="/l/${encodeURIComponent(token)}?pay=1" id="btnPayer">Régler cette facture en ligne · ${eur(f.montant)} €</a>
          <p class="muted" style="margin-top:6px">Carte bancaire (sans compte PayPal) ou compte PayPal.</p>`
       : "";
     const inner = `<div class="card"><div class="hd"><div class="logo">FIDI<span>.</span></div><div class="sub">Vos documents sont prêts</div></div>
       <div class="bd">${statut}${recap}
-      <div style="margin-top:16px">${docBtn}${facBtn}${payBtn}</div>
+      <div style="margin-top:16px">${docBtn}${facBtn}${payBtn}</div>${virement}
       <p class="muted">Documents fournis par FIDI Conseil. Conservez ce lien pour y accéder à nouveau.</p>
       </div></div>`;
-    return { statusCode: 200, headers: HTML, body: page(inner) };
+    return { statusCode: 200, headers: HTML, body: page(inner + (virement ? SCRIPT_COPIE : "")) };
   }
 
   // ── Cas 2 : paiement requis, non réglé → bouton Payer ───────────────────────
@@ -139,6 +193,8 @@ export const handler = async (event) => {
        Votre banque peut vous demander de confirmer le paiement dans son application.<br>
        <b>Compte PayPal</b> : choisissez le bouton « PayPal ».</p>`
     : `<div class="alert alert-err">${f.statut === "Annulée" ? "Cette facture a été annulée." : "Le paiement en ligne est momentanément indisponible. Contactez FIDI Conseil."}</div>`;
+  const bq = f.statut !== "Annulée" ? await banqueDe(event, token) : null;
+  const virement = blocVirement(bq, f, !f.unlocked);
   const retour = f.unlocked ? `<a class="lien" href="/l/${encodeURIComponent(token)}">← Revenir à mes documents</a>` : "";
 
   const inner = `<div class="card"><div class="hd"><div class="logo">FIDI<span>.</span></div><div class="sub">Règlement de votre facture</div></div>
@@ -146,7 +202,7 @@ export const handler = async (event) => {
       <div class="center" style="margin-bottom:6px"><span class="badge b-wait">En attente de paiement</span></div>
       ${recap}
       <div class="amount">${eur(f.montant)} €</div>
-      ${payBlock}${retour}
+      ${payBlock}${virement}${retour}
     </div></div>
     <div id="doneCard"></div>`;
 
@@ -210,5 +266,5 @@ export const handler = async (event) => {
     })();
   </script>` : "";
 
-  return { statusCode: 200, headers: HTML, body: page(inner + script) };
+  return { statusCode: 200, headers: HTML, body: page(inner + script + (virement ? SCRIPT_COPIE : "")) };
 };
