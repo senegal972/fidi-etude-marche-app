@@ -160,6 +160,12 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
 - Reste à faire : modèles de saisie et signataire de l'avis encore stockés par navigateur ; la marque blanche
   n'est rattachée à aucun template ni formule.
 
+### Avis : sauvegarde complète — `avis-dossiers.js`
+- « Tout sauvegarder » (`construireSauvegarde`) lit un par un les avis en ligne et leurs versions diffusées (`/api/avis-store`) et télécharge
+  un fichier `{ format:"fidi-avis-sauvegarde", version:1, date, avis:[{ ref, resume, maj, data, versions[] }] }`. Aucune route serveur dédiée
+  (une fonction ne peut pas renvoyer plus de 6 Mo). « Restaurer » (`lireSauvegarde`) ne ré-enregistre qu'un avis absent (404) : **jamais d'écrasement**.
+  Les versions ne sont pas recréées (le serveur les date lui-même). Pas de sauvegarde automatique : c'est un geste de l'utilisateur.
+
 ## Variables d'environnement (Netlify)
 - `SEARCH_API_KEY` — clé **Brave Search API** pour la veille d'annonces (`/api/annonces`).
   Absente ⇒ veille indisponible, dégradation propre vers la saisie manuelle.
@@ -168,6 +174,8 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
 - `ANNONCES_MAX_SEARCHES` — *optionnelle*, borne le nombre de requêtes de recherche.
 - `FIDI_FACTURATION_CLE`, `FIDI_FACTURATION_COMPTE` — *optionnelles*, factures automatiques de serveur à serveur
   (`/api/facture-auto`, ex. achats de crédits REA). Même clé à poser dans l'application appelante.
+- `FIDI_VIREMENT_IBAN`, `FIDI_VIREMENT_BIC`, `FIDI_VIREMENT_TITULAIRE` — *optionnelles*, coordonnées bancaires affichées sur la page
+  du client quand la société émettrice de la facture n'en porte pas (factures antérieures à la 1.19.0).
 - `NOTION_TOKEN`, `NOTION_DB_*` — intégration Notion (CRM, templates, dossiers).
 
 **Aucune clé API en dur dans le code.** Si les clés sont absentes, l'application se dégrade proprement.

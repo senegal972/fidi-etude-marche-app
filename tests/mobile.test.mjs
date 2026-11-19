@@ -65,3 +65,12 @@ test("mes avis & versions : un choix amène au volet suivant quand les volets so
 test("mobile.css : accolades équilibrées", () => {
   assert.equal(css.split("{").length, css.split("}").length);
 });
+
+test("avis : sauvegarde complète et restauration présentes, pied sur une ligne sur téléphone", () => {
+  assert.ok(dossiers.includes('data-avd-action="sauvegarder"') && dossiers.includes('data-avd-action="restaurer"'));
+  assert.ok(dossiers.includes("format: FORMAT_SAUV") && dossiers.includes("j.format !== FORMAT_SAUV"));
+  // La restauration ne remplace jamais un avis déjà en ligne : elle n'enregistre que sur un 404.
+  assert.match(dossiers, /if \(r\.ok\) \{ presents\+\+; return; \}\s*if \(r\.code !== 404\) \{ echecs\+\+; return; \}/);
+  assert.match(css, /#avisDossiersModal \.avd-pied\{flex-wrap:nowrap/);
+  assert.match(css, /#avisDossiersModal \.avd-pied-note\{display:none;\}/);
+});

@@ -105,6 +105,10 @@
   #avisDossiersModal .avd-doc,#avisDossiersModal .avd-version{padding:10px 12px;}
   #avisDossiersModal .btn{min-height:40px;}
   #avisDossiersModal input{font-size:16px;}
+  #avisDossiersModal .avd-pied{flex-wrap:nowrap;gap:.3rem;padding:.4rem .5rem;}
+  #avisDossiersModal .avd-pied-note{display:none;}
+  #avisDossiersModal .avd-pied .btn{flex:1 1 auto;white-space:nowrap;font-size:.78rem;padding:.3rem .4rem;margin:0;}
+  #avisDossiersModal .avd-pied .btn > i{margin-right:.2rem!important;}
 
   /* ── Autres fenêtres : pleine largeur, champs sans zoom ───── */
   .modal-dialog:not([class*="modal-fullscreen"]){margin:.4rem;}

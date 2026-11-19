@@ -99,12 +99,15 @@
       '<div class="modal-body avd-corps">' +
         '<div class="avd-col avd-liste">' +
           '<input type="search" class="form-control form-control-sm mb-2" id="avdFiltre" placeholder="Rechercher un client, une commune, une référence…" autocomplete="off">' +
-          '<div id="avdMessage"></div><div id="avdDocs" class="avd-defile"><div class="avd-vide"><span class="spinner-border spinner-border-sm me-2"></span>Chargement…</div></div>' +
+          '<div id="avdSauvEtat" class="avd-sauv-etat" role="status"></div><div id="avdMessage"></div><div id="avdDocs" class="avd-defile"><div class="avd-vide"><span class="spinner-border spinner-border-sm me-2"></span>Chargement…</div></div>' +
         '</div>' +
         '<div class="avd-col avd-versions"><div id="avdVersions" class="avd-defile"><div class="avd-vide">Choisissez un avis dans la liste.</div></div></div>' +
         '<div class="avd-col avd-apercu"><div id="avdApercuBarre" class="avd-barre"></div><div id="avdApercu" class="avd-defile avd-feuille"><div class="avd-vide">L\'aperçu du document s\'affiche ici.</div></div></div>' +
       '</div>' +
-      '<div class="modal-footer avd-pied"><span class="small text-muted me-auto"><i class="bi bi-shield-check me-1"></i>Une version diffusée (PDF, impression, partage, facture) est conservée telle quelle et ne peut pas être supprimée.</span>' +
+      '<div class="modal-footer avd-pied"><span class="small text-muted me-auto avd-pied-note"><i class="bi bi-shield-check me-1"></i>Une version diffusée (PDF, impression, partage, facture) est conservée telle quelle et ne peut pas être supprimée.</span>' +
+      '<button type="button" class="btn btn-sm btn-outline-primary" data-avd-action="sauvegarder" title="Télécharger sur ce poste un fichier contenant tous vos avis en ligne et leurs versions diffusées"><i class="bi bi-download me-1"></i>Tout sauvegarder</button>' +
+      '<button type="button" class="btn btn-sm btn-outline-secondary" data-avd-action="restaurer" title="Remettre en ligne les avis d\'un fichier de sauvegarde. Un avis déjà en ligne n\'est jamais remplacé."><i class="bi bi-upload me-1"></i>Restaurer</button>' +
+      '<input type="file" id="avdFichier" accept="application/json,.json" class="d-none">' +
       '<button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Fermer</button></div>' +
       '</div></div></div>';
   }
@@ -117,6 +120,7 @@
     var el = document.getElementById('avisDossiersModal');
     el.addEventListener('hidden.bs.modal', function () { el.remove(); });
     el.addEventListener('click', surClic);
+    el.querySelector('#avdFichier').addEventListener('change', function () { restaurer(this.files && this.files[0]); });
     el.querySelector('#avdFiltre').addEventListener('input', function () { etat.filtre = this.value; afficherDocs(); });
     if (typeof window.fidiStackModal === 'function') window.fidiStackModal(el);
     new bootstrap.Modal(el).show();
@@ -305,6 +309,92 @@
   }
 
   // Écran étroit : les trois volets sont empilés. Un choix amène au volet suivant.
+  // ── Sauvegarde complète sur ce poste ────────────────────────────────────────
+  // Un fichier .json : chaque avis en ligne du compte (contenu complet, photos comprises) et ses versions diffusées.
+  // Les avis sont lus un par un et assemblés dans le navigateur : rien ne transite par un serveur tiers.
+  var FORMAT_SAUV = 'fidi-avis-sauvegarde';
+  function etatSauv(txt) { var e = document.getElementById('avdSauvEtat'); if (e) e.textContent = txt || ''; }
+  function construireSauvegarde(docs, progres) {
+    var avis = [], echecs = [], i = 0;
+    function suivant() {
+      if (i >= docs.length) return Promise.resolve();
+      var d = docs[i++];
+      if (progres) progres(i, docs.length);
+      return appel('GET', { ref: d.ref, proprio: d.proprio }).then(function (r) {
+        if (!r.ok || !r.data) { echecs.push(d.ref); return; }
+        var fiche = { ref: d.ref, proprio: d.proprio || '', resume: r.resume || d.resume || {}, maj: r.maj || d.maj || null, data: r.data, versions: [] };
+        avis.push(fiche);
+        return appel('GET', { ref: d.ref, versions: 1, proprio: d.proprio }).then(function (rv) {
+          var diff = ((rv.ok && rv.versions) || []).filter(function (v) { return v.diffusee; });
+          var k = 0;
+          function versionSuivante() {
+            if (k >= diff.length) return;
+            var v = diff[k++];
+            return appel('GET', { ref: d.ref, version: v.id, proprio: d.proprio }).then(function (x) {
+              if (x.ok && x.data) fiche.versions.push({ id: v.id, ts: v.ts, motif: v.motif, libelle: v.libelle || '', data: x.data });
+              else echecs.push(d.ref + ' (version ' + v.id + ')');
+              return versionSuivante();
+            });
+          }
+          return versionSuivante();
+        });
+      }).then(suivant);
+    }
+    return suivant().then(function () {
+      return { fichier: { format: FORMAT_SAUV, version: 1, date: new Date().toISOString(), avis: avis }, echecs: echecs };
+    });
+  }
+  function sauvegarderTout(bouton) {
+    var docs = etat.docs.filter(function (d) { return d.enLigne; });
+    if (!docs.length) { etatSauv('Aucun avis en ligne à sauvegarder.'); return; }
+    bouton.disabled = true;
+    construireSauvegarde(docs, function (n, total) { etatSauv('Sauvegarde : avis ' + n + ' / ' + total + '…'); }).then(function (res) {
+      bouton.disabled = false;
+      if (!res.fichier.avis.length) { etatSauv('Sauvegarde impossible : aucun avis n\'a pu être lu.'); return; }
+      var blob = new Blob([JSON.stringify(res.fichier)], { type: 'application/json' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'sauvegarde-avis-' + new Date().toISOString().slice(0, 10) + '.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 60000);
+      try { localStorage.setItem('fidi:avis:sauvegarde', new Date().toISOString()); } catch (e) {}
+      var nv = res.fichier.avis.reduce(function (t, x) { return t + x.versions.length; }, 0);
+      etatSauv(res.fichier.avis.length + ' avis et ' + nv + ' version(s) diffusée(s) sauvegardés' +
+        (res.echecs.length ? ' — ' + res.echecs.length + ' élément(s) non lus : ' + res.echecs.slice(0, 3).join(', ') : '') + '. Rangez ce fichier en lieu sûr.');
+    });
+  }
+  // Restauration : remet en ligne le contenu courant des avis ABSENTS du compte. Un avis déjà en ligne n'est jamais remplacé.
+  // Les versions diffusées restent dans le fichier (le serveur date lui-même les versions : elles ne se recréent pas à l'identique).
+  function lireSauvegarde(texte) {
+    var j; try { j = JSON.parse(texte); } catch (e) { return null; }
+    if (!j || j.format !== FORMAT_SAUV || !Array.isArray(j.avis)) return null;
+    return j.avis.filter(function (a) { return a && typeof a.ref === 'string' && a.data && typeof a.data === 'object'; });
+  }
+  function restaurer(fichier) {
+    if (!fichier) return;
+    var lecteur = new FileReader();
+    lecteur.onload = function () {
+      var liste = lireSauvegarde(String(lecteur.result || ''));
+      if (!liste) { etatSauv('Ce fichier n\'est pas une sauvegarde d\'avis.'); return; }
+      var remis = 0, presents = 0, echecs = 0, i = 0;
+      function suivant() {
+        if (i >= liste.length) return Promise.resolve();
+        var a = liste[i++];
+        etatSauv('Restauration : avis ' + i + ' / ' + liste.length + '…');
+        return appel('GET', { ref: a.ref, resume: 1 }).then(function (r) {
+          if (r.ok) { presents++; return; }
+          if (r.code !== 404) { echecs++; return; }
+          return enregistrer(a.ref, a.data, a.resume || {}, { motif: 'import', libelle: 'Restauré depuis une sauvegarde' }).then(function (x) { if (x.ok) remis++; else echecs++; });
+        }).then(suivant);
+      }
+      suivant().then(function () {
+        etatSauv(remis + ' avis remis en ligne, ' + presents + ' déjà présent(s) et laissé(s) tels quels' + (echecs ? ', ' + echecs + ' en échec' : '') + '.');
+        if (remis) charger();
+      });
+    };
+    lecteur.readAsText(fichier);
+  }
+
   function allerVers(volet) {
     try {
       if (!window.matchMedia('(max-width: 1100px)').matches) return;
@@ -325,6 +415,8 @@
     if (t.dataset.avdDoc != null) { choisir(etat.docs[+t.dataset.avdDoc]); allerVers('.avd-versions'); return; }
     if (t.dataset.avdVersion) { apercu(t.dataset.avdVersion); allerVers('.avd-apercu'); return; }
     if (t.dataset.avdAction === 'retour-liste') { allerVers('.avd-liste'); return; }
+    if (t.dataset.avdAction === 'sauvegarder') { sauvegarderTout(t); return; }
+    if (t.dataset.avdAction === 'restaurer') { var f = document.getElementById('avdFichier'); if (f) { f.value = ''; f.click(); } return; }
     var d = etat.choisi, a = t.dataset.avdAction; if (!d) return;
 
     if (a === 'ouvrir') {
@@ -379,6 +471,7 @@
     ouvrir: ouvrir, enregistrer: enregistrer, empreinte: empreinte, lireSync: lireSync, ecrireSync: ecrireSync, messageErreur: messageErreur,
     lire: function (ref) { return appel('GET', { ref: ref }); },
     resume: function (ref) { return appel('GET', { ref: ref, resume: 1 }); },
-    MOTIFS: MOTIFS
+    MOTIFS: MOTIFS,
+    construireSauvegarde: construireSauvegarde, lireSauvegarde: lireSauvegarde
   };
 })();

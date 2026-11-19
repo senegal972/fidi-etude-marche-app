@@ -46,3 +46,7 @@
 #avisModal .av-etat-enreg{font-size:.68rem;line-height:1.2;color:#17683a;white-space:nowrap;}
 #avisModal .av-etat-enreg.av-attente{color:#8a5a00;}
 #avisModal .av-etat-enreg.av-erreur{color:#b3261e;}
+
+/* Sauvegarde complète : état affiché au-dessus de la liste */
+#avisDossiersModal .avd-sauv-etat{font-size:.8rem;color:#1a3a6e;background:#eaf0f8;border-radius:6px;padding:.45rem .6rem;margin-bottom:.5rem;}
+#avisDossiersModal .avd-sauv-etat:empty{display:none;}
