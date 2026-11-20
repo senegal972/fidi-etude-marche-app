@@ -1,47 +1,81 @@
-// Carte de l'étude — fiche d'une parcelle au clic (v1.16). Garde-fous statiques :
-// le comportement lui-même se vérifie dans un navigateur (clic sur le fond, sur une zone, sur téléphone).
+// Carte — fiche d'une parcelle au clic (module autonome carte-parcelle.js, FidiParcelle).
+// Le comportement réel (clic, bulle, fiche, calques, téléphone) a été vérifié dans un navigateur avec les services
+// publics réels ; ces tests gardent les branchements et la logique pure.
 import test from "node:test";
 import assert from "node:assert/strict";
+import vm from "node:vm";
 import { readFileSync } from "node:fs";
 
-const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+const lire = (f) => readFileSync(new URL("../" + f, import.meta.url), "utf8");
+const html = lire("index.html"), mod = lire("carte-parcelle.js");
 const entre = (a, b) => html.slice(html.indexOf(a), html.indexOf(b, html.indexOf(a)));
 
-test("le clic sur le fond de carte ouvre la fiche, sans prendre le clic des repères déjà cliquables", () => {
-  const bloc = entre("mapInstance.on('click', (e)=>{", "} else {");
-  assert.ok(bloc.includes(".leaflet-interactive"), "les éléments cliquables doivent être ignorés");
-  assert.ok(bloc.includes("ficheParcelleAuClic(e.latlng)"));
+// Le module chargé hors navigateur, pour tester ses fonctions pures.
+const fenetre = { document: { getElementById: () => null } };
+vm.runInNewContext(mod, { window: fenetre, document: fenetre.document, fetch: async () => { throw new Error("réseau interdit en test"); }, setTimeout, Promise, Math, JSON, Number, String, Object, isFinite, parseFloat, encodeURIComponent });
+const P = fenetre.FidiParcelle;
+
+test("le module est chargé avant l'écran et branché sur la carte de l'étude", () => {
+  assert.match(html, /<script src="\/carte-parcelle\.js"><\/script>/);
+  const bloc = entre("FidiParcelle.attacher({", "});");
+  for (const cle of ["carte: mapInstance", "clicFond: true", "origine:", "parcellePrincipale:", "zonePrincipale:", "ventes:", "urlRisques: '/api/georisques-adresse'"]) {
+    assert.ok(bloc.includes(cle), "option absente : " + cle);
+  }
+  // L'ancien code n'est plus dupliqué dans la page.
+  assert.ok(!html.includes("async function ficheParcelleAuClic("));
 });
 
-test("une zone PLU cliquée donne la fiche de la parcelle, plus seulement le nom de la zone", () => {
+test("les calques qui captent le clic ouvrent la même fiche", () => {
   const zonage = entre("async function loadZonage(){", "// ─── Fiche d'une parcelle");
   assert.ok(zonage.includes("ficheParcelleAuClic(e.latlng, feat.properties)"));
   assert.ok(!zonage.includes("bindPopup("), "le calque Zonage ne doit plus ouvrir sa propre bulle");
-});
-
-test("la parcelle étudiée et les parcelles ajoutées ouvrent la même fiche", () => {
   assert.ok(html.includes("parcelleLayer.on('click', (e)=>{ L.DomEvent.stop(e); ficheParcelleAuClic(e.latlng); });"));
   assert.ok(entre("function drawExtraParcelles(){", "// Met à jour la ligne").includes("ficheParcelleAuClic(e.latlng)"));
 });
 
-test("fiche : fonctions présentes, sources publiques, liens déjà utilisés ailleurs dans l'étude", () => {
-  for (const f of ["ficheParcelleAuClic", "ficheParcBulleHTML", "ficheParcDetail", "ficheParcVentes", "ficheParcFermer", "ficheParcLiens"]) {
-    assert.ok(html.includes("function " + f + "("), f);
-  }
-  const fiche = entre("// ─── Fiche d'une parcelle", "function ficheParcCopier(){");
-  assert.ok(fiche.includes("https://apicarto.ign.fr/api/cadastre/parcelle?geom="));
-  assert.ok(fiche.includes("https://apicarto.ign.fr/api/gpu/zone-urba?geom="));
-  assert.ok(fiche.includes("https://www.geoportail-urbanisme.gouv.fr/map/#tile=1&lon='+lon+'&lat='+lat+'&zoom=18"));
-  // Ventes : celles déjà chargées par l'étude, rapprochées par l'identifiant de parcelle.
-  assert.ok(fiche.includes("t.id_parcelle === idu"));
-  // Un clic plus récent annule l'affichage du précédent.
-  assert.ok(fiche.includes("if(reqId !== _ficheParcReq) return;"));
-  // Le contour tracé ne doit pas capter les clics suivants.
-  assert.ok(fiche.includes("interactive:false"));
+test("module : interface publique, noms historiques, sources publiques sans clé", () => {
+  for (const f of ["attacher", "auClic", "fermer", "detail", "copier", "ventesDeLaParcelle", "bulleHTML"]) assert.equal(typeof P[f], "function", f);
+  for (const n of ["ficheParcelleAuClic", "ficheParcFermer", "ficheParcDetail", "ficheParcCopier"]) assert.equal(typeof fenetre[n], "function", n);
+  for (const u of ["https://apicarto.ign.fr/api", "/cadastre/parcelle?geom=", "/gpu/zone-urba?geom=", "/gpu/assiette-sup-s?geom=", "/gpu/prescription-surf?geom=",
+    "https://api-adresse.data.gouv.fr/reverse/", "https://app.dvf.etalab.gouv.fr/api/mutations3/"]) assert.ok(mod.includes(u), u);
+  // Le clic sur le fond ignore ce qui est déjà cliquable ; un clic plus récent annule le précédent ; le contour ne capte pas les clics.
+  assert.ok(mod.includes(".leaflet-interactive, .leaflet-control, .leaflet-popup"));
+  assert.ok(mod.includes("if (id !== requete) return;"));
+  assert.ok(mod.includes("interactive: false"));
+  // Un service public qui échoue est réessayé une fois.
+  assert.match(mod, /function lire\(url, essais\)/);
+  assert.ok(!/api[_-]?key|token=/i.test(mod), "aucune clé dans le module");
 });
 
-test("téléphone : fiche sous la carte, jamais imprimée", () => {
-  assert.ok(html.includes("window.matchMedia('(max-width: 768px)').matches"));
-  assert.ok(html.includes("@media print{ #ficheParcPanneau,#carteAstuce{display:none!important;} }"));
-  assert.ok(html.includes(".pdf-mode #ficheParcPanneau,.pdf-mode #carteAstuce{display:none!important;}"));
+test("ventes d'une parcelle : une ligne par vente, pas par lot, et les ventes groupées sont signalées", () => {
+  const IDU = "97209000AZ0001";
+  const m = (o) => ({ id_mutation: "M1", date_mutation: "2024-03-10", nature_mutation: "Vente", valeur_fonciere: "300000.0", id_parcelle: IDU, type_local: "None", surface_reelle_bati: "None", surface_terrain: "None", lot1_numero: "None", ...o });
+  const v = P.ventesDeLaParcelle([
+    // Une vente de deux lots sur la parcelle (appartement + dépendance) : le prix n'est compté qu'une fois.
+    m({ type_local: "Appartement", surface_reelle_bati: "60.0", lot1_numero: "5" }),
+    m({ type_local: "Dépendance", lot1_numero: "12" }),
+    // La même vente porte aussi sur une autre parcelle.
+    m({ id_parcelle: "97209000AZ0002", type_local: "Maison", surface_reelle_bati: "90.0" }),
+    // Une vente plus ancienne, terrain seul.
+    m({ id_mutation: "M0", date_mutation: "2021-01-05", valeur_fonciere: "80000.0", surface_terrain: "420.0" }),
+    // Une vente d'une autre parcelle : ignorée.
+    m({ id_mutation: "M9", id_parcelle: "97209000AZ0003", valeur_fonciere: "999999.0" }),
+  ], IDU);
+  assert.equal(v.length, 2);
+  assert.equal(v[0].date, "2024-03-10", "la plus récente d'abord");
+  assert.equal(v[0].valeur, 300000);
+  assert.deepEqual([...v[0].types].sort(), ["Appartement", "Dépendance"]);
+  assert.equal(v[0].bati, 60);
+  assert.equal(v[0].autresParcelles, 1);
+  assert.equal(v[1].valeur, 80000); assert.equal(v[1].terrain, 420); assert.equal(v[1].autresParcelles, 0);
+  assert.deepEqual(P.ventesDeLaParcelle([], IDU), []);
+});
+
+test("bulle : parcelle, absence de parcelle, zonage, sans mise en forme injectée", () => {
+  const h = P.bulleHTML({ section: "AZ", numero: "0193", nom_com: "Fort-de-France", code_insee: "97209", contenance: 59, idu: "97209000AZ0193" }, { libelle: "UVB2", libelong: "Centre-ville", typezone: "U" }, 14.61, -61.07);
+  assert.match(h, /Parcelle AZ 0193/); assert.match(h, /59 m²/); assert.match(h, /UVB2/); assert.match(h, /data-fiche-parc="detail"/);
+  const vide = P.bulleHTML(null, null, 14.61, -61.07);
+  assert.match(vide, /Aucune parcelle à ce point/); assert.match(vide, /non numérisé/); assert.doesNotMatch(vide, /data-fiche-parc/);
+  const piege = P.bulleHTML({ section: "<b>", numero: "1", nom_com: "<script>x</script>" }, null, 0, 0);
+  assert.doesNotMatch(piege, /<script>/);
 });

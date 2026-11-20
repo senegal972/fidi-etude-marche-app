@@ -255,10 +255,20 @@ tient sur une ligne et laisse la place au contenu ; un seul défilement par fen�
 - Barre du haut : libellés masquables dans `<span class="nav-lbl">`.
 - Vérifier tout changement d'interface à 360 px de large (aucun élément hors écran, aucune barre sur plusieurs lignes). Garde-fous : `tests/mobile.test.mjs`.
 
-## Carte : fiche de parcelle (index.html)
+## Carte : fiche de parcelle — `carte-parcelle.js` (module autonome `FidiParcelle`)
 
-Un clic sur la carte de l'étude appelle `ficheParcelleAuClic(latlng, zoneConnue?)` : parcelle (`apicarto.ign.fr/api/cadastre/parcelle`) et zone PLU
-(`/api/gpu/zone-urba`) au point, bulle Leaflet sur ordinateur, panneau `#ficheParcPanneau` sous la carte sur téléphone, contour `ficheParcLayer`
-(non cliquable). `ficheParcDetail()` ouvre la fiche complète ; les ventes viennent de `window.__fidiTransactions` (`id_parcelle` = `idu`).
-Le clic sur le fond ignore les éléments `.leaflet-interactive` : repères de ventes et contours gardent leur bulle. Tout nouveau calque de polygones
-qui couvre la carte doit appeler `ficheParcelleAuClic` au clic (comme le zonage), sinon il masque la fiche.
+Chargé avant l'écran (`<script src="/carte-parcelle.js">`, sans `defer`). Dépend de Leaflet et, pour la fenêtre de détail, de Bootstrap 5.
+- `FidiParcelle.attacher({ carte, clicFond, origine, parcellePrincipale, zonePrincipale, ventes, urlRisques, couleurZone })` : branché dans
+  `renderMap()`. `clicFond:true` pose le clic sur le fond de carte (les éléments `.leaflet-interactive`, les commandes et les bulles gardent
+  leur comportement). `FidiParcelle.auClic(latlng, zoneConnue?)` s'appelle depuis un calque qui capte le clic : **tout nouveau calque de
+  polygones qui couvre la carte doit l'appeler** (comme le zonage), sinon il masque la fiche. Les noms historiques `ficheParcelleAuClic`,
+  `ficheParcFermer`, `ficheParcDetail` restent définis.
+- Bulle Leaflet sur ordinateur, panneau `#ficheParcPanneau` sous la carte à 768 px et moins ; contour de la parcelle non cliquable ; un clic plus
+  récent annule l'affichage du précédent ; chaque lecture d'un service public est retentée une fois (`lire`).
+- `FidiParcelle.detail()` : cadastre (`apicarto.ign.fr/api/cadastre/parcelle`), adresse la plus proche (`api-adresse.data.gouv.fr/reverse`),
+  zone PLU, prescriptions et servitudes (`/api/gpu/zone-urba`, `prescription-surf`, `info-surf`, `assiette-sup-s` ; libellés des servitudes
+  courantes dans `SERVITUDES`), ventes de la parcelle (`app.dvf.etalab.gouv.fr/api/mutations3/<insee>/<section>`, regroupées par vente dans
+  `ventesDeLaParcelle` — DVF rend une ligne par lot), risques (`options.urlRisques`, facultatif). Aucune clé. Le propriétaire n'est pas public.
+- **Réutilisation sur une autre interface** : copier `carte-parcelle.js`, charger Leaflet et Bootstrap, appeler `attacher({ carte, clicFond:true })`.
+  Les options sont toutes facultatives sauf `carte` ; sans `urlRisques`, la rubrique Risques n'apparaît pas.
+- Tests : `tests/carte-parcelle.test.mjs` (branchements, regroupement des ventes, bulle). Le comportement réel se vérifie dans un navigateur.

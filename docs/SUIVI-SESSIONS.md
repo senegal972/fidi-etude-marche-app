@@ -19,7 +19,8 @@ Ce dépôt est modifié depuis plusieurs outils (Claude Code sur le PC, Claude C
 | 1.21.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | Adresses e-mail sorties du code, passées en variables Netlify | `24cecca` (PR 25, fusionnée) |
 | 1.22.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | Mon compte → Facturation repensée ; paiements enregistrés à la main (espèces, virement, chèque) avec justificatif ; annulation de facture sous session | `2cad12b` |
 | 1.23.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | Icônes d'installation (iPhone, Android) ; inscription par lien d'invitation ; nouveau mot de passe depuis la fiche d'un compte | `11f809f` |
-| 1.24.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | « Mot de passe oublié » par e-mail (lien d'une heure, usage unique) | voir `git log` |
+| 1.24.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | « Mot de passe oublié » par e-mail (lien d'une heure, usage unique) | `bd2dee8` |
+| 1.25.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | Carte : fiche de parcelle vérifiée par de vrais clics, enrichie (adresse, servitudes, ventes DVF, risques) et sortie en module `carte-parcelle.js` | voir `git log` |
 
 ## État des branches au 2026-11-16
 
@@ -34,3 +35,7 @@ Ce dépôt est modifié depuis plusieurs outils (Claude Code sur le PC, Claude C
 3. ~~Recherche d'annonces similaires~~ : refaite en 1.15.0. À vérifier connecté en production (clé Brave).
 4. ~~Débit des crédits~~ : publié en 1.14.0, péage désactivé. Avant `PAYWALL_ENABLED=true` : vérifications de `docs/CONCEPTION-DEBIT-PDF.md`.
 5. ~~Carte : bulle détaillée au clic sur une parcelle~~ : fait en 1.16.0.
+
+## À faire, demandé par l'utilisateur le 2026-11-20
+
+- **Réutiliser la carte interactive (fiche de parcelle au clic) sur une autre interface.** Le module `carte-parcelle.js` est prêt pour cela (voir CLAUDE.md). L'utilisateur a demandé qu'on le lui rappelle : le lui redire à la prochaine session et lui demander de quelle interface il s'agit.
