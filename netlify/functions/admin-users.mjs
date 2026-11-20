@@ -214,6 +214,13 @@ export const handler = async (event) => {
       return authResp(200, { ok: true, email, fidi_encaisse: !!b.fidi_encaisse, commission: pct });
     }
     if (action === "reset_password") {
+      // Le mot de passe d'un administrateur ne se change que par le super-administrateur : sinon tout administrateur
+      // pourrait prendre la main sur le compte principal.
+      const roleCible = page.properties?.["Rôle"]?.select?.name || "";
+      if (roleCible === "Administrateur" && !isSuperAdmin(me.user.email)) {
+        return authResp(403, { error: "Seul le super-administrateur peut changer le mot de passe d'un administrateur." });
+      }
+      if (b.password && String(b.password).length < 10) return authResp(400, { error: "Mot de passe : 10 caractères au moins." });
       const newPwd = b.password ? String(b.password) : genPassword();
       // Utilise setCredits-like helper : mettre à jour le hash via createUser en mode update
       // Simple : archivage puis recréation n'est pas propre. On appelle un endpoint dédié via _auth.

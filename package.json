@@ -8,7 +8,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node --test tests/functions.test.mjs tests/annonces.test.mjs tests/annonces-recherche.test.mjs tests/avis-marigot.test.mjs tests/avis-synthese.test.mjs tests/recap-courriel.test.mjs tests/send-email-auth.test.mjs tests/pdf-render-auth.test.mjs tests/pdf-share.test.mjs tests/edition.test.mjs tests/pdf-blobs-lambda.test.mjs tests/resend-reply-to.test.mjs tests/plu-regles.test.mjs tests/implantation.test.mjs tests/marque.test.mjs tests/avis-store.test.mjs tests/notion-session.test.mjs tests/interface.test.mjs tests/mobile.test.mjs tests/carte-parcelle.test.mjs tests/facture-calc.test.mjs tests/facture-detaillee.test.mjs tests/facturation-centrale.test.mjs tests/paypal.test.mjs tests/facture-paiement.test.mjs tests/facture-paiement-store.test.mjs",
+    "test": "node --test tests/functions.test.mjs tests/annonces.test.mjs tests/annonces-recherche.test.mjs tests/avis-marigot.test.mjs tests/avis-synthese.test.mjs tests/recap-courriel.test.mjs tests/send-email-auth.test.mjs tests/pdf-render-auth.test.mjs tests/pdf-share.test.mjs tests/edition.test.mjs tests/pdf-blobs-lambda.test.mjs tests/resend-reply-to.test.mjs tests/plu-regles.test.mjs tests/implantation.test.mjs tests/marque.test.mjs tests/avis-store.test.mjs tests/notion-session.test.mjs tests/interface.test.mjs tests/mobile.test.mjs tests/carte-parcelle.test.mjs tests/facture-calc.test.mjs tests/facture-detaillee.test.mjs tests/facturation-centrale.test.mjs tests/paypal.test.mjs tests/facture-paiement.test.mjs tests/facture-paiement-store.test.mjs tests/inscription.test.mjs",
     "test:marigot": "node tests/avis-marigot.test.mjs"
   },
   "dependencies": {

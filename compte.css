@@ -119,3 +119,23 @@
 .cpt-pack-prix small{font-size:.72rem;font-weight:600;color:#8a94a3;}
 .cpt-pack-det{font-size:.76rem;color:#6c757d;min-height:1.1rem;margin-bottom:.6rem;}
 .cpt-pack .cpt-btn{margin-top:auto;}
+
+/* ─ Mot de passe d'un compte (fiche) ─ */
+.cpt-mdp{background:#f6f8fb;}
+.cpt-mdp-nouveau{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem;}
+.cpt-mdp-nouveau code{background:#fff;border:1px solid #c9d0da;border-radius:6px;padding:.2rem .5rem;font-size:.95rem;font-weight:700;color:#1f2a3a;overflow-wrap:anywhere;user-select:all;}
+
+/* ─ Inscription par lien d'invitation (inscription.js) ─ */
+.insc-fond{position:fixed;inset:0;z-index:3100;background:linear-gradient(135deg,var(--fidi-blue),var(--fidi-blue-light));display:flex;align-items:flex-start;justify-content:center;padding:1.25rem 1rem;overflow-y:auto;}
+.insc-carte{background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(15,30,60,.35);width:100%;max-width:440px;padding:1.75rem 1.5rem 1.5rem;margin:auto 0;}
+.insc-ico{width:52px;height:52px;border-radius:50%;background:#eaf0f8;color:var(--fidi-blue);display:flex;align-items:center;justify-content:center;font-size:1.5rem;margin:0 auto .8rem;}
+.insc-carte h1{font-size:1.35rem;font-weight:800;color:var(--fidi-blue);text-align:center;margin:0 0 .8rem;letter-spacing:-.3px;}
+.insc-txt{color:#4a5462;font-size:.9rem;margin-bottom:1rem;}
+.insc-ok{color:#17663a;font-weight:600;text-align:center;}
+.insc-espace{margin-top:.85rem;}
+.insc-aide{font-size:.76rem;color:#6c757d;margin-top:.25rem;}
+.insc-voir{display:flex;align-items:center;gap:.45rem;font-size:.82rem;color:#4a5462;margin:.7rem 0 1rem;cursor:pointer;}
+.insc-voir input{width:1.05rem;height:1.05rem;}
+.insc-pied{font-size:.76rem;color:#6c757d;text-align:center;margin:.85rem 0 0;}
+.insc-fond input.cpt-input{font-size:16px;min-height:44px;}
+.insc-fond .cpt-btn{min-height:46px;font-size:.95rem;}

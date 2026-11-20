@@ -9,13 +9,35 @@
   "background_color": "#f0f2f5",
   "theme_color": "#1a3a6e",
   "lang": "fr",
-  "categories": ["business", "productivity", "finance"],
+  "categories": [
+    "business",
+    "productivity",
+    "finance"
+  ],
   "icons": [
+    {
+      "src": "/icones/icone-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any"
+    },
+    {
+      "src": "/icones/icone-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any"
+    },
+    {
+      "src": "/icones/icone-masque-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "maskable"
+    },
     {
       "src": "/favicon.svg",
       "type": "image/svg+xml",
       "sizes": "any",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ],
   "shortcuts": [
@@ -23,7 +45,14 @@
       "name": "Nouvelle analyse",
       "short_name": "Analyse",
       "url": "/?source=shortcut",
-      "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+      "icons": [
+        {
+          "src": "/icones/icone-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
     }
-  ]
+  ],
+  "id": "/"
 }

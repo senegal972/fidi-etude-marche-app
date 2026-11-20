@@ -120,6 +120,23 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
 - Toute nouvelle rubrique : un bouton dans `nav.cpt-nav` + un panneau ; pas de style en ligne, les classes sont dans `compte.css`
   et les règles ≤ 768 px dans `mobile.css` (barre de rubriques sur une ligne défilante).
 
+### Comptes : création, invitation, mot de passe
+- **Un mot de passe n'est jamais relisible** (haché dans Notion). Trois chemins :
+  1. l'administrateur crée le compte (Mon compte → Comptes → « Créer un compte ») : mot de passe généré ou saisi, affiché une seule fois ;
+  2. invitation : « Copier lien inscription » → `POST /api/signup-link` (administrateur) rend `…/#signup?token=…` (JWT `purpose:"signup"`, 24 h).
+     `inscription.js` lit ce fragment, affiche « Créer votre compte » (au-dessus de l'écran de connexion `#authGate`) et appelle
+     `POST /api/signup-link { action:"inscrire", token, nom, email, password, reseau? }` (public) : l'invité choisit son mot de passe
+     (`motDePasseRefuse` : 10 caractères, une lettre, un chiffre — **en double** dans `inscription.js`). **Un lien = un compte** : son empreinte
+     est notée dans Blobs `fidi-invitations` ; stockage indisponible ⇒ 503. Jamais de rôle Administrateur par lien ;
+  3. mot de passe perdu : fiche du compte → « Générer un nouveau mot de passe » (`Compte.ficheMotDePasse` → `admin-users` `reset_password`).
+     Le mot de passe d'un administrateur ne se change que par le super-administrateur.
+- Non couvert : changement de son propre mot de passe par l'utilisateur, « mot de passe oublié » par e-mail.
+
+### Application installable
+- `manifest.webmanifest` (servi en `application/manifest+json`, voir `netlify.toml`) + `icones/` : `icone-192.png`, `icone-512.png`,
+  `icone-masque-512.png` (fond plein, dessin à 80 % pour Android), `apple-touch-icon.png` (180 px, sans transparence). Elles sont tirées de
+  `favicon.svg` : à régénérer si le logo change. Pas de service worker : l'application ne fonctionne pas hors ligne.
+
 ### Mon compte → Facturation — `compte-facturation.js` / `compte-facturation.css`
 - `window.FidiFactures.charger()` (appelé par `Compte.loadFactAdmin()`) rend dans `#factAdminRoot` quatre vues : vue d'ensemble, factures
   (liste + fiche), encaissement pour compte, réglages. État dans `etat` ; tout est redessiné par `afficher()` ; clics par délégation (`data-fa-*`).
