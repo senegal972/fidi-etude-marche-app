@@ -72,13 +72,14 @@ export async function envoyerEmail(b) {
   let lien = String(b.lien || "").trim();
   if (lien && !/^https?:\/\//i.test(lien)) lien = "";
   const messagePerso = b.message ? escHtml(b.message) : "";
+  const bouton = escHtml(String(b.bouton || "Accéder à mes documents").slice(0, 60));
 
   const corps = lien
     ? `<p style="margin-top:0;">Bonjour,</p>
        ${messagePerso ? `<p>${messagePerso}</p>` : `<p>Votre ${kind}${titre ? " <strong>— " + titre + "</strong>" : ""} est disponible.</p>`}
        <p>Cliquez sur le bouton ci-dessous pour y accéder :</p>
        <p style="text-align:center;margin:26px 0;">
-         <a href="${escHtml(lien)}" style="display:inline-block;background:#1a3a6e;color:#fff;text-decoration:none;padding:13px 30px;border-radius:8px;font-weight:700;font-size:15px;">Accéder à mes documents</a>
+         <a href="${escHtml(lien)}" style="display:inline-block;background:#1a3a6e;color:#fff;text-decoration:none;padding:13px 30px;border-radius:8px;font-weight:700;font-size:15px;">${bouton}</a>
        </p>
        <p style="font-size:12px;color:#6c757d;">Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :<br><a href="${escHtml(lien)}" style="color:#1a3a6e;word-break:break-all;">${escHtml(lien)}</a></p>`
     : `<p style="margin-top:0;">Bonjour,</p>

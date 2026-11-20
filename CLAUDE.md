@@ -130,7 +130,12 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
      est notée dans Blobs `fidi-invitations` ; stockage indisponible ⇒ 503. Jamais de rôle Administrateur par lien ;
   3. mot de passe perdu : fiche du compte → « Générer un nouveau mot de passe » (`Compte.ficheMotDePasse` → `admin-users` `reset_password`).
      Le mot de passe d'un administrateur ne se change que par le super-administrateur.
-- Non couvert : changement de son propre mot de passe par l'utilisateur, « mot de passe oublié » par e-mail.
+  4. **mot de passe oublié** : lien « Mot de passe oublié ? » (`#gateOubli`, `#cpOubli`) → `FidiInscription.oubli()` → `POST /api/auth/oubli { email }`
+     (`auth-oubli.mjs`, public). Réponse identique que le compte existe ou non ; un e-mail au plus toutes les 2 minutes par adresse. Le lien
+     `…/#reset?token=…` porte un JWT `{ purpose:"reset", email, v }` d'1 h où `v` = empreinte du mot de passe actuel : le lien meurt dès que le
+     mot de passe change (usage unique sans stockage). `POST /api/auth/oubli { action:"changer", token, password }` enregistre le nouveau.
+     Exige `RESEND_API_KEY` et `RESEND_FROM` (sinon 503 avec renvoi vers l'administrateur). `envoyerEmail` accepte `bouton` (libellé du bouton).
+- Non couvert : changement de son propre mot de passe par un utilisateur connecté.
 
 ### Application installable
 - `manifest.webmanifest` (servi en `application/manifest+json`, voir `netlify.toml`) + `icones/` : `icone-192.png`, `icone-512.png`,

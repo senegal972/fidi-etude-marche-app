@@ -6728,6 +6728,7 @@ window.Compte = (function(){
               '<div class="mb-2"><label class="form-label small">Mot de passe</label><input type="password" class="form-control" id="gatePwd" autocomplete="current-password"></div>'+
               '<div class="text-danger small mb-2 d-none" id="gateErr"></div>'+
               '<button class="btn btn-primary w-100" id="gateBtn">Se connecter</button>'+
+              '<button type="button" class="cpt-oubli" id="gateOubli" onclick="window.FidiInscription&&FidiInscription.oubli((document.getElementById(\'gateEmail\')||{}).value)">Mot de passe oublié ?</button>'+
               '<p class="text-muted mt-3 mb-0" style="font-size:.75rem;">Pas encore de compte ? Contactez votre administrateur FIDI pour qu\'il vous en crée un.</p>'+
             '</div>'+
           '</div>'+
@@ -6884,6 +6885,7 @@ window.Compte = (function(){
       '<div class="mb-3"><label class="cpt-label" for="cpPwd">Mot de passe</label><input type="password" class="form-control cpt-input" id="cpPwd" autocomplete="current-password"></div>'+
       '<div class="cpt-erreur d-none" id="cpErr" role="alert"></div>'+
       '<button type="submit" class="btn cpt-btn cpt-btn-plein w-100">Se connecter</button>'+
+      '<button type="button" class="cpt-oubli" id="cpOubli" onclick="window.FidiInscription&&FidiInscription.oubli((document.getElementById(\'cpEmail\')||{}).value)">Mot de passe oublié ?</button>'+
       '</form>';
   }
 

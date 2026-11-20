@@ -168,6 +168,11 @@
   status = 200
 
 [[redirects]]
+  from   = "/api/auth/oubli"
+  to     = "/.netlify/functions/auth-oubli"
+  status = 200
+
+[[redirects]]
   from   = "/api/auth/logout"
   to     = "/.netlify/functions/auth-logout"
   status = 200
