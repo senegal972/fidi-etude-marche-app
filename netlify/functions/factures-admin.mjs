@@ -66,6 +66,13 @@ export const handler = async (event) => {
         collab: collabEmail,
         relances: relances,
         derniere_relance: derniereRelance,
+        // Paiement constaté (en ligne ou enregistré à la main, voir facture-paiement.mjs)
+        date_paiement: props["Date paiement"]?.date?.start || "",
+        moyen: props["Moyen paiement"]?.select?.name || "",
+        montant_paye: props["Montant payé"]?.number ?? null,
+        paiement_manuel: /^MANUEL/.test((props["ID transaction"]?.rich_text || []).map((t) => t.plain_text || "").join("")),
+        paiement_requis: f.paiementRequis,
+        adresse: f.adresse, ref_dossier: f.refDossier,
       };
     }).filter((f) => {
       if (fidiOnly && !f.fidi_encaisse) return false;

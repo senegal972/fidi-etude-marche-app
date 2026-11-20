@@ -31,6 +31,7 @@
 <link href="/marque.css" rel="stylesheet"/>
 <link href="/facture.css" rel="stylesheet"/>
 <link href="/compte.css" rel="stylesheet"/>
+<link href="/compte-facturation.css" rel="stylesheet"/>
 <link href="/mobile.css" rel="stylesheet"/>
 <style>
 :root{
@@ -6643,6 +6644,7 @@ function copyShareUrl(){
 <script src="/emetteurs.js" defer></script>
 <script src="/facture-externe.js" defer></script>
 <script src="/facture.js" defer></script>
+<script src="/compte-facturation.js" defer></script>
 
 <!-- Module Compte : connexion, solde, administration -->
 <div id="compteModalRoot"></div>
@@ -7039,44 +7041,10 @@ window.Compte = (function(){
         '</div>' : '')+
 
         // ─── Onglet Facturation FIDI (encaissement + commissions) ───
+        // ─── Facturation : rendue par compte-facturation.js (FidiFactures) ───
         (admin ? '<div class="tab-pane fade" id="tabFactAdmin">'+
-          '<header class="cpt-titre"><h2>Facturation</h2><p>Encaissement pour le compte des collaborateurs, commissions et suivi des règlements.</p></header>'+
-          '<section class="cpt-carte"><h3>Encaissement pour compte</h3>'+
-            '<p class="cpt-note cpt-note-haut">Pour chaque collaborateur, vous choisissez si <b>FIDI encaisse à sa place</b> (bouton <i class="bi bi-bank"></i> dans la rubrique Comptes). '+
-            'La commission est de <b>25 %</b> par défaut, modifiable pour chacun. Le collaborateur perçoit le prix TTC moins la commission.</p>'+
-          '<div class="table-responsive"><table class="table table-sm align-middle cpt-table">'+
-            '<thead>'+
-              '<tr><th>Collaborateur</th><th>Réseau</th><th class="text-center">Commission FIDI</th><th class="text-end">Actions</th></tr>'+
-            '</thead><tbody id="factCollabBody"><tr><td colspan="4" class="text-muted small p-3">Chargement…</td></tr></tbody>'+
-          '</table></div></section>'+
-          '<section class="cpt-carte"><h3>Historique des factures</h3>'+
-          '<div class="cpt-outils cpt-outils-serre">'+
-            '<div class="btn-group btn-group-sm">'+
-              '<button class="btn btn-outline-secondary" data-fact-filter="all" onclick="Compte.loadFactAdmin(\'all\')">Toutes</button>'+
-              '<button class="btn btn-outline-secondary" data-fact-filter="fidi" onclick="Compte.loadFactAdmin(\'fidi\')" title="Uniquement factures marquées FIDI encaisse">FIDI encaisse</button>'+
-              '<button class="btn btn-outline-success" data-fact-filter="paid" onclick="Compte.loadFactAdmin(\'paid\')">Payées</button>'+
-              '<button class="btn btn-outline-warning" data-fact-filter="pending" onclick="Compte.loadFactAdmin(\'pending\')">À payer</button>'+
-            '</div>'+
-            '<button class="btn btn-sm btn-outline-primary" onclick="Compte.openRapportCompta()" title="Générer un rapport comptable mensuel / annuel imprimable"><i class="bi bi-file-earmark-bar-graph me-1"></i>Rapport comptable</button>'+
-            '<button class="btn btn-sm btn-outline-info" onclick="Compte.loadFactAdmin()" title="Recharger la liste depuis Notion"><i class="bi bi-arrow-clockwise"></i></button>'+
-          '</div>'+
-          '<div id="factStatsBox" class="row g-2 mb-2"></div>'+
-          // ─── Alertes règlements : retard + config seuils (relances gérées par l'admin) ───
-          '<div class="cpt-bandeau">'+
-            '<div class="d-flex flex-wrap gap-2 align-items-center">'+
-              '<span class="fw-semibold small"><i class="bi bi-bell me-1"></i>Alertes de règlement — me prévenir dès :</span>'+
-              '<span class="small">Rappel J+<input type="number" id="factSeuilA" min="1" class="form-control form-control-sm d-inline-block" style="width:64px;" value="3"></span>'+
-              '<span class="small">Relance J+<input type="number" id="factSeuilB" min="1" class="form-control form-control-sm d-inline-block" style="width:64px;" value="7"></span>'+
-              '<button class="btn btn-sm btn-outline-secondary" onclick="Compte.factSaveSeuils()">Appliquer</button>'+
-              '<span class="text-muted small">Les relances restent manuelles (bouton Relancer).</span>'+
-            '</div>'+
-          '</div>'+
-          '<div id="factAlertsBox" class="mb-2"></div>'+
-          '<div class="table-responsive"><table class="table table-sm align-middle cpt-table">'+
-            '<thead>'+
-              '<tr><th>Réf</th><th>Date</th><th>Client</th><th>Type</th><th class="text-end">TTC</th><th class="text-center" title="Nombre de relances envoyées">Relances</th><th class="text-end" title="Commission FIDI si mode encaissement">Comm.</th><th class="text-end" title="À reverser au collaborateur">À reverser</th><th>Statut</th><th class="text-end">Actions</th></tr>'+
-            '</thead><tbody id="factListBody"><tr><td colspan="10" class="text-muted small p-3">Cliquez sur un filtre pour charger.</td></tr></tbody>'+
-          '</table></div></section>'+
+          '<header class="cpt-titre"><h2>Facturation</h2><p>Suivi des règlements, enregistrement des paiements, relances et encaissement pour le compte des collaborateurs.</p></header>'+
+          '<div id="factAdminRoot"></div>'+
         '</div>' : '')+
       '</div></div>';
   }
@@ -7624,140 +7592,14 @@ window.Compte = (function(){
 
   document.addEventListener('DOMContentLoaded', refresh);
   // Seuils d'alerte règlement (mémorisés). A = rappel, B = relance.
-  function factSeuils(){
-    var a=3, b=7;
-    try { a=parseInt(localStorage.getItem('fidi:relance:seuilA'))||3; b=parseInt(localStorage.getItem('fidi:relance:seuilB'))||7; } catch(e){}
-    return { a:a, b:b };
+  // La rubrique Facturation est rendue par compte-facturation.js.
+  async function loadFactAdmin(){
+    if(window.FidiFactures) return window.FidiFactures.charger();
   }
-  function factSaveSeuils(){
-    var a=parseInt((document.getElementById('factSeuilA')||{}).value)||3;
-    var b=parseInt((document.getElementById('factSeuilB')||{}).value)||7;
-    try { localStorage.setItem('fidi:relance:seuilA',a); localStorage.setItem('fidi:relance:seuilB',b); } catch(e){}
-    renderFactAlerts(window._factCache||[]);
-  }
-  function factAgeJours(dateStr){
-    if(!dateStr) return null; var d=new Date(dateStr); if(isNaN(d.getTime())) return null;
-    return Math.floor((Date.now()-d.getTime())/86400000);
-  }
-  function renderFactAlerts(items){
-    var box=document.getElementById('factAlertsBox'); if(!box) return;
-    var s=factSeuils();
-    var impayes=(items||[]).filter(function(f){ return f.statut!=='Payée' && f.statut!=='Annulée'; });
-    var retard=impayes.map(function(f){ return Object.assign({}, f, {jours:factAgeJours(f.date)}); })
-                      .filter(function(f){ return f.jours!=null && f.jours>=s.a; })
-                      .sort(function(x,y){ return (y.jours||0)-(x.jours||0); });
-    var critiques=retard.filter(function(f){ return f.jours>=s.b; }).length;
-    var payes=(items||[]).filter(function(f){ return f.statut==='Payée'; }).length;
-    if(!retard.length){
-      box.innerHTML='<div class="alert alert-success py-2 small mb-0"><i class="bi bi-check-circle me-1"></i>Aucun règlement en retard au-delà de J+'+s.a+'. '+payes+' facture(s) payée(s) dans la liste.</div>';
-      return;
-    }
-    var rows=retard.slice(0,8).map(function(f){
-      var lvl = f.jours>=s.b ? 'danger' : 'warning';
-      return '<div class="d-flex justify-content-between align-items-center py-1 border-bottom" style="border-color:#eadfce!important;">'+
-        '<div class="small"><span class="badge bg-'+lvl+(lvl==='warning'?' text-dark':'')+'">J+'+f.jours+'</span> '+esc(f.client||f.ref||'')+' <span class="text-muted">· '+esc(f.ref||'')+' · '+(Number(f.montant)||0).toLocaleString('fr-FR')+' €</span></div>'+
-        '<button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="relancerFacture((window._factCache||[]).find(function(x){return x.ref===\''+esc(String(f.ref).replace(/'/g,"")) +'\';}), function(){Compte.loadFactAdmin();})"><i class="bi bi-bell"></i> Relancer</button>'+
-      '</div>';
-    }).join('');
-    box.innerHTML='<div class="alert alert-warning py-2 mb-0" style="background:#fdf3e3;border-color:#e6c68a;">'+
-      '<div class="fw-semibold small mb-1"><i class="bi bi-exclamation-triangle me-1"></i>'+retard.length+' règlement(s) en retard ≥ J+'+s.a+(critiques?' · '+critiques+' critique(s) ≥ J+'+s.b:'')+'</div>'+
-      rows+'</div>';
-  }
-
-  async function loadFactAdmin(filter){
-    // 1. Collaborateurs FIDI encaisse (depuis cache admin)
-    const bodyC = document.getElementById('factCollabBody');
-    if(bodyC){
-      if(!_adminUsersCache.length){
-        // Charge à la volée si cache vide
-        await adminList();
-      }
-      const list = (_adminUsersCache||[]).filter(u => u.fidi_encaisse);
-      if(!list.length){ bodyC.innerHTML = '<tr><td colspan="4" class="text-muted small p-3">Aucun collaborateur en mode « FIDI encaisse ». Activez-le avec le bouton <i class="bi bi-bank"></i> de la rubrique Comptes.</td></tr>'; }
-      else bodyC.innerHTML = list.map(u =>
-        '<tr>'+
-          '<td><div class="fw-semibold">'+esc(u.nom||u.email.split('@')[0])+'</div><div class="text-muted small">'+esc(u.email)+'</div></td>'+
-          '<td>'+(u.reseau ? '<span class="badge" style="background:#eaefeb;color:#1f4a3f;">'+esc(u.reseau)+'</span>' : '<span class="text-muted small">—</span>')+'</td>'+
-          '<td class="text-center"><span class="badge bg-warning text-dark">'+(u.commission!=null?u.commission:25)+' %</span></td>'+
-          '<td class="text-end"><button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="Compte.adminCommission(\''+esc(u.email)+'\','+u.fidi_encaisse+','+(u.commission!=null?u.commission:25)+')" title="Modifier commission ou désactiver FIDI encaisse">Modifier</button></td>'+
-        '</tr>'
-      ).join('');
-    }
-
-    // 2. Historique des factures
-    const body = document.getElementById('factListBody'); if(!body) return;
-    body.innerHTML = '<tr><td colspan="9" class="text-muted small p-3"><span class="spinner-border spinner-border-sm me-1"></span> Chargement Notion…</td></tr>';
-    // Highlight filtre actif
-    document.querySelectorAll('[data-fact-filter]').forEach(b => b.classList.remove('active','fw-bold'));
-    if(filter){ const act = document.querySelector('[data-fact-filter="'+filter+'"]'); if(act){ act.classList.add('active','fw-bold'); } }
-    // Construit URL avec filtre
-    const params = [];
-    if(filter === 'fidi') params.push('fidi_only=1');
-    if(filter === 'paid') params.push('statut=Payée');
-    if(filter === 'pending') params.push('statut=À payer');
-    const url = '/api/factures-admin' + (params.length ? '?'+params.join('&') : '');
-    try {
-      const r = await fetch(url, {credentials:'same-origin'});
-      const d = await r.json();
-      if(!r.ok){ body.innerHTML = '<tr><td colspan="10" class="text-danger p-3">'+esc(d.error||'Erreur')+'</td></tr>'; return; }
-      window._factCache = d.items || []; // pour le rapport comptable
-      // Alertes règlements : seuils mémorisés + encart retard
-      try {
-        const sl = factSeuils();
-        const iA=document.getElementById('factSeuilA'); if(iA) iA.value=sl.a;
-        const iB=document.getElementById('factSeuilB'); if(iB) iB.value=sl.b;
-        renderFactAlerts(d.items||[]);
-      } catch(e){}
-      // Stats top
-      const s = d.stats || {};
-      const statsBox = document.getElementById('factStatsBox');
-      if(statsBox){
-        statsBox.innerHTML =
-          '<div class="col-md-3"><div class="p-2 border rounded text-center" style="background:#f5f1e8;"><div class="fw-bold text-warning" style="font-size:1.2rem;">'+(s.total_ttc_paye||0).toFixed(2)+' €</div><div class="small text-muted">Total encaissé</div></div></div>'+
-          '<div class="col-md-3"><div class="p-2 border rounded text-center" style="background:#efe9d9;"><div class="fw-bold text-secondary" style="font-size:1.2rem;">'+(s.total_ttc_attente||0).toFixed(2)+' €</div><div class="small text-muted">En attente</div></div></div>'+
-          '<div class="col-md-3"><div class="p-2 border rounded text-center" style="background:#eaefeb;"><div class="fw-bold text-success" style="font-size:1.2rem;">'+(s.commissions_fidi_paye||0).toFixed(2)+' €</div><div class="small text-muted">Commission FIDI payée</div></div></div>'+
-          '<div class="col-md-3"><div class="p-2 border rounded text-center" style="background:#fdeeee;border-left:3px solid #b03a2e!important;"><div class="fw-bold" style="font-size:1.2rem;color:#b03a2e;">'+(s.clients_relances||0)+'</div><div class="small text-muted">Clients relancés · '+(s.total_relances||0)+' relance(s)</div></div></div>';
-      }
-      const items = d.items || [];
-      if(!items.length){ body.innerHTML = '<tr><td colspan="10" class="text-muted small p-3">Aucune facture trouvée avec ce filtre.</td></tr>'; return; }
-      body.innerHTML = items.map(f => {
-        const statutBg = f.statut === 'Payée' ? 'success' : (f.statut === 'Annulée' ? 'secondary' : 'warning text-dark');
-        const fidiChip = f.fidi_encaisse ? ' <span class="badge bg-info text-dark" title="FIDI encaisse cette facture ('+f.commission_pct+' %)"><i class="bi bi-bank"></i></span>' : '';
-        const relBadge = (f.relances||0) > 0
-          ? '<span class="badge bg-danger" title="'+f.relances+' relance(s)'+(f.derniere_relance?' · dernière le '+esc(f.derniere_relance):'')+'">'+f.relances+'</span>'
-          : '<span class="text-muted small">—</span>';
-        const refEsc = esc(f.ref).replace(/'/g,"\\'");
-        // Bouton relancer : uniquement pour les factures À payer
-        const relanceBtn = f.statut === 'À payer'
-          ? ' <button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="relancerFacture((window._factCache||[]).find(x=>x.ref===\''+refEsc+'\'), ()=>Compte.loadFactAdmin())" title="Relancer (WhatsApp / e-mail au choix + lien paiement)"><i class="bi bi-bell"></i> Relancer</button>'
-          : '';
-        // Bouton supprimer : uniquement pour les factures Annulée (protège Payée / À payer)
-        const delBtn = f.statut === 'Annulée'
-          ? ' <button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="Compte.factDelete(\''+refEsc+'\')" title="Supprimer définitivement cette facture annulée (archive Notion)"><i class="bi bi-trash"></i></button>'
-          : '';
-        const clientCell = f.client
-          ? '<a href="#" onclick="Compte.factFicheClient(\''+esc(f.client).replace(/'/g,"\\'")+'\',\''+esc(f.email||'').replace(/'/g,"\\'")+'\');return false;" style="text-decoration:none;font-weight:600;color:#1a4b8e;">'+esc(f.client)+'</a>'
-          : '<span class="text-muted">—</span>';
-        return '<tr>'+
-          '<td><span class="fw-semibold">'+esc(f.ref||'—')+'</span>'+fidiChip+'</td>'+
-          '<td class="small">'+esc(f.date||'—')+'</td>'+
-          '<td>'+clientCell+'<div class="text-muted small">'+esc(f.email||'')+'</div></td>'+
-          '<td class="small">'+esc(f.type||'—')+'</td>'+
-          '<td class="text-end fw-semibold">'+(f.montant||0).toFixed(2)+' €</td>'+
-          '<td class="text-center">'+relBadge+'</td>'+
-          '<td class="text-end small text-warning">'+(f.commission_eur ? f.commission_eur.toFixed(2)+' €' : '—')+'</td>'+
-          '<td class="text-end small" style="color:#b87333;">'+(f.reverser_eur ? f.reverser_eur.toFixed(2)+' €' : '—')+'</td>'+
-          '<td><span class="badge bg-'+statutBg+'">'+esc(f.statut||'?')+'</span></td>'+
-          '<td class="text-end" style="white-space:nowrap;">'+
-            (f.facture_url ? '<a class="btn btn-sm btn-outline-secondary py-0 px-1" href="'+f.facture_url+'" target="_blank" title="Voir la facture HTML"><i class="bi bi-eye"></i></a>' : '')+
-            (f.delivery_url ? ' <a class="btn btn-sm btn-outline-secondary py-0 px-1" href="'+f.delivery_url+'" target="_blank" title="Page de remise / paiement"><i class="bi bi-link-45deg"></i></a>' : '')+
-            relanceBtn+ delBtn+
-          '</td>'+
-        '</tr>';
-      }).join('');
-    } catch (e) {
-      body.innerHTML = '<tr><td colspan="10" class="text-danger p-3">Erreur réseau : '+esc(e.message)+'</td></tr>';
-    }
+  // Comptes connus de l'administrateur (chargés à la demande) — lus par la rubrique Facturation.
+  async function collaborateurs(){
+    if(!_adminUsersCache.length) await adminList();
+    return _adminUsersCache;
   }
   async function factDelete(ref){
     const f = (window._factCache||[]).find(x=>x.ref===ref) || {};
@@ -8011,9 +7853,9 @@ window.Compte = (function(){
     if(!dryRun){ const box=document.getElementById('offresBox'); if(box) box.dataset.loaded=''; loadOffres(); }
   }
 
-  return { open, rubrique, miseEnPage, doLogin, logout, refresh, setCredits, setRecherches, consume, renduPdf, confirmerCredit, adminCreate, adminCredit, adminToggle,
+  return { open, rubrique, miseEnPage, collaborateurs, doLogin, logout, refresh, setCredits, setRecherches, consume, renduPdf, confirmerCredit, adminCreate, adminCredit, adminToggle,
            adminIllimite, adminQuota, adminDelete, adminReseau, adminTarifGroup, adminRefresh,
-           adminEditNom, adminCommission, openFiche, ficheRoleChange, ficheSave, loadFactAdmin, factSaveSeuils, factRelance, relanceVia, factDelete, factFicheClient,
+           adminEditNom, adminCommission, openFiche, ficheRoleChange, ficheSave, loadFactAdmin, factRelance, relanceVia, factDelete, factFicheClient,
            openRapportCompta, rcSetMonth, rcSetYear, genRapportCompta, factSaveContact,
            openCreateForm, closeCreateForm, adCreateRoleChange, openTarifForm, closeTarifForm, copySignupLink,
            loadOffres, chooseOffer, payOffer, offerToggle, offerPrice, bulkRecalc, bulkSyncCumul, offresSelectGrille, offresCreateGrid,

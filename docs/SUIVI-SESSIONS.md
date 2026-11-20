@@ -16,7 +16,8 @@ Ce dépôt est modifié depuis plusieurs outils (Claude Code sur le PC, Claude C
 | 1.18.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | Fenêtre « Mon compte » refaite (`compte.css`, rubriques séparées, version téléphone) | `6b3524c` |
 | 1.19.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | Règlement par virement (IBAN par société, page du client, facture) ; adresse retirée du pied de page public | `456282d` |
 | 1.20.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | Avis : « Tout sauvegarder » et « Restaurer » (copie locale du stockage en ligne) | `9a154c5` |
-| 1.21.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | Adresses e-mail sorties du code, passées en variables Netlify | branche `retrait-adresse-contact` (PR, à fusionner après réglage des variables) |
+| 1.21.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | Adresses e-mail sorties du code, passées en variables Netlify | `24cecca` (PR 25, fusionnée) |
+| 1.22.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | Mon compte → Facturation repensée ; paiements enregistrés à la main (espèces, virement, chèque) avec justificatif ; annulation de facture sous session | voir `git log` |
 
 ## État des branches au 2026-11-16
 

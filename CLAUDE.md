@@ -113,12 +113,27 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
 - Colonne de navigation `.cpt-cote` (identité + `nav.cpt-nav`, boutons `.nav-link.cpt-lien` pilotés par les onglets Bootstrap) et
   contenu `.cpt-corps` ; une rubrique = un panneau `.tab-pane` avec `header.cpt-titre` puis des blocs `.cpt-carte`.
 - **Contrat des identifiants** : `compteModal`, `compteDialog`, `compteTitre`, `compteBody`, `cpEmail`, `cpPwd`, `cpErr` ; panneaux `tabIdent`,
-  `tabSolde`, `tabOffres`, `tabAdmin` (comptes), `tabTarifs` (grille tarifaire), `tabFactAdmin` ; `offresBox`, `ppBuyBox`, `adListBody`,
-  `adCreateForm`, `adTarifsBody`, `tfCreateForm`, `tfGroup`, `factCollabBody`, `factListBody`, `factStatsBox`, `factAlertsBox`.
+  `tabSolde`, `tabOffres`, `tabAdmin` (comptes), `tabTarifs` (grille tarifaire), `tabFactAdmin` (contenu : voir « Mon compte → Facturation ») ;
+  `offresBox`, `ppBuyBox`, `adListBody`, `adCreateForm`, `adTarifsBody`, `tfCreateForm`, `tfGroup`, `factAdminRoot`.
   Vérifié par `tests/interface.test.mjs`.
 - `Compte.rubrique(id)` ouvre une rubrique ; `Compte.miseEnPage()` ferme la fenêtre puis ouvre « Mise en page ».
 - Toute nouvelle rubrique : un bouton dans `nav.cpt-nav` + un panneau ; pas de style en ligne, les classes sont dans `compte.css`
   et les règles ≤ 768 px dans `mobile.css` (barre de rubriques sur une ligne défilante).
+
+### Mon compte → Facturation — `compte-facturation.js` / `compte-facturation.css`
+- `window.FidiFactures.charger()` (appelé par `Compte.loadFactAdmin()`) rend dans `#factAdminRoot` quatre vues : vue d'ensemble, factures
+  (liste + fiche), encaissement pour compte, réglages. État dans `etat` ; tout est redessiné par `afficher()` ; clics par délégation (`data-fa-*`).
+- Situation d'une facture : `situation(f)` → `payee | annulee | brouillon | attente | retard | critique` (seuils J+ dans `localStorage`,
+  clés `fidi:relance:seuilA` / `seuilB`).
+- **Paiement manuel** : `POST /api/facture/paiement` (`facture-paiement.mjs`, administrateur) — `action:"enregistrer"` (moyen, date, montant,
+  référence, note, justificatif ou `sans_justificatif`, `recu_remis`, `ecart_accepte`) et `action:"annuler_paiement"`. `validerPaiement()` est pur
+  et testé. Notion porte statut / date / moyen / montant / `ID transaction` = `MANUEL — <référence>` ; la note, l'auteur et le justificatif sont dans
+  Blobs `fidi-paiements` (`p/<numéro>`, `j/<numéro>`), **écrits avant** de marquer la facture payée. Un paiement encaissé en ligne (`ID transaction`
+  sans préfixe `MANUEL`) ne se modifie ni ne s'annule ici. `GET ?ref=&justificatif=1` rend le fichier (types : JPEG, PNG, WebP, PDF ; 3 Mo).
+- Plafond des espèces (`PLAFOND_ESPECES`, 1 000 €) : avertissement, jamais de blocage — **en double** dans le module et dans `facture-paiement.mjs`.
+- `POST /api/facture/cancel` exige une session. `factures-admin.mjs` renvoie `date_paiement`, `moyen`, `montant_paye`, `paiement_manuel`.
+- Identifiants conservés : `factAdminRoot`, `factStatsBox`, `factAlertsBox`, `factListBody`, `factCollabBody`, `factSeuilA`, `factSeuilB`.
+- Non couvert : paiement partiel ou en plusieurs fois, avoir sur une facture payée, rapprochement bancaire.
 
 ### Écran de facturation — `facture.js` / `facture.css`
 - `window.proposerFacture(kind)` ouvre « Nouvelle facture » : client, articles (montant / quantité / heures, prix TTC ou HT,

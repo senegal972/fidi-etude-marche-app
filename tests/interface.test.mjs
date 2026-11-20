@@ -110,9 +110,18 @@ test("Mon compte : identifiants conservés, rubriques séparées, feuille de sty
   new Function(code); // le script du compte reste syntaxiquement valide
   for (const id of ["compteModal", "compteDialog", "compteTitre", "compteBody", "cpEmail", "cpPwd", "cpErr", "tabIdent", "tabSolde", "tabOffres",
     "tabAdmin", "tabTarifs", "tabFactAdmin", "offresBox", "ppBuyBox", "adListBody", "adCreateForm", "adEmail", "adFilterQ", "adFilterReseau",
-    "adTarifsBody", "tfCreateForm", "tfGroup", "tfNom", "factCollabBody", "factListBody", "factStatsBox", "factAlertsBox", "factSeuilA", "factSeuilB"]) {
+    "adTarifsBody", "tfCreateForm", "tfGroup", "tfNom", "factAdminRoot"]) {
     assert.ok(code.includes('id="' + id + '"'), "identifiant absent : " + id);
   }
+  // La rubrique Facturation est rendue par son propre module.
+  const fact = readFileSync(new URL("../compte-facturation.js", import.meta.url), "utf8");
+  new Function(fact);
+  for (const id of ["factCollabBody", "factListBody", "factStatsBox", "factAlertsBox", "factSeuilA", "factSeuilB", "faRecherche", "faDate", "faMontant", "faNote", "faFichier"]) {
+    assert.ok(fact.includes('id="' + id + '"'), "identifiant absent du module de facturation : " + id);
+  }
+  assert.match(code, /async function loadFactAdmin\(\)\{\s*if\(window\.FidiFactures\) return window\.FidiFactures\.charger\(\);/);
+  assert.match(page, /<script src="\/compte-facturation\.js" defer><\/script>/);
+  assert.match(mob, /#factAdminRoot \.fa-recherche input,#factAdminRoot \.fa-outils select,#factAdminRoot \.fa-champ\{font-size:16px;min-height:44px;\}/);
   for (const cible of ["tabIdent", "tabSolde", "tabOffres", "tabAdmin", "tabTarifs", "tabFactAdmin"]) {
     assert.ok(code.includes('data-bs-target="#' + cible + '"'), "rubrique sans bouton : " + cible);
   }
@@ -120,7 +129,7 @@ test("Mon compte : identifiants conservés, rubriques séparées, feuille de sty
   assert.ok(code.indexOf('id="tabTarifs"') < code.indexOf('id="adTarifsBody"'));
   assert.ok(code.indexOf('id="adListBody"') < code.indexOf('id="tabTarifs"'));
   assert.match(code, /return \{ open, rubrique, miseEnPage,/);
-  assert.match(page, /<link href="\/compte\.css" rel="stylesheet"\/>\n<link href="\/mobile\.css"/);
+  assert.match(page, /<link href="\/compte\.css" rel="stylesheet"\/>\n<link href="\/compte-facturation\.css" rel="stylesheet"\/>\n<link href="\/mobile\.css"/);
   assert.match(css, /\.cpt\{display:grid/);
   assert.match(mob, /#compteModal \.cpt-nav\{flex-direction:row;flex-wrap:nowrap;overflow-x:auto/);
   assert.match(mob, /#compteModal input,#compteModal select\{font-size:16px;\}/);

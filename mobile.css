@@ -195,3 +195,42 @@
   #compteModal .cpt-outils-g{width:100%;}
   #compteModal .cpt-outils-g .form-control,#compteModal .cpt-outils-g .form-select{max-width:none!important;flex:1 1 100%;}
 }
+
+/* ─ Mon compte → Facturation : sous-rubriques sur une ligne, factures en cartes ─ */
+@media (max-width:768px){
+  #factAdminRoot .fa-nav{padding:.3rem;border-radius:12px;gap:.25rem;}
+  #factAdminRoot .fa-onglet{padding:.45rem .65rem;font-size:.82rem;min-height:40px;}
+  #factAdminRoot .fa-tuiles{grid-template-columns:repeat(2,minmax(0,1fr));gap:.55rem;}
+  #factAdminRoot .fa-tuile{padding:.75rem .8rem;}
+  #factAdminRoot .fa-tuile-v{font-size:1.25rem;}
+  #factAdminRoot .fa-deux{grid-template-columns:1fr;gap:0;}
+  #factAdminRoot .fa-carte,#factAdminRoot .fa-col-fiche{padding:.9rem .85rem 1rem;border-radius:12px;}
+  #factAdminRoot .fa-barres{height:140px;gap:.35rem;}
+  #factAdminRoot .fa-barre-v{font-size:.6rem;}
+  #factAdminRoot .fa-ligne-moyen{grid-template-columns:5rem minmax(0,1fr) auto;gap:.4rem;font-size:.78rem;}
+  #factAdminRoot .fa-traiter-actions{width:100%;}
+  #factAdminRoot .fa-traiter-actions .btn{flex:1 1 0;}
+  #factAdminRoot .fa-outils{flex-direction:column;gap:.45rem;}
+  #factAdminRoot .fa-outils select{width:100%;}
+  #factAdminRoot .fa-recherche input,#factAdminRoot .fa-outils select,#factAdminRoot .fa-champ{font-size:16px;min-height:44px;}
+  #factAdminRoot .fa-puce{min-height:38px;}
+  #factAdminRoot .fa-ligne{grid-template-columns:minmax(0,1fr) auto;gap:.2rem .7rem;padding:.75rem .85rem;}
+  #factAdminRoot .fa-l-ref{grid-column:1;grid-row:2;flex-direction:row;gap:.4rem;align-items:baseline;}
+  #factAdminRoot .fa-l-ref b{font-size:.75rem;font-weight:600;color:#6c757d;}
+  #factAdminRoot .fa-l-client{grid-column:1;grid-row:1;}
+  #factAdminRoot .fa-l-montant{grid-column:2;grid-row:1;}
+  #factAdminRoot .fa-l-etat{grid-column:2;grid-row:2;align-items:flex-end;}
+  #factAdminRoot .fa-l-etat small,#factAdminRoot .fa-l-fleche{display:none;}
+  #factAdminRoot .fa-fiche-tete{flex-direction:column;gap:.5rem;}
+  #factAdminRoot .fa-fiche-montant{flex-direction:row;align-items:center;gap:.6rem;}
+  #factAdminRoot .fa-actions{grid-template-columns:repeat(2,minmax(0,1fr));}
+  #factAdminRoot .fa-infos{grid-template-columns:1fr;gap:.55rem;}
+  #factAdminRoot .fa-grille{grid-template-columns:1fr;}
+  #factAdminRoot .fa-moyen{min-height:56px;}
+  #factAdminRoot .fa-bascule label{min-height:40px;display:flex;align-items:center;justify-content:center;}
+  #factAdminRoot .fa-panneau-pied .btn{flex:1 1 auto;min-height:44px;}
+  #factAdminRoot .fa-seuils{grid-template-columns:minmax(0,1fr) 5.5rem;}
+  #factAdminRoot .fa-seuils button{grid-column:1 / -1;min-height:44px;}
+  #factAdminRoot .fa-collabs{grid-template-columns:1fr;}
+  #factAdminRoot .fa-carte-ligne .btn{width:100%;min-height:44px;}
+}

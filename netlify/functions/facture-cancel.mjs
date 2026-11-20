@@ -6,12 +6,16 @@
 // (nécessiterait un avoir comptable, hors périmètre).
 
 import { DB, P, hasToken, updatePage, queryDatabase } from "./_notion.mjs";
-import { authResp } from "./_auth.mjs";
+import { authResp, currentUser } from "./_auth.mjs";
 
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return authResp(200, {});
   if (event.httpMethod !== "POST") return authResp(405, { error: "POST requis" });
   if (!hasToken()) return authResp(503, { error: "Service non configuré." });
+
+  // Session exigée avant tout le reste : sans elle, n'importe qui pouvait annuler une facture en connaissant son numéro.
+  const me = await currentUser(event);
+  if (!me) return authResp(401, { error: "Connexion requise." });
 
   let b; try { b = JSON.parse(event.body || "{}"); } catch { return authResp(400, { error: "JSON invalide" }); }
   const ref = String(b.ref || "").trim();
