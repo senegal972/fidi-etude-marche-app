@@ -30,12 +30,14 @@
   'use strict';
 
   var CARTO = 'https://apicarto.ign.fr/api';
-  var opt = { carte: null };
-  var contour = null, requete = 0, courante = null;
+  // Une « instance » par carte attachée : { opt, contour, requete, courante, pan }. S = celle qui a reçu le dernier clic ;
+  // defaut = la première attachée (celle que visent les noms historiques ficheParcelleAuClic…).
+  var S = { opt: { carte: null }, contour: null, requete: 0, courante: null, pan: null };
+  var defaut = null;
 
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
   var nombre = function (n) { return Number(n).toLocaleString('fr-FR'); };
-  var appelOption = function (nom) { try { return typeof opt[nom] === 'function' ? opt[nom]() : null; } catch (e) { return null; } };
+  var appelOption = function (nom, I) { var o = (I || S).opt; try { return typeof o[nom] === 'function' ? o[nom]() : null; } catch (e) { return null; } };
 
   // Lecture d'un service public : un second essai après un échec (ces services répondent parfois 500 sans raison).
   function lire(url, essais) {
@@ -49,7 +51,7 @@
   var point = function (lat, lon) { return encodeURIComponent(JSON.stringify({ type: 'Point', coordinates: [lon, lat] })); };
 
   function couleurZone(t) {
-    if (typeof opt.couleurZone === 'function') { try { return opt.couleurZone(t); } catch (e) {} }
+    if (typeof S.opt.couleurZone === 'function') { try { return S.opt.couleurZone(t); } catch (e) {} }
     if (typeof window.zoneColor === 'function') { try { return window.zoneColor(t); } catch (e) {} }
     t = String(t || '').toUpperCase();
     return t.indexOf('AU') === 0 ? '#e67e22' : t.charAt(0) === 'U' ? '#c0392b' : t.charAt(0) === 'A' ? '#f1c40f' : t.charAt(0) === 'N' ? '#27ae60' : '#7f8c8d';
@@ -94,26 +96,37 @@
     h += z ? '<div class="mt-1"><span class="badge" style="background:' + couleurZone(z.typezone) + ';">' + esc(z.libelle || '?') + '</span> ' + esc(z.libelong || 'Zone ' + (z.typezone || '')) + '</div>'
       : '<div class="mt-1 text-muted">Zonage PLU : non numérisé à ce point</div>';
     if (d != null && !principale) h += '<div class="text-muted">À ' + texteDistance(d) + ' du bien étudié</div>';
-    if (p) h += '<button type="button" class="btn btn-sm btn-primary mt-2 w-100" data-fiche-parc="detail" onclick="FidiParcelle.detail()"><i class="bi bi-card-list me-1"></i>Détail de la parcelle</button>';
+    if (p) {
+      // Actions proposées par l'hôte (ex. « Étudier cette parcelle ») : options.actions(p) → [{ libelle, icone, principal }].
+      var actions = [];
+      try { actions = (typeof S.opt.actions === 'function' ? S.opt.actions(p) : null) || []; } catch (e) { actions = []; }
+      actions.forEach(function (a, i) {
+        h += '<button type="button" class="btn btn-sm ' + (a.principal ? 'btn-success' : 'btn-outline-success') + ' mt-2 w-100" data-fiche-parc="action" onclick="FidiParcelle.action(' + i + ')">' +
+          (a.icone ? '<i class="bi ' + esc(a.icone) + ' me-1"></i>' : '') + esc(a.libelle || 'Choisir') + '</button>';
+      });
+      h += '<button type="button" class="btn btn-sm ' + (actions.length ? 'btn-outline-primary' : 'btn-primary') + ' mt-2 w-100" data-fiche-parc="detail" onclick="FidiParcelle.detail()"><i class="bi bi-card-list me-1"></i>Détail de la parcelle</button>';
+    }
     return h + '</div>';
   }
 
   // zoneConnue : zone PLU du polygone cliqué (calque de zonage actif) ; sinon elle est demandée au service.
-  function auClic(latlng, zoneConnue) {
-    var carte = opt.carte;
+  function clicSur(I, latlng, zoneConnue) {
+    var carte = I.opt.carte;
     if (!carte || !latlng || !window.L) return Promise.resolve();
-    var lat = latlng.lat, lon = latlng.lng, id = ++requete;
+    S = I;
+    var lat = latlng.lat, lon = latlng.lng, id = ++I.requete;
     var attente = '<div class="fiche-parc"><span class="spinner-border spinner-border-sm me-2"></span>Lecture du cadastre…</div>';
     // Petit écran : la carte est trop étroite pour une bulle, la fiche s'affiche juste dessous.
     var etroit = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
     var bulle;
     if (etroit) {
       try { carte.closePopup(); } catch (e) {}
-      var pan = document.getElementById('ficheParcPanneau');
-      if (!pan) {
-        pan = document.createElement('div'); pan.id = 'ficheParcPanneau';
-        var conteneur = carte.getContainer(); conteneur.parentNode.insertBefore(pan, conteneur.nextSibling);
+      if (!I.pan || !I.pan.parentNode) {
+        I.pan = document.createElement('div'); I.pan.className = 'fiche-parc-panneau';
+        if (I === defaut) I.pan.id = 'ficheParcPanneau';
+        var conteneur = carte.getContainer(); conteneur.parentNode.insertBefore(I.pan, conteneur.nextSibling);
       }
+      var pan = I.pan;
       bulle = { setContent: function (h) {
         pan.innerHTML = '<button type="button" class="btn-close float-end" aria-label="Fermer" onclick="FidiParcelle.fermer()"></button>' + h;
         pan.style.display = 'block';
@@ -127,26 +140,37 @@
       lire(CARTO + '/cadastre/parcelle?geom=' + pt),
       zoneConnue ? Promise.resolve(null) : lire(CARTO + '/gpu/zone-urba?geom=' + pt)
     ]).then(function (res) {
-      if (id !== requete) return;                       // un autre clic a pris le relais
+      if (id !== I.requete) return;                     // un autre clic a pris le relais
       var jp = res[0], jz = res[1];
       var f = jp && jp.features && jp.features[0];
       var p = f ? f.properties : null;
       var z = zoneConnue || (jz && jz.features && jz.features[0] && jz.features[0].properties) || null;
-      if (contour) { carte.removeLayer(contour); contour = null; }
+      if (I.contour) { carte.removeLayer(I.contour); I.contour = null; }
       if (f && f.geometry) {
         // Contour de la parcelle cliquée — non cliquable : le clic suivant doit atteindre la carte.
-        contour = window.L.geoJSON(f, { interactive: false, style: { color: '#0d6efd', weight: 3, fillColor: '#0d6efd', fillOpacity: 0.12 } }).addTo(carte);
+        I.contour = window.L.geoJSON(f, { interactive: false, style: { color: '#0d6efd', weight: 3, fillColor: '#0d6efd', fillOpacity: 0.12 } }).addTo(carte);
       }
-      courante = { p: p, z: z, lat: lat, lon: lon, erreur: !jp, complement: null };
-      window.__ficheParcelle = courante;
+      I.courante = { p: p, z: z, lat: lat, lon: lon, erreur: !jp, complement: null, geometrie: f ? f.geometry : null, inst: I };
+      window.__ficheParcelle = I.courante;
+      S = I;
       bulle.setContent(jp ? bulleHTML(p, z, lat, lon)
         : '<div class="fiche-parc"><div class="fiche-parc-t">Cadastre indisponible</div><div class="text-muted">Le service du cadastre ne répond pas. Cliquez de nouveau dans un instant.</div></div>');
+      if (typeof I.opt.surParcelle === 'function') { try { I.opt.surParcelle(I.courante); } catch (e) {} }
     });
   }
+  // Noms historiques : visent la première carte attachée (celle de l'étude).
+  function auClic(latlng, zoneConnue) { return clicSur(defaut || S, latlng, zoneConnue); }
 
-  function fermer() {
-    var pan = document.getElementById('ficheParcPanneau'); if (pan) { pan.style.display = 'none'; pan.innerHTML = ''; }
-    if (contour && opt.carte) { opt.carte.removeLayer(contour); contour = null; }
+  function fermerSur(I) {
+    if (I.pan) { I.pan.style.display = 'none'; I.pan.innerHTML = ''; }
+    if (I.contour && I.opt.carte) { I.opt.carte.removeLayer(I.contour); I.contour = null; }
+  }
+  function fermer() { fermerSur(S); if (defaut && defaut !== S) fermerSur(defaut); }
+  // Action de l'hôte choisie dans la bulle.
+  function action(i) {
+    var F = S.courante; if (!F || !F.p) return;
+    var liste = []; try { liste = (typeof S.opt.actions === 'function' ? S.opt.actions(F.p) : null) || []; } catch (e) {}
+    if (liste[i] && typeof liste[i].auClic === 'function') liste[i].auClic(F.p, F);
   }
 
   // ── Compléments de la fiche détaillée (chargés à l'ouverture, chacun de son côté) ──
@@ -181,11 +205,14 @@
   }
 
   function complements(F) {
-    var p = F.p, pt = point(F.lat, F.lon), poser = function (id, html) { var e = document.getElementById(id); if (e && courante === F) e.innerHTML = html; };
+    var I = F.inst || S, opt = I.opt, p = F.p, pt = point(F.lat, F.lon), poser = function (id, html) { var e = document.getElementById(id); if (e && I.courante === F) e.innerHTML = html; };
     var indispo = '<span class="text-muted">Service indisponible pour le moment.</span>';
 
     // Adresse la plus proche
+    // Deux services équivalents : la Base adresse nationale, puis la Géoplateforme de l'IGN si la première ne répond pas.
     lire('https://api-adresse.data.gouv.fr/reverse/?lat=' + F.lat + '&lon=' + F.lon + '&limit=1').then(function (j) {
+      return j || lire('https://data.geopf.fr/geocodage/reverse?lat=' + F.lat + '&lon=' + F.lon + '&limit=1&index=address');
+    }).then(function (j) {
       var a = j && j.features && j.features[0] && j.features[0].properties;
       poser('ficheParcAdresse', a ? esc(a.label || a.name || '') + (a.distance != null ? ' <span class="text-muted">(à ' + Math.round(a.distance) + ' m du point cliqué)</span>' : '') : (j ? '<span class="text-muted">Aucune adresse connue à proximité.</span>' : indispo));
     });
@@ -242,7 +269,8 @@
 
   // ── Fiche détaillée ─────────────────────────────────────────────────────────
   function detail() {
-    var F = courante; if (!F || !F.p) return;
+    var F = S.courante; if (!F || !F.p) return;
+    var opt = S.opt;
     var p = F.p, z = F.z, d = distance(F.lat, F.lon), l = liens(F.lat, F.lon), ref = reference(p);
     var ligne = function (k, v) { return v ? '<tr><th style="width:42%;font-weight:600;">' + k + '</th><td>' + v + '</td></tr>' : ''; };
     var zonePrincipale = appelOption('zonePrincipale');
@@ -296,7 +324,7 @@
   }
 
   function copier(bouton) {
-    var F = courante; if (!F || !F.p) return;
+    var F = S.courante; if (!F || !F.p) return;
     var txt = reference(F.p) + ' — ' + (F.p.nom_com || '') + (F.p.contenance ? ' — ' + F.p.contenance + ' m²' : '');
     try { navigator.clipboard.writeText(txt).then(function () { if (bouton) bouton.innerHTML = '<i class="bi bi-check2"></i> copié'; }); } catch (e) {}
   }
@@ -306,28 +334,33 @@
     if (document.getElementById('ficheParcStyles')) return;
     var st = document.createElement('style'); st.id = 'ficheParcStyles';
     st.textContent = '.fiche-parc{font-size:.85rem;line-height:1.45;}.fiche-parc-t{font-weight:700;font-size:.95rem;color:#12294d;}' +
-      '#ficheParcPanneau{display:none;background:#f6f9ff;border:1px solid #c9d9f5;border-left:4px solid #0d6efd;border-radius:8px;padding:.6rem .7rem;margin:.5rem .5rem 0;}' +
-      '#ficheParcPanneau .fiche-parc{font-size:.9rem;}#ficheParcPanneau .btn{min-height:42px;}' +
-      '@media print{#ficheParcPanneau{display:none!important;}}';
+      '.fiche-parc-panneau{display:none;background:#f6f9ff;border:1px solid #c9d9f5;border-left:4px solid #0d6efd;border-radius:8px;padding:.6rem .7rem;margin:.5rem .5rem 0;}' +
+      '.fiche-parc-panneau .fiche-parc{font-size:.9rem;}.fiche-parc-panneau .btn{min-height:42px;}' +
+      '@media print{.fiche-parc-panneau{display:none!important;}}';
     document.head.appendChild(st);
   }
 
+  // Attache la fiche à une carte. Renvoie l'instance : { auClic(latlng, zone), fermer(), courante() }.
   function attacher(options) {
-    opt = options || {};
-    if (!opt.carte) return;
+    var I = { opt: options || {}, contour: null, requete: 0, courante: null, pan: null };
+    if (!I.opt.carte) return null;
     styles();
-    if (opt.clicFond) {
+    if (!defaut) defaut = I;
+    S = I;
+    if (I.opt.clicFond) {
       // Clic sur le fond : les repères, contours et commandes déjà cliquables gardent leur propre comportement.
-      opt.carte.on('click', function (e) {
+      I.opt.carte.on('click', function (e) {
         var cible = e.originalEvent && e.originalEvent.target;
         if (cible && cible.closest && cible.closest('.leaflet-interactive, .leaflet-control, .leaflet-popup')) return;
-        auClic(e.latlng);
+        clicSur(I, e.latlng);
       });
     }
+    return { auClic: function (ll, z) { return clicSur(I, ll, z); }, fermer: function () { fermerSur(I); }, courante: function () { return I.courante; },
+             contourAffiche: function () { return !!I.contour; } };
   }
 
-  window.FidiParcelle = { attacher: attacher, auClic: auClic, fermer: fermer, detail: detail, copier: copier,
-    ventesDeLaParcelle: ventesDeLaParcelle, bulleHTML: bulleHTML, courante: function () { return courante; }, contourAffiche: function () { return !!contour; } };
+  window.FidiParcelle = { attacher: attacher, auClic: auClic, fermer: fermer, detail: detail, copier: copier, action: action,
+    ventesDeLaParcelle: ventesDeLaParcelle, bulleHTML: bulleHTML, courante: function () { return S.courante; }, contourAffiche: function () { return !!S.contour; } };
   // Noms historiques, encore appelés par l'écran de l'étude.
   window.ficheParcelleAuClic = auClic;
   window.ficheParcFermer = fermer;

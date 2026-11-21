@@ -109,6 +109,16 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
 - Le formulaire se replie en résumé quand `#results-panel` devient visible (MutationObserver) ;
   « Nouvelle étude » demande un second clic si `FidiGuard.isDirty()`.
 
+### Choisir la parcelle sur la carte — `saisie-carte.js` (styles dans `saisie.css`)
+- Bouton `#btnCarteChoix` dans le sélecteur `.saisie-modes` (ce n'est **pas** un troisième `searchMode` : la recherche reste « adresse » ou
+  « cadastre »). Il ouvre le panneau `#carteChoix` : ville (`#carteChoixVille`, suggestions `geo.api.gouv.fr`), « Ma position », carte Leaflet
+  avec le calque Cadastre, et la fiche de parcelle (`FidiParcelle.attacher` avec `actions`).
+- Position de départ, dans l'ordre : commune déjà saisie (`fidiCommuneSaisie()`), géolocalisation de l'appareil, dernière commune utilisée
+  (`localStorage` `fidi_carte_derniere` : code, nom et centre de la commune, jamais d'adresse), sinon vue d'ensemble en attendant la ville.
+- « Étudier cette parcelle » → `fidiChoisirParcelle({ commune, section, numero })` (index.html) : passe en mode « Réf. cadastrale », pose
+  `selectedCommune` et remplit les champs ; `ajouter:true` pousse une parcelle supplémentaire de la même commune dans `__searchParcelles`.
+  **L'analyse n'est jamais lancée automatiquement** (elle consomme un essai). Rappel affiché dans `#carteChoixRetenue`.
+
 ### Fenêtre « Mon compte » — `window.Compte` (index.html) / `compte.css`
 - Colonne de navigation `.cpt-cote` (identité + `nav.cpt-nav`, boutons `.nav-link.cpt-lien` pilotés par les onglets Bootstrap) et
   contenu `.cpt-corps` ; une rubrique = un panneau `.tab-pane` avec `header.cpt-titre` puis des blocs `.cpt-carte`.
@@ -258,8 +268,13 @@ tient sur une ligne et laisse la place au contenu ; un seul défilement par fen�
 ## Carte : fiche de parcelle — `carte-parcelle.js` (module autonome `FidiParcelle`)
 
 Chargé avant l'écran (`<script src="/carte-parcelle.js">`, sans `defer`). Dépend de Leaflet et, pour la fenêtre de détail, de Bootstrap 5.
-- `FidiParcelle.attacher({ carte, clicFond, origine, parcellePrincipale, zonePrincipale, ventes, urlRisques, couleurZone })` : branché dans
-  `renderMap()`. `clicFond:true` pose le clic sur le fond de carte (les éléments `.leaflet-interactive`, les commandes et les bulles gardent
+- `FidiParcelle.attacher({ carte, clicFond, origine, parcellePrincipale, zonePrincipale, ventes, urlRisques, couleurZone, actions, surParcelle })`
+  renvoie une instance `{ auClic, fermer, courante, contourAffiche }`. **Plusieurs cartes** peuvent être attachées (carte de l'étude dans
+  `renderMap()`, carte de choix dans `saisie-carte.js`) : chaque carte a son état ; les fonctions globales (`detail`, `fermer`, `action`) visent
+  la carte du dernier clic, et les noms historiques visent la première attachée. `actions(p)` → `[{ libelle, icone, principal, auClic(p) }]`
+  ajoute des boutons dans la bulle.
+- **Tout calque décoratif qui couvre la carte doit être `interactive:false`** (cercle du périmètre `radiusCircle`) : cliquable, il intercepte
+  chaque clic et aucune fiche ne s'ouvre — c'était la panne de la 1.16 à la 1.25. `clicFond:true` pose le clic sur le fond de carte (les éléments `.leaflet-interactive`, les commandes et les bulles gardent
   leur comportement). `FidiParcelle.auClic(latlng, zoneConnue?)` s'appelle depuis un calque qui capte le clic : **tout nouveau calque de
   polygones qui couvre la carte doit l'appeler** (comme le zonage), sinon il masque la fiche. Les noms historiques `ficheParcelleAuClic`,
   `ficheParcFermer`, `ficheParcDetail` restent définis.

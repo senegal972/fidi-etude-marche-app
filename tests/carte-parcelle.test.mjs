@@ -34,13 +34,13 @@ test("les calques qui captent le clic ouvrent la même fiche", () => {
 });
 
 test("module : interface publique, noms historiques, sources publiques sans clé", () => {
-  for (const f of ["attacher", "auClic", "fermer", "detail", "copier", "ventesDeLaParcelle", "bulleHTML"]) assert.equal(typeof P[f], "function", f);
+  for (const f of ["attacher", "auClic", "fermer", "detail", "copier", "action", "ventesDeLaParcelle", "bulleHTML"]) assert.equal(typeof P[f], "function", f);
   for (const n of ["ficheParcelleAuClic", "ficheParcFermer", "ficheParcDetail", "ficheParcCopier"]) assert.equal(typeof fenetre[n], "function", n);
   for (const u of ["https://apicarto.ign.fr/api", "/cadastre/parcelle?geom=", "/gpu/zone-urba?geom=", "/gpu/assiette-sup-s?geom=", "/gpu/prescription-surf?geom=",
     "https://api-adresse.data.gouv.fr/reverse/", "https://app.dvf.etalab.gouv.fr/api/mutations3/"]) assert.ok(mod.includes(u), u);
   // Le clic sur le fond ignore ce qui est déjà cliquable ; un clic plus récent annule le précédent ; le contour ne capte pas les clics.
   assert.ok(mod.includes(".leaflet-interactive, .leaflet-control, .leaflet-popup"));
-  assert.ok(mod.includes("if (id !== requete) return;"));
+  assert.ok(mod.includes("if (id !== I.requete) return;"));
   assert.ok(mod.includes("interactive: false"));
   // Un service public qui échoue est réessayé une fois.
   assert.match(mod, /function lire\(url, essais\)/);
@@ -78,4 +78,34 @@ test("bulle : parcelle, absence de parcelle, zonage, sans mise en forme injecté
   assert.match(vide, /Aucune parcelle à ce point/); assert.match(vide, /non numérisé/); assert.doesNotMatch(vide, /data-fiche-parc/);
   const piege = P.bulleHTML({ section: "<b>", numero: "1", nom_com: "<script>x</script>" }, null, 0, 0);
   assert.doesNotMatch(piege, /<script>/);
+});
+
+test("le cercle du périmètre d'étude ne capte pas les clics (il couvrait toute la carte et bloquait la fiche)", () => {
+  const cercle = entre("radiusCircle = L.circle([latRef,lonRef],{", "}).addTo(mapInstance);");
+  assert.ok(cercle.includes("interactive:false"), "le cercle doit rester un simple décor");
+});
+
+test("plusieurs cartes : chaque carte attachée a sa fiche, la première reste celle des noms historiques", () => {
+  assert.ok(mod.includes("if (!defaut) defaut = I;"));
+  assert.ok(mod.includes("function auClic(latlng, zoneConnue) { return clicSur(defaut || S, latlng, zoneConnue); }"));
+  assert.ok(mod.includes("data-fiche-parc=\"action\""), "actions de l'hôte dans la bulle");
+});
+
+test("Nouvelle étude : bouton « Carte », panneau, report de la parcelle dans la recherche", () => {
+  const carte = lire("saisie-carte.js"), css = lire("saisie.css"), mob = lire("mobile.css");
+  new Function(carte);
+  assert.ok(html.includes('id="btnCarteChoix"') && html.includes('id="carteChoix"'));
+  assert.match(html, /<script src="\/saisie-carte\.js" defer><\/script>/);
+  // Le bouton est dans le même sélecteur que Adresse / Réf. cadastrale, sans devenir un troisième mode de recherche.
+  const modes = entre('<span class="saisie-modes"', "</span>");
+  assert.ok(modes.includes('id="modeAdresse"') && modes.includes('id="modeCadastre"') && modes.includes('id="btnCarteChoix"'));
+  assert.equal((modes.match(/name="searchMode"/g) || []).length, 2);
+  for (const f of ["function fidiChoisirParcelle(o){", "function fidiParcelleSaisie(){", "function fidiCommuneSaisie(){"]) assert.ok(html.includes(f), f);
+  // Position de départ : commune saisie, géolocalisation, dernière commune ; rien n'est lancé automatiquement.
+  assert.ok(carte.includes("navigator.geolocation.getCurrentPosition"));
+  assert.ok(carte.includes("https://geo.api.gouv.fr/communes"));
+  assert.ok(carte.includes("actions: actionsParcelle") && carte.includes("Étudier cette parcelle") && carte.includes("étude en cours"));
+  assert.ok(!carte.includes("lancerAnalyse("), "le choix d'une parcelle ne lance pas l'analyse");
+  assert.match(css, /\.saisie-carte-carte\{height:440px/);
+  assert.match(mob, /\.saisie-carte-ville input\{font-size:16px;\}/);
 });

@@ -234,3 +234,17 @@
   #factAdminRoot .fa-collabs{grid-template-columns:1fr;}
   #factAdminRoot .fa-carte-ligne .btn{width:100%;min-height:44px;}
 }
+
+/* ─ Nouvelle étude : choix de la parcelle sur la carte ─ */
+@media (max-width:768px){
+  .saisie-card-head{flex-wrap:wrap;gap:.5rem;}
+  .saisie-modes{max-width:100%;}
+  .saisie-modes .saisie-mode{white-space:nowrap;min-height:36px;display:inline-flex;align-items:center;}
+  .saisie-carte{padding:.6rem;}
+  .saisie-carte-tete{flex-wrap:wrap;}
+  .saisie-carte-ville{flex:1 1 100%;}
+  .saisie-carte-ville input{font-size:16px;}
+  .saisie-carte-tete .btn-pill{flex:1 1 auto;min-height:42px;}
+  .saisie-carte-tete .btn-icon{flex:0 0 42px;width:42px;height:42px;}
+  .saisie-carte-carte{height:56vh;min-height:300px;}
+}

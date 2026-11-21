@@ -119,3 +119,18 @@
 /* Bouton « retirer » des parcelles supplémentaires (écrit par renderSearchParcelles pour un fond foncé) */
 #extraParcelles .btn-outline-light{color:#5b6573;border-color:#c9d0da;}
 #extraParcelles .btn-outline-light:hover{background:#f4f6f9;color:#b42318;}
+
+/* ─ Choix de la parcelle sur la carte (saisie-carte.js) ─ */
+.saisie-modes .saisie-mode-carte{border:0;background:none;display:inline-flex;align-items:center;gap:.3rem;}
+.saisie-modes .saisie-mode-carte:hover{color:var(--fidi-blue);}
+.saisie-modes .saisie-mode-carte.saisie-mode-actif{background:var(--fidi-blue);color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.12);}
+.saisie-modes .saisie-mode-carte:focus-visible{outline:3px solid rgba(38,82,160,.45);outline-offset:1px;}
+.saisie-carte{margin:.2rem 0 1rem;padding:.9rem;border:1px solid #d3dff0;border-radius:12px;background:#f6f9ff;}
+.saisie-carte-tete{display:flex;align-items:flex-end;gap:.6rem;}
+.saisie-carte-ville{flex:1 1 auto;min-width:0;}
+.saisie-carte-etat{font-size:.82rem;color:#3a4553;min-height:1.3rem;margin:.55rem 0 .5rem;}
+.saisie-carte-etat-erreur{color:#a12020;}
+.saisie-carte-carte{height:440px;border-radius:10px;border:1px solid #c9d0da;overflow:hidden;z-index:0;}
+.saisie-carte .fiche-parc-panneau{margin:.5rem 0 0;}
+.saisie-carte-retenue{margin:.1rem 0 .9rem;padding:.55rem .75rem;border-radius:10px;background:#e3f4ea;color:#17663a;font-size:.86rem;}
+.saisie-carte-retenue .saisie-link{margin-left:.4rem;}

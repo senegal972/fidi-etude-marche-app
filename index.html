@@ -395,8 +395,12 @@ body.map-fs-on{overflow:hidden;}
                 <label class="saisie-mode" for="modeAdresse">Adresse</label>
                 <input type="radio" class="btn-check" name="searchMode" id="modeCadastre" value="cadastre">
                 <label class="saisie-mode" for="modeCadastre">Réf. cadastrale</label>
+                <button type="button" class="saisie-mode saisie-mode-carte" id="btnCarteChoix" aria-expanded="false" aria-controls="carteChoix"
+                        title="Choisir sur la carte la parcelle à étudier"><i class="bi bi-map"></i> Carte</button>
               </span>
             </div>
+            <!-- Choix de la parcelle sur la carte (saisie-carte.js) -->
+            <div id="carteChoix" class="saisie-carte d-none"></div>
             <div class="position-relative">
               <div class="d-flex justify-content-between align-items-baseline">
                 <label for="inputAdresse" class="saisie-label" id="lblRecherche">Adresse du bien</label>
@@ -1521,6 +1525,40 @@ function selectCommune(i){
     (c.region ? ' · ' + c.region.nom : '');
   hideCommuneAC();
 }
+
+// Parcelle choisie sur la carte (saisie-carte.js) → champs de la recherche par référence cadastrale.
+// commune : objet de geo.api.gouv.fr ({ code, nom, codesPostaux, centre, departement, region }).
+// ajouter:true → parcelle supplémentaire de la même étude (leurs surfaces s'additionnent).
+function fidiChoisirParcelle(o){
+  if(!o || !o.commune || !o.section || !o.numero) return false;
+  const r = document.getElementById('modeCadastre');
+  if(r && !r.checked){ r.checked = true; r.dispatchEvent(new Event('change', { bubbles:true })); }
+  if(o.ajouter && selectedCommune && selectedCommune.code === o.commune.code && document.getElementById('inputParcelle').value.trim()){
+    window.__searchParcelles.push({ section:String(o.section).toUpperCase(), numero:String(o.numero) });
+    renderSearchParcelles();
+    return true;
+  }
+  selectedCommune = o.commune;
+  window.__searchParcelles = [];
+  renderSearchParcelles();
+  document.getElementById('inputCommune').value = o.commune.nom;
+  document.getElementById('communeMeta').textContent = 'INSEE ' + o.commune.code +
+    (o.commune.departement ? ' · ' + o.commune.departement.nom + ' (' + o.commune.departement.code + ')' : '') +
+    (o.commune.region ? ' · ' + o.commune.region.nom : '');
+  const sec = document.getElementById('inputSection'), num = document.getElementById('inputParcelle');
+  sec.value = String(o.section).toUpperCase(); num.value = String(o.numero);
+  // Met à jour le récapitulatif (saisie.js). Pas d'événement sur la commune : il rouvrirait la liste de suggestions.
+  [sec, num].forEach(e => e.dispatchEvent(new Event('input', { bubbles:true })));
+  hideCommuneAC();
+  return true;
+}
+// Parcelle déjà saisie dans la recherche (pour proposer « Ajouter à l'étude » sur la carte).
+function fidiParcelleSaisie(){
+  const num = (document.getElementById('inputParcelle')||{}).value || '';
+  return selectedCommune && num.trim() ? { commune: selectedCommune, section: document.getElementById('inputSection').value.trim(), numero: num.trim(),
+    supplementaires: (window.__searchParcelles||[]).slice() } : null;
+}
+function fidiCommuneSaisie(){ return selectedCommune || null; }
 
 // Centroïde simple d'une géométrie GeoJSON (moyenne des sommets du 1er anneau)
 function geomCentroid(geom){
@@ -3722,7 +3760,9 @@ function addTransactionMarkers(transactions, rayon_km, latRef, lonRef){
     radiusCircle = L.circle([latRef,lonRef],{
       radius: rayon_km*1000,
       color:Marque.couleur('principale'), weight:1.5, dashArray:'6 4',
-      fillColor:Marque.couleur('principale'), fillOpacity:.06
+      fillColor:Marque.couleur('principale'), fillOpacity:.06,
+      // Décor seulement : il couvre toute la carte et, cliquable, il interceptait chaque clic destiné aux parcelles.
+      interactive:false
     }).addTo(mapInstance);
   }
 
@@ -6493,6 +6533,7 @@ function copyShareUrl(){
 <script src="/avis-valeur.js" defer></script>
 <script src="/avis-dossiers.js" defer></script>
 <script src="/saisie.js" defer></script>
+<script src="/saisie-carte.js" defer></script>
 <script src="/emetteurs.js" defer></script>
 <script src="/facture-externe.js" defer></script>
 <script src="/facture.js" defer></script>

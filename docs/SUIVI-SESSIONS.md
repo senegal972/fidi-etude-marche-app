@@ -20,7 +20,8 @@ Ce dépôt est modifié depuis plusieurs outils (Claude Code sur le PC, Claude C
 | 1.22.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | Mon compte → Facturation repensée ; paiements enregistrés à la main (espèces, virement, chèque) avec justificatif ; annulation de facture sous session | `2cad12b` |
 | 1.23.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | Icônes d'installation (iPhone, Android) ; inscription par lien d'invitation ; nouveau mot de passe depuis la fiche d'un compte | `11f809f` |
 | 1.24.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | « Mot de passe oublié » par e-mail (lien d'une heure, usage unique) | `bd2dee8` |
-| 1.25.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | Carte : fiche de parcelle vérifiée par de vrais clics, enrichie (adresse, servitudes, ventes DVF, risques) et sortie en module `carte-parcelle.js` | voir `git log` |
+| 1.25.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | Carte : fiche de parcelle vérifiée par de vrais clics, enrichie (adresse, servitudes, ventes DVF, risques) et sortie en module `carte-parcelle.js` | `1211b73` |
+| 1.26.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | Bouton « Carte » de « Nouvelle étude » (choix de la parcelle, géolocalisation) ; correction du clic bloqué par le cercle du périmètre | voir `git log` |
 
 ## État des branches au 2026-11-16
 
@@ -36,6 +37,6 @@ Ce dépôt est modifié depuis plusieurs outils (Claude Code sur le PC, Claude C
 4. ~~Débit des crédits~~ : publié en 1.14.0, péage désactivé. Avant `PAYWALL_ENABLED=true` : vérifications de `docs/CONCEPTION-DEBIT-PDF.md`.
 5. ~~Carte : bulle détaillée au clic sur une parcelle~~ : fait en 1.16.0.
 
-## À faire, demandé par l'utilisateur le 2026-11-20
+## Réutilisation de la carte interactive
 
-- **Réutiliser la carte interactive (fiche de parcelle au clic) sur une autre interface.** Le module `carte-parcelle.js` est prêt pour cela (voir CLAUDE.md). L'utilisateur a demandé qu'on le lui rappelle : le lui redire à la prochaine session et lui demander de quelle interface il s'agit.
+Demandée le 2026-11-20, faite en 1.26.0 : la carte à fiche de parcelle sert maintenant aussi au choix de la parcelle dans « Nouvelle étude de marché » (bouton « Carte »). Le module `carte-parcelle.js` reste réutilisable dans une autre application (REA, Fiche découverte…) si l'utilisateur le demande.
