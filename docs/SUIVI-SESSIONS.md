@@ -22,6 +22,7 @@ Ce dépôt est modifié depuis plusieurs outils (Claude Code sur le PC, Claude C
 | 1.24.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | « Mot de passe oublié » par e-mail (lien d'une heure, usage unique) | `bd2dee8` |
 | 1.25.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | Carte : fiche de parcelle vérifiée par de vrais clics, enrichie (adresse, servitudes, ventes DVF, risques) et sortie en module `carte-parcelle.js` | `1211b73` |
 | 1.26.0 | Suite « PC éteint » du 2026-11-19 | Claude Code (cloud) | Bouton « Carte » de « Nouvelle étude » (choix de la parcelle, géolocalisation) ; correction du clic bloqué par le cercle du périmètre | voir `git log` |
+| 1.27.0 | Suite « PC éteint » du 2026-11-21 | Claude Code (cloud) | Périmètre 500 m par défaut ; fiche contact à plusieurs adresses e-mail et choix des destinataires au renvoi d'une facture ; session exigée sur `crm-clients` et `factures-client` | (ce commit) |
 
 ## État des branches au 2026-11-16
 

@@ -232,6 +232,10 @@
   #factAdminRoot .fa-seuils{grid-template-columns:minmax(0,1fr) 5.5rem;}
   #factAdminRoot .fa-seuils button{grid-column:1 / -1;min-height:44px;}
   #factAdminRoot .fa-collabs{grid-template-columns:1fr;}
+  #factAdminRoot .fa-email{grid-template-columns:minmax(0,1fr) auto;}
+  #factAdminRoot .fa-email-role{grid-column:1;grid-row:2;}
+  #factAdminRoot .fa-email-retirer{grid-column:2;grid-row:1;width:44px;height:44px;}
+  #factAdminRoot .fa-bloc-pied .btn{flex:1 1 auto;min-height:42px;}
   #factAdminRoot .fa-carte-ligne .btn{width:100%;min-height:44px;}
 }
 

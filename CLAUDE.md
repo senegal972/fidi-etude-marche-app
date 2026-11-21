@@ -164,8 +164,14 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
   sans préfixe `MANUEL`) ne se modifie ni ne s'annule ici. `GET ?ref=&justificatif=1` rend le fichier (types : JPEG, PNG, WebP, PDF ; 3 Mo).
 - Plafond des espèces (`PLAFOND_ESPECES`, 1 000 €) : avertissement, jamais de blocage — **en double** dans le module et dans `facture-paiement.mjs`.
 - `POST /api/facture/cancel` exige une session. `factures-admin.mjs` renvoie `date_paiement`, `moyen`, `montant_paye`, `paiement_manuel`.
+- **Fiche contact** : `GET|POST /api/contacts` (`contacts.mjs`, administrateur) — fiche d'un client dans Blobs `fidi-contacts` (clé `cleContact(nom)`) :
+  `emails[]` (8 au plus, la première est la principale), téléphone, adresse, note. Le client est identifié par le nom porté par ses factures
+  (non modifiable). L'enregistrement reporte l'adresse principale et le téléphone sur toutes les factures du client dans Notion (« Email client »
+  sert aux relances). Sans fiche, `GET` relève les coordonnées sur les factures (`provisoire:true`). Dans le module : `etat.contacts`, `emailsDe(f)`,
+  panneau `contact` (`formulaireContact`, `data-fa-email`), panneau `renvoyer` (cases `.fa-dest`, `#faDestAutre`) : **un e-mail par destinataire**.
+- `/api/crm-clients` et `/api/factures/client` exigent une session (401 sinon). Tests : `tests/contacts.test.mjs`.
 - Identifiants conservés : `factAdminRoot`, `factStatsBox`, `factAlertsBox`, `factListBody`, `factCollabBody`, `factSeuilA`, `factSeuilB`.
-- Non couvert : paiement partiel ou en plusieurs fois, avoir sur une facture payée, rapprochement bancaire.
+- Non couvert : paiement partiel ou en plusieurs fois, avoir sur une facture payée, rapprochement bancaire, renommer un client, fusionner deux fiches.
 
 ### Écran de facturation — `facture.js` / `facture.css`
 - `window.proposerFacture(kind)` ouvre « Nouvelle facture » : client, articles (montant / quantité / heures, prix TTC ou HT,

@@ -553,8 +553,8 @@ body.map-fs-on{overflow:hidden;}
                 <label for="selectPerimetre" class="saisie-mini-label">Périmètre d'analyse</label>
                 <select class="form-select form-select-sm" id="selectPerimetre">
                   <optgroup label="Rayon autour de l'adresse">
-                    <option value="rayon_500m">500 m</option>
-                    <option value="rayon_1km" selected>1 km</option>
+                    <option value="rayon_500m" selected>500 m</option>
+                    <option value="rayon_1km">1 km</option>
                     <option value="rayon_2km">2 km</option>
                     <option value="rayon_5km">5 km</option>
                     <option value="rayon_10km">10 km</option>
@@ -2629,7 +2629,7 @@ async function reopenEtude(ref){
     var _dd = document.getElementById('ddResultsWrap'); if(_dd) _dd.classList.remove('d-none');
     const m = document.getElementById('etudesLibModal'); if(m && bootstrap){ const bm = bootstrap.Modal.getInstance(m); if(bm) bm.hide(); }
     window.scrollTo({top: document.getElementById('results-panel').offsetTop - 20, behavior:'smooth'});
-    if(d.localisation){ loadTransactionsAsync(d.localisation, inputs.perimetre || 'rayon_1km'); loadBatimentAsync(d.localisation); loadLoyersAsync(d.localisation, d); loadContexteLocalAsync(d.localisation, d.commune_info || {}); }
+    if(d.localisation){ loadTransactionsAsync(d.localisation, inputs.perimetre || 'rayon_500m'); loadBatimentAsync(d.localisation); loadLoyersAsync(d.localisation, d); loadContexteLocalAsync(d.localisation, d.commune_info || {}); }
   }catch(e){ alert('Réouverture impossible : ' + e.message); }
 }
 
@@ -2649,7 +2649,7 @@ function actualiserEtude(){
     renderResults(d);
     try { rehydrateTerrainParcelles(d); } catch(e){}
     // Relance les enrichissements asynchrones dépendants de la localisation.
-    try { loadTransactionsAsync(d.localisation, inputs.perimetre || 'rayon_1km'); } catch(e){}
+    try { loadTransactionsAsync(d.localisation, inputs.perimetre || 'rayon_500m'); } catch(e){}
     try { loadBatimentAsync(d.localisation); } catch(e){}
     try { loadLoyersAsync(d.localisation, d); } catch(e){}
     try { loadContexteLocalAsync(d.localisation, d.commune_info || {}); } catch(e){}
@@ -4665,7 +4665,7 @@ async function loadTransactionsAsync(loc, perimetre){
         lat:        loc.lat,
         lon:        loc.lon,
         postcode:   loc.postcode || '',
-        perimetre:  perimetre || 'rayon_1km',
+        perimetre:  perimetre || 'rayon_500m',
       })
     });
     if(!resp.ok){

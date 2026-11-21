@@ -28,7 +28,7 @@
   };
 
   var etat = { items: [], stats: {}, collabs: [], vue: 'apercu', filtre: 'toutes', q: '', tri: 'recent', choisi: null,
-               fiche: null, panneau: null, message: null, charge: false, erreur: '' };
+               fiche: null, panneau: null, message: null, charge: false, erreur: '', contacts: {}, brouillonContact: null };
 
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
   var eur = function (n) { return (Number(n) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'; };
@@ -305,11 +305,17 @@
       panneau(f) +
       '<section class="fa-bloc"><h4>Suivi</h4><ol class="fa-suivi">' + etapes.join('') + '</ol>' + detail + '</section>' +
       '<section class="fa-bloc"><h4>Client et prestation</h4><dl class="fa-infos">' +
-        ligneInfo('Client', f.client ? '<button type="button" class="fa-lien" data-fa-action="client">' + esc(f.client) + '</button>' : '') +
-        ligneInfo('E-mail', esc(f.email)) + ligneInfo('Téléphone', esc(f.telephone)) +
+        ligneInfo('Client', esc(f.client)) +
+        ligneInfo('E-mail', emailsDe(f).length ? emailsDe(f).map(function (e, i) { return esc(e) + (i === 0 && emailsDe(f).length > 1 ? ' <span class="fa-principal">principale</span>' : ''); }).join('<br>') : '<span class="fa-sans">Aucune adresse</span>') +
+        ligneInfo('Téléphone', esc((contactDe(f) && contactDe(f).telephone) || f.telephone)) +
+        ligneInfo('Adresse du client', esc(contactDe(f) && contactDe(f).adresse)) +
+        ligneInfo('Note', contactDe(f) && contactDe(f).note ? esc(contactDe(f).note).replace(/\n/g, '<br>') : '') +
         ligneInfo('Prestation', esc(f.libelle || f.type)) + ligneInfo('Bien', esc(f.adresse)) + ligneInfo('Dossier', esc(f.ref_dossier)) +
         ligneInfo('Encaissement', f.fidi_encaisse ? 'Pour le compte de ' + esc(f.collab || 'un collaborateur') + ' · commission ' + (f.commission_pct || 0) + ' % (' + eur(f.commission_eur) + '), à reverser ' + eur(f.reverser_eur) : '') +
-      '</dl></section>';
+      '</dl>' +
+      (f.client ? '<div class="fa-bloc-pied"><button type="button" class="btn btn-sm fa-btn" data-fa-action="contact"><i class="bi bi-person-gear me-1"></i>Modifier le contact</button>' +
+        '<button type="button" class="btn btn-sm fa-btn" data-fa-action="client"><i class="bi bi-clock-history me-1"></i>Historique du client</button></div>' : '') +
+      '</section>';
   }
 
   // Panneau ouvert sous les actions : formulaire de paiement ou confirmation.
@@ -320,14 +326,51 @@
         (champ ? '<label class="fa-label" for="faMotif">' + champ + '</label><input type="text" id="faMotif" class="form-control fa-champ" maxlength="200" autocomplete="off">' : '') +
         '<div class="fa-panneau-pied"><button type="button" class="btn fa-btn" data-fa="fermerPanneau">Ne rien faire</button><button type="submit" class="btn fa-btn ' + (classe || 'fa-btn-plein') + '">' + bouton + '</button></div></form>';
     };
+    if (etat.panneau === 'contact') return formulaireContact(f);
     if (etat.panneau === 'renvoyer') {
-      return f.email
-        ? confirmer('Renvoyer au client', 'Un e-mail avec le lien vers ' + (f.paye ? 'la facture acquittée et les documents' : 'la facture et son règlement') + ' sera envoyé à <b>' + esc(f.email) + '</b>.', '', '<i class="bi bi-envelope me-1"></i>Envoyer l\'e-mail')
-        : '<div class="fa-panneau"><h4>Renvoyer au client</h4><p>Aucune adresse e-mail n\'est enregistrée pour ce client. Copiez le lien de la page du client et envoyez-le par le moyen de votre choix.</p><div class="fa-panneau-pied"><button type="button" class="btn fa-btn" data-fa="fermerPanneau">Fermer</button><button type="button" class="btn fa-btn fa-btn-plein" data-fa-action="copier">Copier le lien</button></div></div>';
+      var dest = emailsDe(f);
+      return '<form class="fa-panneau" data-fa-form="renvoyer" novalidate><h4>Renvoyer au client</h4>' +
+        '<p>Un e-mail avec le lien vers ' + (f.paye ? 'la facture acquittée et les documents' : 'la facture et son règlement') + ' part à chaque adresse cochée.</p>' +
+        (dest.length ? '<div class="fa-destinataires">' + dest.map(function (e, i) {
+          return '<label class="fa-coche"><input type="checkbox" class="fa-dest" value="' + esc(e) + '" checked><span>' + esc(e) + (i === 0 && dest.length > 1 ? ' <span class="fa-principal">principale</span>' : '') + '</span></label>';
+        }).join('') + '</div>' : '<p class="fa-sans">Aucune adresse e-mail n\'est enregistrée pour ce client.</p>') +
+        '<label class="fa-label" for="faDestAutre">Autre adresse, pour cet envoi seulement (facultatif)</label>' +
+        '<input type="email" id="faDestAutre" class="form-control fa-champ" maxlength="120" autocomplete="off" placeholder="nom@exemple.fr">' +
+        '<button type="button" class="fa-lien fa-lien-bloc" data-fa-action="contact"><i class="bi bi-person-gear me-1"></i>Ajouter, corriger ou retirer une adresse dans la fiche contact</button>' +
+        '<div class="fa-erreur-form d-none" id="faErreur" role="alert"></div>' +
+        '<div class="fa-panneau-pied"><button type="button" class="btn fa-btn" data-fa="fermerPanneau">Ne rien faire</button>' +
+        (f.delivery_url ? '<button type="button" class="btn fa-btn" data-fa-action="copier">Copier le lien</button>' : '') +
+        '<button type="submit" class="btn fa-btn fa-btn-plein"><i class="bi bi-envelope me-1"></i>Envoyer</button></div></form>';
     }
     if (etat.panneau === 'annulerPaiement') return confirmer('Annuler le paiement', 'La facture repassera « À payer ». À utiliser pour une erreur de saisie ou un chèque revenu impayé. Le détail du paiement reste conservé.', 'Motif', 'Annuler le paiement', 'fa-btn-danger');
     if (etat.panneau === 'annuler') return confirmer('Annuler la facture', 'La facture passera « Annulée » et restera consultable. Une facture annulée ne peut plus être réglée.', 'Motif (facultatif)', 'Annuler la facture', 'fa-btn-danger');
     return '';
+  }
+
+  // Fiche contact : plusieurs adresses e-mail (la première est la principale, utilisée par les relances), téléphone, adresse, note.
+  function formulaireContact(f) {
+    var c = contactDe(f) || { emails: f.email ? [f.email] : [], telephone: f.telephone || '', adresse: '', note: '' };
+    var b = etat.brouillonContact || (etat.brouillonContact = { emails: c.emails.length ? c.emails.slice() : [''], telephone: c.telephone || '', adresse: c.adresse || '', note: c.note || '' });
+    if (!b.emails.length) b.emails = [''];
+    return '<form class="fa-panneau fa-contact" data-fa-form="contact" novalidate>' +
+      '<h4>Fiche contact</h4>' +
+      '<p><b>' + esc(f.client) + '</b> — le nom figure sur les factures émises : il ne se modifie pas ici.</p>' +
+      '<div class="fa-label">Adresses e-mail</div>' +
+      '<div class="fa-emails">' + b.emails.map(function (e, i) {
+        return '<div class="fa-email"><input type="email" class="form-control fa-champ fa-email-champ" maxlength="120" autocomplete="off" inputmode="email" placeholder="nom@exemple.fr" value="' + esc(e) + '" aria-label="Adresse e-mail ' + (i + 1) + '">' +
+          '<span class="fa-email-role">' + (i === 0 ? 'principale' : '<button type="button" class="fa-lien" data-fa-email="principale" data-i="' + i + '">rendre principale</button>') + '</span>' +
+          '<button type="button" class="fa-email-retirer" data-fa-email="retirer" data-i="' + i + '" title="Retirer cette adresse" aria-label="Retirer cette adresse"><i class="bi bi-trash"></i></button></div>';
+      }).join('') + '</div>' +
+      (b.emails.length < 8 ? '<button type="button" class="fa-lien fa-lien-bloc" data-fa-email="ajouter"><i class="bi bi-plus-lg me-1"></i>Ajouter une adresse</button>' : '') +
+      '<div class="fa-aide"><i class="bi bi-info-circle"></i><span>L\'adresse principale reçoit les relances. Au moment de renvoyer une facture, vous choisissez à quelles adresses elle part.</span></div>' +
+      '<div class="fa-grille"><div><label class="fa-label" for="faCtTel">Téléphone</label><input type="tel" id="faCtTel" class="form-control fa-champ" maxlength="30" value="' + esc(b.telephone) + '" placeholder="+596 696 00 00 00"></div>' +
+        '<div><label class="fa-label" for="faCtAdresse">Adresse postale</label><input type="text" id="faCtAdresse" class="form-control fa-champ" maxlength="240" value="' + esc(b.adresse) + '"></div></div>' +
+      '<label class="fa-label" for="faCtNote">Note interne (facultatif)</label>' +
+      '<textarea id="faCtNote" class="form-control fa-champ" rows="2" maxlength="600" placeholder="Ex. : envoyer aussi au notaire ; préfère WhatsApp.">' + esc(b.note) + '</textarea>' +
+      '<div class="fa-erreur-form d-none" id="faErreur" role="alert"></div>' +
+      '<div class="fa-panneau-pied"><button type="button" class="btn fa-btn" data-fa="fermerPanneau">Annuler</button>' +
+        '<button type="submit" class="btn fa-btn fa-btn-plein" id="faCtValider"><i class="bi bi-check2 me-1"></i>Enregistrer le contact</button></div>' +
+    '</form>';
   }
 
   function formulairePaiement(f) {
@@ -368,7 +411,7 @@
       (b.justif === 'sans' ? '<p class="fa-muet">Le paiement sera enregistré sans pièce. Indiquez dans la note comment il a été constaté.</p>' : '') +
       '<label class="fa-label" for="faNote">Note interne' + (b.justif === 'sans' || Math.abs(ecart) > 0.5 ? '' : ' (facultatif)') + '</label>' +
       '<textarea id="faNote" class="form-control fa-champ" rows="3" maxlength="600" placeholder="Ex. : réglé en espèces au cabinet le jour de la remise du rapport.">' + esc(b.note) + '</textarea>' +
-      (f.email && !modif ? '<label class="fa-coche"><input type="checkbox" id="faEnvoyer"' + (b.envoyer ? ' checked' : '') + '><span>Envoyer la facture acquittée à ' + esc(f.email) + '</span></label>' : '') +
+      ((emailsDe(f)[0] || f.email) && !modif ? '<label class="fa-coche"><input type="checkbox" id="faEnvoyer"' + (b.envoyer ? ' checked' : '') + '><span>Envoyer la facture acquittée à ' + esc(emailsDe(f)[0] || f.email) + '</span></label>' : '') +
       '<div class="fa-erreur-form d-none" id="faErreur" role="alert"></div>' +
       '<div class="fa-panneau-pied"><button type="button" class="btn fa-btn" data-fa="fermerPanneau">Annuler</button>' +
         '<button type="submit" class="btn fa-btn fa-btn-plein" id="faValider"><i class="bi bi-check2-circle me-1"></i>' + (modif ? 'Enregistrer les modifications' : 'Marquer la facture payée') + '</button></div>' +
@@ -408,6 +451,8 @@
     var f = trouver(ref); if (!f) return;
     etat.vue = 'factures'; etat.choisi = ref; etat.panneau = panneauVoulu || null; etat.brouillon = null; etat.message = null;
     if (!etat.fiche || etat.fiche.ref !== ref) etat.fiche = { ref: ref, paiement: undefined };
+    etat.brouillonContact = null;
+    chargerContact(f);
     afficher();
     var fiche = document.getElementById('faFiche');
     if (fiche && window.matchMedia('(max-width: 1099px)').matches) fiche.scrollIntoView({ block: 'start' });
@@ -419,6 +464,29 @@
       });
     } else if (etat.fiche.paiement === undefined) etat.fiche.paiement = null;
   }
+  // Fiche contact du client (plusieurs adresses e-mail, téléphone, adresse, note) — /api/contacts.
+  function contactDe(f) { return (f && f.client && etat.contacts[f.client]) || null; }
+  function emailsDe(f) {
+    var c = contactDe(f);
+    var l = c && c.emails && c.emails.length ? c.emails.slice() : (f.email ? [f.email] : []);
+    return l;
+  }
+  function chargerContact(f) {
+    if (!f || !f.client || etat.contacts[f.client] !== undefined) return;
+    etat.contacts[f.client] = null;
+    appel('/api/contacts?nom=' + encodeURIComponent(f.client)).then(function (r) {
+      etat.contacts[f.client] = r._ok && r.contact ? r.contact : { nom: f.client, emails: f.email ? [f.email] : [], telephone: f.telephone || '', adresse: '', note: '', provisoire: true };
+      if (etat.choisi === f.ref && !etat.panneau) afficher();
+    });
+  }
+  function lireContact() {
+    var b = etat.brouillonContact; if (!b) return;
+    var champs = document.querySelectorAll('#factAdminRoot .fa-email-champ');
+    b.emails = Array.prototype.map.call(champs, function (e) { return e.value.trim(); });
+    var v = function (id) { var e = document.getElementById(id); return e ? e.value : ''; };
+    b.telephone = v('faCtTel'); b.adresse = v('faCtAdresse'); b.note = v('faCtNote');
+  }
+
   function copier(texte) {
     var fait = function () { dire('ok', 'Lien copié.'); afficher(); };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(texte).then(fait, function () { dire('info', 'Lien : ' + esc(texte)); afficher(); });
@@ -466,13 +534,14 @@
       recu_remis: b.moyen === 'Espèces' && b.recu, ecart_accepte: ecart && b.ecart, sans_justificatif: b.justif === 'sans', garder_justificatif: b.justif === 'garder' };
     if (b.justif === 'avec' && b.fichier) corps.justificatif = { nom: b.fichier.nom, type: b.fichier.type, base64: b.fichier.base64 };
     var bouton = document.getElementById('faValider'); if (bouton) { bouton.disabled = true; bouton.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Enregistrement…'; }
-    var envoi = b.envoyer && f.email;
+    var principale = emailsDe(f)[0] || f.email;
+    var envoi = b.envoyer && principale;
     appel('/api/facture/paiement', corps).then(function (r) {
       if (!r._ok) { if (bouton) { bouton.disabled = false; bouton.innerHTML = '<i class="bi bi-check2-circle me-1"></i>Réessayer'; } return erreurForm(r.error || 'Enregistrement impossible.'); }
       etat.panneau = null; etat.brouillon = null; etat.fiche = { ref: f.ref, paiement: r.paiement || null };
       dire('ok', '<i class="bi bi-check-circle me-1"></i>Paiement enregistré : ' + esc(b.moyen) + ', ' + eur(montant) + '.' + (r.depasse_plafond_especes ? ' Attention : montant supérieur au plafond légal des espèces.' : ''));
-      var suite = envoi ? envoyerAuClient(Object.assign({}, f, { paye: true }), 'Votre règlement de ' + eur(montant) + ' a bien été reçu. Voici le lien vers votre facture acquittée et vos documents.').then(function (e) {
-        etat.message.html += e._ok ? ' Facture acquittée envoyée à ' + esc(f.email) + '.' : ' L\'e-mail au client n\'a pas pu partir : ' + esc(e.error || 'erreur') + '.';
+      var suite = envoi ? envoyerAuClient(Object.assign({}, f, { paye: true, email: principale }), 'Votre règlement de ' + eur(montant) + ' a bien été reçu. Voici le lien vers votre facture acquittée et vos documents.').then(function (e) {
+        etat.message.html += e._ok ? ' Facture acquittée envoyée à ' + esc(principale) + '.' : ' L\'e-mail au client n\'a pas pu partir : ' + esc(e.error || 'erreur') + '.';
       }) : Promise.resolve();
       return suite.then(charger);
     });
@@ -497,7 +566,40 @@
       if (r._ok) dire('ok', ok); else dire('erreur', esc(r.error || 'Action impossible.'));
       return charger();
     };
-    if (type === 'renvoyer') return envoyerAuClient(f).then(function (r) { return fin(r, 'E-mail envoyé à ' + esc(f.email) + '.'); });
+    if (type === 'contact') {
+      lireContact();
+      var bc = etat.brouillonContact, emails = bc.emails.map(function (e) { return e.trim().toLowerCase(); }).filter(Boolean);
+      var faux = emails.filter(function (e) { return !/^[^\s@,;]+@[^\s@,;]+\.[a-z]{2,}$/i.test(e); })[0];
+      if (faux) { if (bouton) bouton.disabled = false; return erreurForm('Adresse e-mail invalide : ' + faux); }
+      if (bouton) bouton.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Enregistrement…';
+      return appel('/api/contacts', { nom: f.client, emails: emails, telephone: bc.telephone, adresse: bc.adresse, note: bc.note }).then(function (r) {
+        if (!r._ok) { if (bouton) { bouton.disabled = false; bouton.innerHTML = '<i class="bi bi-check2 me-1"></i>Enregistrer le contact'; } return erreurForm(r.error || 'Enregistrement impossible.'); }
+        etat.contacts[f.client] = r.contact; etat.brouillonContact = null; etat.panneau = null;
+        dire('ok', '<i class="bi bi-check-circle me-1"></i>Contact enregistré' + (r.reportees ? ' ; ' + r.reportees + ' facture' + (r.reportees > 1 ? 's' : '') + ' de ce client mise' + (r.reportees > 1 ? 's' : '') + ' à jour' : '') + '.' + (r.echecs ? ' ' + r.echecs + ' facture(s) n\'ont pas pu être mises à jour.' : ''));
+        return charger();
+      });
+    }
+    if (type === 'renvoyer') {
+      var cibles = Array.prototype.map.call(form.querySelectorAll('.fa-dest:checked'), function (e) { return e.value; });
+      var autre = ((document.getElementById('faDestAutre') || {}).value || '').trim().toLowerCase();
+      if (autre) {
+        if (!/^[^\s@,;]+@[^\s@,;]+\.[a-z]{2,}$/i.test(autre)) { if (bouton) bouton.disabled = false; return erreurForm('Adresse e-mail invalide : ' + autre); }
+        if (cibles.indexOf(autre) < 0) cibles.push(autre);
+      }
+      if (!cibles.length) { if (bouton) bouton.disabled = false; return erreurForm('Cochez au moins une adresse, ou saisissez-en une.'); }
+      if (bouton) bouton.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Envoi…';
+      // Un message par destinataire : personne ne voit l'adresse des autres.
+      var envoyes = [], rates = [];
+      var suite = cibles.reduce(function (pr, adresse) {
+        return pr.then(function () { return envoyerAuClient(Object.assign({}, f, { email: adresse })); }).then(function (r) { (r._ok ? envoyes : rates).push(adresse); });
+      }, Promise.resolve());
+      return suite.then(function () {
+        etat.panneau = null;
+        if (envoyes.length) dire(rates.length ? 'info' : 'ok', 'E-mail envoyé à ' + envoyes.map(esc).join(', ') + '.' + (rates.length ? ' Échec pour ' + rates.map(esc).join(', ') + '.' : ''));
+        else dire('erreur', 'Aucun e-mail n\'a pu partir. Vérifiez les adresses et réessayez.');
+        afficher();
+      });
+    }
     if (type === 'annulerPaiement') {
       if (motif.trim().length < 3) { if (bouton) bouton.disabled = false; var m = document.getElementById('faMotif'); if (m) m.focus(); return; }
       return appel('/api/facture/paiement', { action: 'annuler_paiement', ref: f.ref, motif: motif }).then(function (r) { etat.fiche = null; return fin(r, 'Paiement annulé : la facture est de nouveau « À payer ».'); });
@@ -506,9 +608,20 @@
   }
 
   function surClic(e) {
-    var t = e.target.closest('[data-fa-vue],[data-fa-filtre],[data-fa-ouvrir],[data-fa-relancer],[data-fa-encaisser],[data-fa-action],[data-fa-commission],[data-fa]');
+    var t = e.target.closest('[data-fa-vue],[data-fa-filtre],[data-fa-ouvrir],[data-fa-relancer],[data-fa-encaisser],[data-fa-action],[data-fa-commission],[data-fa-email],[data-fa]');
     if (!t) return;
     var d = t.dataset;
+    if (d.faEmail) {
+      lireContact();
+      var bc = etat.brouillonContact; if (!bc) return;
+      var i = Number(d.i);
+      if (d.faEmail === 'ajouter') bc.emails.push('');
+      if (d.faEmail === 'retirer') { bc.emails.splice(i, 1); if (!bc.emails.length) bc.emails = ['']; }
+      if (d.faEmail === 'principale') bc.emails.unshift(bc.emails.splice(i, 1)[0]);
+      afficher();
+      if (d.faEmail === 'ajouter') { var champs = document.querySelectorAll('#factAdminRoot .fa-email-champ'); if (champs.length) champs[champs.length - 1].focus(); }
+      return;
+    }
     if (d.faVue) { etat.vue = d.faVue; afficher(); return; }
     if (d.faFiltre) { etat.vue = 'factures'; etat.filtre = d.faFiltre; etat.choisi = null; etat.panneau = null; afficher(); return; }
     if (d.faOuvrir) { ouvrir(d.faOuvrir); return; }
@@ -518,14 +631,14 @@
     if (d.fa === 'recharger') { charger(); return; }
     if (d.fa === 'rapport') { if (window.Compte && Compte.openRapportCompta) Compte.openRapportCompta(); return; }
     if (d.fa === 'fermer') { etat.choisi = null; etat.panneau = null; etat.message = null; afficher(); return; }
-    if (d.fa === 'fermerPanneau') { etat.panneau = null; etat.brouillon = null; afficher(); return; }
+    if (d.fa === 'fermerPanneau') { etat.panneau = null; etat.brouillon = null; etat.brouillonContact = null; afficher(); return; }
     var f = etat.choisi ? trouver(etat.choisi) : null; if (!f || !d.faAction) return;
     etat.message = null;
     if (d.faAction === 'copier') return copier(f.delivery_url);
     if (d.faAction === 'relancer') return relancer(f.ref);
     if (d.faAction === 'client') { if (window.Compte && Compte.factFicheClient) Compte.factFicheClient(f.client, f.email || ''); return; }
     if (d.faAction === 'supprimer') { if (window.Compte && Compte.factDelete) Compte.factDelete(f.ref); return; }
-    etat.brouillon = null;
+    etat.brouillon = null; etat.brouillonContact = null;
     etat.panneau = etat.panneau === d.faAction ? null : d.faAction;
     afficher();
     var p = document.querySelector('#factAdminRoot .fa-panneau'); if (p) p.scrollIntoView({ block: 'nearest', behavior: 'smooth' });

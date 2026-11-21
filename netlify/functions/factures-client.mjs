@@ -4,13 +4,17 @@
 // avec statut (À payer / Payée / Annulée) et montant. Inclut donc l'archive.
 
 import { DB, hasToken, queryDatabase } from "./_notion.mjs";
-import { authResp } from "./_auth.mjs";
+import { authResp, currentUser } from "./_auth.mjs";
 import { factureFromPage, factureHtmlUrl, reqOrigin } from "./_facture.mjs";
 
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return authResp(200, {});
   if (event.httpMethod !== "GET") return authResp(405, { error: "GET requis" });
   if (!hasToken()) return authResp(503, { error: "Service non configuré." });
+
+  // Session exigée avant tout le reste : l'historique des factures d'un client n'est pas public.
+  const me = await currentUser(event);
+  if (!me) return authResp(401, { error: "Connexion requise.", need_auth: true });
 
   const q = event.queryStringParameters || {};
   const email = String(q.email || "").trim().toLowerCase();

@@ -8,6 +8,7 @@
 //   Ville (rich_text), Code postal (rich_text), Type (select), Notes (rich_text)
 
 import { hasToken, queryDatabase, createPage } from "./_notion.mjs";
+import { currentUser } from "./_auth.mjs";
 
 const CORS = {
   "Content-Type": "application/json; charset=utf-8",
@@ -82,6 +83,11 @@ function toNotionProps(client) {
 
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return j(200, {});
+
+  // Session exigée avant tout le reste : cette route liste et crée des contacts (noms, e-mails, téléphones).
+  let me = null;
+  try { me = await currentUser(event); } catch { me = null; }
+  if (!me) return j(401, { error: "Connexion requise.", need_auth: true });
 
   if (event.httpMethod === "POST") {
     if (!CRM_DB || !hasToken()) {

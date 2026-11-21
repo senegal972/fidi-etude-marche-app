@@ -32,7 +32,7 @@
                  'Carte des loyers', 'Fiscalité & sécurité'];
 
   var MODELES_BASE = [
-    { nom: 'Maison — quartier', typeLabel: 'Maison', perimetre: 'rayon_1km' },
+    { nom: 'Maison — quartier', typeLabel: 'Maison', perimetre: 'rayon_500m' },
     { nom: 'Appartement — proximité', typeLabel: 'Appartement', perimetre: 'rayon_500m' },
     { nom: 'Terrain à bâtir — commune', typeLabel: 'Terrain à bâtir', perimetre: 'commune', mode: 'cadastre' },
     { nom: 'Local commercial — secteur', typeLabel: 'Local commercial', perimetre: 'rayon_5km' }

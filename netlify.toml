@@ -364,6 +364,11 @@
   status = 200
 
 [[redirects]]
+  from   = "/api/contacts"
+  to     = "/.netlify/functions/contacts"
+  status = 200
+
+[[redirects]]
   from   = "/api/facture/paiement"
   to     = "/.netlify/functions/facture-paiement"
   status = 200
