@@ -439,7 +439,9 @@
     return '<section class="fa-carte"><h3>Paiement en ligne</h3><p class="fa-muet">Vérifie que PayPal accepte les réglages du site. Rien n\'est créé ni encaissé.</p>' +
         '<button type="button" class="btn fa-btn fa-btn-plein" data-fa="diagnostic"><i class="bi bi-shield-check me-1"></i>Tester le paiement en ligne</button>' +
         '<div id="faDiagnostic" class="fa-diagnostic" role="status">' + (etat.diagnostic || '') + '</div></section>' +
-      '<section class="fa-carte"><h3>Alertes de règlement</h3><p class="fa-muet">Une facture impayée passe « en retard » au premier seuil, puis en rouge au second. Ces seuils sont mémorisés sur ce poste.</p>' +
+      '<section class="fa-carte fa-carte-ligne"><div><h3>Sociétés émettrices et RIB</h3><p class="fa-muet">Les sociétés au nom desquelles vous facturez, celle proposée par défaut, et le RIB affiché au client pour un règlement par virement.</p></div>' +
+        '<button type="button" class="btn fa-btn" data-fa="societes"><i class="bi bi-building me-1"></i>Gérer mes sociétés</button></section>' +
+            '<section class="fa-carte"><h3>Alertes de règlement</h3><p class="fa-muet">Une facture impayée passe « en retard » au premier seuil, puis en rouge au second. Ces seuils sont mémorisés sur ce poste.</p>' +
         '<form class="fa-seuils" data-fa-form="seuils"><label class="fa-label" for="factSeuilA">Rappel à partir de J+</label><input type="number" id="factSeuilA" class="form-control fa-champ" min="1" max="365" value="' + s.a + '">' +
         '<label class="fa-label" for="factSeuilB">Retard marqué à partir de J+</label><input type="number" id="factSeuilB" class="form-control fa-champ" min="1" max="365" value="' + s.b + '">' +
         '<button type="submit" class="btn fa-btn fa-btn-plein">Appliquer</button></form>' +
@@ -651,6 +653,7 @@
     if (d.faCommission) { if (window.Compte && Compte.adminCommission) Compte.adminCommission(d.faCommission, true, Number(d.pct) || 25); return; }
     if (d.fa === 'recharger') { charger(); return; }
     if (d.fa === 'diagnostic') { diagnostiquer(); return; }
+    if (d.fa === 'societes') { if (window.Compte && Compte.rubrique) Compte.rubrique('tabSocietes'); return; }
     if (d.fa === 'rapport') { if (window.Compte && Compte.openRapportCompta) Compte.openRapportCompta(); return; }
     if (d.fa === 'fermer') { etat.choisi = null; etat.panneau = null; etat.message = null; afficher(); return; }
     if (d.fa === 'fermerPanneau') { etat.panneau = null; etat.brouillon = null; etat.brouillonContact = null; afficher(); return; }

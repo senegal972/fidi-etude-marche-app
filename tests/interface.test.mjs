@@ -109,7 +109,7 @@ test("Mon compte : identifiants conservés, rubriques séparées, feuille de sty
   const code = page.slice(a, b);
   new Function(code); // le script du compte reste syntaxiquement valide
   for (const id of ["compteModal", "compteDialog", "compteTitre", "compteBody", "cpEmail", "cpPwd", "cpErr", "tabIdent", "tabSolde", "tabOffres",
-    "tabAdmin", "tabTarifs", "tabFactAdmin", "offresBox", "ppBuyBox", "adListBody", "adCreateForm", "adEmail", "adFilterQ", "adFilterReseau",
+    "tabSocietes", "societesRoot", "tabAdmin", "tabTarifs", "tabFactAdmin", "offresBox", "ppBuyBox", "adListBody", "adCreateForm", "adEmail", "adFilterQ", "adFilterReseau",
     "adTarifsBody", "tfCreateForm", "tfGroup", "tfNom", "factAdminRoot"]) {
     assert.ok(code.includes('id="' + id + '"'), "identifiant absent : " + id);
   }
@@ -122,13 +122,17 @@ test("Mon compte : identifiants conservés, rubriques séparées, feuille de sty
   assert.match(code, /async function loadFactAdmin\(\)\{\s*if\(window\.FidiFactures\) return window\.FidiFactures\.charger\(\);/);
   assert.match(page, /<script src="\/compte-facturation\.js" defer><\/script>/);
   assert.match(mob, /#factAdminRoot \.fa-recherche input,#factAdminRoot \.fa-outils select,#factAdminRoot \.fa-champ\{font-size:16px;min-height:44px;\}/);
-  for (const cible of ["tabIdent", "tabSolde", "tabOffres", "tabAdmin", "tabTarifs", "tabFactAdmin"]) {
+  // « Mes sociétés » : rubrique ouverte à tout compte (multi-sociétés, RIB), rendue par son module.
+  new Function(readFileSync(new URL("../compte-societes.js", import.meta.url), "utf8"));
+  assert.match(page, /<script src="\/compte-societes\.js" defer><\/script>/);
+  assert.ok(page.indexOf('id="tabSocietes"') < page.indexOf("(admin ? '<div class=\"tab-pane fade\" id=\"tabAdmin\">"), "rubrique hors du bloc administrateur");
+  for (const cible of ["tabIdent", "tabSolde", "tabOffres", "tabSocietes", "tabAdmin", "tabTarifs", "tabFactAdmin"]) {
     assert.ok(code.includes('data-bs-target="#' + cible + '"'), "rubrique sans bouton : " + cible);
   }
   // Comptes et grille tarifaire ne partagent plus le même panneau.
   assert.ok(code.indexOf('id="tabTarifs"') < code.indexOf('id="adTarifsBody"'));
   assert.ok(code.indexOf('id="adListBody"') < code.indexOf('id="tabTarifs"'));
-  assert.match(code, /return \{ open, rubrique, miseEnPage,/);
+  assert.match(code, /return \{ open, rubrique, loadSocietes, miseEnPage,/);
   assert.match(page, /<link href="\/compte\.css" rel="stylesheet"\/>\n<link href="\/compte-facturation\.css" rel="stylesheet"\/>\n<link href="\/mobile\.css"/);
   assert.match(css, /\.cpt\{display:grid/);
   assert.match(mob, /#compteModal \.cpt-nav\{flex-direction:row;flex-wrap:nowrap;overflow-x:auto/);

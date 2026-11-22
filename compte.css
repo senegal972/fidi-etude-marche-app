@@ -143,3 +143,22 @@
 /* ─ Mot de passe oublié ─ */
 .cpt-oubli,.insc-retour{display:block;width:100%;border:0;background:none;color:var(--fidi-blue-light);font-size:.85rem;font-weight:600;padding:.75rem 0 0;min-height:40px;}
 .cpt-oubli:hover,.insc-retour:hover{text-decoration:underline;}
+
+/* ─ Mes sociétés ─ */
+.soc-liste{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:.8rem;margin-bottom:1rem;}
+.soc-carte{display:flex;flex-direction:column;gap:.3rem;text-align:left;background:#fff;border:1px solid #dfe3e9;border-radius:14px;padding:1rem 1.1rem;color:#1f2a3a;min-width:0;}
+.soc-carte:hover{border-color:var(--fidi-blue-light);box-shadow:0 4px 14px rgba(15,30,60,.08);}
+.soc-carte.soc-defaut{border-color:var(--fidi-blue);border-width:2px;}
+.soc-nom{font-weight:800;font-size:1rem;color:var(--fidi-blue);overflow-wrap:anywhere;}
+.soc-badge{display:inline-block;background:#eaf0f8;color:var(--fidi-blue);border-radius:999px;padding:0 .5rem;font-size:.66rem;font-weight:700;vertical-align:middle;}
+.soc-ligne{font-size:.8rem;color:#5b6573;overflow-wrap:anywhere;}
+.soc-etats{display:flex;flex-direction:column;gap:.3rem;margin-top:.35rem;}
+.soc-etat{font-size:.78rem;border-radius:8px;padding:.3rem .5rem;overflow-wrap:anywhere;}
+.soc-ok{background:#e9f7ef;color:#14532d;}
+.soc-ko{background:#fff4d6;color:#8a6100;}
+.soc-modifier{margin-top:.4rem;font-size:.8rem;font-weight:600;color:var(--fidi-blue-light);}
+.soc-vide{background:#fff;border:1px dashed #c9d0da;border-radius:14px;padding:1.4rem;text-align:center;color:#5b6573;margin-bottom:1rem;}
+.soc-vide i{font-size:1.8rem;color:var(--fidi-blue-light);}
+.soc-vide p{margin:.5rem 0 0;font-size:.9rem;}
+.soc-aide{font-size:.84rem;color:#5b6573;margin:-.3rem 0 .8rem;}
+.soc-editeur .fx-emetteur{max-width:560px;}

@@ -137,7 +137,7 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
 - Colonne de navigation `.cpt-cote` (identité + `nav.cpt-nav`, boutons `.nav-link.cpt-lien` pilotés par les onglets Bootstrap) et
   contenu `.cpt-corps` ; une rubrique = un panneau `.tab-pane` avec `header.cpt-titre` puis des blocs `.cpt-carte`.
 - **Contrat des identifiants** : `compteModal`, `compteDialog`, `compteTitre`, `compteBody`, `cpEmail`, `cpPwd`, `cpErr` ; panneaux `tabIdent`,
-  `tabSolde`, `tabOffres`, `tabAdmin` (comptes), `tabTarifs` (grille tarifaire), `tabFactAdmin` (contenu : voir « Mon compte → Facturation ») ;
+  `tabSolde`, `tabOffres`, `tabSocietes` (sociétés émettrices, tout compte), `tabAdmin` (comptes), `tabTarifs` (grille tarifaire), `tabFactAdmin` (contenu : voir « Mon compte → Facturation ») ;
   `offresBox`, `ppBuyBox`, `adListBody`, `adCreateForm`, `adTarifsBody`, `tfCreateForm`, `tfGroup`, `factAdminRoot`.
   Vérifié par `tests/interface.test.mjs`.
 - `Compte.rubrique(id)` ouvre une rubrique ; `Compte.miseEnPage()` ferme la fenêtre puis ouvre « Mise en page ».
@@ -207,6 +207,10 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
   compléter), préfixe proposé (`prefixePropose`, unique dans le compte). Le régime de TVA n'est jamais deviné ; le n° de
   TVA intracommunautaire est calculé depuis le SIREN (`tvaIntra`) seulement pour une société assujettie.
 - `pourDocument(e)` produit l'émetteur au format de `_facture_doc.mjs` — mêmes règles que `emetteurDe()` (facture.mjs).
+- **Mon compte → Mes sociétés** (`compte-societes.js`, `window.FidiSocietes.monter()`, panneau `tabSocietes` / `#societesRoot`, **tout compte**,
+  pas seulement l'administrateur) : cartes des sociétés (par défaut, RIB réglé ou non, mentions manquantes) + le même module `monter()` pour ajouter
+  ou modifier. Le module utilise des identifiants fixes (`emSelect`, `emEditeur`, `em_*`) : **un seul exemplaire monté à la fois** (la rubrique vide
+  `#fxEmetteurs` ; « Nouvelle facture » remonte le sien à chaque ouverture). La liste suit l'événement `marque:change`. `Compte.loadSocietes()`.
 - Migration : les mentions uniques de la v1.8.0 (bloc `facturation`) deviennent la première société à l'ouverture.
 
 ### Mise en page / marque blanche — `marque.js` / `marque.css` / `marque.json`

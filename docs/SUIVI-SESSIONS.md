@@ -26,7 +26,8 @@ Ce dépôt est modifié depuis plusieurs outils (Claude Code sur le PC, Claude C
 | 1.28.0 | Suite « PC éteint » du 2026-11-22 | Claude Code (cloud) | Fiche de parcelle : bouton Fermer, iPhone ; test du paiement en ligne (PayPal refusait l'identification du site : `pay-create` en 502) | `4aa158a` |
 | 1.29.0 | Suite du 2026-11-22 | Claude Code (cloud) | PayPal rétabli (nouvelle application Live, variables Netlify) ; page du client : un bouton pour document + facture, nouvel onglet, état « Payée » | `49f9df9` |
 | 1.30.0 | Suite du 2026-11-22 | Claude Code (cloud) | Dossier du client en un seul PDF (`/api/dossier` : facture + document), copie durable du document, e-mail de paiement vers la page du client | `9d3bf2e` |
-| 1.31.0 | Suite du 2026-11-22 | Claude Code (cloud) | Document remis avec la facture : rapport A4 / avis mis en page (rendu serveur) au lieu d'une capture d'écran | (ce commit) |
+| 1.31.0 | Suite du 2026-11-22 | Claude Code (cloud) | Document remis avec la facture : rapport A4 / avis mis en page (rendu serveur) au lieu d'une capture d'écran | `e4d185b` |
+| 1.32.0 | Suite du 2026-11-22 | Claude Code (cloud) | Mon compte → « Mes sociétés » (multi-sociétés, société par défaut, RIB pour le virement), ouverte à tous les comptes | (ce commit) |
 
 ## État des branches au 2026-11-16
 

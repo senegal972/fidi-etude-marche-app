@@ -6549,6 +6549,7 @@ function copyShareUrl(){
 <script src="/saisie.js" defer></script>
 <script src="/saisie-carte.js" defer></script>
 <script src="/emetteurs.js" defer></script>
+<script src="/compte-societes.js" defer></script>
 <script src="/facture-externe.js" defer></script>
 <script src="/facture.js" defer></script>
 <script src="/compte-facturation.js" defer></script>
@@ -6773,7 +6774,9 @@ window.Compte = (function(){
     if(b && window.bootstrap) bootstrap.Tab.getOrCreateInstance(b).show();
     if(id === 'tabOffres') loadOffres();
     if(id === 'tabFactAdmin') loadFactAdmin();
+    if(id === 'tabSocietes') loadSocietes();
   }
+  function loadSocietes(){ if(window.FidiSocietes) window.FidiSocietes.monter(); }
   function miseEnPage(){
     const m = bootstrap.Modal.getInstance(document.getElementById('compteModal')); if(m) m.hide();
     setTimeout(function(){ const b = document.getElementById('btnMarque'); if(b) b.click(); }, 250);
@@ -6811,6 +6814,7 @@ window.Compte = (function(){
           '<button type="button" class="nav-link cpt-lien active" data-bs-toggle="tab" data-bs-target="#tabIdent"><i class="bi bi-person-badge"></i><span>Identité</span></button>'+
           '<button type="button" class="nav-link cpt-lien" data-bs-toggle="tab" data-bs-target="#tabSolde"><i class="bi bi-wallet2"></i><span>Mon solde</span></button>'+
           '<button type="button" class="nav-link cpt-lien" data-bs-toggle="tab" data-bs-target="#tabOffres" onclick="Compte.loadOffres()"><i class="bi bi-bag-plus"></i><span>Offres &amp; crédits</span></button>'+
+          '<button type="button" class="nav-link cpt-lien" data-bs-toggle="tab" data-bs-target="#tabSocietes" onclick="Compte.loadSocietes()" title="Sociétés au nom desquelles vous facturez, RIB pour le virement"><i class="bi bi-building"></i><span>Mes sociétés</span></button>'+
           (admin ? '<div class="cpt-nav-titre">Administration</div>'+
             '<button type="button" class="nav-link cpt-lien" data-bs-toggle="tab" data-bs-target="#tabAdmin" title="Créer, modifier et suivre les comptes"><i class="bi bi-people"></i><span>Comptes</span></button>'+
             '<button type="button" class="nav-link cpt-lien" data-bs-toggle="tab" data-bs-target="#tabTarifs" title="Prestations proposées dans « Nouvelle facture »"><i class="bi bi-tags"></i><span>Grille tarifaire</span></button>'+
@@ -6872,6 +6876,12 @@ window.Compte = (function(){
         '<div class="tab-pane fade" id="tabOffres">'+
           '<header class="cpt-titre"><h2>Offres &amp; crédits</h2><p>'+(admin?'Les packs de crédits proposés aux comptes, par grille tarifaire.':'Rechargez votre compte en crédits.')+'</p></header>'+
           '<div id="offresBox" class="cpt-offres"><p class="cpt-attente">Chargement…</p></div></div>'+
+        // ─── Mes sociétés (tout compte) ───
+        '<div class="tab-pane fade" id="tabSocietes">'+
+          '<header class="cpt-titre"><h2>Mes sociétés</h2><p>Les sociétés ou statuts au nom desquels vous facturez. Vous choisissez la société sur chaque facture ; celle « par défaut » est proposée d\'office.</p></header>'+
+          '<div id="societesRoot"></div>'+
+        '</div>'+
+
         (admin ? '<div class="tab-pane fade" id="tabAdmin">'+
           '<header class="cpt-titre"><h2>Comptes</h2><p>Créez, modifiez et suivez les comptes des utilisateurs.</p></header>'+
           '<div class="cpt-outils">'+
@@ -7788,7 +7798,7 @@ window.Compte = (function(){
     if(!dryRun){ const box=document.getElementById('offresBox'); if(box) box.dataset.loaded=''; loadOffres(); }
   }
 
-  return { open, rubrique, miseEnPage, collaborateurs, doLogin, logout, refresh, setCredits, setRecherches, consume, renduPdf, confirmerCredit, adminCreate, adminCredit, adminToggle,
+  return { open, rubrique, loadSocietes, miseEnPage, collaborateurs, doLogin, logout, refresh, setCredits, setRecherches, consume, renduPdf, confirmerCredit, adminCreate, adminCredit, adminToggle,
            adminIllimite, adminQuota, adminDelete, adminReseau, adminTarifGroup, adminRefresh,
            adminEditNom, adminCommission, openFiche, ficheRoleChange, ficheSave, ficheMotDePasse, loadFactAdmin, factRelance, relanceVia, factDelete, factFicheClient,
            openRapportCompta, rcSetMonth, rcSetYear, genRapportCompta, factSaveContact,
