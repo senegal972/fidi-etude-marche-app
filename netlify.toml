@@ -91,6 +91,15 @@
     "node_modules/@sparticuz/chromium/bin/**"
   ]
 
+[functions."dossier"]
+  timeout = 26
+  node_bundler = "esbuild"
+  external_node_modules = ["@sparticuz/chromium", "puppeteer-core"]
+  included_files = [
+    "node_modules/@sparticuz/chromium/**",
+    "node_modules/@sparticuz/chromium/bin/**"
+  ]
+
 [functions."crm-clients"]
   timeout = 15
 
@@ -426,6 +435,11 @@
 [[redirects]]
   from   = "/api/plu-regle"
   to     = "/.netlify/functions/plu-regle"
+  status = 200
+
+[[redirects]]
+  from   = "/api/dossier"
+  to     = "/.netlify/functions/dossier"
   status = 200
 
 [[redirects]]

@@ -6,8 +6,12 @@
 // « Payée » : la page de remise délivre alors le document + la facture acquittée.
 import { DB, P, hasToken, updatePage, createPage, jsonResp } from "./_notion.mjs";
 import { paypalConfigured, captureOrder, lireCapture, erreurPaypal, journalPaypal } from "./_paypal.mjs";
-import { findFactureByToken, factureFromPage, factureHtmlUrl, reqOrigin } from "./_facture.mjs";
+import { findFactureByToken, factureFromPage, factureHtmlUrl, fusionPossible, dossierUrl, reqOrigin } from "./_facture.mjs";
 import { envoyerEmail } from "./send-email.mjs";
+
+// Dossier en un seul PDF, quand le document est un PDF déposé par l'application.
+const liensDossier = (f, origin) => fusionPossible(f)
+  ? { dossier_url: dossierUrl(origin, f.jeton), document_seul_url: dossierUrl(origin, f.jeton, "doc") } : {};
 
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return jsonResp(200, {});
@@ -28,7 +32,7 @@ export const handler = async (event) => {
     // Déjà réglée : idempotent, on renvoie simplement les liens débloqués.
     if (f.paye) {
       const origin = reqOrigin(event);
-      return jsonResp(200, { ok: true, deja_regle: true, facture_url: factureHtmlUrl(f, origin), document_url: f.lienDocument });
+      return jsonResp(200, { ok: true, deja_regle: true, facture_url: factureHtmlUrl(f, origin), document_url: f.lienDocument, ...liensDossier(f, origin) });
     }
 
     const cap = await captureOrder(orderId);
@@ -89,8 +93,9 @@ export const handler = async (event) => {
     if (f.email && process.env.RESEND_API_KEY) {
       const kind = (f.type && f.type.toLowerCase().includes("étude")) ? "étude de marché" : "avis de valeur";
       const titre = f.libelle || f.adresse || f.numero;
-      const deliveryUrl = document_url && /^https?:/i.test(document_url) ? document_url
-        : (f.jeton ? `${origin}/l/${f.jeton}` : "");
+      // Le lien mène à la page du client (dossier complet, valable sans limite), pas au seul document.
+      const deliveryUrl = f.jeton ? `${origin}/l/${f.jeton}`
+        : (document_url && /^https?:/i.test(document_url) ? document_url : "");
       const payload = {
         to: f.email,
         subject: `Votre ${kind} — FIDI Conseil (${f.numero})`,
@@ -109,6 +114,7 @@ export const handler = async (event) => {
       ok: true, montant: paid, moyen,
       facture_url,
       document_url,
+      ...liensDossier(f, origin),
     });
   } catch (e) {
     journalPaypal("facture-pay-capture", e);

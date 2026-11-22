@@ -99,7 +99,7 @@ export async function traiter(event, rendre) {
   };
 }
 
-async function rendrePdf({ html, format, landscape, margin, echeance }) {
+export async function rendrePdf({ html, format, landscape, margin, echeance }) {
   const restant = (plafond) => Math.min(plafond, Math.max(1000, echeance - Date.now()));
   let browser;
   try {

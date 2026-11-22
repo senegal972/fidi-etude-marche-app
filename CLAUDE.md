@@ -82,6 +82,13 @@ Les redirections `/api/<nom>` sont déclarées dans `netlify.toml`.
   document (lien) et la facture (`data-fac`, `SCRIPT_DOCS`), **toujours dans un nouvel onglet** : la page du client ne doit jamais être remplacée
   (application installée = pas de bouton retour). Après paiement, `reveal()` masque `#zonePaiement` et passe `#etatBadge` à « Payée ».
   `facture-html` ajoute « ← Retour à mes documents » quand `t` est fourni (`avecRetour`). Le lien du document n'est jamais dans la page avant paiement.
+- **Dossier en un seul PDF** : `GET /api/dossier?t=<jeton>[&part=doc]` (`dossier.mjs`, public, mêmes conditions que `/l/<jeton>` : rien avant
+  paiement). Facture rendue par Chromium (`rendrePdf` de `pdf-render.mjs`, page de `facture-html`) puis fusionnée avec le document (`pdf-lib`,
+  `fusionner`) ; résultat gardé dans Blobs `fidi-dossiers` (`tout/<jeton>/<p|n>`), le document y est recopié sans limite de durée (`doc/<jeton>`,
+  le dépôt `fidi-shared` s'efface après 7 jours). Possible seulement si « Lien document » est un dépôt de l'application (`fusionPossible`,
+  `idPartage` dans `_facture.mjs`) ; sinon l'ancien bouton à deux onglets. Plafond `MAX_OCTETS` (réponse de fonction ≤ 6 Mo). Tout échec rend une
+  page d'explication avec les liens séparés. **Ne pas importer `dossier.mjs` depuis une autre fonction** (il embarque Chromium) : les aides
+  partagées sont dans `_facture.mjs`. Tests : `tests/dossier.test.mjs`.
 - **Diagnostic** : `GET /api/paypal/diagnostic` (`paypal-diagnostic.mjs`, administrateur) → `diagnosticPaypal()` demande un jeton à PayPal :
   `acces` = `ok | refuse | injoignable | absent`. Bouton « Tester le paiement en ligne » (Facturation → Réglages, `diagnostiquer()`).
   Un `pay-create` en **502** = PayPal refuse l'identifiant / le secret du site (`invalid_client`) : aucun client ne peut payer.

@@ -117,3 +117,11 @@ export async function factureLockMap(limit = 100) {
   } catch { /* best-effort : liste non verrouillée si la base facture est indisponible */ }
   return map;
 }
+
+// Dossier en un seul PDF (voir dossier.mjs). Possible seulement quand le document est un PDF déposé par cette application.
+export function idPartage(lien) {
+  const m = String(lien || "").match(/\/api\/download\/([a-z0-9]{8,64})(?:[/?#]|$)/i);
+  return m ? m[1] : "";
+}
+export const fusionPossible = (f) => !!(f && f.jeton && idPartage(f.lienDocument));
+export const dossierUrl = (origin, jeton, part) => `${origin}/api/dossier?t=${encodeURIComponent(jeton)}${part ? "&part=" + part : ""}`;

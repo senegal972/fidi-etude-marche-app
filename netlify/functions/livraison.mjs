@@ -6,7 +6,7 @@
 // fois payé) il télécharge la facture et le document (étude / avis).
 import { hasToken } from "./_notion.mjs";
 import { paypalConfigured, paypalClientId, paypalEnv } from "./_paypal.mjs";
-import { findFactureByToken, factureFromPage, factureHtmlUrl, reqOrigin } from "./_facture.mjs";
+import { findFactureByToken, factureFromPage, factureHtmlUrl, reqOrigin, fusionPossible, dossierUrl } from "./_facture.mjs";
 import { getNamedStore } from "./_blobs.mjs";
 import { ibanValide, bicValide } from "./marque.mjs";
 
@@ -56,10 +56,14 @@ const SCRIPT_DOCS = `<script>
 </script>`;
 
 // Bloc des documents remis. Même structure que docsHTML() du script de la page de paiement.
-function blocDocuments(docUrl, facUrl, typeLabel, acquittee) {
+function blocDocuments(docUrl, facUrl, typeLabel, acquittee, dossier) {
   const t = esc(String(typeLabel || "document").toLowerCase());
   const facLib = acquittee ? "facture acquittée" : "facture";
   if (!docUrl) return `<a class="btn btn-dl" href="${esc(facUrl)}" target="_blank" rel="noopener" id="btnFac">🧾 Voir / imprimer la ${facLib}</a>`;
+  // dossier = { tout, doc } : la facture et le document réunis en un seul PDF (dossier.mjs).
+  if (dossier) return `<a class="btn btn-dl" href="${esc(dossier.tout)}" target="_blank" rel="noopener" id="btnTout">⬇︎ Télécharger mon dossier <small>(${t} + ${facLib}, un seul fichier PDF)</small></a>
+    <p class="muted" style="margin-top:6px">La préparation du fichier peut prendre quelques secondes.</p>
+    <p class="docs-liens">Ou séparément : <a href="${esc(dossier.doc)}" target="_blank" rel="noopener" id="btnDoc">${t}</a> · <a href="${esc(facUrl)}" target="_blank" rel="noopener" id="btnFac">${facLib}</a></p>`;
   return `<a class="btn btn-dl" href="${esc(docUrl)}" target="_blank" rel="noopener" id="btnTout" data-fac="${esc(facUrl)}">⬇︎ Ouvrir mes documents <small>(${t} + ${facLib})</small></a>
     <div id="docsMsg"></div>
     <p class="docs-liens">Ou séparément : <a href="${esc(docUrl)}" target="_blank" rel="noopener" id="btnDoc">${t}</a> · <a href="${esc(facUrl)}" target="_blank" rel="noopener" id="btnFac">${facLib}</a></p>`;
@@ -189,7 +193,7 @@ export const handler = async (event) => {
       : "";
     const inner = `<div class="card"><div class="hd"><div class="logo">FIDI<span>.</span></div><div class="sub">Vos documents sont prêts</div></div>
       <div class="bd">${statut}${recap}
-      <div style="margin-top:16px">${blocDocuments(f.lienDocument, factureHtmlUrl(f, origin), typeLabel, f.paye)}${payBtn}</div>${virement}
+      <div style="margin-top:16px">${blocDocuments(f.lienDocument, factureHtmlUrl(f, origin), typeLabel, f.paye, fusionPossible(f) ? { tout: dossierUrl(origin, token), doc: dossierUrl(origin, token, "doc") } : null)}${payBtn}</div>${virement}
       <p class="muted">Documents fournis par FIDI Conseil. Conservez ce lien pour y accéder à nouveau.</p>
       </div></div>`;
     return { statusCode: 200, headers: HTML, body: page(inner + SCRIPT_DOCS + (virement ? SCRIPT_COPIE : "")) };
@@ -228,12 +232,14 @@ export const handler = async (event) => {
     function el(id){ return document.getElementById(id); }
     function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
     function dire(html, cls){ var m=el('msg'); if(m) m.innerHTML = html ? '<div class="alert '+(cls||'')+'">'+html+'</div>' : ''; }
-    function docsHTML(doc, fac){
+    function docsHTML(doc, fac, tout, seul){
       var t=esc(TYPE.toLowerCase());
       if(!doc) return fac ? '<a class="btn btn-dl" href="'+esc(fac)+'" target="_blank" rel="noopener" id="btnFac">🧾 Voir / imprimer la facture acquittée</a>' : '';
+      var liens = fac ? '<p class="docs-liens">Ou séparément : <a href="'+esc(seul||doc)+'" target="_blank" rel="noopener" id="btnDoc">'+t+'</a> · <a href="'+esc(fac)+'" target="_blank" rel="noopener" id="btnFac">facture acquittée</a></p>' : '';
+      if(tout) return '<a class="btn btn-dl" href="'+esc(tout)+'" target="_blank" rel="noopener" id="btnTout">⬇︎ Télécharger mon dossier <small>('+t+' + facture acquittée, un seul fichier PDF)</small></a>'+
+        '<p class="muted" style="margin-top:6px">La préparation du fichier peut prendre quelques secondes.</p>'+liens;
       return '<a class="btn btn-dl" href="'+esc(doc)+'" target="_blank" rel="noopener" id="btnTout" data-fac="'+esc(fac||'')+'">⬇︎ Ouvrir mes documents <small>('+t+' + facture acquittée)</small></a>'+
-        '<div id="docsMsg"></div>'+
-        (fac ? '<p class="docs-liens">Ou séparément : <a href="'+esc(doc)+'" target="_blank" rel="noopener" id="btnDoc">'+t+'</a> · <a href="'+esc(fac)+'" target="_blank" rel="noopener" id="btnFac">facture acquittée</a></p>' : '');
+        '<div id="docsMsg"></div>'+liens;
     }
     function reveal(d){
       // La page passe de « à régler » à « réglée » : plus de montant ni de consigne de paiement.
@@ -241,8 +247,8 @@ export const handler = async (event) => {
       var bd=el('etatBadge'); if(bd){ bd.className='badge b-ok'; bd.textContent='✓ Payée'; }
       var st=el('sousTitre'); if(st) st.textContent='Vos documents sont prêts';
       var c=el('doneCard');
-      c.innerHTML='<div class="card"><div class="bd"><div class="alert alert-ok">✓ Paiement confirmé. Merci !</div>'+docsHTML(d.document_url, d.facture_url)+
-        '<p class="muted">Chaque document s\\'ouvre dans un nouvel onglet : cette page reste ouverte. PayPal vous envoie aussi son reçu par e-mail. Conservez ce lien pour retrouver vos documents.</p></div></div>';
+      c.innerHTML='<div class="card"><div class="bd"><div class="alert alert-ok">✓ Paiement confirmé. Merci !</div>'+docsHTML(d.document_url, d.facture_url, d.dossier_url, d.document_seul_url)+
+        '<p class="muted">Le fichier s\\'ouvre dans un nouvel onglet : cette page reste ouverte. PayPal vous envoie aussi son reçu par e-mail. Conservez ce lien pour retrouver vos documents.</p></div></div>';
       c.scrollIntoView({behavior:'smooth'});
     }
     // Navigateur intégré d'une application (Facebook, Messenger, Instagram…) : les fenêtres de paiement y sont souvent bloquées.
