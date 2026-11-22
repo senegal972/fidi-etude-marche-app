@@ -28,7 +28,8 @@ Ce dépôt est modifié depuis plusieurs outils (Claude Code sur le PC, Claude C
 | 1.30.0 | Suite du 2026-11-22 | Claude Code (cloud) | Dossier du client en un seul PDF (`/api/dossier` : facture + document), copie durable du document, e-mail de paiement vers la page du client | `9d3bf2e` |
 | 1.31.0 | Suite du 2026-11-22 | Claude Code (cloud) | Document remis avec la facture : rapport A4 / avis mis en page (rendu serveur) au lieu d'une capture d'écran | `e4d185b` |
 | 1.32.0 | Suite du 2026-11-22 | Claude Code (cloud) | Mon compte → « Mes sociétés » (multi-sociétés, société par défaut, RIB pour le virement), ouverte à tous les comptes | `0f4ad7a` |
-| 1.33.0 | Suite du 2026-11-22 | Claude Code (cloud) | Un logo par société émettrice (fiche de la société, report sur ses factures) | (ce commit) |
+| 1.33.0 | Suite du 2026-11-22 | Claude Code (cloud) | Un logo par société émettrice (fiche de la société, report sur ses factures) | `716d323` |
+| 1.34.0 | Suite du 2026-11-22 | Claude Code (cloud) | Mentions propres à chaque société émettrice ; carte de choix de la parcelle en grand écran | (ce commit) |
 
 ## État des branches au 2026-11-16
 

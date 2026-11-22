@@ -128,3 +128,16 @@ test("société émettrice : logo propre gardé, logo invalide ou trop lourd éc
   assert.ok(readFileSync(new URL("../emetteurs.js", import.meta.url), "utf8").includes("logo: e.logo || (e.avecLogo ? (m.logo || '') : '')"));
   assert.ok(readFileSync(new URL("../netlify/functions/facture.mjs", import.meta.url), "utf8").includes('logo: e.logo || (e.avecLogo ? (m.logo || "") : "")'));
 });
+
+// Mentions propres à chaque société émettrice (bas de facture).
+test("société émettrice : mentions propres gardées et bornées ; reprises sur la facture avant celles de la charte", async () => {
+  const { assainirEmetteur } = await import("../netlify/functions/marque.mjs");
+  const base = { id: "e1", raisonSociale: "Société A", prefixe: "SA" };
+  assert.equal(assainirEmetteur({ ...base, mentions: "Agent commercial du réseau X — RSAC 123" }).mentions, "Agent commercial du réseau X — RSAC 123");
+  assert.equal(assainirEmetteur({ ...base, mentions: "m".repeat(400) }).mentions.length, 240);
+  assert.equal(assainirEmetteur(base).mentions, "");
+  const { readFileSync } = await import("node:fs");
+  assert.ok(readFileSync(new URL("../marque.js", import.meta.url), "utf8").includes("'registre', 'tvaIntra', 'mentions'].forEach"));
+  assert.ok(readFileSync(new URL("../emetteurs.js", import.meta.url), "utf8").includes("mentions: e.mentions || (e.avecLogo ? (co.mentions || '') : '')"));
+  assert.ok(readFileSync(new URL("../netlify/functions/facture.mjs", import.meta.url), "utf8").includes('mentions: e.mentions || (e.avecLogo ? (co.mentions || "") : "")'));
+});

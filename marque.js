@@ -127,7 +127,7 @@
     var id = String(src.id || '').replace(/[^a-z0-9]/gi, '').slice(0, 16);
     if (!id) return null;
     var o = { id: id };
-    ['raisonSociale', 'adresse', 'telephone', 'email', 'formeJuridique', 'capital', 'siren', 'siret', 'registre', 'tvaIntra'].forEach(function (k) {
+    ['raisonSociale', 'adresse', 'telephone', 'email', 'formeJuridique', 'capital', 'siren', 'siret', 'registre', 'tvaIntra', 'mentions'].forEach(function (k) {
       var t = texte(src[k], LIMITES[k]); o[k] = t === null ? '' : t;
     });
     o.regimeTva = ['franchise', 'assujetti'].indexOf(src.regimeTva) >= 0 ? src.regimeTva : '';

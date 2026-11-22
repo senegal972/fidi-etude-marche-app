@@ -25,6 +25,7 @@
           (e.iban ? '<span class="soc-etat soc-ok"><i class="bi bi-bank"></i> Virement : ' + esc(ibanMasque(e.iban)) + '</span>'
                   : '<span class="soc-etat soc-ko"><i class="bi bi-bank"></i> Pas de RIB : virement non proposé</span>') +
           (e.logo ? '' : '<span class="soc-etat soc-info"><i class="bi bi-image"></i> ' + (e.avecLogo ? 'Logo de la charte sur ses factures' : 'Pas de logo : le nom est imprimé') + '</span>') +
+          (e.mentions ? '<span class="soc-etat soc-info"><i class="bi bi-card-text"></i> Mentions propres : ' + esc(e.mentions.length > 70 ? e.mentions.slice(0, 70) + '…' : e.mentions) + '</span>' : '') +
           (manque.length ? '<span class="soc-etat soc-ko"><i class="bi bi-exclamation-triangle"></i> À compléter : ' + esc(manque.join(', ')) + '</span>' : '') +
         '</span><span class="soc-modifier"><i class="bi bi-pencil"></i> Modifier</span></button>';
     }).join('') + '</div>';

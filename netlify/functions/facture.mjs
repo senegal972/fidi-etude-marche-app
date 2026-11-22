@@ -49,7 +49,7 @@ async function emetteurDe(event, me, b) {
       emetteur: {
         id: e.id, enseigne: e.raisonSociale, logo: e.logo || (e.avecLogo ? (m.logo || "") : ""), couleurs: m.couleurs || {},
         coordonnees: { raisonSociale: e.raisonSociale, adresse: e.adresse, telephone: e.telephone, email: e.email,
-                       mentions: e.avecLogo ? (co.mentions || "") : "" },
+                       mentions: e.mentions || (e.avecLogo ? (co.mentions || "") : "") },
         facturation: { formeJuridique: e.formeJuridique, capital: e.capital, siren: e.siret || e.siren,
                        registre: e.registre, tvaIntra: e.tvaIntra, regimeTva: e.regimeTva, tauxTva: e.tauxTva,
                        conditions: fa.conditions || "" },

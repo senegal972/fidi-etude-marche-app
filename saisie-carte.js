@@ -37,6 +37,7 @@
           '<input type="text" class="form-control saisie-input" id="carteChoixVille" placeholder="Nom de la commune (ex : Le Robert)" autocomplete="off">' +
           '<div class="autocomplete-dropdown d-none" id="carteChoixListe"></div></div>' +
         '<button type="button" class="btn-pill btn-pill-ghost" id="carteChoixPosition" title="Centrer la carte sur ma position"><i class="bi bi-geo-alt-fill"></i> Ma position</button>' +
+        '<button type="button" class="btn-pill btn-pill-ghost" id="carteChoixGrand" title="Afficher la carte en grand écran" aria-pressed="false"><i class="bi bi-arrows-fullscreen"></i> <span>Grand écran</span></button>' +
         '<button type="button" class="btn-icon" id="carteChoixFermer" title="Fermer la carte" aria-label="Fermer la carte"><i class="bi bi-x-lg"></i></button>' +
       '</div>' +
       '<div id="carteChoixEtat" class="saisie-carte-etat" role="status"></div>' +
@@ -142,6 +143,11 @@
     carte.on('click', function () { if (carte.getZoom() < 14) dire('Zoomez davantage pour distinguer les parcelles.', ''); });
 
     $('carteChoixFermer').onclick = fermer;
+    $('carteChoixGrand').onclick = function () { grandEcran(!estGrand()); };
+    document.addEventListener('keydown', function (e) {
+      // Échap quitte le grand écran, sauf si une fenêtre (détail de la parcelle) est ouverte par-dessus.
+      if (e.key === 'Escape' && estGrand() && !document.querySelector('.modal.show')) grandEcran(false);
+    });
     $('carteChoixPosition').onclick = function () { localiser(true); };
     var champ = $('carteChoixVille'), liste = $('carteChoixListe');
     champ.addEventListener('input', function () {
@@ -163,6 +169,21 @@
       if (c) choisirCommune(c);
     });
     document.addEventListener('click', function (e) { if (!e.target.closest('.saisie-carte-ville')) liste.classList.add('d-none'); });
+  }
+
+  // Grand écran : le panneau occupe toute la fenêtre (carte + fiche de la parcelle), sans quitter la page.
+  function estGrand() { var h = $('carteChoix'); return !!h && h.classList.contains('saisie-carte-plein'); }
+  function grandEcran(actif) {
+    var hote = $('carteChoix'), b = $('carteChoixGrand'); if (!hote) return;
+    hote.classList.toggle('saisie-carte-plein', !!actif);
+    document.body.classList.toggle('saisie-carte-plein-actif', !!actif);
+    if (b) {
+      b.setAttribute('aria-pressed', actif ? 'true' : 'false');
+      b.title = actif ? 'Revenir à la taille normale' : 'Afficher la carte en grand écran';
+      b.innerHTML = actif ? '<i class="bi bi-fullscreen-exit"></i> <span>Réduire</span>' : '<i class="bi bi-arrows-fullscreen"></i> <span>Grand écran</span>';
+    }
+    // La carte garde son centre et recalcule ses tuiles à la nouvelle taille.
+    if (carte) { var c = carte.getCenter(); setTimeout(function () { carte.invalidateSize(); carte.setView(c, carte.getZoom(), { animate: false }); }, 80); }
   }
 
   function ouvrir() {
@@ -187,6 +208,7 @@
     var hote = $('carteChoix'), bouton = $('btnCarteChoix');
     if (fiche) fiche.fermer();
     if (carte) carte.closePopup();
+    grandEcran(false);
     if (hote) hote.classList.add('d-none');
     if (bouton) { bouton.classList.remove('saisie-mode-actif'); bouton.setAttribute('aria-expanded', 'false'); }
   }

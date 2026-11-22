@@ -45,7 +45,7 @@ export function assainirEmetteur(src) {
   const id = String(src.id || "").replace(/[^a-z0-9]/gi, "").slice(0, 16);
   if (!id) return null;
   o.id = id;
-  for (const k of ["raisonSociale", "adresse", "telephone", "email", "formeJuridique", "capital", "siren", "siret", "registre", "tvaIntra"]) {
+  for (const k of ["raisonSociale", "adresse", "telephone", "email", "formeJuridique", "capital", "siren", "siret", "registre", "tvaIntra", "mentions"]) {
     const t = texte(src[k], LIMITES[k]);
     o[k] = t === null ? "" : t;
   }

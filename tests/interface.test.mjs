@@ -138,3 +138,13 @@ test("Mon compte : identifiants conservés, rubriques séparées, feuille de sty
   assert.match(mob, /#compteModal \.cpt-nav\{flex-direction:row;flex-wrap:nowrap;overflow-x:auto/);
   assert.match(mob, /#compteModal input,#compteModal select\{font-size:16px;\}/);
 });
+
+// Carte de choix de la parcelle : grand écran.
+test("carte de choix : bouton Grand écran, sortie par Échap et à la fermeture", async () => {
+  const { readFileSync } = await import("node:fs");
+  const js = readFileSync(new URL("../saisie-carte.js", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../saisie.css", import.meta.url), "utf8");
+  for (const m of ['id="carteChoixGrand"', "function grandEcran(", "saisie-carte-plein", "e.key === 'Escape'"]) assert.ok(js.includes(m), m);
+  assert.match(js, /function fermer\(\) \{[\s\S]{0,260}grandEcran\(false\);/);
+  assert.match(css, /\.saisie-carte\.saisie-carte-plein\{position:fixed;inset:0;z-index:1040;/);
+});

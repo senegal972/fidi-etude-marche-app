@@ -55,7 +55,7 @@ Les redirections `/api/<nom>` sont déclarées dans `netlify.toml`.
   société ne peut pas être ré-éditée au nom d'une autre : 409 `{ autre_emetteur:true }`.
 - **Logo par société** : une société émettrice porte `logo` (data URL PNG, réduit à 440 × 128 par `lireLogo` dans `emetteurs.js`, < 200 ko ;
   validé par `assainirEmetteur` des deux côtés). Sur la facture : `e.logo`, sinon le logo de la charte si `avecLogo` (`pourDocument` et
-  `emetteurDe` — **même règle dans les deux**). Les mentions de la charte ne sont apposées que si `avecLogo`. Le logo de la charte reste celui de
+  `emetteurDe` — **même règle dans les deux**). **Mentions par société** : champ `mentions` (240 car.), même règle : `e.mentions`, sinon celles de la charte si `avecLogo`. Le logo de la charte reste celui de
   l'application (écrans, rapports). Charte plafonnée à 2,6 Mo (`TAILLE_MAX`).
 - **Service central pour les autres applications** (REA, Fiche découverte, HomeStaging PRO, suivi de chantier) :
   - `facturation-pont.js` (à inclure dans l'application cliente depuis cette app) : `FidiFacturation.ouvrir({ source, type_libelle,
@@ -135,6 +135,9 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
 - « Étudier cette parcelle » → `fidiChoisirParcelle({ commune, section, numero })` (index.html) : passe en mode « Réf. cadastrale », pose
   `selectedCommune` et remplit les champs ; `ajouter:true` pousse une parcelle supplémentaire de la même commune dans `__searchParcelles`.
   **L'analyse n'est jamais lancée automatiquement** (elle consomme un essai). Rappel affiché dans `#carteChoixRetenue`.
+- **Grand écran** : `#carteChoixGrand` → `grandEcran(actif)` pose `saisie-carte-plein` sur `#carteChoix` (position fixe, `z-index:1040`, **sous** les
+  fenêtres Bootstrap pour que « Détail de la parcelle » reste au-dessus) et `saisie-carte-plein-actif` sur `body`. Échap (sauf fenêtre ouverte),
+  « Réduire » et `fermer()` en sortent ; la carte est recalculée (`invalidateSize`).
 
 ### Fenêtre « Mon compte » — `window.Compte` (index.html) / `compte.css`
 - Colonne de navigation `.cpt-cote` (identité + `nav.cpt-nav`, boutons `.nav-link.cpt-lien` pilotés par les onglets Bootstrap) et

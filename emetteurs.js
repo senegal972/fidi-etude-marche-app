@@ -61,7 +61,7 @@
     return {
       id: e.id, enseigne: e.raisonSociale, logo: e.logo || (e.avecLogo ? (m.logo || '') : ''), couleurs: m.couleurs || {},
       coordonnees: { raisonSociale: e.raisonSociale, adresse: e.adresse, telephone: e.telephone, email: e.email,
-                     mentions: e.avecLogo ? (co.mentions || '') : '' },
+                     mentions: e.mentions || (e.avecLogo ? (co.mentions || '') : '') },
       facturation: { formeJuridique: e.formeJuridique, capital: e.capital, siren: e.siret || e.siren, registre: e.registre,
                      tvaIntra: e.tvaIntra, regimeTva: e.regimeTva, tauxTva: e.tauxTva, conditions: fa.conditions || '' },
       banque: e.iban ? { iban: e.iban, bic: e.bic || '', titulaire: e.titulaire || e.raisonSociale } : null
@@ -239,13 +239,16 @@
           '<div class="col-6">' + champ('titulaire', 'Titulaire du compte', 'par défaut : la raison sociale', 80) + '</div></div>' +
         champ('prefixe', 'Préfixe de numérotation', 'ex : OD-FAC', 16) +
         '<div class="fx-tile-s">Factures numérotées ' + esc((b.prefixe || 'PREFIXE').toUpperCase()) + '-' + new Date().getFullYear() + '-001, 002… — une suite propre à cette société.</div>' +
+        '<label class="fx-label mt-3" for="em_mentions">Mentions propres à cette société (facultatif)</label>' +
+        '<textarea class="form-control form-control-sm" id="em_mentions" data-k="mentions" rows="2" maxlength="240" placeholder="Ex. : Agent commercial du réseau … — carte professionnelle n° … — assurance RC professionnelle …">' + esc(b.mentions || '') + '</textarea>' +
+        '<div class="fx-tile-s">Imprimées au bas des factures de cette société, sous les mentions légales. 240 caractères au plus.</div>' +
         '<div class="fx-label mt-3">Logo de cette société (facultatif)</div>' +
         '<div class="em-logo"><div class="em-logo-apercu" id="emLogoApercu">' + apercuLogo(b) + '</div><div class="em-logo-actions">' +
           '<label class="fx-link em-logo-choisir" for="em_logoFichier"><i class="bi bi-image"></i> ' + (b.logo ? 'Changer le logo' : 'Choisir un logo') + '</label>' +
           '<input type="file" id="em_logoFichier" class="visually-hidden" accept="image/png,image/jpeg,image/webp,image/svg+xml">' +
           '<button type="button" class="fx-link' + (b.logo ? '' : ' d-none') + '" id="emLogoRetirer" data-em="retirerLogo">Retirer le logo</button></div></div>' +
         '<div class="fx-tile-s">Imprimé en tête des factures de cette société. PNG, JPEG, WebP ou SVG.</div>' +
-        '<label class="fx-radio mt-2"><input type="checkbox" id="em_avecLogo"' + (b.avecLogo ? ' checked' : '') + '> Sans logo propre : utiliser le logo et les mentions de la charte (« Mise en page »)</label>' +
+        '<label class="fx-radio mt-2"><input type="checkbox" id="em_avecLogo"' + (b.avecLogo ? ' checked' : '') + '> À défaut de logo ou de mentions propres : reprendre ceux de la charte (« Mise en page »)</label>' +
         '<label class="fx-radio"><input type="checkbox" id="em_defaut"' + ((charte().emetteurDefaut === b.id || (!liste().length)) ? ' checked' : '') + '> Société par défaut</label>' +
         '<div class="fx-em-alerte d-none mt-2" id="emErreur" role="alert"></div>' +
         '<div class="d-flex gap-2 flex-wrap mt-2">' +

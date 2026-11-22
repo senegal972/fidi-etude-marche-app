@@ -254,6 +254,8 @@
   .saisie-carte-tete .btn-pill{flex:1 1 auto;min-height:42px;}
   .saisie-carte-tete .btn-icon{flex:0 0 42px;width:42px;height:42px;}
   .saisie-carte-carte{height:56vh;min-height:300px;}
+  .saisie-carte-plein .saisie-carte-carte{height:auto;min-height:0;}
+  .saisie-carte-plein .saisie-carte-ville{flex:1 1 100%;}
 }
 
 /* iPhone, application installée : la barre d'état et la barre d'accueil recouvrent le haut et le bas de l'écran.
