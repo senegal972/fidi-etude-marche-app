@@ -116,3 +116,12 @@ test("page du client : bouton unique vers le dossier quand le document est un d�
   facture.statut = "À payer"; facture.lien = "https://app.exemple.fr/api/download/" + ID;
   assert.ok(!(await liv.handler(evL)).body.includes("/api/download/"), "lien du document absent avant paiement");
 });
+
+// Le document remis au client est le document mis en page (rendu serveur), pas une copie de l'écran.
+test("document remis : rendu mis en page d'abord, capture d'écran seulement en repli", async () => {
+  const { readFileSync } = await import("node:fs");
+  const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const f = html.slice(html.indexOf("async function factGenDocLink"), html.indexOf("function factAfficherRemise"));
+  assert.ok(f.indexOf("fidiAutoPdfFile(") > 0 && f.indexOf("fidiAutoPdfFile(") < f.indexOf("html2pdf()"));
+  assert.match(f, /__factDocMode = 'capture'/);
+});

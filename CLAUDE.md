@@ -192,6 +192,9 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
   grille tarifaire), remise, note ; colonne d'options (échéance, paiement préalable, canaux, émetteur) ; aperçu.
 - Les mentions de l'émetteur manquantes (raison sociale, adresse, SIREN, régime de TVA) se complètent dans la fenêtre
   et sont enregistrées dans la charte via `Marque.maj()` (le panneau « Mise en page » ne peut pas s'ouvrir par-dessus).
+- **Document remis** : `factGenDocLink(ctx)` fabrique d'abord le document mis en page par `fidiAutoPdfFile()` (rapport A4 `FidiRapport.buildHTML()`
+  pour l'étude, `ctx.htmlString` pour l'avis ; rendu `/api/pdf-render`, même `doc` que le crédit déjà consommé = ré-édition gratuite), puis le
+  dépose par `/api/pdf-share`. La capture d'écran `html2pdf` n'est plus qu'un repli (`window.__factDocMode` = `mis-en-page | capture`).
 - Après création, la page de remise reste celle d'`index.html` : `factAfficherRemise`, `factGenDocLink`,
   `factHistoriqueClient` (identifiants conservés : `factureModal`, `factBody`, `factStatus`, `factClient`, `factEmail`,
   `factTel`, `factAdresse`, `factPayReq`, `factCanEmail`, `factCanWa`, `factBtnOk`, `factTarifsBox`).

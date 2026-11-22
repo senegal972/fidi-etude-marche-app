@@ -25,7 +25,8 @@ Ce dépôt est modifié depuis plusieurs outils (Claude Code sur le PC, Claude C
 | 1.27.0 | Suite « PC éteint » du 2026-11-21 | Claude Code (cloud) | Périmètre 500 m par défaut ; fiche contact à plusieurs adresses e-mail et choix des destinataires au renvoi d'une facture ; session exigée sur `crm-clients` et `factures-client` | `d99448b` |
 | 1.28.0 | Suite « PC éteint » du 2026-11-22 | Claude Code (cloud) | Fiche de parcelle : bouton Fermer, iPhone ; test du paiement en ligne (PayPal refusait l'identification du site : `pay-create` en 502) | `4aa158a` |
 | 1.29.0 | Suite du 2026-11-22 | Claude Code (cloud) | PayPal rétabli (nouvelle application Live, variables Netlify) ; page du client : un bouton pour document + facture, nouvel onglet, état « Payée » | `49f9df9` |
-| 1.30.0 | Suite du 2026-11-22 | Claude Code (cloud) | Dossier du client en un seul PDF (`/api/dossier` : facture + document), copie durable du document, e-mail de paiement vers la page du client | (ce commit) |
+| 1.30.0 | Suite du 2026-11-22 | Claude Code (cloud) | Dossier du client en un seul PDF (`/api/dossier` : facture + document), copie durable du document, e-mail de paiement vers la page du client | `9d3bf2e` |
+| 1.31.0 | Suite du 2026-11-22 | Claude Code (cloud) | Document remis avec la facture : rapport A4 / avis mis en page (rendu serveur) au lieu d'une capture d'écran | (ce commit) |
 
 ## État des branches au 2026-11-16
 
