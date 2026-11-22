@@ -59,7 +59,7 @@
     var m = charte(), co = m.coordonnees || {}, fa = m.facturation || {};
     if (!e) return { enseigne: m.enseigne, logo: m.logo, couleurs: m.couleurs, coordonnees: co, facturation: fa };
     return {
-      id: e.id, enseigne: e.raisonSociale, logo: e.avecLogo ? (m.logo || '') : '', couleurs: m.couleurs || {},
+      id: e.id, enseigne: e.raisonSociale, logo: e.logo || (e.avecLogo ? (m.logo || '') : ''), couleurs: m.couleurs || {},
       coordonnees: { raisonSociale: e.raisonSociale, adresse: e.adresse, telephone: e.telephone, email: e.email,
                      mentions: e.avecLogo ? (co.mentions || '') : '' },
       facturation: { formeJuridique: e.formeJuridique, capital: e.capital, siren: e.siret || e.siren, registre: e.registre,
@@ -239,7 +239,13 @@
           '<div class="col-6">' + champ('titulaire', 'Titulaire du compte', 'par défaut : la raison sociale', 80) + '</div></div>' +
         champ('prefixe', 'Préfixe de numérotation', 'ex : OD-FAC', 16) +
         '<div class="fx-tile-s">Factures numérotées ' + esc((b.prefixe || 'PREFIXE').toUpperCase()) + '-' + new Date().getFullYear() + '-001, 002… — une suite propre à cette société.</div>' +
-        '<label class="fx-radio mt-2"><input type="checkbox" id="em_avecLogo"' + (b.avecLogo ? ' checked' : '') + '> Logo et mentions de la charte sur ses factures</label>' +
+        '<div class="fx-label mt-3">Logo de cette société (facultatif)</div>' +
+        '<div class="em-logo"><div class="em-logo-apercu" id="emLogoApercu">' + apercuLogo(b) + '</div><div class="em-logo-actions">' +
+          '<label class="fx-link em-logo-choisir" for="em_logoFichier"><i class="bi bi-image"></i> ' + (b.logo ? 'Changer le logo' : 'Choisir un logo') + '</label>' +
+          '<input type="file" id="em_logoFichier" class="visually-hidden" accept="image/png,image/jpeg,image/webp,image/svg+xml">' +
+          '<button type="button" class="fx-link' + (b.logo ? '' : ' d-none') + '" id="emLogoRetirer" data-em="retirerLogo">Retirer le logo</button></div></div>' +
+        '<div class="fx-tile-s">Imprimé en tête des factures de cette société. PNG, JPEG, WebP ou SVG.</div>' +
+        '<label class="fx-radio mt-2"><input type="checkbox" id="em_avecLogo"' + (b.avecLogo ? ' checked' : '') + '> Sans logo propre : utiliser le logo et les mentions de la charte (« Mise en page »)</label>' +
         '<label class="fx-radio"><input type="checkbox" id="em_defaut"' + ((charte().emetteurDefaut === b.id || (!liste().length)) ? ' checked' : '') + '> Société par défaut</label>' +
         '<div class="fx-em-alerte d-none mt-2" id="emErreur" role="alert"></div>' +
         '<div class="d-flex gap-2 flex-wrap mt-2">' +
@@ -263,10 +269,42 @@
       return err;
     }
 
+    // Logo propre à la société : redimensionné et converti en PNG (léger, sans contenu actif), gardé dans la fiche.
+    function apercuLogo(b) { return b.logo ? '<img src="' + esc(b.logo) + '" alt="Logo">' : '<span>Aucun logo</span>'; }
+    function majLogo() {
+      var ap = $('emLogoApercu'); if (ap) ap.innerHTML = apercuLogo(brouillon);
+      var r = $('emLogoRetirer'); if (r) r.classList.toggle('d-none', !brouillon.logo);
+      var c = box.querySelector('.em-logo-choisir'); if (c) c.innerHTML = '<i class="bi bi-image"></i> ' + (brouillon.logo ? 'Changer le logo' : 'Choisir un logo');
+    }
+    function erreurLogo(t) { var z = $('emErreur'); if (z) { z.textContent = t; z.classList.remove('d-none'); } }
+    function lireLogo(fichier) {
+      if (!/^image\/(png|jpeg|webp|svg\+xml)$/.test(fichier.type)) return erreurLogo('Format de logo non pris en charge (PNG, JPEG, WebP ou SVG).');
+      var lecteur = new FileReader();
+      lecteur.onload = function () {
+        var img = new Image();
+        img.onload = function () {
+          var w = img.naturalWidth || 440, h = img.naturalHeight || 128;
+          var k = Math.min(1, 440 / w, 128 / h);
+          var cv = document.createElement('canvas');
+          cv.width = Math.max(1, Math.round(w * k)); cv.height = Math.max(1, Math.round(h * k));
+          cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+          var data; try { data = cv.toDataURL('image/png'); } catch (e) { return erreurLogo('Ce logo n\'a pas pu être lu.'); }
+          if (data.length >= 200000) return erreurLogo('Ce logo est trop lourd une fois réduit. Choisissez une image plus simple.');
+          if (!brouillon) return;
+          brouillon.logo = data; majLogo();
+          var z = $('emErreur'); if (z) z.classList.add('d-none');
+        };
+        img.onerror = function () { erreurLogo('Ce logo n\'a pas pu être lu.'); };
+        img.src = lecteur.result;
+      };
+      lecteur.readAsDataURL(fichier);
+    }
+
     box.addEventListener('change', function (e) {
       if (e.target.id === 'emSelect') choisir(e.target.value);
       else if (e.target.name === 'emRegime' && brouillon) brouillon.regimeTva = e.target.value;
       else if (e.target.id === 'em_avecLogo' && brouillon) brouillon.avecLogo = e.target.checked;
+      else if (e.target.id === 'em_logoFichier' && brouillon && e.target.files && e.target.files[0]) lireLogo(e.target.files[0]);
     });
     box.addEventListener('input', function (e) {
       if (e.target.id === 'emQ') { clearTimeout(rechercheTimer); var v = e.target.value; rechercheTimer = setTimeout(function () { lancerRecherche(v); }, 350); return; }
@@ -284,6 +322,7 @@
         brouillon = depuisResultat(r); rendreEditeur(); completerPappers(r.siren);
       }
       else if (a === 'annuler') { brouillon = null; $('emEditeur').innerHTML = ''; }
+      else if (a === 'retirerLogo') { if (brouillon) { brouillon.logo = ''; majLogo(); } }
       else if (a === 'enregistrer') {
         var err = valider();
         var box2 = $('emErreur');

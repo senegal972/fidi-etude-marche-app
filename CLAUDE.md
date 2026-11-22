@@ -53,7 +53,10 @@ Les redirections `/api/<nom>` sont déclarées dans `netlify.toml`.
   dans le détail. **Numérotation par société** : `<préfixe>-<AAAA>-<NNN>` (`nextFactureRef(year, prefixe)`, filtre Notion
   `starts_with`) ; `FIDI-FAC` = suite historique quand aucune société n'est définie. Une prestation déjà facturée par une
   société ne peut pas être ré-éditée au nom d'une autre : 409 `{ autre_emetteur:true }`.
-- Le logo et les mentions de la charte ne sont apposés que sur les factures des sociétés cochées « avecLogo ».
+- **Logo par société** : une société émettrice porte `logo` (data URL PNG, réduit à 440 × 128 par `lireLogo` dans `emetteurs.js`, < 200 ko ;
+  validé par `assainirEmetteur` des deux côtés). Sur la facture : `e.logo`, sinon le logo de la charte si `avecLogo` (`pourDocument` et
+  `emetteurDe` — **même règle dans les deux**). Les mentions de la charte ne sont apposées que si `avecLogo`. Le logo de la charte reste celui de
+  l'application (écrans, rapports). Charte plafonnée à 2,6 Mo (`TAILLE_MAX`).
 - **Service central pour les autres applications** (REA, Fiche découverte, HomeStaging PRO, suivi de chantier) :
   - `facturation-pont.js` (à inclure dans l'application cliente depuis cette app) : `FidiFacturation.ouvrir({ source, type_libelle,
     ref, client, bien, lignes, prixSaisis, mode, notes, lien_document, onCreee, onFermee })` ouvre `/?facturer=1` en fenêtre ;

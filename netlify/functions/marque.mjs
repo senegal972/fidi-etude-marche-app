@@ -12,7 +12,7 @@ import { authResp, currentUser } from "./_auth.mjs";
 import { getNamedStore } from "./_blobs.mjs";
 
 export const MARQUE_STORE = "fidi-marques";
-const TAILLE_MAX = 800_000; // octets — une charte avec logo redimensionné pèse quelques dizaines de ko
+const TAILLE_MAX = 2_600_000; // octets — charte, logo, et un logo par société (10 sociétés au plus, 200 ko chacun au plus)
 
 const LIMITES = {
   enseigne: 40, produit: 60, baseline: 80,
@@ -56,6 +56,8 @@ export function assainirEmetteur(src) {
   const pre = String(src.prefixe || "").toUpperCase().replace(/[^A-Z0-9-]/g, "").replace(/^-+|-+$/g, "").slice(0, LIMITES.prefixe);
   o.prefixe = pre.length >= 2 ? pre : "";
   o.avecLogo = !!src.avecLogo;
+  // Logo propre à la société (redimensionné par l'éditeur) ; à défaut, celui de la charte si « avecLogo ».
+  o.logo = logoOk(src.logo) && src.logo.length < 200_000 ? src.logo : "";
   // Coordonnées bancaires pour le règlement par virement (affichées sur la facture et la page du client).
   o.iban = ibanValide(src.iban);
   o.bic = o.iban ? bicValide(src.bic) : "";

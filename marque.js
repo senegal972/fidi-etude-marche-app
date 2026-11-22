@@ -136,6 +136,8 @@
     var pre = String(src.prefixe || '').toUpperCase().replace(/[^A-Z0-9-]/g, '').replace(/^-+|-+$/g, '').slice(0, LIMITES.prefixe);
     o.prefixe = pre.length >= 2 ? pre : '';
     o.avecLogo = !!src.avecLogo;
+    // Logo propre à la société (redimensionné par l'éditeur) ; à défaut, celui de la charte si « avecLogo ».
+    o.logo = logoOk(src.logo) && src.logo.length < 200000 ? src.logo : '';
     o.iban = ibanValide(src.iban);
     o.bic = o.iban ? bicValide(src.bic) : '';
     var tit = texte(src.titulaire, LIMITES.titulaire);

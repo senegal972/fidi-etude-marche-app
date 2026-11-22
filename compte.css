@@ -162,3 +162,6 @@
 .soc-vide p{margin:.5rem 0 0;font-size:.9rem;}
 .soc-aide{font-size:.84rem;color:#5b6573;margin:-.3rem 0 .8rem;}
 .soc-editeur .fx-emetteur{max-width:560px;}
+.soc-logo{display:block;height:40px;margin-bottom:.2rem;}
+.soc-logo img{max-height:40px;max-width:160px;object-fit:contain;}
+.soc-info{background:#eef2f7;color:#3a4553;}

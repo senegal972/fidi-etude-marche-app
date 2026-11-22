@@ -17,12 +17,14 @@
       var manque = E.manquantes(e);
       var regime = e.regimeTva === 'assujetti' ? 'TVA ' + String(e.tauxTva).replace('.', ',') + ' %' : e.regimeTva === 'franchise' ? 'Franchise en base de TVA' : 'Régime de TVA à préciser';
       return '<button type="button" class="soc-carte' + (def && def.id === e.id ? ' soc-defaut' : '') + '" data-soc="' + esc(e.id) + '">' +
+        (e.logo ? '<span class="soc-logo"><img src="' + esc(e.logo) + '" alt=""></span>' : '') +
         '<span class="soc-nom">' + esc(e.raisonSociale || '(sans nom)') + (def && def.id === e.id ? ' <span class="soc-badge">par défaut</span>' : '') + '</span>' +
         '<span class="soc-ligne">' + [e.formeJuridique, (e.siren || e.siret) && 'SIREN ' + (e.siren || e.siret), regime].filter(Boolean).map(esc).join(' · ') + '</span>' +
         '<span class="soc-ligne">Factures numérotées ' + esc(e.prefixe || '—') + '-AAAA-NNN</span>' +
         '<span class="soc-etats">' +
           (e.iban ? '<span class="soc-etat soc-ok"><i class="bi bi-bank"></i> Virement : ' + esc(ibanMasque(e.iban)) + '</span>'
                   : '<span class="soc-etat soc-ko"><i class="bi bi-bank"></i> Pas de RIB : virement non proposé</span>') +
+          (e.logo ? '' : '<span class="soc-etat soc-info"><i class="bi bi-image"></i> ' + (e.avecLogo ? 'Logo de la charte sur ses factures' : 'Pas de logo : le nom est imprimé') + '</span>') +
           (manque.length ? '<span class="soc-etat soc-ko"><i class="bi bi-exclamation-triangle"></i> À compléter : ' + esc(manque.join(', ')) + '</span>' : '') +
         '</span><span class="soc-modifier"><i class="bi bi-pencil"></i> Modifier</span></button>';
     }).join('') + '</div>';

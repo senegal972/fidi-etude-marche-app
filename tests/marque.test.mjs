@@ -89,7 +89,7 @@ test("enregistrement puis relecture : la charte suit le compte, pas un autre", a
 
 test("corps invalide ou trop lourd : refus lisible", async () => {
   assert.equal((await appel("POST", "agent@exemple.fr", "pas du json")).statusCode, 400);
-  assert.equal((await appel("POST", "agent@exemple.fr", "x".repeat(900_000))).statusCode, 413);
+  assert.equal((await appel("POST", "agent@exemple.fr", "x".repeat(2_700_000))).statusCode, 413);
 });
 
 test("assainirMarque écarte ce qui est invalide", () => {
@@ -110,4 +110,21 @@ test("assainirMarque — sociétés émettrices : champs bornés, préfixe norma
   assert.equal(m.emetteurs[1].prefixe, "ODFAC1");
   assert.equal(m.emetteurs[0].regimeTva, "");
   assert.equal(m.emetteurDefaut, "e1");
+});
+
+// Logo propre à chaque société émettrice (plusieurs sociétés, plusieurs logos).
+test("société émettrice : logo propre gardé, logo invalide ou trop lourd écarté ; règles identiques côté navigateur", async () => {
+  const { assainirEmetteur } = await import("../netlify/functions/marque.mjs");
+  const PNG = "data:image/png;base64,iVBORw0KGgo=";
+  const base = { id: "e1", raisonSociale: "Société A", prefixe: "SA" };
+  assert.equal(assainirEmetteur({ ...base, logo: PNG }).logo, PNG);
+  assert.equal(assainirEmetteur({ ...base, logo: "javascript:alert(1)" }).logo, "");
+  assert.equal(assainirEmetteur({ ...base, logo: "data:image/png;base64," + "A".repeat(200_000) }).logo, "");
+  assert.equal(assainirEmetteur(base).logo, "");
+  const { readFileSync } = await import("node:fs");
+  const nav = readFileSync(new URL("../marque.js", import.meta.url), "utf8");
+  assert.ok(nav.includes("o.logo = logoOk(src.logo) && src.logo.length < 200000 ? src.logo : '';"));
+  // Sur la facture : le logo de la société d'abord, sinon celui de la charte si la case est cochée.
+  assert.ok(readFileSync(new URL("../emetteurs.js", import.meta.url), "utf8").includes("logo: e.logo || (e.avecLogo ? (m.logo || '') : '')"));
+  assert.ok(readFileSync(new URL("../netlify/functions/facture.mjs", import.meta.url), "utf8").includes('logo: e.logo || (e.avecLogo ? (m.logo || "") : "")'));
 });
