@@ -123,7 +123,7 @@
       try { carte.closePopup(); } catch (e) {}
       if (!I.pan || !I.pan.parentNode) {
         I.pan = document.createElement('div'); I.pan.className = 'fiche-parc-panneau';
-        if (I === defaut) I.pan.id = 'ficheParcPanneau';
+        if (I === defaut) { var ancien = document.getElementById('ficheParcPanneau'); if (ancien && ancien !== I.pan) ancien.removeAttribute('id'); I.pan.id = 'ficheParcPanneau'; }
         var conteneur = carte.getContainer(); conteneur.parentNode.insertBefore(I.pan, conteneur.nextSibling);
       }
       var pan = I.pan;
@@ -360,7 +360,9 @@
     var I = { opt: options || {}, contour: null, requete: 0, courante: null, pan: null };
     if (!I.opt.carte) return null;
     styles();
-    if (!defaut) defaut = I;
+    // « principale » : la carte que visent les noms historiques (ficheParcelleAuClic…), quel que soit l'ordre d'attache.
+    // Sans cela, la carte de choix ouverte avant l'analyse devenait la cible des clics du calque de zonage de l'étude.
+    if (!defaut || I.opt.principale) defaut = I;
     S = I;
     if (I.opt.clicFond) {
       // Clic sur le fond : les repères, contours et commandes déjà cliquables gardent leur propre comportement.

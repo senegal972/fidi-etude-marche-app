@@ -3166,7 +3166,7 @@ function drawExtraParcelles(){
     style:{ color:'#8e44ad', weight:3, fillColor:'#8e44ad', fillOpacity:0.14, dashArray:'4 3' },
     onEachFeature: function(f, lyr){
       const pp = f.properties || {};
-      lyr.on('click', function(e){ L.DomEvent.stop(e); ficheParcelleAuClic(e.latlng); });
+      lyr.on('click', function(e){ L.DomEvent.stop(e); ficheEtudeAuClic(e.latlng); });
     }
   }).addTo(mapInstance);
   try{
@@ -3311,8 +3311,8 @@ function renderMap(lat, lon, city){
     mapInstance.on('moveend', ()=>{ if(_zonageOn) loadZonage(); });
     // Clic sur le fond de carte : fiche de la parcelle (carte-parcelle.js). Les repères et contours déjà
     // cliquables (ventes, parcelle étudiée) gardent leur propre bulle.
-    if(window.FidiParcelle) FidiParcelle.attacher({
-      carte: mapInstance, clicFond: true,
+    if(window.FidiParcelle) window.__ficheEtude = FidiParcelle.attacher({
+      carte: mapInstance, clicFond: true, principale: true,
       origine: ()=> (window.__fidiData && window.__fidiData.localisation) || null,
       parcellePrincipale: ()=> ((window.__fidiGpu||{}).parcelle||{}).idu || null,
       zonePrincipale: ()=> ((window.__fidiGpu||{}).zone||{}).libelle || null,
@@ -3696,7 +3696,7 @@ async function loadGpuInfo(lat, lon){
             style:{ color:'#d6336c', weight:3, fillColor:'#d6336c', fillOpacity:0.18 }
           }).addTo(mapInstance);
           // Clic sur la parcelle étudiée : même fiche que pour les parcelles voisines.
-          parcelleLayer.on('click', (e)=>{ L.DomEvent.stop(e); ficheParcelleAuClic(e.latlng); });
+          parcelleLayer.on('click', (e)=>{ L.DomEvent.stop(e); ficheEtudeAuClic(e.latlng); });
           // Recentre sur la parcelle si elle tient dans la vue
           try{ mapInstance.fitBounds(parcelleLayer.getBounds(), { maxZoom:18, padding:[40,40] }); }catch(e){}
         }
@@ -3735,11 +3735,18 @@ async function loadZonage(){
         return { color:col, weight:1, fillColor:col, fillOpacity:0.28 }; },
       onEachFeature: (feat, lyr)=>{
         // Clic sur une zone : fiche de la parcelle cliquée, zonage compris (la zone seule ne disait rien de la parcelle).
-        lyr.on('click', (e)=>{ L.DomEvent.stop(e); ficheParcelleAuClic(e.latlng, feat.properties); });
+        lyr.on('click', (e)=>{ L.DomEvent.stop(e); ficheEtudeAuClic(e.latlng, feat.properties); });
       }
     });
     zonageLayer.addLayer(gj);
   }catch(e){ /* silencieux */ }
+}
+
+// Clic venu d'un calque de la carte de l'étude (zonage, contour de la parcelle, parcelles ajoutées) : la fiche s'ouvre
+// sur CETTE carte, même si la carte de choix de « Nouvelle étude » a été ouverte avant.
+function ficheEtudeAuClic(latlng, zone){
+  if(window.__ficheEtude && window.__ficheEtude.auClic) return window.__ficheEtude.auClic(latlng, zone);
+  if(typeof ficheParcelleAuClic === 'function') return ficheParcelleAuClic(latlng, zone);
 }
 
 // ─── Fiche d'une parcelle au clic sur la carte ───────────────────────────────

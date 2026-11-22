@@ -27,10 +27,10 @@ test("le module est chargé avant l'écran et branché sur la carte de l'étude"
 
 test("les calques qui captent le clic ouvrent la même fiche", () => {
   const zonage = entre("async function loadZonage(){", "// ─── Fiche d'une parcelle");
-  assert.ok(zonage.includes("ficheParcelleAuClic(e.latlng, feat.properties)"));
+  assert.ok(zonage.includes("ficheEtudeAuClic(e.latlng, feat.properties)"));
   assert.ok(!zonage.includes("bindPopup("), "le calque Zonage ne doit plus ouvrir sa propre bulle");
-  assert.ok(html.includes("parcelleLayer.on('click', (e)=>{ L.DomEvent.stop(e); ficheParcelleAuClic(e.latlng); });"));
-  assert.ok(entre("function drawExtraParcelles(){", "// Met à jour la ligne").includes("ficheParcelleAuClic(e.latlng)"));
+  assert.ok(html.includes("parcelleLayer.on('click', (e)=>{ L.DomEvent.stop(e); ficheEtudeAuClic(e.latlng); });"));
+  assert.ok(entre("function drawExtraParcelles(){", "// Met à jour la ligne").includes("ficheEtudeAuClic(e.latlng)"));
 });
 
 test("module : interface publique, noms historiques, sources publiques sans clé", () => {
@@ -85,8 +85,8 @@ test("le cercle du périmètre d'étude ne capte pas les clics (il couvrait tout
   assert.ok(cercle.includes("interactive:false"), "le cercle doit rester un simple décor");
 });
 
-test("plusieurs cartes : chaque carte attachée a sa fiche, la première reste celle des noms historiques", () => {
-  assert.ok(mod.includes("if (!defaut) defaut = I;"));
+test("plusieurs cartes : chaque carte attachée a sa fiche, la carte principale est celle des noms historiques", () => {
+  assert.ok(mod.includes("if (!defaut || I.opt.principale) defaut = I;"));
   assert.ok(mod.includes("function auClic(latlng, zoneConnue) { return clicSur(defaut || S, latlng, zoneConnue); }"));
   assert.ok(mod.includes("data-fiche-parc=\"action\""), "actions de l'hôte dans la bulle");
 });
@@ -117,4 +117,17 @@ test("fenêtre de détail : bouton Fermer en bas et écart de la barre d'état",
   assert.ok(js.includes("fiche-parc-fermer") && js.includes("modal-footer"));
   assert.ok(js.includes("safe-area-inset-top"));
   assert.match(readFileSync(new URL("../mobile.css", import.meta.url), "utf8"), /\.modal\{padding-top:env\(safe-area-inset-top/);
+});
+
+// Deux cartes attachées (carte de choix ouverte avant l'analyse) : les calques de la carte de l'étude visent cette carte-là.
+test("zonage actif : le clic ouvre la fiche sur la carte de l'étude, pas sur la carte de choix", async () => {
+  const { readFileSync } = await import("node:fs");
+  const page = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const mod = readFileSync(new URL("../carte-parcelle.js", import.meta.url), "utf8");
+  assert.ok(mod.includes("if (!defaut || I.opt.principale) defaut = I;"));
+  assert.match(page, /window\.__ficheEtude = FidiParcelle\.attacher\(\{\s*carte: mapInstance, clicFond: true, principale: true,/);
+  assert.ok(page.includes("ficheEtudeAuClic(e.latlng, feat.properties)"), "le calque de zonage appelle la fiche de la carte de l'étude");
+  // Plus aucun calque de l'étude n'appelle directement le nom historique.
+  const appels = (page.match(/ficheParcelleAuClic\(e\.latlng/g) || []).length;
+  assert.equal(appels, 0);
 });

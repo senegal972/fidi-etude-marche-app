@@ -311,6 +311,10 @@ Chargé avant l'écran (`<script src="/carte-parcelle.js">`, sans `defer`). Dép
   leur comportement). `FidiParcelle.auClic(latlng, zoneConnue?)` s'appelle depuis un calque qui capte le clic : **tout nouveau calque de
   polygones qui couvre la carte doit l'appeler** (comme le zonage), sinon il masque la fiche. Les noms historiques `ficheParcelleAuClic`,
   `ficheParcFermer`, `ficheParcDetail` restent définis.
+- **Carte principale** : `attacher({ principale:true })` désigne la carte visée par les noms historiques, quel que soit l'ordre d'attache.
+  Les calques de la carte de l'étude (zonage, contour, parcelles ajoutées) appellent `ficheEtudeAuClic()` → `window.__ficheEtude.auClic()` :
+  **jamais `ficheParcelleAuClic` directement** — de la 1.26 à la 1.34.0, la carte de choix ouverte avant l'analyse recevait ces clics et la
+  fiche s'ouvrait sur une carte masquée (zonage actif = aucun clic utile).
 - Bulle Leaflet sur ordinateur, panneau `#ficheParcPanneau` sous la carte à 768 px et moins ; contour de la parcelle non cliquable ; un clic plus
   récent annule l'affichage du précédent ; chaque lecture d'un service public est retentée une fois (`lire`).
 - `FidiParcelle.detail()` : cadastre (`apicarto.ign.fr/api/cadastre/parcelle`), adresse la plus proche (`api-adresse.data.gouv.fr/reverse`),
