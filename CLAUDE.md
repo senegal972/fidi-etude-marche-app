@@ -78,6 +78,10 @@ Les redirections `/api/<nom>` sont déclarées dans `netlify.toml`.
 - Page du client `/l/<jeton>` (`livraison.mjs`) : facture impayée sans paiement préalable → documents + bouton `#btnPayer` vers `?pay=1` ;
   le script PayPal est chargé par la page pour afficher un message s'il est bloqué. Le script en ligne est écrit dans un gabarit JavaScript :
   **toute apostrophe y est écrite `\\'`** (vérifié par `tests/paypal.test.mjs`, qui compile le script produit).
+- **Documents remis** : `blocDocuments()` (serveur) et `docsHTML()` (script de la page de paiement, même structure) — un bouton `#btnTout` ouvre le
+  document (lien) et la facture (`data-fac`, `SCRIPT_DOCS`), **toujours dans un nouvel onglet** : la page du client ne doit jamais être remplacée
+  (application installée = pas de bouton retour). Après paiement, `reveal()` masque `#zonePaiement` et passe `#etatBadge` à « Payée ».
+  `facture-html` ajoute « ← Retour à mes documents » quand `t` est fourni (`avecRetour`). Le lien du document n'est jamais dans la page avant paiement.
 - **Diagnostic** : `GET /api/paypal/diagnostic` (`paypal-diagnostic.mjs`, administrateur) → `diagnosticPaypal()` demande un jeton à PayPal :
   `acces` = `ok | refuse | injoignable | absent`. Bouton « Tester le paiement en ligne » (Facturation → Réglages, `diagnostiquer()`).
   Un `pay-create` en **502** = PayPal refuse l'identifiant / le secret du site (`invalid_client`) : aucun client ne peut payer.

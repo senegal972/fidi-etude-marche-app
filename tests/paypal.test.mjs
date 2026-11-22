@@ -207,3 +207,26 @@ test("diagnostic : secret refusé par PayPal → acces « refuse », code invali
     if (avant.s === undefined) delete process.env.PAYPAL_SECRET; else process.env.PAYPAL_SECRET = avant.s;
   }
 });
+
+// Après paiement : un seul bouton pour le document et la facture, la page ne dit plus « en attente ».
+test("documents remis : un bouton ouvre le document et la facture, chacun dans un nouvel onglet", async () => {
+  facture = { requis: true, statut: "Payée", montant: 450 };
+  const h = (await liv.handler(ev())).body;
+  const b = h.match(/<a[^>]*id="btnTout"[^>]*>/)[0];
+  assert.match(b, /target="_blank"/); assert.match(b, /href="https:\/\/example\.org\/doc\.pdf"/); assert.match(b, /data-fac="[^"]*facture-html/);
+  assert.ok(!/<a(?![^>]*target="_blank")[^>]*(btn-dl|btnDoc|btnFac)/.test(h), "aucun document ne remplace la page du client");
+  for (const m of h.matchAll(/<script>([\s\S]*?)<\/script>/g)) new vm.Script(m[1]);
+  facture = { requis: true, statut: "À payer", montant: 450 };
+  const p = (await liv.handler(ev())).body;
+  assert.ok(!p.includes("example.org/doc.pdf"), "le document n'est pas livré avant paiement");
+  for (const id of ["etatBadge", "zonePaiement", "sousTitre"]) assert.ok(p.includes('id="' + id + '"'), id);
+  for (const m of p.matchAll(/<script>([\s\S]*?)<\/script>/g)) new vm.Script(m[1]);
+});
+
+test("facture ouverte par le client : lien de retour vers ses documents, absent à l'impression", async () => {
+  const fh = await import("../netlify/functions/facture-html.mjs");
+  const r = await fh.handler({ httpMethod: "GET", headers: { host: "x.test" }, queryStringParameters: { ref: "FIDI-FAC-2026-099", t: "jetontest" } });
+  assert.match(r.body, /<a class="no-print" href="\/l\/jetontest"[^>]*>← Retour à mes documents<\/a>/);
+  const s = await fh.handler({ httpMethod: "GET", headers: { host: "x.test" }, queryStringParameters: { ref: "FIDI-FAC-2026-099" } });
+  assert.ok(!s.body.includes("Retour à mes documents"));
+});

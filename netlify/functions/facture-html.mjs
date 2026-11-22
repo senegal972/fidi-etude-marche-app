@@ -34,6 +34,14 @@ function fmtDate(iso) {
   return d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
 }
 
+// Facture ouverte depuis la page du client : lien de retour (absent à l'impression). Dans l'application installée,
+// la fenêtre n'a pas de bouton « retour ».
+function avecRetour(html, jeton) {
+  if (!jeton || !/^[A-Za-z0-9_-]{6,80}$/.test(String(jeton))) return html;
+  const lien = `<a class="no-print" href="/l/${encodeURIComponent(jeton)}" style="display:inline-block;margin:0 0 12px;font:600 14px Arial,sans-serif;color:#24508f;text-decoration:none">← Retour à mes documents</a>`;
+  return html.includes("<body>") ? html.replace("<body>", "<body>" + lien) : html.replace(/<body([^>]*)>/, (m) => m + lien);
+}
+
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return { statusCode: 200, headers: CORS_HEADERS, body: "" };
 
@@ -56,7 +64,7 @@ export const handler = async (event) => {
       const detail = await store.get(String(q.t), { type: "json" });
       if (detail) {
         return { statusCode: 200, headers: CORS_HEADERS,
-                 body: renderFactureHTML({ ...detail, acquittee: q.acquittee === "1", apercu: false }) };
+                 body: avecRetour(renderFactureHTML({ ...detail, acquittee: q.acquittee === "1", apercu: false }), q.t) };
       }
     } catch (e) { console.error("[facture-html] détail indisponible :", e.message); }
   }
@@ -182,5 +190,5 @@ export const handler = async (event) => {
 </body>
 </html>`;
 
-  return { statusCode: 200, headers: CORS_HEADERS, body: html };
+  return { statusCode: 200, headers: CORS_HEADERS, body: avecRetour(html, q.t) };
 };

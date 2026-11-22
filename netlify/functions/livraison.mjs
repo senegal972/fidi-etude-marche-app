@@ -43,6 +43,28 @@ function blocVirement(bq, f, bloquant) {
                  : "Un virement est enregistré à sa réception, en général sous 1 à 2 jours ouvrés."}</p>
     </div></details>`;
 }
+// Documents remis : un seul bouton ouvre le document et la facture, chacun dans un nouvel onglet — la page du client reste
+// ouverte (dans l'application installée, il n'y a pas de bouton « retour »). Apostrophes écrites \\' (gabarit JavaScript).
+const SCRIPT_DOCS = `<script>
+  document.addEventListener('click', function(e){
+    var b = e.target.closest ? e.target.closest('#btnTout') : null; if(!b) return;
+    var fac = b.getAttribute('data-fac'); if(!fac) return;
+    var w = null; try { w = window.open(fac, '_blank'); } catch(_) {}
+    var m = document.getElementById('docsMsg');
+    if(m) m.innerHTML = w ? '' : '<div class="alert" style="background:#fff4d6;color:#8a6100">Votre navigateur n\\'a ouvert qu\\'un seul document. Ouvrez la facture avec le lien « facture » ci-dessous.</div>';
+  });
+</script>`;
+
+// Bloc des documents remis. Même structure que docsHTML() du script de la page de paiement.
+function blocDocuments(docUrl, facUrl, typeLabel, acquittee) {
+  const t = esc(String(typeLabel || "document").toLowerCase());
+  const facLib = acquittee ? "facture acquittée" : "facture";
+  if (!docUrl) return `<a class="btn btn-dl" href="${esc(facUrl)}" target="_blank" rel="noopener" id="btnFac">🧾 Voir / imprimer la ${facLib}</a>`;
+  return `<a class="btn btn-dl" href="${esc(docUrl)}" target="_blank" rel="noopener" id="btnTout" data-fac="${esc(facUrl)}">⬇︎ Ouvrir mes documents <small>(${t} + ${facLib})</small></a>
+    <div id="docsMsg"></div>
+    <p class="docs-liens">Ou séparément : <a href="${esc(docUrl)}" target="_blank" rel="noopener" id="btnDoc">${t}</a> · <a href="${esc(facUrl)}" target="_blank" rel="noopener" id="btnFac">${facLib}</a></p>`;
+}
+
 const SCRIPT_COPIE = `<script>
   document.addEventListener('click', function(e){
     var b = e.target.closest ? e.target.closest('[data-copie]') : null; if(!b) return;
@@ -94,7 +116,7 @@ function page(inner, extraHead = "") {
   .vr .k{flex:0 0 74px;color:#6a7686}
   .vr .v{flex:1 1 auto;min-width:0;font-weight:600;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
   .vr .cp{flex:0 0 auto;border:1px solid #c9d0da;background:#fff;color:#12294d;border-radius:8px;padding:7px 10px;font-size:12px;font-weight:600;cursor:pointer;min-height:36px}
-  .btn-dl{background:#12294d;color:#fff}.btn-fac{background:#fff;color:#12294d;border:2px solid #12294d}
+  .btn-dl{background:#12294d;color:#fff}.btn-dl small{display:block;font-weight:500;font-size:12.5px;opacity:.85;margin-top:2px}.docs-liens{text-align:center;font-size:13.5px;color:#6a7686;margin:10px 0 0}.docs-liens a{color:#24508f;font-weight:600}.btn-fac{background:#fff;color:#12294d;border:2px solid #12294d}
   .muted{color:#8a94a3;font-size:12px;text-align:center;margin-top:14px;line-height:1.5}
   .foot{text-align:center;font-size:11px;color:#9aa3b0;padding:6px 0 20px}
   #ppwrap{margin-top:16px}
@@ -149,11 +171,6 @@ export const handler = async (event) => {
     ${f.client ? `<div class="line"><span class="k">Client</span><span class="v">${esc(f.client)}</span></div>` : ""}
     <div class="line"><span class="k">Montant TTC</span><span class="v">${eur(f.montant)} €</span></div>`;
 
-  const docBtn = f.lienDocument
-    ? `<a class="btn btn-dl" href="${esc(f.lienDocument)}" id="btnDoc"><span>⬇︎</span> Télécharger ${esc(typeLabel.toLowerCase())}</a>`
-    : "";
-  const facBtn = `<a class="btn btn-fac" href="${esc(factureHtmlUrl(f, origin))}" target="_blank" id="btnFac">🧾 Voir / imprimer la facture</a>`;
-
   // ── Cas 1 : débloqué (paiement non requis, ou déjà payé) ────────────────────
   // Exception : si une relance force le paiement (?pay=1) et que la facture n'est
   // PAS encore payée, on saute vers le bloc de paiement (Cas 2) pour présenter la CB.
@@ -172,10 +189,10 @@ export const handler = async (event) => {
       : "";
     const inner = `<div class="card"><div class="hd"><div class="logo">FIDI<span>.</span></div><div class="sub">Vos documents sont prêts</div></div>
       <div class="bd">${statut}${recap}
-      <div style="margin-top:16px">${docBtn}${facBtn}${payBtn}</div>${virement}
+      <div style="margin-top:16px">${blocDocuments(f.lienDocument, factureHtmlUrl(f, origin), typeLabel, f.paye)}${payBtn}</div>${virement}
       <p class="muted">Documents fournis par FIDI Conseil. Conservez ce lien pour y accéder à nouveau.</p>
       </div></div>`;
-    return { statusCode: 200, headers: HTML, body: page(inner + (virement ? SCRIPT_COPIE : "")) };
+    return { statusCode: 200, headers: HTML, body: page(inner + SCRIPT_DOCS + (virement ? SCRIPT_COPIE : "")) };
   }
 
   // ── Cas 2 : paiement requis, non réglé → bouton Payer ───────────────────────
@@ -197,12 +214,12 @@ export const handler = async (event) => {
   const virement = blocVirement(bq, f, !f.unlocked);
   const retour = f.unlocked ? `<a class="lien" href="/l/${encodeURIComponent(token)}">← Revenir à mes documents</a>` : "";
 
-  const inner = `<div class="card"><div class="hd"><div class="logo">FIDI<span>.</span></div><div class="sub">Règlement de votre facture</div></div>
+  const inner = `<div class="card"><div class="hd"><div class="logo">FIDI<span>.</span></div><div class="sub" id="sousTitre">Règlement de votre facture</div></div>
     <div class="bd">
-      <div class="center" style="margin-bottom:6px"><span class="badge b-wait">En attente de paiement</span></div>
+      <div class="center" style="margin-bottom:6px"><span class="badge b-wait" id="etatBadge">En attente de paiement</span></div>
       ${recap}
-      <div class="amount">${eur(f.montant)} €</div>
-      ${payBlock}${virement}${retour}
+      <div id="zonePaiement"><div class="amount">${eur(f.montant)} €</div>
+      ${payBlock}${virement}${retour}</div>
     </div></div>
     <div id="doneCard"></div>`;
 
@@ -211,12 +228,21 @@ export const handler = async (event) => {
     function el(id){ return document.getElementById(id); }
     function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
     function dire(html, cls){ var m=el('msg'); if(m) m.innerHTML = html ? '<div class="alert '+(cls||'')+'">'+html+'</div>' : ''; }
+    function docsHTML(doc, fac){
+      var t=esc(TYPE.toLowerCase());
+      if(!doc) return fac ? '<a class="btn btn-dl" href="'+esc(fac)+'" target="_blank" rel="noopener" id="btnFac">🧾 Voir / imprimer la facture acquittée</a>' : '';
+      return '<a class="btn btn-dl" href="'+esc(doc)+'" target="_blank" rel="noopener" id="btnTout" data-fac="'+esc(fac||'')+'">⬇︎ Ouvrir mes documents <small>('+t+' + facture acquittée)</small></a>'+
+        '<div id="docsMsg"></div>'+
+        (fac ? '<p class="docs-liens">Ou séparément : <a href="'+esc(doc)+'" target="_blank" rel="noopener" id="btnDoc">'+t+'</a> · <a href="'+esc(fac)+'" target="_blank" rel="noopener" id="btnFac">facture acquittée</a></p>' : '');
+    }
     function reveal(d){
+      // La page passe de « à régler » à « réglée » : plus de montant ni de consigne de paiement.
+      var z=el('zonePaiement'); if(z) z.style.display='none';
+      var bd=el('etatBadge'); if(bd){ bd.className='badge b-ok'; bd.textContent='✓ Payée'; }
+      var st=el('sousTitre'); if(st) st.textContent='Vos documents sont prêts';
       var c=el('doneCard');
-      var doc = d.document_url ? '<a class="btn btn-dl" href="'+esc(d.document_url)+'">⬇︎ Télécharger '+esc(TYPE.toLowerCase())+'</a>' : '';
-      var fac = d.facture_url ? '<a class="btn btn-fac" target="_blank" href="'+esc(d.facture_url)+'">🧾 Voir / imprimer la facture acquittée</a>' : '';
-      c.innerHTML='<div class="card"><div class="bd"><div class="alert alert-ok">✓ Paiement confirmé. Merci !</div>'+doc+fac+
-        '<p class="muted">Conservez ce lien pour retrouver vos documents.</p></div></div>';
+      c.innerHTML='<div class="card"><div class="bd"><div class="alert alert-ok">✓ Paiement confirmé. Merci !</div>'+docsHTML(d.document_url, d.facture_url)+
+        '<p class="muted">Chaque document s\\'ouvre dans un nouvel onglet : cette page reste ouverte. PayPal vous envoie aussi son reçu par e-mail. Conservez ce lien pour retrouver vos documents.</p></div></div>';
       c.scrollIntoView({behavior:'smooth'});
     }
     // Navigateur intégré d'une application (Facebook, Messenger, Instagram…) : les fenêtres de paiement y sont souvent bloquées.
@@ -266,5 +292,5 @@ export const handler = async (event) => {
     })();
   </script>` : "";
 
-  return { statusCode: 200, headers: HTML, body: page(inner + script + (virement ? SCRIPT_COPIE : "")) };
+  return { statusCode: 200, headers: HTML, body: page(inner + script + SCRIPT_DOCS + (virement ? SCRIPT_COPIE : "")) };
 };
