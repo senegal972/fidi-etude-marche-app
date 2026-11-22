@@ -78,6 +78,9 @@ Les redirections `/api/<nom>` sont déclarées dans `netlify.toml`.
 - Page du client `/l/<jeton>` (`livraison.mjs`) : facture impayée sans paiement préalable → documents + bouton `#btnPayer` vers `?pay=1` ;
   le script PayPal est chargé par la page pour afficher un message s'il est bloqué. Le script en ligne est écrit dans un gabarit JavaScript :
   **toute apostrophe y est écrite `\\'`** (vérifié par `tests/paypal.test.mjs`, qui compile le script produit).
+- **Diagnostic** : `GET /api/paypal/diagnostic` (`paypal-diagnostic.mjs`, administrateur) → `diagnosticPaypal()` demande un jeton à PayPal :
+  `acces` = `ok | refuse | injoignable | absent`. Bouton « Tester le paiement en ligne » (Facturation → Réglages, `diagnostiquer()`).
+  Un `pay-create` en **502** = PayPal refuse l'identifiant / le secret du site (`invalid_client`) : aucun client ne peut payer.
 - Variables : `PAYPAL_CLIENT_ID`, `PAYPAL_SECRET`, `PAYPAL_ENV` (`live` ou `sandbox` ; absent = `sandbox`).
 - **Virement** : une société émettrice porte `iban`, `bic`, `titulaire` (`assainirEmetteur`, `ibanValide` / `bicValide` — en double dans
   `marque.js` et `marque.mjs`). `emetteurDe()` les fige dans `emetteur.banque` ; `_facture_doc.mjs` les affiche tant que la facture n'est pas
@@ -292,4 +295,6 @@ Chargé avant l'écran (`<script src="/carte-parcelle.js">`, sans `defer`). Dép
   `ventesDeLaParcelle` — DVF rend une ligne par lot), risques (`options.urlRisques`, facultatif). Aucune clé. Le propriétaire n'est pas public.
 - **Réutilisation sur une autre interface** : copier `carte-parcelle.js`, charger Leaflet et Bootstrap, appeler `attacher({ carte, clicFond:true })`.
   Les options sont toutes facultatives sauf `carte` ; sans `urlRisques`, la rubrique Risques n'apparaît pas.
+- Fenêtre de détail : bouton `.fiche-parc-fermer` en pied, plein écran à 768 px et moins. **iPhone, application installée** (`black-translucent` +
+  `viewport-fit=cover`) : le haut de l'écran est sous la barre d'état ; `mobile.css` écarte toute `.modal` par `env(safe-area-inset-*)`.
 - Tests : `tests/carte-parcelle.test.mjs` (branchements, regroupement des ventes, bulle). Le comportement réel se vérifie dans un navigateur.

@@ -183,3 +183,27 @@ test("facture : bloc virement sur une facture à payer, pas sur une facture acqu
   assert.doesNotMatch(renderFactureHTML({ ...base, acquittee: true }), /Règlement par virement/);
   assert.doesNotMatch(renderFactureHTML({ ...base, emetteur: { ...base.emetteur, banque: undefined } }), /Règlement par virement/);
 });
+
+// Identification refusée par PayPal : erreur de réglage du site, signalée comme telle (et non comme un refus du client).
+test("diagnostic : secret refusé par PayPal → acces « refuse », code invalid_client ; route réservée", async () => {
+  const avant = { id: process.env.PAYPAL_CLIENT_ID, s: process.env.PAYPAL_SECRET, f: globalThis.fetch };
+  process.env.PAYPAL_CLIENT_ID = "AaOWxB-identifiant-de-test-83bU"; process.env.PAYPAL_SECRET = "mauvais";
+  globalThis.fetch = async () => new Response(JSON.stringify({ error: "invalid_client", error_description: "Client Authentication failed" }), { status: 401 });
+  try {
+    const m = await import("../netlify/functions/_paypal.mjs");
+    const d = await m.diagnosticPaypal();
+    assert.equal(d.acces, "refuse"); assert.equal(d.code, "invalid_client");
+    assert.ok(!JSON.stringify(d).includes("mauvais"), "le secret n'est jamais renvoyé");
+    let err; try { await m.createOrder({ montant: 10 }); } catch (e) { err = e; }
+    assert.equal(m.erreurPaypal(err).code, "invalid_client");
+    globalThis.fetch = async () => new Response(JSON.stringify({ access_token: "t", expires_in: 100 }), { status: 200 });
+    assert.equal((await m.diagnosticPaypal()).acces, "ok");
+    const { handler } = await import("../netlify/functions/paypal-diagnostic.mjs");
+    const r = await handler({ httpMethod: "GET", headers: {} });
+    assert.ok([401, 503].includes(r.statusCode));
+  } finally {
+    globalThis.fetch = avant.f;
+    if (avant.id === undefined) delete process.env.PAYPAL_CLIENT_ID; else process.env.PAYPAL_CLIENT_ID = avant.id;
+    if (avant.s === undefined) delete process.env.PAYPAL_SECRET; else process.env.PAYPAL_SECRET = avant.s;
+  }
+});

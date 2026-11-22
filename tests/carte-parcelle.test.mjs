@@ -109,3 +109,12 @@ test("Nouvelle étude : bouton « Carte », panneau, report de la parcelle dans 
   assert.match(css, /\.saisie-carte-carte\{height:440px/);
   assert.match(mob, /\.saisie-carte-ville input\{font-size:16px;\}/);
 });
+
+// iPhone : la croix de la fenêtre de détail peut passer sous la barre d'état ; un bouton « Fermer » reste en bas.
+test("fenêtre de détail : bouton Fermer en bas et écart de la barre d'état", async () => {
+  const { readFileSync } = await import("node:fs");
+  const js = readFileSync(new URL("../carte-parcelle.js", import.meta.url), "utf8");
+  assert.ok(js.includes("fiche-parc-fermer") && js.includes("modal-footer"));
+  assert.ok(js.includes("safe-area-inset-top"));
+  assert.match(readFileSync(new URL("../mobile.css", import.meta.url), "utf8"), /\.modal\{padding-top:env\(safe-area-inset-top/);
+});

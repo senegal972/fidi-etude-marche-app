@@ -436,13 +436,34 @@
 
   function vueReglages() {
     var s = seuils();
-    return '<section class="fa-carte"><h3>Alertes de règlement</h3><p class="fa-muet">Une facture impayée passe « en retard » au premier seuil, puis en rouge au second. Ces seuils sont mémorisés sur ce poste.</p>' +
+    return '<section class="fa-carte"><h3>Paiement en ligne</h3><p class="fa-muet">Vérifie que PayPal accepte les réglages du site. Rien n\'est créé ni encaissé.</p>' +
+        '<button type="button" class="btn fa-btn fa-btn-plein" data-fa="diagnostic"><i class="bi bi-shield-check me-1"></i>Tester le paiement en ligne</button>' +
+        '<div id="faDiagnostic" class="fa-diagnostic" role="status">' + (etat.diagnostic || '') + '</div></section>' +
+      '<section class="fa-carte"><h3>Alertes de règlement</h3><p class="fa-muet">Une facture impayée passe « en retard » au premier seuil, puis en rouge au second. Ces seuils sont mémorisés sur ce poste.</p>' +
         '<form class="fa-seuils" data-fa-form="seuils"><label class="fa-label" for="factSeuilA">Rappel à partir de J+</label><input type="number" id="factSeuilA" class="form-control fa-champ" min="1" max="365" value="' + s.a + '">' +
         '<label class="fa-label" for="factSeuilB">Retard marqué à partir de J+</label><input type="number" id="factSeuilB" class="form-control fa-champ" min="1" max="365" value="' + s.b + '">' +
         '<button type="submit" class="btn fa-btn fa-btn-plein">Appliquer</button></form>' +
         '<p class="fa-muet">Les relances restent manuelles : bouton « Relancer » sur une facture.</p></section>' +
       '<section class="fa-carte fa-carte-ligne"><div><h3>Rapport comptable</h3><p class="fa-muet">Récapitulatif mensuel ou annuel des encaissements, à imprimer ou enregistrer en PDF.</p></div>' +
         '<button type="button" class="btn fa-btn" data-fa="rapport"><i class="bi bi-file-earmark-bar-graph me-1"></i>Ouvrir le rapport</button></section>';
+  }
+
+  // Contrôle des réglages du paiement en ligne (PayPal, virement, e-mail) — /api/paypal/diagnostic.
+  function ligneDiag(ok, texte) { return '<div class="fa-diag ' + (ok ? 'fa-diag-ok' : 'fa-diag-ko') + '"><i class="bi ' + (ok ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill') + '"></i><span>' + texte + '</span></div>'; }
+  function diagnostiquer() {
+    etat.diagnostic = '<div class="fa-muet"><span class="spinner-border spinner-border-sm me-1"></span>Contrôle en cours…</div>'; afficher();
+    appel('/api/paypal/diagnostic').then(function (r) {
+      if (!r._ok) { etat.diagnostic = ligneDiag(false, esc(r.error || 'Contrôle impossible.')); return afficher(); }
+      var p = r.paypal || {}, h = '';
+      if (p.acces === 'ok') h += ligneDiag(true, 'PayPal accepte les réglages du site (compte ' + (p.env === 'live' ? 'réel' : 'd\'essai') + ', application ' + esc(p.identifiant) + ').');
+      else if (p.acces === 'absent') h += ligneDiag(false, 'PayPal n\'est pas réglé : les variables PAYPAL_CLIENT_ID et PAYPAL_SECRET manquent dans Netlify.');
+      else if (p.acces === 'refuse') h += ligneDiag(false, '<b>PayPal refuse l\'identification du site</b> (' + esc(p.code) + '). Aucun client ne peut payer en ligne. Le « Secret » enregistré dans Netlify (PAYPAL_SECRET) ne correspond pas à l\'identifiant ' + esc(p.identifiant) + ', ou il n\'est pas celui du mode ' + (p.env === 'live' ? '« Live »' : '« Sandbox »') + '. Recopiez le Secret depuis developer.paypal.com → Apps &amp; Credentials → ' + (p.env === 'live' ? 'Live' : 'Sandbox') + ' → votre application, collez-le dans Netlify, puis redéployez.' + (p.espaces ? ' Un espace traîne au début ou à la fin d\'une des deux valeurs.' : ''));
+      else h += ligneDiag(false, 'PayPal n\'a pas répondu (' + esc(p.code) + '). Réessayez dans quelques minutes.');
+      if (p.acces !== 'absent' && p.env !== 'live') h += ligneDiag(false, 'Le site est en mode d\'essai (PAYPAL_ENV n\'est pas « live ») : aucun paiement réel n\'est encaissé.');
+      h += ligneDiag(!!r.email, r.email ? 'L\'envoi d\'e-mails est réglé.' : 'L\'envoi d\'e-mails n\'est pas réglé (RESEND_API_KEY, RESEND_FROM) : les clients ne reçoivent pas leur facture.');
+      h += '<div class="fa-muet">Virement : les coordonnées bancaires se saisissent dans la fiche de la société émettrice' + (r.virement_defaut ? ' ; un compte par défaut est aussi réglé dans Netlify.' : '. Sans elles, le client n\'a aucune solution quand PayPal échoue.') + '</div>';
+      etat.diagnostic = h; afficher();
+    });
   }
 
   // ── Actions ─────────────────────────────────────────────────────────────────
@@ -629,6 +650,7 @@
     if (d.faEncaisser) { ouvrir(d.faEncaisser, 'paiement'); return; }
     if (d.faCommission) { if (window.Compte && Compte.adminCommission) Compte.adminCommission(d.faCommission, true, Number(d.pct) || 25); return; }
     if (d.fa === 'recharger') { charger(); return; }
+    if (d.fa === 'diagnostic') { diagnostiquer(); return; }
     if (d.fa === 'rapport') { if (window.Compte && Compte.openRapportCompta) Compte.openRapportCompta(); return; }
     if (d.fa === 'fermer') { etat.choisi = null; etat.panneau = null; etat.message = null; afficher(); return; }
     if (d.fa === 'fermerPanneau') { etat.panneau = null; etat.brouillon = null; etat.brouillonContact = null; afficher(); return; }

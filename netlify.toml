@@ -215,6 +215,11 @@
   status = 200
 
 [[redirects]]
+  from   = "/api/paypal/diagnostic"
+  to     = "/.netlify/functions/paypal-diagnostic"
+  status = 200
+
+[[redirects]]
   from   = "/api/paypal/create-order"
   to     = "/.netlify/functions/paypal-create-order"
   status = 200

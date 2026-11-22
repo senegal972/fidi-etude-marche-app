@@ -19,8 +19,9 @@ export async function token() {
     headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/x-www-form-urlencoded" },
     body: "grant_type=client_credentials",
   });
-  const d = await r.json();
-  if (!r.ok) { const e = new Error(d.error_description || "PayPal auth échouée"); e.status = 502; throw e; }
+  const d = await r.json().catch(() => ({}));
+  // Identifiant ou secret refusé par PayPal (invalid_client) : erreur de réglage du site, pas du client qui paie.
+  if (!r.ok) { const e = new Error(d.error_description || "PayPal auth échouée"); e.status = 502; e.paypal = { error: d.error || "auth", name: d.error || "auth" }; e.authPaypal = true; throw e; }
   _tok = { token: d.access_token, exp: now + (d.expires_in || 3000) * 1000 };
   return _tok.token;
 }
@@ -110,4 +111,17 @@ export async function captureOrder(orderId) {
 }
 export async function getOrder(orderId) {
   return ppFetch(`/v2/checkout/orders/${orderId}`, "GET");
+}
+
+// Contrôle des réglages : PayPal accepte-t-il l'identifiant et le secret enregistrés ? Ne crée rien, n'encaisse rien.
+// → { configure, env, identifiant (abrégé), acces: "ok" | "refuse" | "injoignable", code }
+export async function diagnosticPaypal() {
+  const id = paypalClientId();
+  const base = { configure: paypalConfigured(), env: ENV, identifiant: id ? id.slice(0, 6) + "…" + id.slice(-4) : "",
+    secret_longueur: (process.env.PAYPAL_SECRET || "").length,
+    espaces: /^\s|\s$/.test(process.env.PAYPAL_CLIENT_ID || "") || /^\s|\s$/.test(process.env.PAYPAL_SECRET || "") };
+  if (!base.configure) return { ...base, acces: "absent", code: "" };
+  _tok = null;
+  try { await token(); return { ...base, acces: "ok", code: "" }; }
+  catch (e) { return { ...base, acces: e.authPaypal ? "refuse" : "injoignable", code: (e.paypal && e.paypal.error) || String(e.message || "").slice(0, 80) }; }
 }

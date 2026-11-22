@@ -244,3 +244,11 @@
 .fa-lien-bloc{display:block;margin-top:.6rem;}
 .fa-destinataires{background:#fff;border:1px solid var(--fa-trait);border-radius:10px;padding:.1rem .75rem .65rem;}
 .fa-destinataires .fa-coche span{overflow-wrap:anywhere;}
+
+/* ─ Contrôle du paiement en ligne ─ */
+.fa-diagnostic{margin-top:.8rem;display:flex;flex-direction:column;gap:.5rem;}
+.fa-diagnostic:empty{display:none;}
+.fa-diag{display:flex;gap:.55rem;align-items:flex-start;border-radius:10px;padding:.6rem .75rem;font-size:.86rem;line-height:1.45;overflow-wrap:anywhere;}
+.fa-diag-ok{background:#e9f7ef;color:#14532d;}
+.fa-diag-ko{background:var(--fa-rouge-fond);color:#7a1c1c;}
+.fa-diag i{flex:0 0 auto;margin-top:.15rem;}

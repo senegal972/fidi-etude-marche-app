@@ -252,3 +252,9 @@
   .saisie-carte-tete .btn-icon{flex:0 0 42px;width:42px;height:42px;}
   .saisie-carte-carte{height:56vh;min-height:300px;}
 }
+
+/* iPhone, application installée : la barre d'état et la barre d'accueil recouvrent le haut et le bas de l'écran.
+   Toute fenêtre s'en écarte, sinon son bouton de fermeture se retrouve sous la barre d'état et ne répond plus. */
+@supports (padding:env(safe-area-inset-top)){
+  .modal{padding-top:env(safe-area-inset-top,0px)!important;padding-bottom:env(safe-area-inset-bottom,0px)!important;box-sizing:border-box;}
+}

@@ -280,8 +280,8 @@
     if (!racine) { racine = document.createElement('div'); racine.id = 'ficheParcRoot'; document.body.appendChild(racine); }
     racine.innerHTML =
       '<div class="modal fade" id="ficheParcModal" tabindex="-1"><div class="modal-dialog modal-dialog-scrollable"><div class="modal-content">' +
-      '<div class="modal-header" style="background:#12294d;color:#fff;"><h5 class="modal-title"><i class="bi bi-geo me-2"></i>Parcelle ' + esc(ref) + ' — ' + esc(p.nom_com || '') + '</h5>' +
-      '<button type="button" class="btn-close" style="filter:invert(1)" data-bs-dismiss="modal" aria-label="Fermer"></button></div>' +
+      '<div class="modal-header fiche-parc-entete"><h5 class="modal-title"><i class="bi bi-geo me-2"></i>Parcelle ' + esc(ref) + ' — ' + esc(p.nom_com || '') + '</h5>' +
+      '<button type="button" class="btn-close fiche-parc-croix" data-bs-dismiss="modal" aria-label="Fermer"></button></div>' +
       '<div class="modal-body">' +
         (estPrincipale(p) ? '<div class="alert alert-info py-2 small">Cette parcelle est celle du bien étudié.</div>' : '') +
         '<h6 class="fw-bold">Cadastre</h6>' +
@@ -315,8 +315,14 @@
           '<a class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener" href="' + esc(l.plan) + '"><i class="bi bi-geo-alt me-1"></i>Voir sur Google Maps</a>' +
         '</div>' +
         '<p class="text-muted mt-3 mb-0" style="font-size:.72rem;">Sources : cadastre (IGN, Parcellaire Express), Géoportail de l\'urbanisme, Base adresse nationale, DVF (Etalab)' + (opt.urlRisques ? ', Géorisques' : '') + '. Le propriétaire d\'une parcelle n\'est pas une donnée publique : elle se demande au service de la publicité foncière.</p>' +
-      '</div></div></div></div>';
+      '</div>' +
+      '<div class="modal-footer fiche-parc-pied"><button type="button" class="btn btn-primary fiche-parc-fermer" data-bs-dismiss="modal"><i class="bi bi-x-lg me-1"></i>Fermer</button></div>' +
+      '</div></div></div>';
     var el = document.getElementById('ficheParcModal');
+    // Repli : le bouton ferme la fenêtre même si l'attribut de Bootstrap n'est pas pris en compte.
+    Array.prototype.forEach.call(el.querySelectorAll('[data-bs-dismiss="modal"]'), function (b) {
+      b.addEventListener('click', function () { try { var m = window.bootstrap && window.bootstrap.Modal.getInstance(el); if (m) m.hide(); else el.remove(); } catch (e) { el.remove(); } });
+    });
     el.addEventListener('hidden.bs.modal', function () { el.remove(); });
     if (typeof window.fidiStackModal === 'function') window.fidiStackModal(el);
     if (window.bootstrap && window.bootstrap.Modal) new window.bootstrap.Modal(el).show();
@@ -336,7 +342,16 @@
     st.textContent = '.fiche-parc{font-size:.85rem;line-height:1.45;}.fiche-parc-t{font-weight:700;font-size:.95rem;color:#12294d;}' +
       '.fiche-parc-panneau{display:none;background:#f6f9ff;border:1px solid #c9d9f5;border-left:4px solid #0d6efd;border-radius:8px;padding:.6rem .7rem;margin:.5rem .5rem 0;}' +
       '.fiche-parc-panneau .fiche-parc{font-size:.9rem;}.fiche-parc-panneau .btn{min-height:42px;}' +
-      '@media print{.fiche-parc-panneau{display:none!important;}}';
+      '@media print{.fiche-parc-panneau{display:none!important;}}' +
+      // Fenêtre de détail. Sur iPhone (application installée, écran à encoche) le haut de l'écran est recouvert par la barre d'état :
+      // l'en-tête s'écarte de cette zone et un bouton « Fermer » reste toujours visible en bas.
+      '#ficheParcModal{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);box-sizing:border-box;}' +
+      '.fiche-parc-entete{background:#12294d;color:#fff;gap:.5rem;flex-wrap:nowrap;}.fiche-parc-entete .modal-title{min-width:0;overflow-wrap:anywhere;}' +
+      '.fiche-parc-croix{filter:invert(1);opacity:1;flex:0 0 auto;width:1.4rem;height:1.4rem;padding:.7rem;margin:0;}' +
+      '.fiche-parc-pied{padding:.5rem .75rem;}.fiche-parc-fermer{min-height:44px;min-width:9rem;}' +
+      '@media (max-width:768px){#ficheParcModal .modal-dialog{margin:0;max-width:none;height:100%;max-height:100%;}' +
+        '#ficheParcModal .modal-content{height:100%;max-height:100%;border-radius:0;border:0;}' +
+        '#ficheParcModal .modal-body{overflow-y:auto;-webkit-overflow-scrolling:touch;}.fiche-parc-fermer{width:100%;}}';
     document.head.appendChild(st);
   }
 
