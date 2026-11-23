@@ -156,7 +156,7 @@ test("géolocalisation : seuil de précision sur la carte de choix et sur « Ma 
   const page = readFileSync(new URL("../index.html", import.meta.url), "utf8");
   assert.ok(carte.includes("var PRECISION_MAX = 1500;") && carte.includes("if (precision > PRECISION_MAX) {"));
   const loc = carte.slice(carte.indexOf("  function localiser(demandee) {"), carte.indexOf("  function suggestions(q) {"));
-  assert.ok(loc.indexOf("precision > PRECISION_MAX") < loc.indexOf("Vous êtes à"), "le contrôle de précision passe avant « Vous êtes à … »");
+  assert.ok(loc.indexOf("if (precision > PRECISION_MAX)") < loc.indexOf("dire('Vous êtes à"), "le contrôle de précision passe avant l'affichage « Vous êtes à … »");
   assert.ok(page.includes("if(accuracy > 500){") && page.includes("Position trop imprécise sur cet appareil"));
 });
 
