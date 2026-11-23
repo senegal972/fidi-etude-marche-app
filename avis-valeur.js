@@ -1328,6 +1328,83 @@
     return out;
   }
 
+  // ── Avancement de l'avis : ce qui reste à compléter, rubrique par rubrique ───────────────────
+  // Renvoie la liste des éléments essentiels encore vides d'une rubrique ([] = complète ; null = rien d'exigé).
+  function manquesRubrique(id) {
+    var d = state.data; if (!d) return null;
+    var vide = function (v) { return v == null || String(v).trim() === ''; };
+    var m = [], md = d.metadata || {}, b = d.bien || {}, cad = d.cadastre || {};
+    var loc = natureCourante() === 'location';
+    if (id === 'metadata') {
+      if (vide(md.client) && !md.sansDestinataire) m.push('le destinataire');
+      if (vide(md.date)) m.push('la date');
+      if (vide(md.lieuEtablissement)) m.push('le lieu d\'établissement');
+    } else if (id === 'bien') {
+      if (vide(b.type)) m.push('le type de bien');
+      if (vide(b.adresse)) m.push('l\'adresse');
+      if (vide(b.commune)) m.push('la commune');
+      if (!(num(b.surfaceCarrez) > 0)) m.push('la surface');
+    } else if (id === 'cadastre') {
+      var parcelles = Array.isArray(cad.parcelles) ? cad.parcelles.filter(function (x) { return x && (x.section || x.numero); }) : [];
+      if (vide(cad.section) && vide(cad.numero) && !parcelles.length) m.push('la référence cadastrale');
+      if (!(contenanceTotale(cad) > 0)) m.push('la contenance');
+    } else if (id === 'localisation') {
+      if (vide((d.loc || {}).adresse)) m.push('l\'adresse de localisation');
+    } else if (id === 'marche') {
+      var mar = d.marche || {}, src = (mar.sources || []).filter(function (x) { return x && num(x.moyen) > 0; });
+      if (!(num(mar.moyenneMoyen) > 0) && !src.length) m.push('un prix de marché au m²');
+    } else if (id === 'comparables') {
+      var n = (d.comparables || []).filter(function (x) { return x && (num(x.prix) > 0 || num(x.prixM2) > 0 || num(x.loyer) > 0); }).length;
+      if (n < 3) m.push('au moins 3 comparables (' + n + ' saisi' + (n > 1 ? 's' : '') + ')');
+    } else if (id === 'loyers') {
+      if (!loc) return null;
+      var lo = (d.loyers || []).filter(function (x) { return x && num(x.loyer) > 0; }).length;
+      if (!lo && !(num((d.locatif || {}).loyerHC) > 0)) m.push('un loyer de référence');
+    } else if (id === 'conclusion') {
+      if (vide((d.conclusion || {}).texte)) m.push('le texte de conclusion');
+    } else if (id === 'signature') {
+      if (vide((d.signataire || {}).nom)) m.push('le nom du signataire');
+    } else return null;
+    return m;
+  }
+  // Marque les onglets, la liste du téléphone et la barre d'avancement.
+  function majAvancement() {
+    if (!state.data) return;
+    var secs = visibleSections(), total = 0, faites = 0, reste = [];
+    secs.forEach(function (sec) {
+      var m = manquesRubrique(sec.id);
+      var tab = document.querySelector('#avisModal .av-tab[data-sec="' + sec.id + '"]');
+      var opt = document.querySelector('#avSecSelect option[value="' + sec.id + '"]');
+      var marque = m === null ? '' : (m.length ? '●' : '✓');
+      if (tab) {
+        tab.classList.toggle('av-tab-ok', m !== null && !m.length); tab.classList.toggle('av-tab-manque', !!(m && m.length));
+        tab.title = m && m.length ? 'À compléter : ' + m.join(', ') : (m ? 'Rubrique complète' : '');
+      }
+      if (opt) opt.textContent = sec.label + (marque ? '  ' + marque : '');
+      if (m === null) return;
+      total++; if (!m.length) faites++; else reste.push({ id: sec.id, label: sec.label, manque: m });
+    });
+    var barre = document.getElementById('avAvancement'); if (!barre) return;
+    var pct = total ? Math.round(faites / total * 100) : 100;
+    var ouvert = barre.getAttribute('data-ouvert') === '1' && reste.length;
+    barre.innerHTML = '<div class="av-av-ligne"><span class="av-av-jauge" aria-hidden="true"><i style="width:' + pct + '%"></i></span>' +
+      '<span class="av-av-texte">' + (reste.length ? '<b>' + faites + ' / ' + total + '</b> rubriques complètes' : '<b>Avis complet</b> — prêt à être édité') + '</span>' +
+      (reste.length ? '<button type="button" class="av-av-bouton" data-av-reste aria-expanded="' + (ouvert ? 'true' : 'false') + '">' + (ouvert ? 'Masquer' : 'Voir ce qui reste') + '</button>' : '') + '</div>' +
+      (ouvert ? '<ul class="av-av-liste">' + reste.map(function (r) {
+        return '<li><button type="button" data-av-aller="' + r.id + '">' + esc(r.label) + '</button><span>' + esc(r.manque.join(', ')) + '</span></li>';
+      }).join('') + '</ul>' : '');
+  }
+  var avancementTimer = null;
+  function planifierAvancement() { clearTimeout(avancementTimer); avancementTimer = setTimeout(majAvancement, 250); }
+  try {
+    document.addEventListener('click', function (e) {
+      var t = e.target.closest ? e.target.closest('#avAvancement [data-av-reste], #avAvancement [data-av-aller]') : null; if (!t) return;
+      var barre = document.getElementById('avAvancement');
+      if (t.hasAttribute('data-av-reste')) { barre.setAttribute('data-ouvert', barre.getAttribute('data-ouvert') === '1' ? '0' : '1'); majAvancement(); }
+      else { barre.setAttribute('data-ouvert', '0'); showSection(t.getAttribute('data-av-aller')); }
+    });
+  } catch (e) {}
+
   // Re-rend la barre d'onglets (appelé après bascule de mode)
   function renderTabs() {
     var wrap = document.querySelector('#avisModal .av-tabs');
@@ -2499,6 +2576,7 @@
     // Téléphone : la rubrique choisie s'affiche depuis son début.
     if (estMobile()) { var corps = document.querySelector('#avisModal .modal-body'); if (corps) corps.scrollTop = 0; }
     refreshOutputs();
+    try { majAvancement(); } catch (e) {}
     // Section Référence + CRM activé : rafraîchit le cache CRM en arrière-plan (une fois
     // par ouverture de modale) pour éviter d'afficher un cache obsolète (nom seul).
     if (id === 'metadata' && crmEnabled() && !state._crmRefreshed) {
@@ -2537,6 +2615,7 @@
       '<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button></div>' +
       '<div class="av-tabs">' + tabs + '</div>' +
       '<div class="av-nav-mobile">' + navMobileHTML() + '</div>' +
+      '<div class="av-avancement" id="avAvancement" role="status" data-ouvert="0"></div>' +
       '<div class="modal-body"><div class="av-layout' + (state.preview ? ' av-with-preview' : '') + '" id="avLayout">' +
       '<div class="av-form"><div id="avFormContent"></div>' +
       '<div style="display:flex;justify-content:space-between;margin-top:1rem;padding-top:1rem;border-top:1px solid var(--av-grey-light);">' +
@@ -2769,6 +2848,7 @@
     // ET déclenche l'autosave local temps réel (anti-perte).
     if (window.FidiGuard) { window.FidiGuard.setDirty(); window.FidiGuard.saveHandler = fidiAvisGuardSave; }
     scheduleAvisAutoSave();
+    planifierAvancement();
     if (el.dataset.p) setPath(state.data, el.dataset.p, val);
     else if (el.dataset.list) { var arr = getPath(state.data, el.dataset.list); arr[+el.dataset.idx][el.dataset.key] = val; }
     else if (el.dataset.simplelist) { getPath(state.data, el.dataset.simplelist)[+el.dataset.idx] = val; }

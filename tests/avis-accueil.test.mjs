@@ -70,3 +70,28 @@ test("étude → avis : règles du PLU, zonage des risques au point et référen
   assert.ok(inj.includes("/^D'après le règlement du PLU/.test(d.cadastre.droitsResiduels)"));
   assert.ok(inj.includes("d.metadata.refEtude = String(refEt)"));
 });
+
+// Avancement : ce qui reste à compléter, rubrique par rubrique.
+test("avancement : éléments essentiels manquants par rubrique, onglets marqués, barre et liste", () => {
+  const code = entre("  function manquesRubrique(id) {", "  // Marque les onglets, la liste du téléphone");
+  let d;
+  const f = new Function("state", "natureCourante", "num", "contenanceTotale", code + "; return manquesRubrique;");
+  const num = (v) => { const n = parseFloat(String(v == null ? "" : v).replace(",", ".")); return isFinite(n) ? n : 0; };
+  let nature = "vente";
+  const etat = { get data() { return d; } };
+  const manques = f(etat, () => nature, num, (c) => num(c.contenance));
+  d = { metadata: { date: "2026-11-23", lieuEtablissement: "Le Lamentin" }, bien: { type: "Maison", adresse: "12 rue X", commune: "Le Lamentin", surfaceCarrez: "120" },
+        cadastre: { section: "0S", numero: "1359", contenance: "4140" }, loc: { adresse: "12 rue X" }, marche: { moyenneMoyen: "2517" }, comparables: [{ prix: "300000" }],
+        conclusion: { texte: "" }, signataire: { nom: "" }, loyers: [] };
+  assert.deepEqual(manques("metadata"), ["le destinataire"]);
+  d.metadata.sansDestinataire = true; assert.deepEqual(manques("metadata"), []);
+  assert.deepEqual(manques("bien"), []); assert.deepEqual(manques("cadastre"), []); assert.deepEqual(manques("marche"), []);
+  assert.deepEqual(manques("comparables"), ["au moins 3 comparables (1 saisi)"]);
+  assert.deepEqual(manques("conclusion"), ["le texte de conclusion"]); assert.deepEqual(manques("signature"), ["le nom du signataire"]);
+  assert.equal(manques("etat"), null, "rubrique sans élément exigé");
+  assert.equal(manques("loyers"), null, "les loyers ne sont exigés que pour un avis de location");
+  nature = "location"; assert.deepEqual(manques("loyers"), ["un loyer de référence"]);
+  d.bien.surfaceCarrez = ""; assert.deepEqual(manques("bien"), ["la surface"]);
+  assert.ok(js.includes('id="avAvancement"') && js.includes("try { majAvancement(); } catch (e) {}") && js.includes("planifierAvancement();"));
+  assert.ok(css.includes(".av-tab-manque::after") && css.includes(".av-av-jauge"));
+});

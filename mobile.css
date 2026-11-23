@@ -286,3 +286,11 @@
   .av-accueil-grille{grid-template-columns:1fr;gap:0;}
   #avAccueilModal .modal-footer .btn{flex:1 1 auto;min-height:44px;}
 }
+
+/* Avancement de l'avis sur téléphone : une ligne, jauge courte. */
+@media (max-width:768px){
+  .av-avancement{padding:.35rem .6rem;}
+  .av-av-jauge{flex-basis:48px;}
+  .av-av-bouton{min-height:32px;}
+  .av-av-liste li{flex-direction:column;gap:0;}
+}

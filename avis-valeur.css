@@ -207,3 +207,19 @@
 .av-accueil-sansdest{display:flex;align-items:center;gap:.45rem;margin:.8rem 0 0;font-size:.86rem;}
 .av-accueil-note{font-size:.78rem;color:#5b6573;margin:.5rem 0 0;}
 .av-accueil-erreur{margin-top:.6rem;background:#fde8e8;color:#8f1d1d;border-radius:8px;padding:.5rem .7rem;font-size:.85rem;}
+
+/* ─ Avancement de l'avis ─ */
+.av-tab-ok::after{content:" ✓";color:#198754;font-weight:800;}
+.av-tab-manque::after{content:" ●";color:#d97706;font-size:.7em;vertical-align:middle;}
+.av-tab.active.av-tab-ok::after,.av-tab.active.av-tab-manque::after{color:#fff;}
+.av-avancement{background:#fff;border-bottom:1px solid var(--av-grey-light);padding:.4rem 1.5rem;font-size:.8rem;color:var(--av-ink);}
+.av-avancement:empty{display:none;}
+.av-av-ligne{display:flex;align-items:center;gap:.7rem;flex-wrap:nowrap;min-width:0;}
+.av-av-jauge{flex:0 0 110px;height:6px;border-radius:999px;background:#e5e9f0;overflow:hidden;}
+.av-av-jauge i{display:block;height:100%;background:#198754;border-radius:999px;}
+.av-av-texte{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.av-av-bouton{flex:0 0 auto;background:none;border:1px solid var(--av-grey-light);border-radius:999px;padding:.15rem .7rem;font-size:.76rem;font-weight:600;color:var(--av-blue);}
+.av-av-liste{list-style:none;margin:.45rem 0 .2rem;padding:0;display:grid;gap:.25rem;}
+.av-av-liste li{display:flex;gap:.6rem;align-items:baseline;flex-wrap:wrap;}
+.av-av-liste button{background:none;border:0;padding:0;font-weight:700;color:var(--av-blue);text-decoration:underline;}
+.av-av-liste span{color:#5b6573;}
