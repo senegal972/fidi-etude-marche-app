@@ -1,7 +1,8 @@
 // Netlify Function — Connexion. POST /api/auth/login { email, password }
 import { hasToken } from "./_notion.mjs";
 import {
-  authResp, findUserByEmail, verifyPassword, signJWT, sessionCookie, touchLastLogin,, empreinteMdp } from "./_auth.mjs";
+  authResp, findUserByEmail, verifyPassword, signJWT, sessionCookie, touchLastLogin, empreinteMdp,
+} from "./_auth.mjs";
 
 // Anti-brute-force best-effort (mémoire du conteneur ; réinitialisé au cold start).
 const attempts = new Map();

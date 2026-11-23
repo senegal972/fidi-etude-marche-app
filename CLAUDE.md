@@ -276,6 +276,8 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
   (`marque.test.mjs`), contrat de l'interface (`interface.test.mjs`), facturation détaillée
   (`facture-calc.test.mjs`, `facture-detaillee.test.mjs`, `facturation-centrale.test.mjs` — dont plusieurs sociétés et numérotation par société), unités veille
   (dédoublonnage, similarité, bien sujet, extraction JSON-LD/regex), et fixture Marigot du moteur de calcul.
+- `tests/auth-motdepasse.test.mjs` charge **toutes** les fonctions de `netlify/functions` : une faute de syntaxe dans une seule fait échouer tout le
+  déploiement Netlify sans autre signe qu'une version qui ne change pas en production (incident de la 1.35.1).
 - `npm run test:marigot` — fixture seule (`tests/avis-marigot.test.mjs`, synthèse 4,70 / 5,30 / 6,00 M€).
 
 ## Déontologie

@@ -100,3 +100,27 @@ test("session : la connexion pose l'empreinte du mot de passe", () => {
   const login = readFileSync(new URL("../netlify/functions/auth-login.mjs", import.meta.url), "utf8");
   assert.ok(login.includes("pv: empreinteMdp(found.user.hash)"));
 });
+
+// Garde-fou de publication : une seule fonction qui ne se charge pas fait échouer tout le déploiement Netlify.
+test("toutes les fonctions du serveur se chargent sans erreur de syntaxe", async () => {
+  const { readdirSync } = await import("node:fs");
+  const dossier = new URL("../netlify/functions/", import.meta.url);
+  const echecs = [];
+  for (const f of readdirSync(dossier).filter((x) => x.endsWith(".mjs"))) {
+    try { await import(new URL(f, dossier).href); } catch (e) { echecs.push(f + " : " + String(e.message).slice(0, 120)); }
+  }
+  assert.deepEqual(echecs, []);
+});
+
+test("connexion : la session porte l'empreinte du mot de passe et fonctionne avec le service de changement", async () => {
+  const login = await import("../netlify/functions/auth-login.mjs");
+  pageId = "page-connexion"; hash = hashPassword("MotDePasseConnexion5");
+  const r = await login.handler({ httpMethod: "POST", headers: {}, body: JSON.stringify({ email: "moi@exemple.fr", password: "MotDePasseConnexion5" }) });
+  assert.equal(r.statusCode, 200);
+  const cookieSession = String(r.headers["Set-Cookie"]).split(";")[0];
+  const ok = await handler({ httpMethod: "POST", headers: { cookie: cookieSession }, body: JSON.stringify({ actuel: "MotDePasseConnexion5", nouveau: "MotDePasseConnexion6" }) });
+  assert.equal(ok.statusCode, 200);
+  // La session d'avant le changement n'est plus valable.
+  const apres = await handler({ httpMethod: "POST", headers: { cookie: cookieSession }, body: JSON.stringify({ actuel: "x", nouveau: "y" }) });
+  assert.equal(apres.statusCode, 401);
+});
