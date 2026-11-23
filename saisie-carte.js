@@ -95,12 +95,25 @@
   }
 
   // Position de l'appareil → carte centrée dessus, commune déduite.
+  // Au-delà de cette marge d'erreur (mètres), la position n'est pas assez sûre pour désigner une commune.
+  var PRECISION_MAX = 1500;
   function localiser(demandee) {
     if (!('geolocation' in navigator)) { if (demandee) dire('La géolocalisation n\'est pas disponible sur cet appareil. Indiquez la ville.', 'erreur'); return Promise.resolve(false); }
     dire('<span class="spinner-border spinner-border-sm me-1"></span>Recherche de votre position…');
     return new Promise(function (fini) {
       navigator.geolocation.getCurrentPosition(function (pos) {
         var ll = [pos.coords.latitude, pos.coords.longitude];
+        // Sans GPS (ordinateur, partage de connexion d'un téléphone), le navigateur déduit la position du réseau : l'erreur peut
+        // atteindre plusieurs kilomètres, donc une autre commune. Au-delà du seuil, on ne dit plus « Vous êtes à … ».
+        var precision = Number(pos.coords.accuracy) || 0;
+        if (precision > PRECISION_MAX) {
+          var ecart = precision >= 1000 ? Math.round(precision / 1000) + ' km' : Math.round(precision) + ' m';
+          var explication = 'Position de cet appareil trop imprécise (à ' + ecart + ' près) : elle vient du réseau, pas d\'un GPS. ';
+          if (!demandee) { dire(explication + 'Indiquez la ville.'); fini(false); return; }   // ouverture : la dernière ville utilisée prend le relais
+          allerA(ll, 12, false);
+          dire(explication + 'La carte montre le secteur approximatif : indiquez la ville.', 'erreur');
+          fini(false); return;
+        }
         allerA(ll, 17, true);
         lire(GEO + '?lat=' + ll[0] + '&lon=' + ll[1] + CHAMPS).then(function (j) {
           var c = j && j[0];

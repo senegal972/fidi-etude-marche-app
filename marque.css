@@ -8,6 +8,11 @@
 
 /* ─ Nom de l'outil, en retrait de l'enseigne ─ */
 .marque-produit{font-weight:500;opacity:.85;font-size:.88em;}
+/* Barre du haut, grand écran : enseigne sur la première ligne, produit sur la seconde (jamais coupé au milieu). */
+@media (min-width:769px){
+  .marque-produit{display:block;white-space:nowrap;line-height:1.25;margin-top:.1rem;}
+  .marque-sep{display:none;}
+}
 
 /* ─ Panneau ─ */
 .marque-panneau{width:min(420px,100vw)!important;}

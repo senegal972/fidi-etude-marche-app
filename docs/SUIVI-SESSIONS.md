@@ -38,7 +38,8 @@ Ce dépôt est modifié depuis plusieurs outils (Claude Code sur le PC, Claude C
 | 1.38.0 | Suite du 2026-11-23 | Claude Code (cloud) | Avis de valeur : écran d'accueil (repris de l'étude, nature, destinataire), concordance du destinataire avec l'étude, message temporaire qui bloquait les clics | `21e9389` |
 | 1.39.0 | Suite du 2026-11-23 | Claude Code (cloud) | Avis : règles du PLU, zonage des risques au point et référence de l'étude repris depuis l'étude | `057b425` |
 | 1.40.0 | Suite du 2026-11-23 | Claude Code (cloud) | Avis : avancement (onglets marqués, jauge, liste de ce qui reste à compléter) | `0b3061c` |
-| 1.41.0 | Suite du 2026-11-23 | Claude Code (cloud) | Avis, document final : prix de cession plus pré-rempli, bien libre par défaut (occupation à l'accueil), écart valeur / stratégie signalé, étude citée | (ce commit) |
+| 1.41.0 | Suite du 2026-11-23 | Claude Code (cloud) | Avis, document final : prix de cession plus pré-rempli, bien libre par défaut (occupation à l'accueil), écart valeur / stratégie signalé, étude citée | `7524909` |
+| 1.42.0 | Suite du 2026-11-23 | Claude Code (cloud) | Position imprécise écartée (carte de choix, « Ma position ») ; titre de la barre du haut sur deux lignes | (ce commit) |
 
 ## État des branches au 2026-11-16
 

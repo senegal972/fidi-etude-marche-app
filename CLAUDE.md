@@ -160,6 +160,10 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
   avec le calque Cadastre, et la fiche de parcelle (`FidiParcelle.attacher` avec `actions`).
 - Position de départ, dans l'ordre : commune déjà saisie (`fidiCommuneSaisie()`), géolocalisation de l'appareil, dernière commune utilisée
   (`localStorage` `fidi_carte_derniere` : code, nom et centre de la commune, jamais d'adresse), sinon vue d'ensemble en attendant la ville.
+- **Précision de la position** : sans GPS (ordinateur, partage de connexion) le navigateur déduit la position du réseau, à plusieurs kilomètres
+  près. `localiser()` écarte une position dont `coords.accuracy` dépasse `PRECISION_MAX` (1 500 m) : pas de « Vous êtes à … », dernière ville
+  utilisée à l'ouverture, secteur approximatif (zoom 12) sur clic. `#btnGeoloc` (adresse) refuse au-delà de 500 m. Ne jamais afficher une commune
+  ou une adresse déduite d'une position imprécise.
 - « Étudier cette parcelle » → `fidiChoisirParcelle({ commune, section, numero })` (index.html) : passe en mode « Réf. cadastrale », pose
   `selectedCommune` et remplit les champs ; `ajouter:true` pousse une parcelle supplémentaire de la même commune dans `__searchParcelles`.
   **L'analyse n'est jamais lancée automatiquement** (elle consomme un essai). Rappel affiché dans `#carteChoixRetenue`.
@@ -270,6 +274,7 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
   `fidi:compte`, émis par `Compte.refresh()`.
 - Règles de validation en double — `assainir()` (marque.js) et `assainirMarque()` (marque.mjs) :
   **toute évolution des champs se fait dans les deux**.
+- Barre du haut : `.marque-produit` passe à la ligne sous l'enseigne à partir de 769 px (`marque.css`) ; `.marque-sep` (« · ») ne sert que sur téléphone, où le titre tient sur une ligne.
 - Couleurs : variables CSS `--fidi-blue`, `--fidi-blue-light`, `--fidi-accent`, `--fidi-accent-hover`,
   `--fidi-on-accent`, `--fidi-gold`, `--fidi-on-gold`, `--av-*`. En JavaScript : `Marque.couleur()`,
   `Marque.rgba()`, `Marque.teinte()`, `Marque.encre()`.

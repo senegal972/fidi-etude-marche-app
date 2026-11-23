@@ -210,7 +210,9 @@
     if (courante.produit) {
       var pr = document.createElement('span');
       pr.className = 'marque-produit';
-      pr.textContent = (courante.enseigne ? ' · ' : '') + courante.produit;
+      // Grand écran : l'enseigne sur une ligne, le produit sur la suivante. Téléphone : une seule ligne, avec le séparateur.
+      if (courante.enseigne) { var sep = document.createElement('span'); sep.className = 'marque-sep'; sep.textContent = ' · '; pr.appendChild(sep); }
+      pr.appendChild(document.createTextNode(courante.produit));
       titre.appendChild(pr);
     }
     var bl = document.getElementById('marqueBaseline');

@@ -148,3 +148,22 @@ test("carte de choix : bouton Grand écran, sortie par Échap et à la fermeture
   assert.match(js, /function fermer\(\) \{[\s\S]{0,260}grandEcran\(false\);/);
   assert.match(css, /\.saisie-carte\.saisie-carte-plein\{position:fixed;inset:0;z-index:1040;/);
 });
+
+// Position de l'appareil : une position imprécise (réseau, pas de GPS) ne désigne ni une commune ni une adresse.
+test("géolocalisation : seuil de précision sur la carte de choix et sur « Ma position » de l'adresse", async () => {
+  const { readFileSync } = await import("node:fs");
+  const carte = readFileSync(new URL("../saisie-carte.js", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  assert.ok(carte.includes("var PRECISION_MAX = 1500;") && carte.includes("if (precision > PRECISION_MAX) {"));
+  const loc = carte.slice(carte.indexOf("  function localiser(demandee) {"), carte.indexOf("  function suggestions(q) {"));
+  assert.ok(loc.indexOf("precision > PRECISION_MAX") < loc.indexOf("Vous êtes à"), "le contrôle de précision passe avant « Vous êtes à … »");
+  assert.ok(page.includes("if(accuracy > 500){") && page.includes("Position trop imprécise sur cet appareil"));
+});
+
+test("barre du haut : enseigne et produit sur deux lignes sur grand écran, une seule sur téléphone", async () => {
+  const { readFileSync } = await import("node:fs");
+  const css = readFileSync(new URL("../marque.css", import.meta.url), "utf8");
+  const js = readFileSync(new URL("../marque.js", import.meta.url), "utf8");
+  assert.match(css, /@media \(min-width:769px\)\{\s*\.marque-produit\{display:block;white-space:nowrap;/);
+  assert.ok(css.includes(".marque-sep{display:none;}") && js.includes("sep.className = 'marque-sep'"));
+});

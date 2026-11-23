@@ -261,7 +261,7 @@ body.map-fs-on{overflow:hidden;}
 <!-- NAVBAR -->
 <nav class="navbar-fidi d-flex align-items-center justify-content-between">
   <div>
-    <div class="brand-text" id="marqueTitre"><i class="bi bi-building me-2"></i>OPTIMMO DOM · Étude de Marché &amp; Avis de valeur</div>
+    <div class="brand-text" id="marqueTitre"><i class="bi bi-building me-2"></i>OPTIMMO DOM<span class="marque-produit"><span class="marque-sep"> · </span>Étude de Marché &amp; Avis de valeur</span></div>
     <div class="brand-sub" id="marqueBaseline">Immobilier · Données publiques françaises</div>
   </div>
   <div class="d-flex gap-2 align-items-center flex-wrap">
@@ -1668,6 +1668,12 @@ document.getElementById('btnGeoloc').addEventListener('click', async () => {
       });
     });
     const { latitude: lat, longitude: lon, accuracy } = pos.coords;
+    // Sans GPS (ordinateur, partage de connexion), la position vient du réseau et peut être fausse de plusieurs kilomètres :
+    // on ne remplit pas une adresse à partir d'elle.
+    if(accuracy > 500){
+      alert('Position trop imprécise sur cet appareil (à ' + (accuracy >= 1000 ? Math.round(accuracy/1000) + ' km' : Math.round(accuracy) + ' m') + ' près) : elle vient du réseau, pas d\'un GPS. Saisissez l\'adresse, ou utilisez « Ma position » depuis votre téléphone.');
+      return;
+    }
     btn.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:.8rem;height:.8rem;"></span> Adresse…';
     const r = await fetch(`https://api-adresse.data.gouv.fr/reverse/?lat=${lat}&lon=${lon}&limit=1`);
     if(!r.ok) throw new Error('Reverse géocodage indisponible');
