@@ -39,6 +39,10 @@ Les redirections `/api/<nom>` sont déclarées dans `netlify.toml`.
   `__fidiInputs.destinataire`. `poserDestinataireEtude()` reporte le nom de l'avis dans l'étude ; `synchroniserDestinataire()` fait la concordance
   à chaque ouverture ; `appliquerAccueil()` écrit `metadata.client / emailClient / telephoneClient` et **`strategie.destinataireType`** (le calcul
   lit `strategie`, pas `metadata`). Coordonnées d'un client connu : `clientConnu()` sur `listClientsMerged()`.
+- **Repris de l'étude à chaque ouverture** (`injectEtudeGeoCadastre`, même étude seulement) : localisation, cadastre, zonage, risques ; plus
+  `window.__fidiPluRegle` (`reglePluEtude`, `reglePluTexte` → `cadastre.droitsResiduels` tant que le texte commence par « D'après le règlement
+  du PLU », et emprise du règlement pour `shobAutorisee` avant `empriseMedianeZone`), `window.__fidiAleas` (`aleasEtudeTexte` → `loc.ppr`) et
+  `metadata.refEtude` (`currentEtudeRef()`). Non repris à ce jour : `__fidiDaafOnf`, `__fidiImplantation`, note de l'étude.
 - `toast()` est en `pointer-events:none` : l'élément reste dans la page après s'être effacé et bloquait les boutons du bas sur téléphone.
 - Tests : `tests/avis-accueil.test.mjs` ; le comportement se vérifie dans un navigateur (création, réouverture, ancien avis, sans destinataire).
 

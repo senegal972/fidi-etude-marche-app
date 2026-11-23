@@ -43,3 +43,30 @@ test("accueil : styles présents, champs à 16 px et plein écran sur téléphon
   assert.ok(css.includes("var(--fidi-blue,#12294d)"));
   assert.match(mob, /#avAccueilModal \.form-control,#avAccueilModal \.form-select\{font-size:16px;min-height:44px;\}/);
 });
+
+// Données de l'étude reprises telles quelles dans l'avis.
+test("étude → avis : règles du PLU, zonage des risques au point et référence de l'étude sont repris", () => {
+  const bac = { window: {}, document: { getElementById() { return null; }, addEventListener() {} } };
+  bac.window.window = bac.window;
+  // Les deux fonctions de mise en forme sont pures : on les extrait pour les exercer.
+  const code = entre("  function reglePluEtude() {", "  // Ré-injecte les champs « ÉTUDE »");
+  const f = new Function("window", code + "; return { reglePluTexte: reglePluTexte, aleasEtudeTexte: aleasEtudeTexte, reglePluEtude: reglePluEtude };")(bac.window);
+  const regle = { found: true, emprise_pct: 80, emprise_txt: "80 %", hauteur_txt: "12 m", regles: { recul_voie: { m: 5 }, recul_limites: { formule: true }, pleine_terre: { pct: 15 } } };
+  const t = f.reglePluTexte(regle, "UE4");
+  assert.match(t, /^D'après le règlement du PLU \(zone UE4\)/);
+  for (const m of ["emprise au sol 80 %", "hauteur 12 m", "recul sur voie : 5 m minimum", "recul sur limites : H/2", "pleine terre 15 %", "À confirmer"]) assert.ok(t.includes(m), m);
+  assert.equal(f.reglePluTexte(null), ""); assert.equal(f.reglePluTexte({ found: true, regles: {} }), "");
+  assert.equal(f.reglePluEtude(), null);
+  bac.window.__fidiAleas = { source: "mq", reglemente: true, zoneCode: "Orange", aleas: [{ label: "Inondation", niveau: "Moyen" }] };
+  assert.equal(f.aleasEtudeTexte(), "Au point étudié : zone Orange du PPRN — Inondation (Moyen)");
+  bac.window.__fidiAleas = { source: "mq", reglemente: false, aleas: [] };
+  assert.equal(f.aleasEtudeTexte(), "Au point étudié : hors zonage réglementaire du PPRN");
+  bac.window.__fidiAleas = { source: "georisques", aleas: [{ label: "Inondation", present: true }, { label: "Séisme", present: false }] };
+  assert.equal(f.aleasEtudeTexte(), "Au point étudié : Inondation");
+  bac.window.__fidiAleas = null; assert.equal(f.aleasEtudeTexte(), "");
+  // Branchements : emprise du règlement avant l'estimation par la médiane ; texte saisi à la main jamais remplacé ; référence de l'étude.
+  const inj = entre("  function injectEtudeGeoCadastre(d, fidi, inputs) {", "    // Vigilances / atouts issus du score");
+  assert.ok(inj.indexOf("regle.emprise_pct / 100") < inj.indexOf("empriseMedianeZone("));
+  assert.ok(inj.includes("/^D'après le règlement du PLU/.test(d.cadastre.droitsResiduels)"));
+  assert.ok(inj.includes("d.metadata.refEtude = String(refEt)"));
+});

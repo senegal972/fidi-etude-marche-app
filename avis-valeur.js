@@ -791,6 +791,41 @@
     return [addr, type, loc.lat, loc.lon].join('|');
   }
 
+  // ── Données de l'étude reprises telles quelles : règlement du PLU et zonage des risques au point ──
+  function reglePluEtude() { var r = window.__fidiPluRegle; return r && r.found ? r : null; }
+  // Phrase lisible des règles lues dans le règlement (emprise, hauteur, reculs, pleine terre). '' si rien n'a été lu.
+  function reglePluTexte(r, zone) {
+    if (!r) return '';
+    var g = r.regles || {}, m = [];
+    var recul = function (x) {
+      if (!x) return '';
+      var t = [];
+      if (x.m != null) t.push(String(x.m).replace('.', ',') + ' m minimum');
+      if (x.formule) t.push('H/2');
+      if (x.en_limite) t.push('implantation en limite possible selon conditions');
+      return t.join(', ');
+    };
+    if (r.emprise_txt) m.push('emprise au sol ' + r.emprise_txt);
+    else if (r.emprise_pct > 0) m.push('emprise au sol ' + r.emprise_pct + ' %');
+    if (r.hauteur_txt) m.push('hauteur ' + r.hauteur_txt);
+    if (recul(g.recul_voie)) m.push('recul sur voie : ' + recul(g.recul_voie));
+    if (recul(g.recul_limites)) m.push('recul sur limites : ' + recul(g.recul_limites));
+    if (g.pleine_terre && g.pleine_terre.pct != null) m.push('pleine terre ' + g.pleine_terre.pct + ' %');
+    if (!m.length) return '';
+    return 'D\'après le règlement du PLU' + (zone ? ' (zone ' + zone + ')' : '') + ', lu par l\'étude de marché : ' + m.join(' ; ') + '. À confirmer sur le règlement en vigueur.';
+  }
+  // Zonage réglementaire des risques au point étudié (bloc « aléas » de l'étude). '' si l'étude ne l'a pas établi.
+  function aleasEtudeTexte() {
+    var a = window.__fidiAleas; if (!a || !Array.isArray(a.aleas)) return '';
+    if (a.source === 'mq') {
+      var l = a.aleas.map(function (x) { return x.label + (x.niveau ? ' (' + x.niveau + ')' : ''); }).filter(Boolean);
+      if (!a.reglemente && !l.length) return 'Au point étudié : hors zonage réglementaire du PPRN';
+      return 'Au point étudié : ' + (a.zoneCode ? 'zone ' + a.zoneCode + ' du PPRN' : 'zonage réglementaire du PPRN') + (l.length ? ' — ' + l.slice(0, 6).join(', ') : '');
+    }
+    var pres = a.aleas.filter(function (x) { return x.present; }).map(function (x) { return x.label + (x.precision ? ' (' + x.precision + ')' : ''); });
+    return pres.length ? 'Au point étudié : ' + pres.slice(0, 6).join(', ') : '';
+  }
+
   // Ré-injecte les champs « ÉTUDE » géographiques & cadastraux sur un avis EXISTANT.
   // Appelé par le prefill ET à chaque ouverture (resync), pour que les zones à badge « étude »
   // (localisation & risques, cadastre, droits à bâtir, zonage) reflètent toujours l'étude courante.
@@ -806,8 +841,12 @@
     var lr = extractLocRisques(fidi);
     if (lr.sismicite) d.loc.sismicite = lr.sismicite;
     if (lr.radon) d.loc.radon = lr.radon;
-    if (lr.ppr) d.loc.ppr = lr.ppr;
+    // Zonage réglementaire des risques au point (carte PPRN de l'étude) : complète la liste des risques de la commune.
+    var aleasPoint = aleasEtudeTexte();
+    if (lr.ppr || aleasPoint) d.loc.ppr = [lr.ppr, aleasPoint].filter(Boolean).join(' — ');
     if (lr.detail) d.loc.risquesDetail = lr.detail;
+    // Référence de l'étude de marché dont l'avis est tiré (traçabilité entre les deux documents).
+    try { var refEt = typeof window.currentEtudeRef === 'function' ? window.currentEtudeRef() : (typeof currentEtudeRef === 'function' ? currentEtudeRef() : ''); if (refEt) { d.metadata = d.metadata || {}; d.metadata.refEtude = String(refEt); } } catch (e) {}
 
     // Cadastre / urbanisme (GPU)
     var gpu = window.__fidiGpu || {};
@@ -842,6 +881,12 @@
     var cst = fidi.constructibilite || (fidi.estimation && fidi.estimation.constructibilite) || (zoneG && zoneG.constructibilite) || null;
     var shonEt = cst ? (Number(cst.shon || cst.shon_autorisee || cst.surface_constructible) || 0) : 0;
     var shobEt = cst ? (Number(cst.shob || cst.shob_autorisee || cst.emprise_max) || 0) : 0;
+    // Règlement du PLU lu par l'étude : son emprise au sol prime sur l'estimation par la médiane de la zone.
+    var regle = reglePluEtude();
+    if (!(shobEt > 0) && regle && regle.emprise_pct > 0 && terrainCad > 0) shobEt = Math.round(terrainCad * regle.emprise_pct / 100);
+    var txtRegle = reglePluTexte(regle, zoneG.libelle);
+    // Texte repris tant que l'utilisateur ne l'a pas réécrit (un texte saisi à la main n'est jamais remplacé).
+    if (txtRegle && (!d.cadastre.droitsResiduels || /^D'après le règlement du PLU/.test(d.cadastre.droitsResiduels))) d.cadastre.droitsResiduels = txtRegle;
     if (!(shobEt > 0) && terrainCad > 0) {
       var cp = (loc.postcode) || (d.bien && d.bien.cp) || '';
       var emp = empriseMedianeZone(zoneG.typezone, cp);   // fraction 0..1, 0 si non constructible
@@ -1450,6 +1495,7 @@
           return '<option value="' + c.id + '"' + sel + '>' + lbl + src + '</option>';
         }).join('');
       return head('Référence et destinataire', "Identifiants administratifs de l'avis + coordonnées client. Les destinataires peuvent être mémorisés pour réutilisation.") +
+        (d.metadata.refEtude ? '<div class="av-tip" style="margin-bottom:.6rem;"><i class="bi bi-link-45deg"></i> Avis établi à partir de l\'étude de marché <b>' + esc(d.metadata.refEtude) + '</b> : bien, cadastre, zonage, risques et marché en sont repris.</div>' : '') +
         fld('Référence interne', 'metadata.ref', { tip: 'Format conseillé : FIDI-AV-AAAA-NNN' }) +
         '<div class="av-grid-3">' + fld("Date d'établissement", 'metadata.date', { type: 'date' }) +
         fld("Lieu d'établissement (ville du bien)", 'metadata.lieuEtablissement', { flag: true, tip: 'Doit correspondre à la commune du bien évalué' }) +

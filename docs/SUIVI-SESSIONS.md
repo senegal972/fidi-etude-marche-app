@@ -35,7 +35,8 @@ Ce dépôt est modifié depuis plusieurs outils (Claude Code sur le PC, Claude C
 | 1.35.1 | Suite du 2026-11-23 | Claude Code (cloud) | Session liée au mot de passe (sessions des autres appareils coupées après un changement) ; un jeton d'un autre usage n'ouvre plus de session | `c4406fc` |
 | 1.36.0 | Suite du 2026-11-23 | Claude Code (cloud) | Avoir sur une facture payée (numérotation propre, document, facture annulée, pièces non supprimables) | `4bf9891` |
 | 1.37.0 | Suite du 2026-11-23 | Claude Code (cloud) | Acompte déjà versé déduit sur la facture de solde (nature de remise, libellé dédié) | `33fcffa` |
-| 1.38.0 | Suite du 2026-11-23 | Claude Code (cloud) | Avis de valeur : écran d'accueil (repris de l'étude, nature, destinataire), concordance du destinataire avec l'étude, message temporaire qui bloquait les clics | (ce commit) |
+| 1.38.0 | Suite du 2026-11-23 | Claude Code (cloud) | Avis de valeur : écran d'accueil (repris de l'étude, nature, destinataire), concordance du destinataire avec l'étude, message temporaire qui bloquait les clics | `21e9389` |
+| 1.39.0 | Suite du 2026-11-23 | Claude Code (cloud) | Avis : règles du PLU, zonage des risques au point et référence de l'étude repris depuis l'étude | (ce commit) |
 
 ## État des branches au 2026-11-16
 
