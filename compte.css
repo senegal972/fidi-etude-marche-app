@@ -165,3 +165,11 @@
 .soc-logo{display:block;height:40px;margin-bottom:.2rem;}
 .soc-logo img{max-height:40px;max-width:160px;object-fit:contain;}
 .soc-info{background:#eef2f7;color:#3a4553;}
+
+/* ─ Changer son mot de passe ─ */
+.cpt-mdp{display:grid;gap:.7rem;max-width:420px;}
+.cpt-champ{min-height:42px;}
+.cpt-lien-texte{background:none;border:0;padding:0;color:var(--fidi-blue-light);font-weight:600;font-size:inherit;}
+.cpt-mdp-etat{font-size:.86rem;min-height:1.2rem;color:#5b6573;}
+.cpt-mdp-erreur{color:#a12020;}
+.cpt-mdp-ok{color:#17663a;font-weight:600;}

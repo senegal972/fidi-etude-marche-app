@@ -233,6 +233,9 @@
   #factAdminRoot .fa-seuils button{grid-column:1 / -1;min-height:44px;}
   #factAdminRoot .fa-collabs{grid-template-columns:1fr;}
   #societesRoot .soc-liste{grid-template-columns:1fr;}
+  #compteModal .cpt-mdp{max-width:none;}
+  #compteModal .cpt-champ{font-size:16px;min-height:44px;}
+  #compteModal .cpt-mdp .cpt-btn{width:100%;min-height:44px;}
   #societesRoot .soc-editeur .fx-emetteur{max-width:none;}
   #societesRoot input,#societesRoot select{font-size:16px;}
   #factAdminRoot .fa-email{grid-template-columns:minmax(0,1fr) auto;}

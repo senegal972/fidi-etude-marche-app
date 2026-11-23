@@ -6557,6 +6557,7 @@ function copyShareUrl(){
 <script src="/saisie-carte.js" defer></script>
 <script src="/emetteurs.js" defer></script>
 <script src="/compte-societes.js" defer></script>
+<script src="/compte-motdepasse.js" defer></script>
 <script src="/facture-externe.js" defer></script>
 <script src="/facture.js" defer></script>
 <script src="/compte-facturation.js" defer></script>
@@ -6842,7 +6843,18 @@ window.Compte = (function(){
               '<div><dt>Statut</dt><dd><span class="cpt-etat"><i></i>'+esc(u.statut||'Actif')+'</span></dd></div>'+
               (u.template ? '<div><dt>Profil d\'accès</dt><dd>'+esc(u.template)+'</dd></div>' : '')+
             '</dl>'+
-            '<p class="cpt-note">Une information à corriger ou un mot de passe à changer ? Adressez-vous à votre administrateur.</p>'+
+            '<p class="cpt-note">Une information à corriger ? Adressez-vous à votre administrateur.</p>'+
+          '</section>'+
+          '<section class="cpt-carte"><h3>Mot de passe</h3>'+
+            '<form id="mdpForm" class="cpt-mdp" novalidate autocomplete="off">'+
+              '<div><label class="cpt-label" for="mdpActuel">Mot de passe actuel</label><input type="password" class="form-control cpt-champ" id="mdpActuel" autocomplete="current-password" maxlength="200"></div>'+
+              '<div><label class="cpt-label" for="mdpNouveau">Nouveau mot de passe</label><input type="password" class="form-control cpt-champ" id="mdpNouveau" autocomplete="new-password" maxlength="200"></div>'+
+              '<div><label class="cpt-label" for="mdpConfirme">Nouveau mot de passe, une seconde fois</label><input type="password" class="form-control cpt-champ" id="mdpConfirme" autocomplete="new-password" maxlength="200"></div>'+
+              '<p class="cpt-note">10 caractères au moins, avec une lettre et un chiffre. '+
+                '<button type="button" class="cpt-lien-texte" id="mdpVoir" aria-pressed="false"><i class="bi bi-eye"></i> Afficher</button></p>'+
+              '<div id="mdpEtat" class="cpt-mdp-etat" role="status"></div>'+
+              '<button type="submit" class="btn cpt-btn" id="mdpValider"><i class="bi bi-key me-1"></i>Changer mon mot de passe</button>'+
+            '</form>'+
           '</section>'+
           '<section class="cpt-carte cpt-carte-ligne"><div><h3>Mise en page des documents</h3><p>Enseigne, logo, couleurs, coordonnées et sociétés émettrices de vos factures.</p></div>'+
             '<button type="button" class="btn cpt-btn" onclick="Compte.miseEnPage()"><i class="bi bi-palette me-1"></i>Ouvrir la mise en page</button></section>'+

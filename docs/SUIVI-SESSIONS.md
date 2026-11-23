@@ -30,7 +30,8 @@ Ce dépôt est modifié depuis plusieurs outils (Claude Code sur le PC, Claude C
 | 1.32.0 | Suite du 2026-11-22 | Claude Code (cloud) | Mon compte → « Mes sociétés » (multi-sociétés, société par défaut, RIB pour le virement), ouverte à tous les comptes | `0f4ad7a` |
 | 1.33.0 | Suite du 2026-11-22 | Claude Code (cloud) | Un logo par société émettrice (fiche de la société, report sur ses factures) | `716d323` |
 | 1.34.0 | Suite du 2026-11-22 | Claude Code (cloud) | Mentions propres à chaque société émettrice ; carte de choix de la parcelle en grand écran | `7907c64` |
-| 1.34.1 | Suite du 2026-11-22 | Claude Code (cloud) | Correction : fiche de parcelle inopérante avec le zonage actif quand la carte de choix avait été ouverte avant | (ce commit) |
+| 1.34.1 | Suite du 2026-11-22 | Claude Code (cloud) | Correction : fiche de parcelle inopérante avec le zonage actif quand la carte de choix avait été ouverte avant | `b11d46f` |
+| 1.35.0 | Suite du 2026-11-23 | Claude Code (cloud) | Changement de son propre mot de passe (Mon compte → Identité) | (ce commit) |
 
 ## État des branches au 2026-11-16
 

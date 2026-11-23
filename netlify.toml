@@ -177,6 +177,11 @@
   status = 200
 
 [[redirects]]
+  from   = "/api/auth/mot-de-passe"
+  to     = "/.netlify/functions/auth-motdepasse"
+  status = 200
+
+[[redirects]]
   from   = "/api/auth/oubli"
   to     = "/.netlify/functions/auth-oubli"
   status = 200
