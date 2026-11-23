@@ -10,13 +10,13 @@ const { handler, ESSAIS_MAX } = await import("../netlify/functions/auth-motdepas
 const { signJWT, hashPassword, verifyPassword } = await import("../netlify/functions/_auth.mjs");
 
 const ANCIEN = "AncienMotDePasse1", NOUVEAU = "NouveauMotDePasse2";
-let hash, statut, ecritures;
+let hash, statut, ecritures, pageId = "page-moi";
 const vraiFetch = globalThis.fetch;
 globalThis.fetch = async (url, options = {}) => {
   const u = new URL(String(url));
   if (u.hostname !== "api.notion.com") throw new Error("appel réseau inattendu : " + u.href);
   if (u.pathname.endsWith("/query")) {
-    return new Response(JSON.stringify({ results: [{ id: "page-moi", properties: {
+    return new Response(JSON.stringify({ results: [{ id: pageId, properties: {
       "Email": { title: [{ plain_text: "moi@exemple.fr" }] }, "Nom": { rich_text: [{ plain_text: "Moi" }] },
       "Statut": { select: { name: statut } }, "Rôle": { select: { name: "Collaborateur" } },
       "Mot de passe": { rich_text: [{ plain_text: hash }] } } }] }), { status: 200 });
@@ -72,4 +72,31 @@ test("interface : formulaire dans Identité, module chargé, route déclarée, m
   const mod = readFileSync(new URL("../compte-motdepasse.js", import.meta.url), "utf8");
   new Function(mod);
   assert.ok(mod.includes("s.length < 10") && mod.includes("/api/auth/mot-de-passe"));
+});
+
+// Session liée au mot de passe.
+test("session : coupée dès que le mot de passe change ; renouvelée sur l'appareil qui a fait le changement", async () => {
+  const { empreinteMdp } = await import("../netlify/functions/_auth.mjs");
+  pageId = "page-session"; // compteur d'essais distinct de celui saturé par le test précédent
+  hash = hashPassword("MotDePasseSession7");
+  const session = { cookie: "fidi_session=" + signJWT({ email: "moi@exemple.fr", pv: empreinteMdp(hash) }) };
+  const r = await handler({ httpMethod: "POST", headers: session, body: JSON.stringify({ actuel: "MotDePasseSession7", nouveau: "MotDePasseSession8" }) });
+  assert.equal(r.statusCode, 200);
+  const nouveauCookie = String(r.headers["Set-Cookie"] || "").split(";")[0];
+  assert.match(nouveauCookie, /^fidi_session=.+/);
+  // L'ancienne session (autre appareil) ne passe plus ; la nouvelle passe.
+  const essai = (h) => handler({ httpMethod: "POST", headers: h, body: JSON.stringify({ actuel: "x", nouveau: "y" }) }).then((x) => x.statusCode);
+  assert.equal(await essai(session), 401);
+  assert.notEqual(await essai({ cookie: nouveauCookie }), 401);
+});
+
+test("session : un lien « mot de passe oublié » ou un jeton d'un autre usage n'ouvre pas de session", async () => {
+  const jeton = signJWT({ purpose: "reset", email: "moi@exemple.fr", v: "abc" }, 3600);
+  const r = await handler({ httpMethod: "POST", headers: { cookie: "fidi_session=" + jeton }, body: JSON.stringify({ actuel: ANCIEN, nouveau: NOUVEAU }) });
+  assert.equal(r.statusCode, 401); assert.equal(ecritures, 0);
+});
+
+test("session : la connexion pose l'empreinte du mot de passe", () => {
+  const login = readFileSync(new URL("../netlify/functions/auth-login.mjs", import.meta.url), "utf8");
+  assert.ok(login.includes("pv: empreinteMdp(found.user.hash)"));
 });

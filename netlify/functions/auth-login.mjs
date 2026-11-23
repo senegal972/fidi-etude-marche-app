@@ -1,8 +1,7 @@
 // Netlify Function — Connexion. POST /api/auth/login { email, password }
 import { hasToken } from "./_notion.mjs";
 import {
-  authResp, findUserByEmail, verifyPassword, signJWT, sessionCookie, touchLastLogin,
-} from "./_auth.mjs";
+  authResp, findUserByEmail, verifyPassword, signJWT, sessionCookie, touchLastLogin,, empreinteMdp } from "./_auth.mjs";
 
 // Anti-brute-force best-effort (mémoire du conteneur ; réinitialisé au cold start).
 const attempts = new Map();
@@ -35,7 +34,7 @@ export const handler = async (event) => {
     if (!verifyPassword(password, found.user.hash)) return bad();
 
     attempts.delete(email);
-    const token = signJWT({ email, role: found.user.role, sub: found.page.id });
+    const token = signJWT({ email, role: found.user.role, sub: found.page.id, pv: empreinteMdp(found.user.hash) });
     touchLastLogin(found.page.id).catch(() => {});
     return authResp(200, {
       ok: true,

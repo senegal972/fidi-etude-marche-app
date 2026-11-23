@@ -31,7 +31,8 @@ Ce dépôt est modifié depuis plusieurs outils (Claude Code sur le PC, Claude C
 | 1.33.0 | Suite du 2026-11-22 | Claude Code (cloud) | Un logo par société émettrice (fiche de la société, report sur ses factures) | `716d323` |
 | 1.34.0 | Suite du 2026-11-22 | Claude Code (cloud) | Mentions propres à chaque société émettrice ; carte de choix de la parcelle en grand écran | `7907c64` |
 | 1.34.1 | Suite du 2026-11-22 | Claude Code (cloud) | Correction : fiche de parcelle inopérante avec le zonage actif quand la carte de choix avait été ouverte avant | `b11d46f` |
-| 1.35.0 | Suite du 2026-11-23 | Claude Code (cloud) | Changement de son propre mot de passe (Mon compte → Identité) | (ce commit) |
+| 1.35.0 | Suite du 2026-11-23 | Claude Code (cloud) | Changement de son propre mot de passe (Mon compte → Identité) | `e752de2` |
+| 1.35.1 | Suite du 2026-11-23 | Claude Code (cloud) | Session liée au mot de passe (sessions des autres appareils coupées après un changement) ; un jeton d'un autre usage n'ouvre plus de session | (ce commit) |
 
 ## État des branches au 2026-11-16
 

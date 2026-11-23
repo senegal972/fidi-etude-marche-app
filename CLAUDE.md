@@ -169,7 +169,9 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
      `POST /api/auth/mot-de-passe { actuel, nouveau }` (`auth-motdepasse.mjs`) : session exigée, mot de passe actuel revérifié, même règle
      `motDePasseRefuse` (**en triple** : `signup-link.mjs`, `inscription.js`, `compte-motdepasse.js`), 5 essais manqués par quart d'heure et par
      compte (mémoire du conteneur). Tests : `tests/auth-motdepasse.test.mjs`.
-- Non couvert : les sessions ouvertes sur d'autres appareils restent valables après un changement de mot de passe (jeton de 30 jours).
+- **Session liée au mot de passe** : la connexion pose `pv` = `empreinteMdp(hash)` dans le jeton (7 jours) ; `currentUser()` refuse un jeton dont
+  `pv` ne correspond plus (mot de passe changé) et tout jeton portant `purpose` (lien de réinitialisation, invitation). Les jetons sans `pv`
+  (connexions antérieures à la 1.35.1, appel interne de `facture-auto`) restent admis jusqu'à leur expiration.
 
 ### Application installable
 - `manifest.webmanifest` (servi en `application/manifest+json`, voir `netlify.toml`) + `icones/` : `icone-192.png`, `icone-512.png`,

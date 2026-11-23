@@ -171,9 +171,19 @@ export function authPayload(event) {
 export async function currentUser(event) {
   const pl = authPayload(event);
   if (!pl || !pl.email) return null;
+  // Un jeton émis pour un autre usage (lien « mot de passe oublié », invitation) n'ouvre jamais de session.
+  if (pl.purpose) return null;
   const found = await findUserByEmail(pl.email);
   if (!found || found.user.statut !== "Actif" || isExpired(found.user)) return null;
+  // Session liée au mot de passe : dès qu'il change (par l'utilisateur, l'administrateur ou « mot de passe oublié »),
+  // les sessions ouvertes ailleurs cessent d'être valables. Les jetons sans « pv » (antérieurs à la 1.35.1) restent admis.
+  if (pl.pv && pl.pv !== empreinteMdp(found.user.hash)) return null;
   return found;
+}
+
+// Empreinte courte du mot de passe haché (ne permet pas de le retrouver) : sert à lier une session au mot de passe.
+export function empreinteMdp(hash) {
+  return crypto.createHash("sha256").update(String(hash || "")).digest("hex").slice(0, 16);
 }
 
 export const AUTH_HEADERS = {

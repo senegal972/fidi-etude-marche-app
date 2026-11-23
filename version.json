@@ -1,9 +1,10 @@
 {
   "name": "FIDI · Étude de Marché & Avis de valeur",
-  "version": "1.35.0",
+  "version": "1.35.1",
   "build_date": "2026-11-22T10:00:00-04:00",
-  "build_label": "Changer son mot de passe",
+  "build_label": "Sessions coupées après un changement de mot de passe",
   "changelog": [
+    "1.35.1 — Sécurité · après un changement de mot de passe (par l'utilisateur, par l'administrateur ou par « Mot de passe oublié »), les sessions ouvertes sur d'autres appareils cessent de fonctionner : il faut s'y reconnecter avec le nouveau mot de passe. L'appareil sur lequel le changement est fait reste connecté. Vaut pour les connexions faites à partir de cette version.",
     "1.35.0 — Mon compte → Identité · chaque utilisateur peut changer lui-même son mot de passe : mot de passe actuel, nouveau mot de passe saisi deux fois (10 caractères au moins, une lettre et un chiffre), bouton « Afficher » pour relire sa saisie. Le mot de passe actuel est toujours redemandé, et cinq essais manqués bloquent le changement pendant un quart d'heure. Les liens « Mot de passe oublié » déjà reçus cessent de fonctionner après le changement.",
     "1.34.1 — Correction · carte de l'étude : avec le calque « Zonage PLU » activé, un clic sur une parcelle n'affichait plus sa fiche quand la carte de choix de « Nouvelle étude » (bouton « Carte ») avait été ouverte auparavant — la fiche s'ouvrait sur cette carte-là, alors masquée. Elle s'ouvre de nouveau sur la carte de l'étude, zonage activé ou non.",
     "1.34.0 — Mes sociétés · chaque société émettrice peut porter ses propres mentions, imprimées au bas de ses factures (par exemple : agent commercial d'un réseau, numéro RSAC, carte professionnelle, assurance RC professionnelle), 240 caractères au plus. Les mentions de la charte ne servent que si la société n'en a pas et que la case correspondante est cochée. · Nouvelle étude · la carte de choix de la parcelle a un bouton « Grand écran » : la carte et la fiche de la parcelle occupent toute la fenêtre ; « Réduire » ou la touche Échap ramène à la taille normale, et le choix d'une parcelle referme le tout.",

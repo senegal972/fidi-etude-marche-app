@@ -5,7 +5,7 @@
 // Le nouveau mot de passe suit la même règle qu'à l'inscription (motDePasseRefuse). Rien n'est envoyé par e-mail.
 // Les liens « mot de passe oublié » déjà envoyés cessent de fonctionner (leur empreinte dépend de l'ancien mot de passe).
 import { hasToken } from "./_notion.mjs";
-import { authResp, currentUser, verifyPassword, setPassword } from "./_auth.mjs";
+import { authResp, currentUser, verifyPassword, setPassword, signJWT, sessionCookie, findUserByEmail, empreinteMdp } from "./_auth.mjs";
 import { motDePasseRefuse } from "./signup-link.mjs";
 
 export const ESSAIS_MAX = 5;
@@ -47,5 +47,11 @@ export const handler = async (event) => {
   try { await setPassword(id, nouveau); }
   catch (e) { console.error("[mot-de-passe] enregistrement impossible :", e.message); return authResp(502, { error: "Le mot de passe n'a pas pu être enregistré. Réessayez." }); }
   essais.delete(id);
-  return authResp(200, { ok: true, message: "Mot de passe modifié. Il sert dès votre prochaine connexion." });
+  // Les sessions ouvertes ailleurs tombent (elles portent l'empreinte de l'ancien mot de passe) ; celle-ci est renouvelée.
+  let entetes = {};
+  try {
+    const relu = await findUserByEmail(moi.user.email);
+    if (relu) entetes = { "Set-Cookie": sessionCookie(signJWT({ email: moi.user.email, role: moi.user.role, sub: id, pv: empreinteMdp(relu.user.hash) })) };
+  } catch { /* à défaut, l'utilisateur se reconnectera */ }
+  return authResp(200, { ok: true, message: "Mot de passe modifié. Vos autres appareils devront se reconnecter." }, entetes);
 };
