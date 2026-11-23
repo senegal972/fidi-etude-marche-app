@@ -141,3 +141,30 @@ test("document : une facture ordinaire n'est pas modifiée par le mode avoir", (
   const h = renderFactureHTML({ ...d, apercu: false });
   assert.match(h, /<h1>Facture<\/h1>/); assert.match(h, /Total TTC<\/td><td class="num">450,00/); assert.ok(h.includes("Règlement par virement")); assert.ok(!h.includes("− 4"));
 });
+
+// Acompte déjà versé : déduit sur la facture de solde comme une remise en euros, avec son propre libellé.
+test("acompte déjà versé : mêmes totaux qu'une remise en euros, libellé et référence sur la facture ; calcul identique dans le navigateur", async () => {
+  const { calculerFacture } = await import("../netlify/functions/_facture_calc.mjs");
+  const base = { lignes: [{ designation: "Étude de marché", quantite: 1, prixUnitaire: 450 }], mode: "montant", prixSaisis: "TTC", tva: { regime: "assujetti", taux: 8.5 } };
+  const acompte = calculerFacture({ ...base, remise: { type: "eur", valeur: 135, nature: "acompte", reference: "FF-FAC-2026-004" } });
+  const remise = calculerFacture({ ...base, remise: { type: "eur", valeur: 135 } });
+  assert.deepEqual(acompte.totaux, remise.totaux);
+  assert.equal(acompte.totaux.ttc, 315);
+  assert.equal(acompte.remise.nature, "acompte"); assert.equal(acompte.remise.reference, "FF-FAC-2026-004");
+  assert.equal(remise.remise.nature, undefined);
+  // Un acompte se déduit en euros : « nature » est ignorée sur une remise en pourcentage.
+  assert.equal(calculerFacture({ ...base, remise: { type: "pct", valeur: 10, nature: "acompte" } }).remise.nature, undefined);
+  const h = renderFactureHTML({ numero: "FF-FAC-2026-009", date: "2026-11-23", emetteur: {}, client: { nom: "Mme Durand" }, facture: { ...base, remise: acompte.remise } });
+  assert.ok(h.includes("Acompte déjà versé (facture n° FF-FAC-2026-004)")); assert.ok(!h.includes(">Remise<"));
+  assert.match(h, /Total TTC<\/td><td class="num">315,00/);
+  // Miroir navigateur (facture.js).
+  const { readFileSync } = await import("node:fs");
+  const vm = await import("node:vm");
+  const fenetre = { document: { addEventListener() {}, getElementById() { return null; } }, addEventListener() {} };
+  fenetre.window = fenetre;
+  vm.runInNewContext(readFileSync(new URL("../facture.js", import.meta.url), "utf8"), fenetre);
+  const nav = fenetre.FidiFactureCalc.calculerFacture ? fenetre.FidiFactureCalc.calculerFacture : fenetre.FidiFactureCalc.calculer;
+  const c = nav({ ...base, remise: { type: "eur", valeur: 135, nature: "acompte", reference: "FF-FAC-2026-004" } });
+  assert.deepEqual(JSON.parse(JSON.stringify(c.totaux)), acompte.totaux);
+  assert.equal(c.remise.nature, "acompte"); assert.equal(c.remise.reference, "FF-FAC-2026-004");
+});

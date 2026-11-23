@@ -68,7 +68,11 @@ Les redirections `/api/<nom>` sont déclarées dans `netlify.toml`.
   - `POST /api/facture-auto` (serveur à serveur) : en-tête `X-Fidi-Cle` = `FIDI_FACTURATION_CLE` (≥ 24 car.), facture émise
     au nom du compte `FIDI_FACTURATION_COMPTE`, marquée Payée si `paye !== false` ; idempotente sur `ref`
     (Référence dossier). Sans ces variables : 503.
-- Hors périmètre à ce jour : paiement partiel / acompte (le paiement en ligne encaisse toujours le TTC) ;
+- **Acompte** : pas de paiement partiel d'une facture. L'acompte est une facture ordinaire ; la facture de solde le déduit par
+  `remise:{ type:"eur", valeur, nature:"acompte", reference }` — même calcul qu'une remise en euros (`_facture_calc.mjs` et miroir `facture.js`),
+  libellé « Acompte déjà versé (facture n° …) » (`_facture_doc.mjs`). Écran : option « € — acompte déjà versé » du menu de remise (`lireRemise`).
+  Une remise et un acompte ne se cumulent pas sur une même facture. Chaque facture est payée en entier : **PayPal encaisse toujours `f.montant`**.
+- Hors périmètre à ce jour : paiement partiel d'une même facture ;
   les préfixes ne sont uniques qu'au sein d'un compte (deux comptes d'un même déploiement doivent en choisir de différents).
 
 ### Paiement en ligne (PayPal)

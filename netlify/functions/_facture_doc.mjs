@@ -66,7 +66,9 @@ export function renderFactureHTML(data) {
   const htAvantRemise = t.htAvantRemise, remiseHT = t.remiseHT; // cohérents au centime (voir _facture_calc.mjs)
   const lignesTotaux = [
     t.remise > 0 && `<tr><td colspan="3">Sous-total HT</td><td class="num">${sg(htAvantRemise)}</td></tr>`,
-    t.remise > 0 && `<tr><td colspan="3">Remise${calc.remise && calc.remise.type === "pct" ? ` (${qte(calc.remise.valeur)} %)` : ""}</td><td class="num">${av ? "" : "− "}${eur(remiseHT)}</td></tr>`,
+    t.remise > 0 && `<tr><td colspan="3">${calc.remise && calc.remise.nature === "acompte"
+      ? "Acompte déjà versé" + (calc.remise.reference ? ` (facture n° ${esc(calc.remise.reference)})` : "")
+      : "Remise" + (calc.remise && calc.remise.type === "pct" ? ` (${qte(calc.remise.valeur)} %)` : "")}</td><td class="num">${av ? "" : "− "}${eur(remiseHT)}</td></tr>`,
     `<tr><td colspan="3">Total HT</td><td class="num">${sg(t.ht)}</td></tr>`,
     calc.tva.regime === "assujetti"
       ? `<tr><td colspan="3">TVA ${qte(calc.tva.taux)} %</td><td class="num">${sg(t.tva)}</td></tr>`

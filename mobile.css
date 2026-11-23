@@ -266,3 +266,13 @@
 @supports (padding:env(safe-area-inset-top)){
   .modal{padding-top:env(safe-area-inset-top,0px)!important;padding-bottom:env(safe-area-inset-bottom,0px)!important;box-sizing:border-box;}
 }
+
+/* Nouvelle facture : remise ou acompte sur un écran étroit (le menu « € — acompte déjà versé » est long). */
+@media (max-width:768px){
+  .fx-tot-remise{flex-wrap:wrap;}
+  .fx-tot-remise dt{flex:1 1 100%;}
+  .fx-remise-in{flex:1 1 auto;min-width:0;}
+  .fx-remise-in select{flex:1 1 auto;min-width:0;max-width:none;}
+  .fx-tot-remise dd{margin-left:auto;}
+  .fx-tot-acompte dt,.fx-tot-acompte dd{flex:1 1 100%;}
+}

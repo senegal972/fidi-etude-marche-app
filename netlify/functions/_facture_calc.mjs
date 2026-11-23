@@ -6,7 +6,8 @@
 //   lignes:     [{ designation, description?, quantite, prixUnitaire }],
 //   mode:       "montant" | "quantite" | "heures"   (affichage ; « montant » force la quantité à 1)
 //   prixSaisis: "TTC" | "HT"                         (les tarifs de la grille sont TTC)
-//   remise:     { type: "pct" | "eur", valeur } | null
+//   remise:     { type: "pct" | "eur", valeur, nature?: "acompte", reference? } | null
+//               nature "acompte" (type "eur") : déduction d'un acompte déjà facturé ; reference = n° de la facture d'acompte
 //   tva:        { regime: "franchise" | "assujetti", taux }   (taux en %)
 // }
 // Sortie : lignes nettoyées (avec montant et prix unitaire HT), totaux arrondis au centime.
@@ -51,6 +52,8 @@ export function calculerFacture(entree) {
     const valeur = type === "pct" ? Math.min(100, num(e.remise.valeur)) : num(e.remise.valeur);
     remiseMontant = r2(Math.min(brut, type === "pct" ? brut * valeur / 100 : valeur));
     remise = { type, valeur };
+    // Acompte déjà facturé : même calcul qu'une remise en euros (HT et TVA réduits au prorata), libellé différent sur la facture.
+    if (e.remise.nature === "acompte" && type === "eur") { remise.nature = "acompte"; remise.reference = txt(e.remise.reference, 60); }
   }
   const net = r2(brut - remiseMontant);
 

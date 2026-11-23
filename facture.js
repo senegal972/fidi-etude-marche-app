@@ -52,6 +52,7 @@
       var valeur = type === 'pct' ? Math.min(100, num(e.remise.valeur)) : num(e.remise.valeur);
       remiseMontant = r2(Math.min(brut, type === 'pct' ? brut * valeur / 100 : valeur));
       remise = { type: type, valeur: valeur };
+      if (e.remise.nature === 'acompte' && type === 'eur') { remise.nature = 'acompte'; remise.reference = String(e.remise.reference == null ? '' : e.remise.reference).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 60); }
     }
     var net = r2(brut - remiseMontant), ht, tva, ttc;
     if (prixSaisis === 'TTC') { ttc = net; ht = r2(ttc / k); tva = r2(ttc - ht); }
@@ -244,17 +245,25 @@
   }
 
   // ─── Événements ────────────────────────────────────────────────────────────
+  // Remise ou acompte déjà facturé : le menu propose « % », « € » et « € — acompte déjà versé ».
+  function lireRemise() {
+    var choix = ($('fxRemiseType') || {}).value || 'pct', valeur = ($('fxRemiseVal') || {}).value || 0;
+    if (choix === 'acompte') return { type: 'eur', valeur: valeur, nature: 'acompte', reference: ($('fxRemiseRef') || {}).value || (etat.remise && etat.remise.reference) || '' };
+    return { type: choix, valeur: valeur };
+  }
+
   function brancher(el) {
     el.addEventListener('input', function (e) {
       var i = e.target.getAttribute('data-l');
       if (i !== null) { etat.lignes[+i][e.target.getAttribute('data-k')] = e.target.value; recalculer(); return; }
-      if (e.target.id === 'fxRemiseVal') { etat.remise = { type: ($('fxRemiseType') || {}).value || 'pct', valeur: e.target.value }; recalculer(); }
+      if (e.target.id === 'fxRemiseVal') { etat.remise = lireRemise(); recalculer(); }
+      if (e.target.id === 'fxRemiseRef') { etat.remise = lireRemise(); }
       if (e.target.id === 'fxNotes') $('fxNotesN').textContent = e.target.value.length + '/1000';
     });
     el.addEventListener('change', function (e) {
       if (e.target.name === 'fxMode') { etat.mode = e.target.value; rendreLignes(); }
       else if (e.target.name === 'fxPrix') { etat.prixSaisis = e.target.value; rendreLignes(); }
-      else if (e.target.id === 'fxRemiseType') { etat.remise = { type: e.target.value, valeur: ($('fxRemiseVal') || {}).value || 0 }; recalculer(); }
+      else if (e.target.id === 'fxRemiseType') { etat.remise = lireRemise(); document.activeElement && document.activeElement.blur(); recalculer(); }
       else if (e.target.id === 'fxEcheance') majEcheanceDate();
       else if (e.target.id === 'factPayReq') {
         $('factPayHint').textContent = e.target.checked
@@ -330,11 +339,13 @@
     rows.push(ligneTot('Sous-total ' + etat.prixSaisis, eur(t.brut)));
     if (etat.remiseOuverte || t.remise > 0) {
       var r = etat.remise || { type: 'pct', valeur: '' };
-      rows.push('<div class="fx-tot fx-tot-remise"><dt>Remise ' +
+      var acompte = r.nature === 'acompte';
+      rows.push('<div class="fx-tot fx-tot-remise"><dt>' + (acompte ? 'Acompte ' : 'Remise ') +
         '<span class="fx-remise-in"><input id="fxRemiseVal" class="form-control form-control-sm text-end" inputmode="decimal" value="' + esc(r.valeur) + '" aria-label="Valeur de la remise">' +
-        '<select id="fxRemiseType" class="form-select form-select-sm" aria-label="Type de remise"><option value="pct"' + (r.type === 'pct' ? ' selected' : '') + '>%</option><option value="eur"' + (r.type === 'eur' ? ' selected' : '') + '>€</option></select>' +
+        '<select id="fxRemiseType" class="form-select form-select-sm" aria-label="Type de remise"><option value="pct"' + (r.type === 'pct' ? ' selected' : '') + '>%</option><option value="eur"' + (r.type === 'eur' && !acompte ? ' selected' : '') + '>€</option><option value="acompte"' + (acompte ? ' selected' : '') + '>€ — acompte déjà versé</option></select>' +
         '<button type="button" class="fx-suppr" data-action="remise-suppr" title="Retirer la remise" aria-label="Retirer la remise"><i class="bi bi-x-lg"></i></button></span></dt>' +
         '<dd>− ' + eur(t.remise) + '</dd></div>');
+      if (acompte) rows.push('<div class="fx-tot fx-tot-acompte"><dt><label for="fxRemiseRef">N° de la facture d\'acompte</label></dt><dd><input id="fxRemiseRef" class="form-control form-control-sm" maxlength="60" placeholder="ex : FF-FAC-2026-004" value="' + esc(r.reference || '') + '"></dd></div>');
     } else {
       rows.push('<div class="fx-tot"><dt>Remise sur la facture</dt><dd><button type="button" class="fx-link" data-action="remise">Ajouter</button></dd></div>');
     }
@@ -347,7 +358,7 @@
     // Ne réécrit pas le bloc pendant la saisie de la remise (garde le focus).
     var actif = document.activeElement && document.activeElement.id;
     var box = $('fxTotaux');
-    if (actif === 'fxRemiseVal' || actif === 'fxRemiseType') {
+    if (actif === 'fxRemiseVal' || actif === 'fxRemiseType' || actif === 'fxRemiseRef') {
       box.querySelectorAll('dd').forEach(function (dd, i) { var tmp = document.createElement('div'); tmp.innerHTML = rows[i] || ''; var n = tmp.querySelector('dd'); if (n && i !== 1) dd.innerHTML = n.innerHTML; });
       var rd = box.querySelector('.fx-tot-remise dd'); if (rd) rd.textContent = '− ' + eur(t.remise);
     } else {

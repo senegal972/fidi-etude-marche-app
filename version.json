@@ -1,9 +1,10 @@
 {
   "name": "FIDI · Étude de Marché & Avis de valeur",
-  "version": "1.36.0",
+  "version": "1.37.0",
   "build_date": "2026-11-22T10:00:00-04:00",
-  "build_label": "Avoir sur une facture payée",
+  "build_label": "Acompte déjà versé sur la facture de solde",
   "changelog": [
+    "1.37.0 — Nouvelle facture · acompte : pour un règlement en deux temps, facturez d'abord l'acompte (une facture ordinaire, par exemple « Acompte de 30 % sur l'étude de marché »), puis, sur la facture de solde, « Remise sur la facture → Ajouter » et choisissez « € — acompte déjà versé » : indiquez le montant de l'acompte et le numéro de sa facture. La facture de solde affiche alors la ligne « Acompte déjà versé (facture n° …) » et le client ne règle que le reste. Chaque facture reste payée en entier : le paiement en ligne n'est pas modifié.",
     "1.36.0 — Facturation · une facture payée peut maintenant être annulée par un avoir : dans la fiche de la facture, « Annuler par un avoir » demande le motif et le mode de remboursement, puis émet un avoir numéroté dans sa propre suite (préfixe de la société suivi de « AV »). La facture passe « Annulée » et sort des encaissements, l'avoir apparaît dans la liste et s'ouvre comme un document, et la prestation peut être facturée de nouveau. L'application ne rembourse rien elle-même : le remboursement se fait par vos soins et se note sur l'avoir. Un avoir et la facture qu'il annule ne peuvent pas être supprimés. Le paiement en ligne n'est pas modifié.",
     "1.35.1 — Sécurité · après un changement de mot de passe (par l'utilisateur, par l'administrateur ou par « Mot de passe oublié »), les sessions ouvertes sur d'autres appareils cessent de fonctionner : il faut s'y reconnecter avec le nouveau mot de passe. L'appareil sur lequel le changement est fait reste connecté. Vaut pour les connexions faites à partir de cette version.",
     "1.35.0 — Mon compte → Identité · chaque utilisateur peut changer lui-même son mot de passe : mot de passe actuel, nouveau mot de passe saisi deux fois (10 caractères au moins, une lettre et un chiffre), bouton « Afficher » pour relire sa saisie. Le mot de passe actuel est toujours redemandé, et cinq essais manqués bloquent le changement pendant un quart d'heure. Les liens « Mot de passe oublié » déjà reçus cessent de fonctionner après le changement.",
