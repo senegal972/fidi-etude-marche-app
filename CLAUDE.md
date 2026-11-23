@@ -30,6 +30,18 @@ Les redirections `/api/<nom>` sont déclarées dans `netlify.toml`.
   Liens directs côté navigateur : `veilleLiens()` (Leboncoin avec rayon, Bien'ici commune, autres par recherche web).
   `/api/annonces-background` est retirée (410). Tests : `tests/annonces-recherche.test.mjs` (extraits réels).
 
+### Avis de valeur : accueil, lien avec l'étude, destinataire — `avis-valeur.js`
+- **Un avis par étude** : `etudeKeyOf()` (adresse, type, coordonnées — **jamais le destinataire**) → `stableRefForEtude()`.
+- `AvisValeur.open(nature|ref)` : s'il n'existe pas encore d'avis pour l'étude affichée (`avisExistePourEtude()`), `accueilAvis(nature,'creation')`
+  ouvre `#avAccueilModal` (résumé `resumeEtude()`, Vente / Location, destinataire) puis rappelle `open()` avec `state._accueil`. Plus aucun
+  `window.prompt`. Un avis existant sans destinataire (et sans `metadata.sansDestinataire`) ouvre `accueilAvis(…,'destinataire')` par-dessus.
+- **Destinataire** : `destinataireEtude()` lit d'abord le champ `#inputDestinataire` de l'étude (souvent rempli après l'analyse), puis
+  `__fidiInputs.destinataire`. `poserDestinataireEtude()` reporte le nom de l'avis dans l'étude ; `synchroniserDestinataire()` fait la concordance
+  à chaque ouverture ; `appliquerAccueil()` écrit `metadata.client / emailClient / telephoneClient` et **`strategie.destinataireType`** (le calcul
+  lit `strategie`, pas `metadata`). Coordonnées d'un client connu : `clientConnu()` sur `listClientsMerged()`.
+- `toast()` est en `pointer-events:none` : l'élément reste dans la page après s'être effacé et bloquait les boutons du bas sur téléphone.
+- Tests : `tests/avis-accueil.test.mjs` ; le comportement se vérifie dans un navigateur (création, réouverture, ancien avis, sans destinataire).
+
 ### Charte de marque
 - `GET /api/marque` · `POST /api/marque` — charte du compte connecté (cookie `fidi_session`).
   `GET` → `{ compte:{ nom }, marque|null }` ; `POST` reçoit `{ enseigne, produit, baseline, logo, couleurs, coordonnees }`,

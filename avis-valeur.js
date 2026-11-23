@@ -1058,7 +1058,7 @@
     d.metadata = d.metadata || {};
     // Lieu d'établissement = commune du bien évalué (souhait métier).
     if (loc.city) d.metadata.lieuEtablissement = loc.city;
-    var dest = (inputs && inputs.destinataire) ? String(inputs.destinataire).trim() : '';
+    var dest = destinataireEtude(inputs);
     if (dest && !d.metadata.client) d.metadata.client = dest;
     // Appariement du destinataire à un client mémorisé (local OU cache CRM) pour
     // compléter les coordonnées. Tolérant : accents, casse, espaces multiples et
@@ -1079,7 +1079,7 @@
           if (!d.metadata.adresseClient && match.adresse) d.metadata.adresseClient = match.adresse;
           if (!d.metadata.emailClient && match.email) d.metadata.emailClient = match.email;
           if (!d.metadata.telephoneClient && match.telephone) d.metadata.telephoneClient = match.telephone;
-          if (match.type && !d.metadata.destinataireType) d.metadata.destinataireType = (String(match.type).toLowerCase().indexOf('pro') >= 0 ? 'professionnel' : 'particulier');
+          if (match.type) { d.strategie = d.strategie || {}; d.strategie.destinataireType = (String(match.type).toLowerCase().indexOf('pro') >= 0 ? 'professionnel' : 'particulier'); }
         }
       } catch (e) {}
     }
@@ -4758,7 +4758,7 @@
     var el = document.getElementById('avToast');
     if (!el) {
       el = document.createElement('div'); el.id = 'avToast';
-      el.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:20000;padding:.6rem 1.2rem;border-radius:8px;color:#fff;font-size:.85rem;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.25);transition:opacity .2s;';
+      el.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:20000;pointer-events:none;max-width:92vw;padding:.6rem 1.2rem;border-radius:8px;color:#fff;font-size:.85rem;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.25);transition:opacity .2s;';
       document.body.appendChild(el);
     }
     el.style.background = isErr ? '#b71c1c' : '#198754';
@@ -6167,6 +6167,156 @@
   //   - une ref d'avis existant (string commençant par 'FIDI-AV-')
   //   - une nature ('vente' | 'location') pour créer un nouvel avis typé
   //   - undefined : demande d'abord la nature (dialogue simple), puis ouvre
+  // ── Accueil de l'avis : lien avec l'étude de marché et destinataire ─────────────────────────
+  // Destinataire saisi dans l'étude : le champ de la barre de résultats (souvent rempli APRÈS l'analyse) fait foi.
+  function destinataireEtude(inputs) {
+    var c = document.getElementById('inputDestinataire');
+    var v = c ? String(c.value || '').trim() : '';
+    if (v) return v;
+    var i = inputs || window.__fidiInputs;
+    return i && i.destinataire ? String(i.destinataire).trim() : '';
+  }
+  // Reporte le destinataire de l'avis dans l'étude, pour que les deux documents portent le même nom.
+  function poserDestinataireEtude(nom) {
+    nom = String(nom || '').trim(); if (!nom) return;
+    var c = document.getElementById('inputDestinataire');
+    if (c && String(c.value || '').trim() !== nom) { c.value = nom; try { c.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {} }
+    if (window.__fidiInputs) window.__fidiInputs.destinataire = nom;
+  }
+  // Un avis existe-t-il déjà pour l'étude affichée (en mémoire ou enregistré sur ce poste) ? Sans étude : le brouillon en cours.
+  function avisExistePourEtude() {
+    if (!window.__fidiData) return !!state.data;
+    var cle = etudeKeyOf(window.__fidiData, window.__fidiInputs);
+    if (state.data && state.data.__srcKey === cle) return true;
+    var sref = stableRefForEtude(window.__fidiData, window.__fidiInputs);
+    try { if (sref && localStorage.getItem(AVIS_PREFIX + sref)) return true; } catch (e) {}
+    return false;
+  }
+  function clientConnu(nom) {
+    var n = normNom(nom); if (!n) return null;
+    var l = listClientsMerged() || [];
+    for (var i = 0; i < l.length; i++) { var x = normNom(l[i].nom || l[i].label); if (x && x === n) return l[i]; }
+    return null;
+  }
+  // Ce que l'avis reprend de l'étude affichée : [[libellé, valeur], …].
+  function resumeEtude() {
+    var f = window.__fidiData; if (!f) return [];
+    var loc = f.localisation || {}, est = f.estimation || {}, i = window.__fidiInputs || {}, g = window.__fidiGpu || {}, pa = g.parcelle || {}, z = g.zone || {};
+    var type = String(f.type_bien || i.typeBien || ''), surf = i.surface || f.surface;
+    var eu = function (n) { return n > 0 ? fmt(Math.round(n)) + ' €' : ''; };
+    return [
+      ['Bien', [i.adresse || loc.label, loc.city && String(i.adresse || loc.label || '').indexOf(loc.city) < 0 ? loc.city : ''].filter(Boolean).join(' — ')],
+      ['Type et surface', [type ? type.charAt(0).toUpperCase() + type.slice(1) : '', surf ? surf + ' m²' : ''].filter(Boolean).join(' · ')],
+      ['Parcelle', pa.section ? [pa.section + ' ' + pa.numero, pa.contenance ? fmt(pa.contenance) + ' m² au cadastre' : ''].filter(Boolean).join(' · ') : ''],
+      ['Zonage', z.libelle ? z.libelle + (z.libelong ? ' — ' + z.libelong : '') : ''],
+      ['Prix médian', est.prix_m2 ? fmt(Math.round(est.prix_m2)) + ' €/m²' : ''],
+      ['Estimation de l\'étude', est.valeur_med ? [eu(est.valeur_min), eu(est.valeur_med), eu(est.valeur_max)].filter(Boolean).join(' · ') : '']
+    ].filter(function (x) { return x[1]; });
+  }
+  // mode 'creation' : nature + destinataire, puis l'avis est créé. mode 'destinataire' : avis déjà ouvert, on ne demande que le destinataire.
+  function accueilAvis(nature, mode) {
+    if (typeof bootstrap === 'undefined') { state._accueil = { nature: nature || 'vente' }; return open(nature || 'vente'); }
+    var creation = mode !== 'destinataire';
+    var racine = document.getElementById('avAccueilRoot');
+    if (!racine) { racine = document.createElement('div'); racine.id = 'avAccueilRoot'; document.body.appendChild(racine); }
+    var m = (state.data && state.data.metadata) || {};
+    var nom = creation ? destinataireEtude() : (m.client || destinataireEtude());
+    var connu = clientConnu(nom) || {};
+    var typeDest = (state.data && state.data.strategie && state.data.strategie.destinataireType) || (String(connu.type || '').toLowerCase().indexOf('pro') >= 0 ? 'professionnel' : 'particulier');
+    var resume = resumeEtude();
+    var clients = (listClientsMerged() || []).slice(0, 200).map(function (c) { return '<option value="' + esc(c.nom || c.label || '') + '"></option>'; }).join('');
+    racine.innerHTML =
+      '<div class="modal fade" id="avAccueilModal" tabindex="-1" aria-labelledby="avAccueilTitre"><div class="modal-dialog modal-dialog-centered modal-dialog-scrollable"><div class="modal-content av-accueil">' +
+      '<div class="modal-header"><h5 class="modal-title" id="avAccueilTitre">' + (creation ? 'Nouvel avis de valeur' : 'À qui est destiné cet avis ?') + '</h5>' +
+        '<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button></div>' +
+      '<form class="modal-body" id="avAccueilForm" novalidate>' +
+        (creation ? (resume.length
+          ? '<div class="av-accueil-etude"><div class="av-accueil-k"><i class="bi bi-link-45deg"></i> Repris de l\'étude de marché</div><dl>' +
+              resume.map(function (x) { return '<div><dt>' + esc(x[0]) + '</dt><dd>' + esc(x[1]) + '</dd></div>'; }).join('') +
+            '</dl><p>Ces données, le cadastre, le zonage, les risques et les ventes comparables de l\'étude sont repris dans l\'avis. Vous pourrez tout corriger.</p></div>'
+          : '<div class="av-accueil-etude av-accueil-sans"><div class="av-accueil-k"><i class="bi bi-info-circle"></i> Aucune étude de marché affichée</div><p>L\'avis sera créé vierge. Pour qu\'il reprenne le bien, le cadastre et le marché, lancez d\'abord l\'étude puis ouvrez l\'avis depuis ses résultats.</p></div>') +
+          '<div class="av-accueil-k">Type d\'avis</div>' +
+          '<div class="av-accueil-nature" role="radiogroup" aria-label="Type d\'avis">' +
+            '<label><input type="radio" name="avAccNature" value="vente"' + (nature !== 'location' ? ' checked' : '') + '><span><i class="bi bi-house-check"></i><b>Vente</b><small>Valeur vénale du bien</small></span></label>' +
+            '<label><input type="radio" name="avAccNature" value="location"' + (nature === 'location' ? ' checked' : '') + '><span><i class="bi bi-key"></i><b>Location</b><small>Valeur locative de marché</small></span></label>' +
+          '</div>' : '') +
+        '<div class="av-accueil-k">Destinataire de l\'avis</div>' +
+        '<label class="av-accueil-l" for="avAccNom">Nom du destinataire</label>' +
+        '<input type="text" class="form-control" id="avAccNom" list="avAccClients" maxlength="120" autocomplete="off" placeholder="Nom et prénom, ou société" value="' + esc(nom) + '">' +
+        '<datalist id="avAccClients">' + clients + '</datalist>' +
+        '<div class="av-accueil-grille">' +
+          '<div><label class="av-accueil-l" for="avAccType">Il s\'agit d\'un</label><select class="form-select" id="avAccType"><option value="particulier"' + (typeDest !== 'professionnel' ? ' selected' : '') + '>Particulier</option><option value="professionnel"' + (typeDest === 'professionnel' ? ' selected' : '') + '>Professionnel de l\'immobilier</option></select></div>' +
+          '<div><label class="av-accueil-l" for="avAccTel">Téléphone</label><input type="tel" class="form-control" id="avAccTel" maxlength="30" value="' + esc(m.telephoneClient || connu.telephone || '') + '"></div>' +
+        '</div>' +
+        '<label class="av-accueil-l" for="avAccEmail">E-mail</label>' +
+        '<input type="email" class="form-control" id="avAccEmail" maxlength="120" autocomplete="off" value="' + esc(m.emailClient || connu.email || '') + '">' +
+        '<label class="av-accueil-sansdest"><input type="checkbox" id="avAccSans"> Pas de destinataire pour le moment</label>' +
+        '<p class="av-accueil-note">Le même nom est reporté dans l\'étude de marché, pour que les deux documents concordent.</p>' +
+        '<div class="av-accueil-erreur d-none" id="avAccErreur" role="alert"></div>' +
+      '</form>' +
+      '<div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">' + (creation ? 'Annuler' : 'Plus tard') + '</button>' +
+        '<button type="submit" form="avAccueilForm" class="btn btn-primary" id="avAccValider">' + (creation ? '<i class="bi bi-file-earmark-plus me-1"></i>Créer l\'avis' : '<i class="bi bi-check2 me-1"></i>Enregistrer') + '</button></div>' +
+      '</div></div></div>';
+    var el = document.getElementById('avAccueilModal');
+    var val = function (id) { var e = document.getElementById(id); return e ? String(e.value || '').trim() : ''; };
+    // Un client déjà connu : ses coordonnées se remplissent seules.
+    document.getElementById('avAccNom').addEventListener('change', function () {
+      var c = clientConnu(this.value); if (!c) return;
+      if (c.email && !val('avAccEmail')) document.getElementById('avAccEmail').value = c.email;
+      if (c.telephone && !val('avAccTel')) document.getElementById('avAccTel').value = c.telephone;
+      if (c.type) document.getElementById('avAccType').value = String(c.type).toLowerCase().indexOf('pro') >= 0 ? 'professionnel' : 'particulier';
+    });
+    document.getElementById('avAccSans').addEventListener('change', function () {
+      ['avAccNom', 'avAccType', 'avAccTel', 'avAccEmail'].forEach(function (id) { document.getElementById(id).disabled = !!document.getElementById('avAccSans').checked; });
+    });
+    document.getElementById('avAccueilForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var sans = document.getElementById('avAccSans').checked, nomSaisi = sans ? '' : val('avAccNom'), mail = sans ? '' : val('avAccEmail');
+      var err = document.getElementById('avAccErreur');
+      var refuser = function (t, id) { err.textContent = t; err.classList.remove('d-none'); var c = document.getElementById(id); if (c) c.focus(); };
+      if (!sans && nomSaisi.length < 2) return refuser('Indiquez le nom du destinataire, ou cochez « Pas de destinataire pour le moment ».', 'avAccNom');
+      if (mail && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(mail)) return refuser('Adresse e-mail invalide.', 'avAccEmail');
+      var choix = { nature: creation ? ((document.querySelector('input[name="avAccNature"]:checked') || {}).value || 'vente') : null,
+                    client: nomSaisi, type: val('avAccType') || 'particulier', email: mail, telephone: sans ? '' : val('avAccTel'), sans: sans };
+      var inst = bootstrap.Modal.getInstance(el); if (inst) inst.hide();
+      if (creation) { if (choix.client) poserDestinataireEtude(choix.client); state._accueil = choix; open(choix.nature); }
+      else { appliquerAccueil(choix); try { showSection(state.section); avisAutoSaveNow(); } catch (x) {} toast(choix.client ? 'Destinataire enregistré' : 'Avis sans destinataire'); }
+    });
+    el.addEventListener('hidden.bs.modal', function () { el.remove(); });
+    el.addEventListener('shown.bs.modal', function () { var c = document.getElementById('avAccNom'); if (c && !c.value && !estMobile()) c.focus(); });
+    if (typeof window.fidiStackModal === 'function') window.fidiStackModal(el);
+    new bootstrap.Modal(el).show();
+  }
+  // Reporte le choix de l'accueil dans l'avis ouvert (et dans l'étude).
+  function appliquerAccueil(a) {
+    var d = state.data; if (!d || !a) return;
+    d.metadata = d.metadata || {}; d.strategie = d.strategie || {};
+    d.metadata.sansDestinataire = !!a.sans;
+    if (a.sans) return;
+    if (a.client) { d.metadata.client = a.client; poserDestinataireEtude(a.client); }
+    var c = clientConnu(a.client) || {};
+    if (a.email) d.metadata.emailClient = a.email; else if (!d.metadata.emailClient && c.email) d.metadata.emailClient = c.email;
+    if (a.telephone) d.metadata.telephoneClient = a.telephone; else if (!d.metadata.telephoneClient && c.telephone) d.metadata.telephoneClient = c.telephone;
+    if (!d.metadata.adresseClient && c.adresse) d.metadata.adresseClient = c.adresse;
+    d.strategie.destinataireType = a.type === 'professionnel' ? 'professionnel' : 'particulier';
+  }
+  // Avis déjà existant : même destinataire que l'étude, dans les deux sens. Renvoie true s'il faut le demander.
+  function synchroniserDestinataire(memeEtude) {
+    var d = state.data; if (!d) return false;
+    d.metadata = d.metadata || {};
+    var avis = String(d.metadata.client || '').trim(), etude = memeEtude ? destinataireEtude() : '';
+    if (!avis && etude) {
+      d.metadata.client = etude;
+      var c = clientConnu(etude) || {};
+      if (!d.metadata.emailClient && c.email) d.metadata.emailClient = c.email;
+      if (!d.metadata.telephoneClient && c.telephone) d.metadata.telephoneClient = c.telephone;
+      if (!d.metadata.adresseClient && c.adresse) d.metadata.adresseClient = c.adresse;
+      return false;
+    }
+    if (avis && memeEtude && !etude) poserDestinataireEtude(avis);
+    return !avis && !d.metadata.sansDestinataire;
+  }
+
   function open(refOuNature) {
     if (typeof bootstrap === 'undefined') { alert('Bootstrap non chargé.'); return; }
     if (!state.built) buildModal();
@@ -6185,11 +6335,11 @@
       if (lib && bootstrap.Modal.getInstance(lib)) bootstrap.Modal.getInstance(lib).hide();
     }
 
-    // Création : si aucune nature demandée ET pas d'avis en cours → propose le choix
-    if (!state.data && !natureDemande) {
-      natureDemande = askNatureAvis();
-      if (!natureDemande) return; // annulé
-    }
+    // Création d'un avis : écran d'accueil (ce qui est repris de l'étude, vente ou location, destinataire).
+    // Il remplace l'ancienne question « tapez 1 ou 2 ». Un avis qui existe déjà pour cette étude s'ouvre directement.
+    var accueil = state._accueil || null; state._accueil = null;
+    if (!refDemande && !accueil && !avisExistePourEtude()) { accueilAvis(natureDemande || 'vente', 'creation'); return; }
+    if (accueil && accueil.nature) natureDemande = accueil.nature;
 
     // Re-préremplissage si une étude est chargée et que le brouillon courant provient
     // d'une AUTRE étude (corrige type/surface/immeuble/destinataire périmés au réouverture).
@@ -6261,6 +6411,9 @@
     if (window.__fidiData && (!refDemande || _sameEtude)) {
       try { injectEtudeGeoCadastre(state.data, window.__fidiData, window.__fidiInputs); } catch (e) {}
     }
+    // Destinataire : celui de l'accueil, sinon concordance avec l'étude (dans les deux sens).
+    var demanderDestinataire = false;
+    try { if (accueil) appliquerAccueil(accueil); else demanderDestinataire = synchroniserDestinataire(!refDemande || _sameEtude); } catch (e) {}
     refreshSavedSelect();
     state._crmRefreshed = false; // ré-autorise un refresh CRM à chaque ouverture de modale
     // Refresh header (toggle vente/loc) : rebuild rapide de la modale si nature a changé
@@ -6270,6 +6423,8 @@
     try { showSection(state.section); }
     catch (e) { try { console.error('[avis] rendu partiel :', e); } catch (_) {} toast('Avis ouvert (données partielles)', true); }
     state.modal.show();
+    // Avis déjà créé mais sans destinataire : on le demande tout de suite (une fois ; « sans destinataire » est mémorisé).
+    if (demanderDestinataire) setTimeout(function () { accueilAvis(natureCourante(), 'destinataire'); }, 350);
     try { if (typeof window.fidiRefreshAvisVersion === 'function') window.fidiRefreshAvisVersion(); } catch (e) {}
     // Repli cloud : si l'avis de cette étude n'était pas en local, on tente de le récupérer
     // dans Notion (évite d'afficher un avis vierge et d'écraser la version cloud).
@@ -6396,17 +6551,6 @@
   };
 
   // Dialogue léger : Vente ou Location ?
-  function askNatureAvis() {
-    if (typeof bootstrap === 'undefined') return 'vente';
-    var wrap = document.getElementById('avNatureAskRoot');
-    if (!wrap) { wrap = document.createElement('div'); wrap.id = 'avNatureAskRoot'; document.body.appendChild(wrap); }
-    return new Promise(function () { /* pas utilisé, appel synchrone via confirm */ }) && (function () {
-      var reply = window.prompt("Type d'avis à créer :\n\n1 = Vente (avis de valeur vénale)\n2 = Location (avis de valeur locative)\n\nEntrez 1 ou 2 :", "1");
-      if (!reply) return null;
-      return reply.trim() === '2' ? 'location' : 'vente';
-    })();
-  }
-
   // Applique les paramètres par défaut adaptés à la nature (Phase 5 directive Qwen)
   function applyDefaultsForNature(nat) {
     var d = state.data;

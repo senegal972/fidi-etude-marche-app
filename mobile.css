@@ -276,3 +276,13 @@
   .fx-tot-remise dd{margin-left:auto;}
   .fx-tot-acompte dt,.fx-tot-acompte dd{flex:1 1 100%;}
 }
+
+/* Accueil de l'avis de valeur sur téléphone */
+@media (max-width:768px){
+  #avAccueilModal .modal-dialog{margin:0;max-width:none;height:100%;max-height:100%;}
+  #avAccueilModal .modal-content{height:100%;max-height:100%;border-radius:0;border:0;}
+  #avAccueilModal .form-control,#avAccueilModal .form-select{font-size:16px;min-height:44px;}
+  .av-accueil-etude dl > div{grid-template-columns:1fr;gap:0;}
+  .av-accueil-grille{grid-template-columns:1fr;gap:0;}
+  #avAccueilModal .modal-footer .btn{flex:1 1 auto;min-height:44px;}
+}
