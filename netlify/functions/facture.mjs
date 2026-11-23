@@ -71,7 +71,7 @@ const TARIFS = { avis: 250, etude: 450, prestation: 0 };
 // « FIDI-FAC » est la suite historique, utilisée quand aucune société n'est définie.
 export const PREFIXE_HISTORIQUE = "FIDI-FAC";
 const echapperRegex = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-async function nextFactureRef(year, prefixe = PREFIXE_HISTORIQUE) {
+export async function nextFactureRef(year, prefixe = PREFIXE_HISTORIQUE) {
   const debut = `${prefixe}-${year}-`;
   try {
     const data = await queryDatabase(DB.facture, {

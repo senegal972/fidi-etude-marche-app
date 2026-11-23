@@ -36,6 +36,11 @@ export const handler = async (event) => {
     const f = factureFromPage(page);
 
     // Protection : sans force, seules les factures Annulée sont supprimables.
+    // Un avoir, et la facture qu'il annule, sont des pièces comptables : jamais supprimées, même en purge.
+    const transaction = ((page.properties?.["ID transaction"]?.rich_text) || []).map((t) => t.plain_text || "").join("");
+    if (f.type === "Avoir" || /^AVOIR /.test(transaction)) {
+      return authResp(409, { error: "Suppression interdite : cette pièce est liée à un avoir.", locked: true });
+    }
     if (!force && f.statut !== "Annulée") {
       return authResp(409, {
         error: "Suppression interdite : la facture « " + f.numero + " » est au statut « " + f.statut + " ». "

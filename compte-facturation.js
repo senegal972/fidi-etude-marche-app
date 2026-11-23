@@ -59,6 +59,7 @@
   // Situation d'une facture : payee | annulee | brouillon | critique | retard | attente
   function situation(f) {
     if (f.statut === 'Payée') return 'payee';
+    if (f.est_avoir || f.statut === 'Avoir') return 'avoir';
     if (f.statut === 'Annulée') return 'annulee';
     if (f.statut === 'Brouillon') return 'brouillon';
     var j = age(f), s = seuils();
@@ -66,7 +67,7 @@
     if (j != null && j >= s.a) return 'retard';
     return 'attente';
   }
-  var LIBELLE = { payee: 'Payée', annulee: 'Annulée', brouillon: 'Brouillon', critique: 'En retard', retard: 'En retard', attente: 'À payer' };
+  var LIBELLE = { payee: 'Payée', avoir: 'Avoir', annulee: 'Annulée', brouillon: 'Brouillon', critique: 'En retard', retard: 'En retard', attente: 'À payer' };
   function enRetard(f) { var s = situation(f); return s === 'retard' || s === 'critique'; }
   function trouver(ref) { return etat.items.filter(function (f) { return f.ref === ref; })[0] || null; }
 
@@ -264,7 +265,8 @@
     if (s === 'payee') {
       var det = [f.moyen || 'Moyen non précisé', f.montant_paye != null ? eur(f.montant_paye) : '', f.paiement_manuel ? 'enregistré à la main' : 'encaissé en ligne'].filter(Boolean).join(' · ');
       etapes.push('<li class="fa-fait fa-paye"><b>Payée le ' + jour(f.date_paiement) + '</b><span>' + esc(det) + '</span></li>');
-    } else if (s === 'annulee') etapes.push('<li class="fa-fait fa-annule"><b>Annulée</b><span>' + jour(f.date_paiement) + '</span></li>');
+    } else if (s === 'annulee') etapes.push('<li class="fa-fait fa-annule"><b>Annulée' + (f.avoir ? ' par l\'avoir ' + esc(f.avoir) : '') + '</b><span>' + (f.avoir ? 'Payée le ' + jour(f.date_paiement) + (f.moyen ? ' · ' + esc(f.moyen) : '') + ', puis annulée par un avoir' : jour(f.date_paiement)) + '</span></li>');
+    else if (s === 'avoir') etapes.push('<li class="fa-fait fa-annule"><b>Avoir émis</b><span>Annule la facture ' + esc(f.facture_annulee || '') + '</span></li>');
     else etapes.push('<li class="fa-attente"><b>En attente de règlement</b><span>' + (age(f) != null ? 'depuis ' + age(f) + ' jour' + (age(f) > 1 ? 's' : '') : '') + '</span></li>');
 
     // Détail du paiement enregistré à la main (note, justificatif, auteur)
@@ -288,14 +290,18 @@
     var lien = function (url, icone, nom) { return '<a class="fa-action" href="' + esc(url) + '" target="_blank" rel="noopener"><i class="bi ' + icone + '"></i><span>' + nom + '</span></a>'; };
     if (impayee) actions.push(bouton('paiement', 'bi-check2-circle', 'Enregistrer un paiement', 'fa-action-forte'));
     if (s === 'payee' && f.paiement_manuel) actions.push(bouton('paiement', 'bi-pencil', 'Modifier le paiement'));
-    if (f.facture_url) actions.push(lien(f.facture_url, 'bi-file-earmark-text', 'Voir la facture'));
-    if (f.delivery_url) actions.push(lien(f.delivery_url, 'bi-box-arrow-up-right', 'Page du client'));
-    if (f.delivery_url) actions.push(bouton('copier', 'bi-link-45deg', 'Copier le lien'));
-    if (s !== 'annulee' && s !== 'brouillon') actions.push(bouton('renvoyer', 'bi-envelope', 'Renvoyer au client'));
+    if (f.facture_url) actions.push(lien(f.facture_url, 'bi-file-earmark-text', s === 'avoir' ? 'Voir l\'avoir' : 'Voir la facture'));
+    if (f.delivery_url && s !== 'avoir') actions.push(lien(f.delivery_url, 'bi-box-arrow-up-right', 'Page du client'));
+    if (f.delivery_url && s !== 'avoir') actions.push(bouton('copier', 'bi-link-45deg', 'Copier le lien'));
+    if (s === 'avoir' && f.facture_annulee && trouver(f.facture_annulee)) actions.push('<button type="button" class="fa-action" data-fa-ouvrir="' + esc(f.facture_annulee) + '"><i class="bi bi-receipt"></i><span>Facture annulée</span></button>');
+    if (s === 'annulee' && f.avoir && trouver(f.avoir)) actions.push('<button type="button" class="fa-action" data-fa-ouvrir="' + esc(f.avoir) + '"><i class="bi bi-file-earmark-minus"></i><span>Voir l\'avoir</span></button>');
+    if (s === 'payee') actions.push(bouton('avoir', 'bi-file-earmark-minus', 'Annuler par un avoir', 'fa-action-danger'));
+    if (s !== 'annulee' && s !== 'brouillon' && s !== 'avoir') actions.push(bouton('renvoyer', 'bi-envelope', 'Renvoyer au client'));
     if (impayee) actions.push(bouton('relancer', 'bi-bell', 'Relancer'));
     if (s === 'payee' && f.paiement_manuel) actions.push(bouton('annulerPaiement', 'bi-arrow-counterclockwise', 'Annuler le paiement', 'fa-action-danger'));
     if (impayee || s === 'brouillon') actions.push(bouton('annuler', 'bi-x-circle', 'Annuler la facture', 'fa-action-danger'));
-    if (s === 'annulee') actions.push(bouton('supprimer', 'bi-trash', 'Supprimer', 'fa-action-danger'));
+    // Une facture annulée par un avoir, comme l'avoir lui-même, est une pièce comptable : elle ne se supprime pas.
+    if (s === 'annulee' && !f.avoir) actions.push(bouton('supprimer', 'bi-trash', 'Supprimer', 'fa-action-danger'));
 
     return '<button type="button" class="fa-retour" data-fa="fermer"><i class="bi bi-arrow-left me-1"></i>Toutes les factures</button>' +
       '<div class="fa-fiche-tete"><div><div class="fa-fiche-ref">' + esc(f.ref) + '</div><div class="fa-fiche-client">' + esc(f.client || 'Client non renseigné') + '</div></div>' +
@@ -343,6 +349,16 @@
         '<button type="submit" class="btn fa-btn fa-btn-plein"><i class="bi bi-envelope me-1"></i>Envoyer</button></div></form>';
     }
     if (etat.panneau === 'annulerPaiement') return confirmer('Annuler le paiement', 'La facture repassera « À payer ». À utiliser pour une erreur de saisie ou un chèque revenu impayé. Le détail du paiement reste conservé.', 'Motif', 'Annuler le paiement', 'fa-btn-danger');
+    if (etat.panneau === 'avoir') {
+      return '<form class="fa-panneau" data-fa-form="avoir" novalidate><h4>Annuler par un avoir</h4>' +
+        '<p>Cette facture est payée : elle ne s\'efface pas. Un <b>avoir</b>, document numéroté, l\'annule. La facture passera « Annulée » et sortira des encaissements ; la prestation pourra être facturée de nouveau.</p>' +
+        '<label class="fa-label" for="faMotif">Motif de l\'avoir</label><input type="text" id="faMotif" class="form-control fa-champ" maxlength="300" autocomplete="off" placeholder="Ex. : erreur de montant, prestation annulée, geste commercial">' +
+        '<label class="fa-label" for="faRembourse">Remboursement du client (' + eur(f.montant) + ')</label>' +
+        '<select id="faRembourse" class="form-select fa-champ">' + ['Non remboursé à ce jour', 'Virement', 'Espèces', 'Chèque', 'PayPal', 'Carte bancaire'].map(function (m) { return '<option>' + m + '</option>'; }).join('') + '</select>' +
+        '<div class="fa-aide"><i class="bi bi-info-circle"></i><span>L\'application ne rembourse rien elle-même. Remboursez le client par le moyen de votre choix' + (f.paiement_manuel ? '' : ' (pour un paiement en ligne : depuis votre compte PayPal, « Rembourser »)') + ', puis indiquez-le ici.</span></div>' +
+        '<div class="fa-erreur-form d-none" id="faErreur" role="alert"></div>' +
+        '<div class="fa-panneau-pied"><button type="button" class="btn fa-btn" data-fa="fermerPanneau">Ne rien faire</button><button type="submit" class="btn fa-btn fa-btn-danger"><i class="bi bi-file-earmark-minus me-1"></i>Émettre l\'avoir</button></div></form>';
+    }
     if (etat.panneau === 'annuler') return confirmer('Annuler la facture', 'La facture passera « Annulée » et restera consultable. Une facture annulée ne peut plus être réglée.', 'Motif (facultatif)', 'Annuler la facture', 'fa-btn-danger');
     return '';
   }
@@ -626,6 +642,15 @@
     if (type === 'annulerPaiement') {
       if (motif.trim().length < 3) { if (bouton) bouton.disabled = false; var m = document.getElementById('faMotif'); if (m) m.focus(); return; }
       return appel('/api/facture/paiement', { action: 'annuler_paiement', ref: f.ref, motif: motif }).then(function (r) { etat.fiche = null; return fin(r, 'Paiement annulé : la facture est de nouveau « À payer ».'); });
+    }
+    if (type === 'avoir') {
+      if (motif.trim().length < 3) { if (bouton) bouton.disabled = false; return erreurForm('Indiquez le motif de l\'avoir.'); }
+      return appel('/api/facture/avoir', { ref: f.ref, motif: motif.trim(), remboursement: (document.getElementById('faRembourse') || {}).value }).then(function (r) {
+        if (!r._ok) { if (bouton) bouton.disabled = false; return erreurForm(r.error || 'L\'avoir n\'a pas pu être émis.'); }
+        etat.panneau = null;
+        dire('ok', '<i class="bi bi-check-circle me-1"></i>Avoir <b>' + esc(r.avoir) + '</b> émis : la facture est annulée.' + (r.avoir_url ? ' <a href="' + esc(r.avoir_url) + '" target="_blank" rel="noopener">Ouvrir l\'avoir</a>' : ''));
+        return charger();
+      });
     }
     if (type === 'annuler') return appel('/api/facture/cancel', { ref: f.ref, motif: motif }).then(function (r) { return fin(r, 'Facture annulée.'); });
   }

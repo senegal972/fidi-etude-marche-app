@@ -73,6 +73,10 @@ export const handler = async (event) => {
         paiement_manuel: /^MANUEL/.test((props["ID transaction"]?.rich_text || []).map((t) => t.plain_text || "").join("")),
         paiement_requis: f.paiementRequis,
         adresse: f.adresse, ref_dossier: f.refDossier,
+        // Avoir : numéro de l'avoir qui annule cette facture, ou (pour une ligne « Avoir ») numéro de la facture annulée.
+        avoir: (((props["ID transaction"]?.rich_text || []).map((t) => t.plain_text || "").join("")).match(/^AVOIR (\S+)/) || [])[1] || "",
+        est_avoir: f.type === "Avoir",
+        facture_annulee: f.type === "Avoir" ? f.refDossier : "",
       };
     }).filter((f) => {
       if (fidiOnly && !f.fidi_encaisse) return false;

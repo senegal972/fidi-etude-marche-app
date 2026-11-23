@@ -64,6 +64,7 @@
 .fa-etat-retard{background:var(--fa-ambre-fond);color:var(--fa-ambre);}
 .fa-etat-critique{background:var(--fa-rouge-fond);color:var(--fa-rouge);}
 .fa-etat-annulee,.fa-etat-brouillon{background:#eceff3;color:#5b6573;}
+.fa-etat-avoir{background:#f3e8ff;color:#6b21a8;}
 
 /* ─ À traiter ─ */
 .fa-traiter{display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding:.6rem 0;border-top:1px solid #eef1f5;flex-wrap:wrap;}

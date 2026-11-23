@@ -51,23 +51,27 @@ export function renderFactureHTML(data) {
     [co.telephone, co.email].filter(Boolean).map(esc).join(" · "),
   ].filter(Boolean).join("<br>");
 
+  // Avoir : mêmes lignes que la facture annulée, montants en négatif ; ni échéance, ni coordonnées de règlement.
+  const av = d.avoir && typeof d.avoir === "object" ? d.avoir : null;
+  const sg = (v) => (av ? "− " : "") + eur(v);
+
   const lignesHtml = calc.lignes.map((l) => `
     <tr>
       <td><div class="des">${esc(l.designation)}</div>${l.description ? `<div class="desc">${esc(l.description).replace(/\n/g, "<br>")}</div>` : ""}</td>
       <td class="num">${calc.mode === "montant" ? "1" : qte(l.quantite)}</td>
-      <td class="num">${eur(l.prixUnitaireHT)}</td>
-      <td class="num">${eur(l.montantHT)}</td>
+      <td class="num">${sg(l.prixUnitaireHT)}</td>
+      <td class="num">${sg(l.montantHT)}</td>
     </tr>`).join("") || `<tr><td colspan="4" class="vide">Aucun article</td></tr>`;
 
   const htAvantRemise = t.htAvantRemise, remiseHT = t.remiseHT; // cohérents au centime (voir _facture_calc.mjs)
   const lignesTotaux = [
-    t.remise > 0 && `<tr><td colspan="3">Sous-total HT</td><td class="num">${eur(htAvantRemise)}</td></tr>`,
-    t.remise > 0 && `<tr><td colspan="3">Remise${calc.remise && calc.remise.type === "pct" ? ` (${qte(calc.remise.valeur)} %)` : ""}</td><td class="num">− ${eur(remiseHT)}</td></tr>`,
-    `<tr><td colspan="3">Total HT</td><td class="num">${eur(t.ht)}</td></tr>`,
+    t.remise > 0 && `<tr><td colspan="3">Sous-total HT</td><td class="num">${sg(htAvantRemise)}</td></tr>`,
+    t.remise > 0 && `<tr><td colspan="3">Remise${calc.remise && calc.remise.type === "pct" ? ` (${qte(calc.remise.valeur)} %)` : ""}</td><td class="num">${av ? "" : "− "}${eur(remiseHT)}</td></tr>`,
+    `<tr><td colspan="3">Total HT</td><td class="num">${sg(t.ht)}</td></tr>`,
     calc.tva.regime === "assujetti"
-      ? `<tr><td colspan="3">TVA ${qte(calc.tva.taux)} %</td><td class="num">${eur(t.tva)}</td></tr>`
+      ? `<tr><td colspan="3">TVA ${qte(calc.tva.taux)} %</td><td class="num">${sg(t.tva)}</td></tr>`
       : `<tr><td colspan="3">TVA non applicable, art. 293 B du CGI</td><td class="num">0,00 €</td></tr>`,
-    `<tr class="ttc"><td colspan="3">Total TTC</td><td class="num">${eur(t.ttc)}</td></tr>`,
+    `<tr class="ttc"><td colspan="3">${av ? "Total TTC de l'avoir" : "Total TTC"}</td><td class="num">${sg(t.ttc)}</td></tr>`,
   ].filter(Boolean).join("");
 
   const mentionTva = calc.tva.regime === "assujetti"
@@ -123,19 +127,20 @@ ${manque.length ? `<div class="apercu no-print">Aperçu — mentions obligatoire
   <div class="em">${idEmetteur}</div>
 </div>
 
-<h1>Facture${d.acquittee ? '<span class="paid">✓ PAYÉE</span>' : ""}</h1>
+<h1>${av ? "Avoir" : "Facture"}${d.acquittee && !av ? '<span class="paid">✓ PAYÉE</span>' : ""}</h1>
 <div class="num-fac">N° <strong>${esc(d.numero || "attribué à la création")}</strong></div>
 
 <div class="meta">
   <div class="bloc">
-    <h4>Facturé à</h4>
+    <h4>${av ? "Client" : "Facturé à"}</h4>
     <strong>${esc(c.nom) || "(client à compléter)"}</strong>
     ${c.adresse ? `<br>${esc(c.adresse)}` : ""}${c.email ? `<br>${esc(c.email)}` : ""}${c.telephone ? `<br>${esc(c.telephone)}` : ""}
   </div>
   <div class="bloc">
     <h4>Détails</h4>
     Date d'émission : <strong>${esc(dateFr(d.date))}</strong><br>
-    Échéance : <strong>${d.echeance && d.echeance !== d.date ? esc(dateFr(d.echeance)) : "à réception"}</strong>
+    ${av ? `Annule la facture n° <strong>${esc(av.de || "")}</strong>${av.dateFacture ? " du " + esc(dateFr(av.dateFacture)) : ""}`
+         : `Échéance : <strong>${d.echeance && d.echeance !== d.date ? esc(dateFr(d.echeance)) : "à réception"}</strong>`}
     ${d.bien ? `<br>Bien : ${esc(d.bien)}` : ""}${d.refDossier ? `<br>Réf. prestation : ${esc(d.refDossier)}` : ""}
   </div>
 </div>
@@ -146,17 +151,18 @@ ${manque.length ? `<div class="apercu no-print">Aperçu — mentions obligatoire
 </table>
 <table class="totaux"><tbody>${lignesTotaux}</tbody></table>
 
-${d.notes ? `<div class="notes">${esc(d.notes)}</div>` : ""}
+${av ? `<div class="notes">Avoir annulant la facture n° ${esc(av.de || "")}${av.dateFacture ? " du " + esc(dateFr(av.dateFacture)) : ""}.${av.motif ? "\nMotif : " + esc(av.motif) : ""}${av.remboursement ? "\nRemboursement : " + esc(av.remboursement) + "." : ""}</div>`
+     : d.notes ? `<div class="notes">${esc(d.notes)}</div>` : ""}
 
-${bq.iban && !d.acquittee ? `<div class="virement"><strong>Règlement par virement</strong><br>
+${bq.iban && !d.acquittee && !av ? `<div class="virement"><strong>Règlement par virement</strong><br>
   Titulaire : ${esc(bq.titulaire || nomEmetteur)}<br>IBAN : ${esc(bq.iban.replace(/(.{4})/g, "$1 ").trim())}${bq.bic ? `<br>BIC : ${esc(bq.bic)}` : ""}
   <br>Référence à indiquer : ${esc(d.numero || "")}</div>` : ""}
 
 <div class="legal">
-  ${esc(mentionTva)}Règlement ${esc(echeanceTxt)}. Pas d'escompte pour paiement anticipé.<br>
+  ${av ? esc(mentionTva) : `${esc(mentionTva)}Règlement ${esc(echeanceTxt)}. Pas d'escompte pour paiement anticipé.<br>
   ${fa.conditions ? esc(fa.conditions) + "<br>" : ""}
   En cas de retard de paiement : pénalités au taux de trois fois le taux d'intérêt légal (art. L441-10 du Code de commerce)
-  et, pour les clients professionnels, indemnité forfaitaire pour frais de recouvrement de 40 € (art. D441-5 du Code de commerce).
+  et, pour les clients professionnels, indemnité forfaitaire pour frais de recouvrement de 40 € (art. D441-5 du Code de commerce).`}
   ${co.mentions ? "<br>" + esc(co.mentions) : ""}
 </div>
 </body>

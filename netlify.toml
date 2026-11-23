@@ -393,6 +393,11 @@
   status = 200
 
 [[redirects]]
+  from   = "/api/facture/avoir"
+  to     = "/.netlify/functions/facture-avoir"
+  status = 200
+
+[[redirects]]
   from   = "/api/facture/cancel"
   to     = "/.netlify/functions/facture-cancel"
   status = 200

@@ -189,6 +189,13 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
   Blobs `fidi-paiements` (`p/<numéro>`, `j/<numéro>`), **écrits avant** de marquer la facture payée. Un paiement encaissé en ligne (`ID transaction`
   sans préfixe `MANUEL`) ne se modifie ni ne s'annule ici. `GET ?ref=&justificatif=1` rend le fichier (types : JPEG, PNG, WebP, PDF ; 3 Mo).
 - Plafond des espèces (`PLAFOND_ESPECES`, 1 000 €) : avertissement, jamais de blocage — **en double** dans le module et dans `facture-paiement.mjs`.
+- **Avoir** : `POST /api/facture/avoir { ref, motif, remboursement }` (`facture-avoir.mjs`, administrateur) sur une facture **Payée** seulement.
+  Numéro `<préfixe de la facture>-AV-<AAAA>-<NNN>` (`prefixeAvoir`, `nextFactureRef` exporté par `facture.mjs`) ; détail figé dans `fidi-factures`
+  (copie du détail de la facture + `avoir:{ de, dateFacture, motif, remboursement }`) **avant** la page Notion (Type et Statut « Avoir », montants
+  négatifs, « Référence dossier » = facture annulée) ; la facture passe « Annulée » avec `ID transaction` = `AVOIR <n°> — <motif>`. Idempotent.
+  `_facture_doc.mjs` rend le mode avoir (titre, montants « − », ni échéance ni RIB). `factures-admin` renvoie `avoir`, `est_avoir`,
+  `facture_annulee` ; `situation()` → `avoir` (hors totaux). `facture-delete` refuse toute pièce liée à un avoir, même avec `force`.
+  **Aucun appel à PayPal** : le remboursement est manuel. Tests : `tests/facture-avoir.test.mjs`.
 - `POST /api/facture/cancel` exige une session. `factures-admin.mjs` renvoie `date_paiement`, `moyen`, `montant_paye`, `paiement_manuel`.
 - **Fiche contact** : `GET|POST /api/contacts` (`contacts.mjs`, administrateur) — fiche d'un client dans Blobs `fidi-contacts` (clé `cleContact(nom)`) :
   `emails[]` (8 au plus, la première est la principale), téléphone, adresse, note. Le client est identifié par le nom porté par ses factures
@@ -197,7 +204,7 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
   panneau `contact` (`formulaireContact`, `data-fa-email`), panneau `renvoyer` (cases `.fa-dest`, `#faDestAutre`) : **un e-mail par destinataire**.
 - `/api/crm-clients` et `/api/factures/client` exigent une session (401 sinon). Tests : `tests/contacts.test.mjs`.
 - Identifiants conservés : `factAdminRoot`, `factStatsBox`, `factAlertsBox`, `factListBody`, `factCollabBody`, `factSeuilA`, `factSeuilB`.
-- Non couvert : paiement partiel ou en plusieurs fois, avoir sur une facture payée, rapprochement bancaire, renommer un client, fusionner deux fiches.
+- Non couvert : paiement partiel ou en plusieurs fois, avoir partiel, remboursement automatique, rapprochement bancaire, renommer un client, fusionner deux fiches.
 
 ### Écran de facturation — `facture.js` / `facture.css`
 - `window.proposerFacture(kind)` ouvre « Nouvelle facture » : client, articles (montant / quantité / heures, prix TTC ou HT,
