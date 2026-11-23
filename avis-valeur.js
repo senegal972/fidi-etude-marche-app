@@ -845,6 +845,11 @@
     var aleasPoint = aleasEtudeTexte();
     if (lr.ppr || aleasPoint) d.loc.ppr = [lr.ppr, aleasPoint].filter(Boolean).join(' — ');
     if (lr.detail) d.loc.risquesDetail = lr.detail;
+    try {
+      var estMed = Number((fidi.estimation || {}).valeur_med) || 0;
+      if (estMed > 0 && d.bien && !d.bien._prixVerifie && num(d.bien.prixVente) === estMed) { d.bien.prixVente = ''; d.bien._prixRetire = true; }
+      if (d.bien) d.bien._prixVerifie = true;
+    } catch (e) {}
     // Référence de l'étude de marché dont l'avis est tiré (traçabilité entre les deux documents).
     try { var refEt = typeof window.currentEtudeRef === 'function' ? window.currentEtudeRef() : (typeof currentEtudeRef === 'function' ? currentEtudeRef() : ''); if (refEt) { d.metadata = d.metadata || {}; d.metadata.refEtude = String(refEt); } } catch (e) {}
 
@@ -1009,7 +1014,10 @@
       d.marche.moyenneMoyen = String(prixM2);
       d.marche.moyenneHaut = String(haut);
     }
-    if (est.valeur_med) d.bien.prixVente = String(est.valeur_med);
+    // Le « prix de cession / proposé » reste vide : l'estimation de l'étude n'est pas un prix convenu, et le document
+    // l'annonçait comme tel (« le bien est proposé / a été cédé pour un prix de … »). Il se saisit s'il existe.
+    // Avis créé depuis une étude : bien libre par défaut (l'occupation, et sa décote, se choisissent à l'accueil).
+    d.bien.statut = 'libre';
 
     // Sources : médiane locale + une ligne par année DVF.
     // IMPORTANT : pour un TERRAIN, on n'affiche QUE le €/m² terrain (prix_m2_terrain) — jamais
@@ -1071,7 +1079,6 @@
         d.marche.commentaire = 'Valeur foncière au barème de zone (' + nature + '), terrain non constructible. Les prix DVF au m² (constructions bâties) ne s\'appliquent pas à ce type de bien.';
         d.marche.evol12m = ''; d.marche.evol3m = '';
         if (contenance > 0) {
-          d.bien.prixVente = String(Math.round(pAgri * contenance));
           d.methodes.cout = Object.assign({}, d.methodes.cout, { valeurTerrain: String(Math.round(pAgri * contenance)) });
         }
       } else {
@@ -1085,9 +1092,6 @@
           if (contenance > 0) {
             d.methodes.cout = Object.assign({}, d.methodes.cout, { valeurTerrain: String(Math.round(pM2Terrain * contenance)) });
           }
-        }
-        if (contenance > 0 && pM2Terrain > 0) {
-          d.bien.prixVente = String(Math.round(pM2Terrain * contenance));
         }
       }
       // Trace la nature retenue en vigilance (le foncier n'est ni notaire ni expertisé)
@@ -1360,6 +1364,10 @@
       if (!loc) return null;
       var lo = (d.loyers || []).filter(function (x) { return x && num(x.loyer) > 0; }).length;
       if (!lo && !(num((d.locatif || {}).loyerHC) > 0)) m.push('un loyer de référence');
+    } else if (id === 'calcul') {
+      // Valeur retenue et stratégie de prix doivent concorder : sinon le document affiche deux valeurs.
+      if (loc) return null;
+      try { var F = syntheseFinale(d); if (!F.coherent && F.retenue.central > 0) m.push('un écart de ' + fmt(Math.abs(Math.round(F.ecartPct))) + ' % entre la valeur retenue et la stratégie de prix'); } catch (e) { return null; }
     } else if (id === 'conclusion') {
       if (vide((d.conclusion || {}).texte)) m.push('le texte de conclusion');
     } else if (id === 'signature') {
@@ -5735,6 +5743,8 @@
     html += '<p>Territoire : <b>' + esc(terr.libelle) + '</b> — droits de mutation ' + terr.droits + ' %, émoluments notaire ' + terr.notaire + ' %, TVA honoraires ' + terr.tva + ' %. Hypothèses « à valider ».</p>';
     var _destDoc = (st.destinataireType === 'professionnel') ? 'professionnel de l\'immobilier (promoteur / aménageur)' : 'particulier';
     html += '<p>Destinataire : <b>' + esc(_destDoc) + '</b>.</p>';
+    // Deux valeurs différentes dans le même document : on le dit ici aussi (la rubrique 5 ter n'est pas toujours imprimée).
+    if (!F.coherent && F.retenue.central > 0) html += '<p style="font-size:9pt;border-left:3px solid #b8860b;padding-left:6pt;"><b>Écart à arbitrer avant diffusion :</b> cette stratégie part de la synthèse des méthodes après décotes (' + fmtE(syn.central) + '), qui sort de la fourchette retenue par l\'avis en rubrique 7 (' + fmtE(F.retenue.bas) + ' – ' + fmtE(F.retenue.haut) + ').</p>';
     if (isTerrain(b.type)) {
       var _ab = inpDoc._abattement;
       var _absOn = _ab && _ab.on;
@@ -5785,7 +5795,7 @@
     if (vig.length) {
       html += '<h2>Vigilances</h2><ul style="margin:0;padding-left:1.1rem;font-size:9pt;">' +
         vig.map(function (v) {
-          var ic = v.niveau === 'rouge' ? '⛔ ' : v.niveau === 'orange' ? '⚠️ ' : '• ';
+          var ic = v.niveau === 'rouge' ? '⛔ ' : v.niveau === 'orange' ? '⚠️ ' : '';   // la liste porte déjà ses puces
           return '<li>' + ic + v.txt + '</li>';
         }).join('') + '</ul>';
     }
@@ -5841,6 +5851,7 @@
     html += '<div class="title-block"><div class="t1">' + _titreDoc + '</div>' +
       '<div class="t2">' + esc(b.type || '[Type de bien]') + _locStr + (_adrClean ? ', ' + esc(_adrClean) : '') + '</div>' +
       '<div class="t3">Réf. : ' + esc(data.metadata.ref) + '  –  Établi le ' + (formatDateFR(data.metadata.date) || '[date]') + '</div>' +
+      (data.metadata.refEtude ? '<div class="t3" style="margin-top:2pt;">D\'après l\'étude de marché ' + esc(data.metadata.refEtude) + '</div>' : '') +
       (_client ?
         '<div class="t3" style="margin-top:4pt;">Destinataire : <b>' + esc(_client) + '</b>' +
         (data.metadata.adresseClient ? ' — ' + esc(data.metadata.adresseClient) : '') +
@@ -6058,7 +6069,7 @@
         return '<tr><td>' + esc(s.nom) + '</td><td class="center">' + (s.bas ? fmt(s.bas) + _u : '—') + '</td><td class="center bold">' + (s.moyen ? fmt(s.moyen) + _u : '—') + '</td><td class="center">' + (s.haut ? fmt(s.haut) + _u : '—') + '</td></tr>';
       }).join('') +
       '<tr style="background:#eaf0f8;"><td class="bold">Moyenne retenue</td><td class="center bold">' + (m.moyenneBas ? fmt(m.moyenneBas) + _u : '—') + '</td><td class="center bold">' + (m.moyenneMoyen ? fmt(m.moyenneMoyen) + _u : '—') + '</td><td class="center bold">' + (m.moyenneHaut ? fmt(m.moyenneHaut) + _u : '—') + '</td></tr></table>' +
-      ((m.commentaire || m.evol12m || m.evol3m) ? '<p><b>Tendance :</b> ' + [esc(m.commentaire), m.evol12m && 'évolution ' + esc(m.evol12m) + ' sur 12 mois', m.evol3m && esc(m.evol3m) + ' sur 3 mois'].filter(Boolean).join(' ; ') + '.</p>' : '');
+      ((m.commentaire || m.evol12m || m.evol3m) ? '<p><b>Tendance :</b> ' + [esc(String(m.commentaire || '').replace(/[\s.]+$/, '')), m.evol12m && 'évolution ' + esc(m.evol12m) + ' sur 12 mois', m.evol3m && esc(m.evol3m) + ' sur 3 mois'].filter(Boolean).join(' ; ') + '.</p>' : '');
 
     var loyersValid = data.loyers.filter(function (l) { return l.type || l.loyer; });
     if (occ && loyersValid.length) {
@@ -6366,6 +6377,8 @@
             '<label><input type="radio" name="avAccNature" value="vente"' + (nature !== 'location' ? ' checked' : '') + '><span><i class="bi bi-house-check"></i><b>Vente</b><small>Valeur vénale du bien</small></span></label>' +
             '<label><input type="radio" name="avAccNature" value="location"' + (nature === 'location' ? ' checked' : '') + '><span><i class="bi bi-key"></i><b>Location</b><small>Valeur locative de marché</small></span></label>' +
           '</div>' : '') +
+        (creation ? '<div class="av-accueil-k">Occupation du bien</div>' +
+          '<select class="form-select" id="avAccStatut" aria-label="Occupation du bien"><option value="libre" selected>Libre</option><option value="occupe">Occupé (loué) — une décote d\'occupation s\'applique</option></select>' : '') +
         '<div class="av-accueil-k">Destinataire de l\'avis</div>' +
         '<label class="av-accueil-l" for="avAccNom">Nom du destinataire</label>' +
         '<input type="text" class="form-control" id="avAccNom" list="avAccClients" maxlength="120" autocomplete="off" placeholder="Nom et prénom, ou société" value="' + esc(nom) + '">' +
@@ -6403,6 +6416,7 @@
       if (!sans && nomSaisi.length < 2) return refuser('Indiquez le nom du destinataire, ou cochez « Pas de destinataire pour le moment ».', 'avAccNom');
       if (mail && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(mail)) return refuser('Adresse e-mail invalide.', 'avAccEmail');
       var choix = { nature: creation ? ((document.querySelector('input[name="avAccNature"]:checked') || {}).value || 'vente') : null,
+                    statut: creation ? (val('avAccStatut') || 'libre') : null,
                     client: nomSaisi, type: val('avAccType') || 'particulier', email: mail, telephone: sans ? '' : val('avAccTel'), sans: sans };
       var inst = bootstrap.Modal.getInstance(el); if (inst) inst.hide();
       if (creation) { if (choix.client) poserDestinataireEtude(choix.client); state._accueil = choix; open(choix.nature); }
@@ -6417,6 +6431,7 @@
   function appliquerAccueil(a) {
     var d = state.data; if (!d || !a) return;
     d.metadata = d.metadata || {}; d.strategie = d.strategie || {};
+    if (a.statut === 'libre' || a.statut === 'occupe') { d.bien = d.bien || {}; d.bien.statut = a.statut; }
     d.metadata.sansDestinataire = !!a.sans;
     if (a.sans) return;
     if (a.client) { d.metadata.client = a.client; poserDestinataireEtude(a.client); }
@@ -6549,6 +6564,8 @@
     try { showSection(state.section); }
     catch (e) { try { console.error('[avis] rendu partiel :', e); } catch (_) {} toast('Avis ouvert (données partielles)', true); }
     state.modal.show();
+    // Ancien avis : le prix de cession qui reprenait par erreur l'estimation de l'étude a été retiré — on le dit.
+    try { if (state.data.bien && state.data.bien._prixRetire) { delete state.data.bien._prixRetire; toast('Prix de cession retiré : il reprenait l\'estimation de l\'étude. Saisissez-le s\'il existe.'); } } catch (e) {}
     // Avis déjà créé mais sans destinataire : on le demande tout de suite (une fois ; « sans destinataire » est mémorisé).
     if (demanderDestinataire) setTimeout(function () { accueilAvis(natureCourante(), 'destinataire'); }, 350);
     try { if (typeof window.fidiRefreshAvisVersion === 'function') window.fidiRefreshAvisVersion(); } catch (e) {}

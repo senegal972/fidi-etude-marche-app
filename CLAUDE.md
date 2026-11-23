@@ -46,6 +46,11 @@ Les redirections `/api/<nom>` sont déclarées dans `netlify.toml`.
 - **Avancement** : `manquesRubrique(id)` → éléments essentiels vides (`[]` complète, `null` rien d'exigé) ; `majAvancement()` marque les onglets
   (`av-tab-ok` / `av-tab-manque`), les options de `#avSecSelect` et la barre `#avAvancement` (jauge, « Voir ce qui reste », liens `data-av-aller`).
   Appelé par `showSection()` et, à la saisie, par `planifierAvancement()`. Guide seulement : rien n'est bloqué.
+- **`bien.prixVente` (« prix de cession / proposé ») n'est jamais pré-rempli** : le document l'énonce comme un fait (« a été cédé / est
+  proposé pour un prix de … »). Avis anciens : retiré une fois s'il égale `estimation.valeur_med` (`_prixVerifie`, message). Un avis tiré d'une
+  étude part en `bien.statut = 'libre'` ; l'occupation (et sa décote) se choisit à l'accueil (`#avAccStatut`).
+- **Deux valeurs dans un même document** : la rubrique 7 imprime `F.retenue`, la 7 ter part de `F.net.synthese`. Si `!F.coherent`, le document
+  l'écrit en 5 ter **et** en 7 ter, et `manquesRubrique('calcul')` le liste. Ne jamais masquer cet écart.
 - `toast()` est en `pointer-events:none` : l'élément reste dans la page après s'être effacé et bloquait les boutons du bas sur téléphone.
 - Tests : `tests/avis-accueil.test.mjs` ; le comportement se vérifie dans un navigateur (création, réouverture, ancien avis, sans destinataire).
 

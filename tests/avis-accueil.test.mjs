@@ -95,3 +95,16 @@ test("avancement : éléments essentiels manquants par rubrique, onglets marqué
   assert.ok(js.includes('id="avAvancement"') && js.includes("try { majAvancement(); } catch (e) {}") && js.includes("planifierAvancement();"));
   assert.ok(css.includes(".av-tab-manque::after") && css.includes(".av-av-jauge"));
 });
+
+// Document final : plus de prix de cession inventé, occupation choisie, écart signalé.
+test("document : l'estimation de l'étude n'est plus présentée comme un prix de cession ; bien libre par défaut ; écart signalé", () => {
+  const prefill = entre("  function buildPrefillFromEtude(fidi, inputs) {", "  // ── Calculs");
+  assert.ok(!/d\.bien\.prixVente\s*=/.test(prefill), "le prix de cession ne se pré-remplit plus depuis l'étude");
+  assert.ok(prefill.includes("d.bien.statut = 'libre';"));
+  // Avis déjà créés : un prix égal à l'estimation de l'étude est retiré une seule fois, et l'utilisateur en est prévenu.
+  assert.ok(js.includes("!d.bien._prixVerifie && num(d.bien.prixVente) === estMed") && js.includes("Prix de cession retiré"));
+  assert.ok(js.includes('id="avAccStatut"') && js.includes("d.bien.statut = a.statut;"));
+  assert.ok(js.includes("Écart à arbitrer avant diffusion :</b> cette stratégie part de la synthèse des méthodes"));
+  assert.ok(js.includes("D\\'après l\\'étude de marché ' + esc(data.metadata.refEtude)"));
+  assert.ok(!js.includes("v.niveau === 'orange' ? '⚠️ ' : '• ';"), "plus de puce doublée dans les vigilances");
+});
