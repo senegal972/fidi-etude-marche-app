@@ -56,7 +56,7 @@ export const handler = async (event) => {
     // ── Nouveau mot de passe choisi depuis le lien ──
     if (b.action === "changer") {
       const p = verifyJWT(String(b.token || ""));
-      const invalide = () => authResp(410, { error: "Ce lien n'est plus valable (il dure 1 heure et ne sert qu'une fois). Refaites une demande.", expired: true });
+      const invalide = () => authResp(410, { error: "Ce lien n'est plus valable (il a expiré ou a déjà servi). Demandez-en un nouveau avec « Mot de passe oublié ».", expired: true });
       if (!p || p.purpose !== "reset" || !p.email) return invalide();
       const refus = motDePasseRefuse(b.password);
       if (refus) return authResp(400, { error: refus });

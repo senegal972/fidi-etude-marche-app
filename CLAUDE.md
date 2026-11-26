@@ -201,6 +201,15 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
      `POST /api/auth/mot-de-passe { actuel, nouveau }` (`auth-motdepasse.mjs`) : session exigée, mot de passe actuel revérifié, même règle
      `motDePasseRefuse` (**en triple** : `signup-link.mjs`, `inscription.js`, `compte-motdepasse.js`), 5 essais manqués par quart d'heure et par
      compte (mémoire du conteneur). Tests : `tests/auth-motdepasse.test.mjs`.
+- **E-mail de bienvenue** (`_bienvenue.mjs`, `envoyerBienvenue`) : envoyé par `admin-users` `create` (sauf rôle Test ou `sans_email:true`) et par
+  `signup-link` `inscrire` ; jamais bloquant, la réponse porte `email_bienvenue` = `envoye | non_configure | echec | non_envoye`. Contenu : identifiant,
+  lien de l'application, installation iPhone / Android, et — compte créé par l'administrateur — bouton « Choisir mon mot de passe » : même jeton que
+  « mot de passe oublié » (`purpose:"reset"`, `v`), valable 7 jours (`DUREE_LIEN_BIENVENUE`). **Aucun mot de passe par e-mail.** Renvoi :
+  `admin-users` action `bienvenue` (`Compte.ficheBienvenue`). **Réglages** : `GET|POST /api/bienvenue` (`bienvenue.mjs`, administrateur ; actions
+  `enregistrer`, `ajouter_piece`, `retirer_piece`, `essai`), Blobs `fidi-bienvenue` (`reglages`, `f/<id>`), communs au déploiement : mot d'accueil,
+  liens https (6), pièces jointes (3 × 4 Mo ; PDF, PowerPoint, Word, image — une vidéo se met en lien). Écran : `compte-bienvenue.js`
+  (`FidiBienvenue.basculer()`, `#bienvenueRoot` dans `tabAdmin`, styles `.bv-*` de `compte.css`). `envoyerEmail` accepte `liens`, `titreLiens`,
+  `appel`. Tests : `tests/bienvenue.test.mjs`.
 - **Session liée au mot de passe** : la connexion pose `pv` = `empreinteMdp(hash)` dans le jeton (7 jours) ; `currentUser()` refuse un jeton dont
   `pv` ne correspond plus (mot de passe changé) et tout jeton portant `purpose` (lien de réinitialisation, invitation). Les jetons sans `pv`
   (connexions antérieures à la 1.35.1, appel interne de `facture-auto`) restent admis jusqu'à leur expiration.

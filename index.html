@@ -6564,6 +6564,7 @@ function copyShareUrl(){
 <script src="/emetteurs.js" defer></script>
 <script src="/compte-societes.js" defer></script>
 <script src="/compte-motdepasse.js" defer></script>
+<script src="/compte-bienvenue.js" defer></script>
 <script src="/facture-externe.js" defer></script>
 <script src="/facture.js" defer></script>
 <script src="/compte-facturation.js" defer></script>
@@ -6915,10 +6916,12 @@ window.Compte = (function(){
               '<select class="form-select form-select-sm" id="adFilterReseau" onchange="Compte.adminRefresh()" style="max-width:180px;"><option value="">Tous réseaux</option></select>'+
               '<button class="btn btn-sm btn-outline-primary" onclick="Compte.copySignupLink()"><i class="bi bi-link-45deg me-1"></i>Copier lien inscription</button>'+
               '<button class="btn btn-sm btn-primary" onclick="Compte.openCreateForm()"><i class="bi bi-person-plus-fill me-1"></i>Créer un compte</button>'+
+              '<button class="btn btn-sm btn-outline-primary" onclick="FidiBienvenue.basculer()" title="Mot d\'accueil, liens (vidéo, présentation) et pièces jointes envoyés à chaque nouveau compte"><i class="bi bi-envelope-heart me-1"></i>E-mail de bienvenue</button>'+
               '<button class="btn btn-sm btn-outline-primary" onclick="Templates.open()" title="Gérer les profils types (modules visibles par client)"><i class="bi bi-grid-3x3-gap me-1"></i>Profils types</button>'+
             '</div>'+
           '</div>'+
 
+          '<div class="cpt-carte d-none" id="bienvenueRoot"></div>'+
           // ── Formulaire création (initialement caché, révélé sur clic) ───
           '<div class="cpt-carte cpt-form d-none" id="adCreateForm">'+
             '<div class="d-flex align-items-center mb-2"><div class="fw-semibold">Nouveau compte</div>'+
@@ -7183,7 +7186,8 @@ window.Compte = (function(){
         '<div class="border rounded p-2 mt-3 cpt-mdp">'+
           '<div class="small fw-semibold mb-1"><i class="bi bi-key me-1"></i>Mot de passe</div>'+
           '<div class="small text-muted mb-2">Le mot de passe d\'un compte n\'est jamais relisible : il n\'est affiché qu\'une fois, à sa création. S\'il est perdu, générez-en un nouveau et transmettez-le au titulaire.</div>'+
-          '<button type="button" class="btn btn-sm btn-outline-primary" onclick="Compte.ficheMotDePasse(\''+esc(email)+'\')"><i class="bi bi-arrow-repeat me-1"></i>Générer un nouveau mot de passe</button>'+
+          '<button type="button" class="btn btn-sm btn-outline-primary" onclick="Compte.ficheMotDePasse(\''+esc(email)+'\')"><i class="bi bi-arrow-repeat me-1"></i>Générer un nouveau mot de passe</button> '+
+          '<button type="button" class="btn btn-sm btn-outline-primary" onclick="Compte.ficheBienvenue(\''+esc(email)+'\')"><i class="bi bi-envelope me-1"></i>Envoyer l\'e-mail de bienvenue</button>'+
           '<div id="fcMdp" class="small mt-2" role="status"></div>'+
         '</div>'+
         '<div id="fcMsg" class="small mt-2"></div>'+
@@ -7205,6 +7209,12 @@ window.Compte = (function(){
     const w=document.getElementById('fcExpireWrap'); if(w) w.style.display = (r==='Éphémère')?'':'none';
   }
   // Nouveau mot de passe pour un compte : généré par le serveur, affiché une seule fois ici.
+  // Renvoie l'e-mail de bienvenue : lien de l'application, installation, lien pour choisir son mot de passe (7 jours).
+  async function ficheBienvenue(email){
+    if(!confirm('Envoyer à ' + email + ' l\'e-mail de bienvenue (lien de l\'application, installation sur téléphone, lien pour choisir son mot de passe) ?')) return;
+    const {ok,data} = await admin('bienvenue', {email});
+    alert(ok ? 'E-mail de bienvenue envoyé à ' + email + '.' : (data.error || 'Envoi impossible.'));
+  }
   async function ficheMotDePasse(email){
     const box = document.getElementById('fcMdp'); if(!box) return;
     if(box.dataset.confirme !== email){
@@ -7286,6 +7296,12 @@ window.Compte = (function(){
     } else {
       msg.innerHTML='<span class="text-success">✓ Compte créé (mot de passe manuel).</span>';
     }
+    // E-mail de bienvenue : lien de l'application, installation sur téléphone, choix du mot de passe.
+    const eb = data.email_bienvenue;
+    msg.innerHTML += '<div class="small mt-1">' + (eb === 'envoye' ? '<span class="text-success"><i class="bi bi-envelope-check me-1"></i>E-mail de bienvenue envoyé à ' + esc(email) + ' : lien de l\'application, installation sur téléphone et choix du mot de passe (lien valable 7 jours).</span>'
+      : eb === 'non_configure' ? '<span class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>E-mail de bienvenue non envoyé : l\'envoi d\'e-mails n\'est pas réglé. Transmettez vous-même le lien de l\'application et le mot de passe.</span>'
+      : eb === 'echec' ? '<span class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>L\'e-mail de bienvenue n\'a pas pu partir. Renvoyez-le depuis la fiche du compte, ou transmettez vous-même les accès.</span>'
+      : '<span class="text-muted">Aucun e-mail de bienvenue pour ce type de compte.</span>') + '</div>';
     ['adEmail','adNom','adPwd','adCredits','adQuota','adReseau'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; });
     document.getElementById('adIllimite').checked=false;
     adminList();
@@ -7825,7 +7841,7 @@ window.Compte = (function(){
 
   return { open, rubrique, loadSocietes, miseEnPage, collaborateurs, doLogin, logout, refresh, setCredits, setRecherches, consume, renduPdf, confirmerCredit, adminCreate, adminCredit, adminToggle,
            adminIllimite, adminQuota, adminDelete, adminReseau, adminTarifGroup, adminRefresh,
-           adminEditNom, adminCommission, openFiche, ficheRoleChange, ficheSave, ficheMotDePasse, loadFactAdmin, factRelance, relanceVia, factDelete, factFicheClient,
+           adminEditNom, adminCommission, openFiche, ficheRoleChange, ficheSave, ficheMotDePasse, ficheBienvenue, loadFactAdmin, factRelance, relanceVia, factDelete, factFicheClient,
            openRapportCompta, rcSetMonth, rcSetYear, genRapportCompta, factSaveContact,
            openCreateForm, closeCreateForm, adCreateRoleChange, openTarifForm, closeTarifForm, copySignupLink,
            loadOffres, chooseOffer, payOffer, offerToggle, offerPrice, bulkRecalc, bulkSyncCumul, offresSelectGrille, offresCreateGrid,

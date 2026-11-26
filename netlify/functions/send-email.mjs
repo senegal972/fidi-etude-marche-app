@@ -71,17 +71,24 @@ export async function envoyerEmail(b) {
   // Lien de remise (page /l/<jeton>) : e-mail « avec bouton » plutôt que pièce jointe.
   let lien = String(b.lien || "").trim();
   if (lien && !/^https?:\/\//i.test(lien)) lien = "";
-  const messagePerso = b.message ? escHtml(b.message) : "";
+  // Les retours à la ligne du message sont conservés (consignes en plusieurs lignes) ; le texte reste échappé.
+  const messagePerso = b.message ? escHtml(b.message).replace(/\r?\n/g, "<br>") : "";
   const bouton = escHtml(String(b.bouton || "Accéder à mes documents").slice(0, 60));
+
+  // Liens complémentaires (vidéo, présentation…) : [{ libelle, url }], adresses http(s) seulement.
+  const liensPlus = (Array.isArray(b.liens) ? b.liens : [])
+    .filter((l) => l && /^https?:\/\//i.test(String(l.url || ""))).slice(0, 10)
+    .map((l) => `<li style="margin:4px 0;"><a href="${escHtml(l.url)}" style="color:#1a3a6e;font-weight:600;">${escHtml(String(l.libelle || l.url).slice(0, 120))}</a></li>`).join("");
+  const blocLiens = liensPlus ? `<p style="margin-bottom:4px;"><strong>${escHtml(String(b.titreLiens || "À consulter").slice(0, 80))}</strong></p><ul style="margin-top:0;padding-left:20px;">${liensPlus}</ul>` : "";
 
   const corps = lien
     ? `<p style="margin-top:0;">Bonjour,</p>
        ${messagePerso ? `<p>${messagePerso}</p>` : `<p>Votre ${kind}${titre ? " <strong>— " + titre + "</strong>" : ""} est disponible.</p>`}
-       <p>Cliquez sur le bouton ci-dessous pour y accéder :</p>
+       <p>${b.appel ? escHtml(String(b.appel).slice(0, 160)) : "Cliquez sur le bouton ci-dessous pour y accéder :"}</p>
        <p style="text-align:center;margin:26px 0;">
          <a href="${escHtml(lien)}" style="display:inline-block;background:#1a3a6e;color:#fff;text-decoration:none;padding:13px 30px;border-radius:8px;font-weight:700;font-size:15px;">${bouton}</a>
        </p>
-       <p style="font-size:12px;color:#6c757d;">Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :<br><a href="${escHtml(lien)}" style="color:#1a3a6e;word-break:break-all;">${escHtml(lien)}</a></p>`
+       <p style="font-size:12px;color:#6c757d;">Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :<br><a href="${escHtml(lien)}" style="color:#1a3a6e;word-break:break-all;">${escHtml(lien)}</a></p>${blocLiens}`
     : `<p style="margin-top:0;">Bonjour,</p>
        <p>Veuillez trouver ci-joint ${kind}${titre ? " <strong>— " + titre + "</strong>" : ""}.</p>
        <p>Ce document a été généré par l'application FIDI · Étude de Marché.</p>`;

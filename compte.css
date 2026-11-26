@@ -57,6 +57,15 @@
 .cpt-titre p{color:#5b6573;font-size:.88rem;margin:.2rem 0 0;}
 .cpt-carte{background:#fff;border:1px solid #dfe3e9;border-radius:14px;padding:1.15rem 1.25rem 1.25rem;margin-bottom:1rem;}
 .cpt-carte h3{font-size:.98rem;font-weight:700;color:#1f2a3a;margin:0 0 .8rem;}
+/* Réglages de l'e-mail de bienvenue (compte-bienvenue.js) */
+.bv-lien{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr) auto;gap:.5rem;margin-bottom:.5rem;}
+.bv-piece{display:flex;align-items:center;gap:.6rem;padding:.4rem .6rem;border:1px solid #dfe3e9;border-radius:8px;margin-bottom:.4rem;font-size:.86rem;}
+.bv-piece span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.bv-titre{font-size:.86rem;font-weight:700;color:#1f2a3a;margin:1rem 0 .4rem;}
+.bv-aide{color:#5b6573;font-size:.8rem;margin:0 0 .5rem;}
+.bv-pied{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin-top:1rem;}
+.bv-etat{font-size:.84rem;flex-basis:100%;}
+@media (max-width:768px){.bv-lien{grid-template-columns:minmax(0,1fr) auto;}.bv-lien input:first-child{grid-column:1 / -1;}}
 .cpt-carte-ligne{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;}
 .cpt-carte-ligne h3{margin-bottom:.15rem;}
 .cpt-carte-ligne p{margin:0;color:#5b6573;font-size:.84rem;}

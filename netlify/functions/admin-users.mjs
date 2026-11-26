@@ -11,6 +11,7 @@ function readReseau(props) {
   return "";
 }
 import { authResp, currentUser, createUser, setCredits, userFromPage } from "./_auth.mjs";
+import { envoyerBienvenue } from "./_bienvenue.mjs";
 
 // Mot de passe fort auto-généré : 16 chars mixed (majuscules + minuscules + chiffres + symboles)
 // avec au moins 1 de chaque catégorie garanti. Style Chrome/Google auto-generate.
@@ -97,7 +98,16 @@ export const handler = async (event) => {
       if (Object.keys(extra).length && createdPage?.id) {
         try { await updatePage(createdPage.id, extra); } catch {}
       }
-      return authResp(200, { ok: true, created: email, temp_password: b.password ? undefined : password });
+      // E-mail de bienvenue (lien de l'application, installation, choix du mot de passe). Jamais bloquant ; pas pour un compte de test.
+      let bienvenue = "non_envoye";
+      if (role !== "Test" && b.sans_email !== true) {
+        let hash = ""; try { hash = userFromPage(createdPage).hash || ""; } catch {}
+        if (!hash) { // la page rendue à la création ne porte pas toujours ses propriétés : relecture
+          try { const r = await queryDatabase(DB.users, { filter: { property: "Email", title: { equals: email } }, page_size: 1 }); hash = userFromPage(r.results[0]).hash || ""; } catch {}
+        }
+        bienvenue = await envoyerBienvenue({ event, email, nom: b.nom || "", hash, choisirMotDePasse: true });
+      }
+      return authResp(200, { ok: true, created: email, temp_password: b.password ? undefined : password, email_bienvenue: bienvenue });
     }
 
     // Recherche de la page cible pour les mises à jour.
@@ -213,6 +223,16 @@ export const handler = async (event) => {
       });
       return authResp(200, { ok: true, email, fidi_encaisse: !!b.fidi_encaisse, commission: pct });
     }
+    // Renvoi de l'e-mail de bienvenue (lien de l'application + choix du mot de passe) à un compte existant.
+    if (action === "bienvenue") {
+      const u = userFromPage(page);
+      if (u.role === "Administrateur" && !isSuperAdmin(me.user.email)) return authResp(403, { error: "Seul le super-administrateur peut envoyer ce lien à un administrateur." });
+      const etat = await envoyerBienvenue({ event, email, nom: u.nom, hash: u.hash, choisirMotDePasse: true });
+      if (etat === "non_configure") return authResp(503, { error: "L'envoi d'e-mails n'est pas réglé (RESEND_API_KEY, RESEND_FROM)." });
+      if (etat !== "envoye") return authResp(502, { error: "L'e-mail n'a pas pu partir. Réessayez." });
+      return authResp(200, { ok: true, email_bienvenue: etat });
+    }
+
     if (action === "reset_password") {
       // Le mot de passe d'un administrateur ne se change que par le super-administrateur : sinon tout administrateur
       // pourrait prendre la main sur le compte principal.
