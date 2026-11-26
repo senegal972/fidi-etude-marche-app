@@ -504,12 +504,12 @@ body.map-fs-on{overflow:hidden;}
                   <input class="form-check-input" type="checkbox" id="optEntreprise"/>
                   <label class="form-check-label" for="optEntreprise">
                     Vérifications légales d'entreprise
-                    <small>Identité légale, dirigeants et bénéficiaires effectifs (SCI, vendeur).</small>
+                    <small>Identité légale, dirigeants et bénéficiaires effectifs (SCI, vendeur). Sans SIREN ni nom : entreprises installées à l'adresse étudiée.</small>
                   </label>
                 </div>
                 <div class="d-none" id="entrepriseQueryWrap">
                   <input type="text" class="form-control form-control-sm" id="inputEntrepriseQ"
-                         placeholder="SIREN, SIRET ou raison sociale (SCI, vendeur)" aria-label="SIREN, SIRET ou raison sociale"/>
+                         placeholder="SIREN, SIRET ou nom — vide : entreprises sur place" aria-label="SIREN, SIRET ou raison sociale"/>
                 </div>
               </div>
 
@@ -1936,6 +1936,8 @@ async function lancerAnalyse(){
     if(document.getElementById('optEntreprise').checked){
       const q = document.getElementById('inputEntrepriseQ').value.trim();
       if(q) loadEntrepriseAsync(q);
+      // Sans SIREN ni nom : entreprises installées autour du point étudié (entreprises-proches.js).
+      else if(window.FidiEntreprisesProches) FidiEntreprisesProches.charger(data.localisation || {});
       else  hideEntrepriseSection();
     } else {
       hideEntrepriseSection();
@@ -6565,6 +6567,7 @@ function copyShareUrl(){
 <script src="/compte-societes.js" defer></script>
 <script src="/compte-motdepasse.js" defer></script>
 <script src="/compte-bienvenue.js" defer></script>
+<script src="/entreprises-proches.js" defer></script>
 <script src="/facture-externe.js" defer></script>
 <script src="/facture.js" defer></script>
 <script src="/compte-facturation.js" defer></script>

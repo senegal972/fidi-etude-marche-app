@@ -154,6 +154,14 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
 - Le formulaire se replie en résumé quand `#results-panel` devient visible (MutationObserver) ;
   « Nouvelle étude » demande un second clic si `FidiGuard.isDirty()`.
 
+### Entreprises installées autour du bien — `entreprises-proches.js`
+- Option `optEntreprise` cochée **sans** SIREN ni nom : `lancerAnalyse()` appelle `FidiEntreprisesProches.charger(data.localisation)` →
+  `GET /api/entreprises-adresse?lat=&lon=&radius=0.1` (`entreprises-adresse.mjs`, Recherche d'entreprises / Sirene, établissements actifs, sans clé).
+  `classer()` trie par distance (calculée dans le navigateur), écarte doublons et hors rayon ; ≤ `SUR_PLACE_M` (30 m) = « à cette adresse ou tout
+  près ». « Fiche légale » → `loadEntrepriseAsync(siren)` puis bouton de retour à la liste. Avec un SIREN ou un nom : comportement historique.
+  C'est un relevé déclaratif (la réserve est affichée), pas un constat d'occupation. Santé financière (Pappers) : SIREN toujours exigé.
+  Tests : `tests/entreprises-proches.test.mjs`.
+
 ### Choisir la parcelle sur la carte — `saisie-carte.js` (styles dans `saisie.css`)
 - Bouton `#btnCarteChoix` dans le sélecteur `.saisie-modes` (ce n'est **pas** un troisième `searchMode` : la recherche reste « adresse » ou
   « cadastre »). Il ouvre le panneau `#carteChoix` : ville (`#carteChoixVille`, suggestions `geo.api.gouv.fr`), « Ma position », carte Leaflet

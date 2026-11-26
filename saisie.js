@@ -129,7 +129,7 @@
     $('recapPerimetre').textContent = perimetreLabel() || '—';
 
     var opts = [], extra = [];
-    if (el.optE.checked) { opts.push('Société'); extra.push('RNE / INPI'); }
+    if (el.optE.checked) { opts.push('Société'); extra.push(el.entQ.value.trim() ? 'RNE / INPI' : 'Sirene (INSEE)'); }
     if (el.optF.checked) { opts.push('Finances'); extra.push('Pappers'); }
     if (el.optP.checked) { opts.push('Permis'); extra.push('SITADEL'); }
     $('recapOptions').textContent = opts.length ? opts.join(' · ') : 'Aucune';
@@ -145,7 +145,7 @@
 
     // Avertissements non bloquants : une option cochée sans identifiant est ignorée par l'analyse.
     var warn = [];
-    if (el.optE.checked && !el.entQ.value.trim()) warn.push('Indiquez un SIREN, un SIRET ou une raison sociale pour la vérification de société.');
+    // Vérification d'entreprise sans SIREN ni nom : l'analyse liste les entreprises installées autour du bien (entreprises-proches.js).
     if (el.optF.checked && !/^\d{9}$/.test(el.finS.value.replace(/\s+/g, ''))) warn.push('Indiquez un SIREN à 9 chiffres pour la santé financière.');
     alerte(warn.join(' '));
     if (bien()) document.querySelectorAll('#saisie .is-missing').forEach(function (x) { x.classList.remove('is-missing'); });

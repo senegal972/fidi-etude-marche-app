@@ -40,7 +40,8 @@ Ce dépôt est modifié depuis plusieurs outils (Claude Code sur le PC, Claude C
 | 1.40.0 | Suite du 2026-11-23 | Claude Code (cloud) | Avis : avancement (onglets marqués, jauge, liste de ce qui reste à compléter) | `0b3061c` |
 | 1.41.0 | Suite du 2026-11-23 | Claude Code (cloud) | Avis, document final : prix de cession plus pré-rempli, bien libre par défaut (occupation à l'accueil), écart valeur / stratégie signalé, étude citée | `7524909` |
 | 1.42.0 | Suite du 2026-11-23 | Claude Code (cloud) | Position imprécise écartée (carte de choix, « Ma position ») ; titre de la barre du haut sur deux lignes | 4c5baf5 |
-| 1.43.0 | 2026-11-26 | Claude Code (cloud) | E-mail de bienvenue automatique à la création d'un compte ; zone de réglage (mot d'accueil, liens, pièces jointes) | (ce commit) |
+| 1.43.0 | 2026-11-26 | Claude Code (cloud) | E-mail de bienvenue automatique à la création d'un compte ; zone de réglage (mot d'accueil, liens, pièces jointes) | 1d10ed3 |
+| 1.44.0 | 2026-11-26 | Claude Code (cloud) | Vérification d'entreprise sans SIREN : établissements installés autour du bien (Sirene) | (ce commit) |
 
 ## État des branches au 2026-11-16
 
