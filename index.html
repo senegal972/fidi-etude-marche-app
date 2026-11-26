@@ -7301,7 +7301,7 @@ window.Compte = (function(){
     }
     // E-mail de bienvenue : lien de l'application, installation sur téléphone, choix du mot de passe.
     const eb = data.email_bienvenue;
-    msg.innerHTML += '<div class="small mt-1">' + (eb === 'envoye' ? '<span class="text-success"><i class="bi bi-envelope-check me-1"></i>E-mail de bienvenue envoyé à ' + esc(email) + ' : lien de l\'application, installation sur téléphone et choix du mot de passe (lien valable 7 jours).</span>'
+    msg.innerHTML += '<div class="small mt-1">' + (eb === 'envoye' ? '<span class="text-success"><i class="bi bi-envelope-check me-1"></i>E-mail de bienvenue envoyé à ' + esc(email) + ' : lien de l\'application, installation sur téléphone et choix du mot de passe (lien valable 7 jours). Vous en recevez une copie.</span>'
       : eb === 'non_configure' ? '<span class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>E-mail de bienvenue non envoyé : l\'envoi d\'e-mails n\'est pas réglé. Transmettez vous-même le lien de l\'application et le mot de passe.</span>'
       : eb === 'echec' ? '<span class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>L\'e-mail de bienvenue n\'a pas pu partir. Renvoyez-le depuis la fiche du compte, ou transmettez vous-même les accès.</span>'
       : '<span class="text-muted">Aucun e-mail de bienvenue pour ce type de compte.</span>') + '</div>';

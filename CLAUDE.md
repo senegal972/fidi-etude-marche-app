@@ -217,7 +217,9 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
   `enregistrer`, `ajouter_piece`, `retirer_piece`, `essai`), Blobs `fidi-bienvenue` (`reglages`, `f/<id>`), communs au déploiement : mot d'accueil,
   liens https (6), pièces jointes (3 × 4 Mo ; PDF, PowerPoint, Word, image — une vidéo se met en lien). Écran : `compte-bienvenue.js`
   (`FidiBienvenue.basculer()`, `#bienvenueRoot` dans `tabAdmin`, styles `.bv-*` de `compte.css`). `envoyerEmail` accepte `liens`, `titreLiens`,
-  `appel`. Tests : `tests/bienvenue.test.mjs`.
+  `appel`. **Copie** (`copie`) : l'administrateur connecté (`me.user.email`), à défaut `adresseCopieDefaut()` (adresse de réponse, sinon
+  `SUPER_ADMIN_EMAIL`) pour une inscription par lien ; second e-mail « [Copie] … » **sans le lien de mot de passe** (usage unique), jamais bloquant,
+  pas de copie pour un essai. Consignes d'installation : iPhone, Android, Chrome / Edge, Safari Mac. Tests : `tests/bienvenue.test.mjs`.
 - **Session liée au mot de passe** : la connexion pose `pv` = `empreinteMdp(hash)` dans le jeton (7 jours) ; `currentUser()` refuse un jeton dont
   `pv` ne correspond plus (mot de passe changé) et tout jeton portant `purpose` (lien de réinitialisation, invitation). Les jetons sans `pv`
   (connexions antérieures à la 1.35.1, appel interne de `facture-auto`) restent admis jusqu'à leur expiration.

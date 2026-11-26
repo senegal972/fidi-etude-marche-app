@@ -39,7 +39,7 @@
     el.innerHTML =
       '<div class="d-flex align-items-center mb-2"><h3 class="mb-0">E-mail de bienvenue</h3>' +
         '<button type="button" class="btn btn-sm btn-outline-secondary ms-auto" data-bv="fermer" aria-label="Fermer"><i class="bi bi-x"></i></button></div>' +
-      '<p class="bv-aide">Envoyé automatiquement à chaque nouveau compte : identifiant, lien de l\'application, installation sur téléphone et lien pour choisir son mot de passe. Ajoutez ici votre mot d\'accueil, vos liens et vos documents.</p>' +
+      '<p class="bv-aide">Envoyé automatiquement à chaque nouveau compte : identifiant, lien de l\'application, installation sur téléphone et sur ordinateur, lien pour choisir son mot de passe. Vous recevez une copie de chaque envoi. Ajoutez ici votre mot d\'accueil, vos liens et vos documents.</p>' +
       (etat.envoi ? '' : '<div class="alert alert-warning py-2 small">L\'envoi d\'e-mails n\'est pas réglé sur ce site : aucun e-mail de bienvenue ne part pour l\'instant.</div>') +
       '<label class="bv-titre d-block" for="bvMessage">Mot d\'accueil (facultatif)</label>' +
       '<textarea class="form-control form-control-sm" id="bvMessage" rows="4" maxlength="1200" placeholder="Ex. Bienvenue ! Regardez la vidéo de présentation avant votre première étude.">' + esc(b.message) + '</textarea>' +

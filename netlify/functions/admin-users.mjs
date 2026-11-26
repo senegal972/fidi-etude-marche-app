@@ -105,7 +105,7 @@ export const handler = async (event) => {
         if (!hash) { // la page rendue à la création ne porte pas toujours ses propriétés : relecture
           try { const r = await queryDatabase(DB.users, { filter: { property: "Email", title: { equals: email } }, page_size: 1 }); hash = userFromPage(r.results[0]).hash || ""; } catch {}
         }
-        bienvenue = await envoyerBienvenue({ event, email, nom: b.nom || "", hash, choisirMotDePasse: true });
+        bienvenue = await envoyerBienvenue({ event, email, nom: b.nom || "", hash, choisirMotDePasse: true, copie: me.user.email });
       }
       return authResp(200, { ok: true, created: email, temp_password: b.password ? undefined : password, email_bienvenue: bienvenue });
     }
@@ -227,7 +227,7 @@ export const handler = async (event) => {
     if (action === "bienvenue") {
       const u = userFromPage(page);
       if (u.role === "Administrateur" && !isSuperAdmin(me.user.email)) return authResp(403, { error: "Seul le super-administrateur peut envoyer ce lien à un administrateur." });
-      const etat = await envoyerBienvenue({ event, email, nom: u.nom, hash: u.hash, choisirMotDePasse: true });
+      const etat = await envoyerBienvenue({ event, email, nom: u.nom, hash: u.hash, choisirMotDePasse: true, copie: me.user.email });
       if (etat === "non_configure") return authResp(503, { error: "L'envoi d'e-mails n'est pas réglé (RESEND_API_KEY, RESEND_FROM)." });
       if (etat !== "envoye") return authResp(502, { error: "L'e-mail n'a pas pu partir. Réessayez." });
       return authResp(200, { ok: true, email_bienvenue: etat });

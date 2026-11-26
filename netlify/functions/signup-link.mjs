@@ -9,7 +9,7 @@
 
 import crypto from "node:crypto";
 import { signJWT, verifyJWT, currentUser, authResp, createUser, findUserByEmail } from "./_auth.mjs";
-import { envoyerBienvenue } from "./_bienvenue.mjs";
+import { envoyerBienvenue, adresseCopieDefaut } from "./_bienvenue.mjs";
 import { DB, P, updatePage, ensureProperty, hasToken } from "./_notion.mjs";
 import { getNamedStore } from "./_blobs.mjs";
 
@@ -62,7 +62,7 @@ async function inscrire(event, b) {
     catch (e) { console.error("[signup-link] réseau non enregistré :", e.message); }
   }
   // La personne vient de choisir son mot de passe : l'e-mail de bienvenue donne le lien de l'application et l'installation.
-  const bienvenue = await envoyerBienvenue({ event, email, nom, choisirMotDePasse: false });
+  const bienvenue = await envoyerBienvenue({ event, email, nom, choisirMotDePasse: false, copie: adresseCopieDefaut() });
   return authResp(200, { ok: true, created: email, email_bienvenue: bienvenue });
 }
 

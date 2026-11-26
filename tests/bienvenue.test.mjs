@@ -126,10 +126,38 @@ test("/api/bienvenue : enregistrer, joindre, retirer, essai", async () => {
 
 test("branchements : création, inscription, renvoi, écran de réglage", () => {
   const admin = lire("netlify/functions/admin-users.mjs"), insc = lire("netlify/functions/signup-link.mjs"), page = lire("index.html");
-  assert.match(admin, /envoyerBienvenue\(\{ event, email, nom: b\.nom \|\| "", hash, choisirMotDePasse: true \}\)/);
+  assert.match(admin, /envoyerBienvenue\(\{ event, email, nom: b\.nom \|\| "", hash, choisirMotDePasse: true, copie: me\.user\.email \}\)/);
   assert.match(admin, /action === "bienvenue"/);
-  assert.match(insc, /envoyerBienvenue\(\{ event, email, nom, choisirMotDePasse: false \}\)/);
+  assert.match(insc, /envoyerBienvenue\(\{ event, email, nom, choisirMotDePasse: false, copie: adresseCopieDefaut\(\) \}\)/);
   assert.match(page, /compte-bienvenue\.js/); assert.match(page, /id="bienvenueRoot"/); assert.match(page, /FidiBienvenue\.basculer\(\)/);
   assert.match(lire("netlify.toml"), /from\s+=\s+"\/api\/bienvenue"/);
   assert.doesNotMatch(lire("compte-bienvenue.js"), /style="/, "pas de style en ligne : les classes sont dans compte.css");
+});
+
+test("copie à l'administrateur : même contenu et pièces, sans le lien personnel de mot de passe ; jamais bloquante", async () => {
+  const s = magasin();
+  await s.setJSON("reglages", { message: "Mot d'accueil", liens: [{ libelle: "Vidéo", url: "https://exemple.fr/v" }], pieces: [{ id: "0123456789abcdef", nom: "Guide.pdf" }] });
+  await s.setJSON("f/0123456789abcdef", { nom: "Guide.pdf", base64: "JVBERi0=" });
+  const { retour, envois } = await avecResend(() => B.envoyerBienvenue({ event: EVENT, email: "client@exemple.fr", nom: "Paul", hash: "h", choisirMotDePasse: true, store: s, copie: "Admin@exemple.fr" }));
+  assert.equal(retour, "envoye"); assert.equal(envois.length, 2);
+  const [client, copie] = envois.map((e) => e.corps);
+  assert.deepEqual(client.to, ["client@exemple.fr"]); assert.match(client.html, /#reset\?token=/);
+  assert.deepEqual(copie.to, ["admin@exemple.fr"]);
+  assert.match(copie.subject, /^\[Copie\] E-mail de bienvenue envoyé à client@exemple\.fr/);
+  assert.doesNotMatch(copie.html, /#reset|token=/, "le lien personnel n'est jamais dans la copie");
+  assert.match(copie.html, /Mot d(&#39;|')accueil/); assert.match(copie.html, /exemple\.fr\/v/); assert.equal(copie.attachments.length, 1);
+  // pas de copie pour un essai, ni quand l'administrateur est lui-même le destinataire
+  assert.equal((await avecResend(() => B.envoyerBienvenue({ event: EVENT, email: "a@exemple.fr", choisirMotDePasse: false, store: s, copie: "a@exemple.fr" }))).envois.length, 1);
+  assert.equal((await avecResend(() => B.envoyerBienvenue({ event: EVENT, email: "a@exemple.fr", choisirMotDePasse: false, store: s, copie: "b@exemple.fr", essai: true }))).envois.length, 1);
+  // la copie échoue : l'envoi au client reste « envoye »
+  let n = 0; const av = { f: globalThis.fetch, k: process.env.RESEND_API_KEY, e: process.env.RESEND_FROM };
+  process.env.RESEND_API_KEY = "x"; process.env.RESEND_FROM = "A <a@exemple.fr>";
+  globalThis.fetch = async () => (++n === 1 ? { ok: true, status: 200, json: async () => ({}) } : { ok: false, status: 500, json: async () => ({}) });
+  try { assert.equal(await B.envoyerBienvenue({ event: EVENT, email: "client@exemple.fr", hash: "h", choisirMotDePasse: true, store: s, copie: "admin@exemple.fr" }), "envoye"); assert.equal(n, 2); }
+  finally { globalThis.fetch = av.f; if (av.k === undefined) delete process.env.RESEND_API_KEY; else process.env.RESEND_API_KEY = av.k; if (av.e === undefined) delete process.env.RESEND_FROM; else process.env.RESEND_FROM = av.e; }
+});
+
+test("installation : téléphone (iPhone, Android) et ordinateur (Chrome / Edge, Safari)", () => {
+  const t = B.texteBienvenue({ nom: "", email: "a@exemple.fr", origin: "https://app.exemple.fr", avecLien: false });
+  for (const mot of ["iPhone", "Android", "Chrome ou Edge", "Safari (Mac)", "Ajouter au Dock", "Sur l'écran d'accueil"]) assert.ok(t.includes(mot), mot);
 });

@@ -5,7 +5,7 @@
 // (jeton { purpose:"reset", email, v }), valable 7 jours et une seule fois : il meurt dès que le mot de passe change.
 // Envoi « au mieux » : un échec ne fait jamais échouer la création du compte. Sans RESEND_API_KEY / RESEND_FROM : rien n'est envoyé.
 import { signJWT, empreinteMdp } from "./_auth.mjs";
-import { envoyerEmail } from "./send-email.mjs";
+import { envoyerEmail, adresseReponse } from "./send-email.mjs";
 import { getNamedStore } from "./_blobs.mjs";
 
 // Réglages de l'e-mail de bienvenue (Mon compte → Comptes → « E-mail de bienvenue ») : mot d'accueil, liens (vidéo, présentation)
@@ -92,13 +92,39 @@ export function texteBienvenue({ nom, email, origin, avecLien, message, nbPieces
     "Pour installer l'application sur votre téléphone :",
     "• iPhone : ouvrez " + origin + " dans Safari, touchez « Partager », puis « Sur l'écran d'accueil ».",
     "• Android : ouvrez " + origin + " dans Chrome, touchez le menu ⋮, puis « Installer l'application ».",
-    "Sur ordinateur, ouvrez simplement " + origin + " dans votre navigateur.",
+    "",
+    "Pour l'installer sur votre ordinateur :",
+    "• Chrome ou Edge (Windows, Mac) : ouvrez " + origin + ", puis cliquez sur l'icône d'installation à droite de la barre d'adresse, ou ouvrez le menu ⋮ et choisissez « Installer ».",
+    "• Safari (Mac) : ouvrez " + origin + ", puis menu Fichier, « Ajouter au Dock ».",
+    "Sans installation, l'application s'utilise aussi directement à l'adresse " + origin + " dans votre navigateur.",
     ...(nbPieces ? ["", nbPieces > 1 ? nbPieces + " documents sont joints à ce message." : "Un document est joint à ce message."] : []),
   ].join("\n");
 }
 
-// → "envoye" | "non_configure" | "echec". hash : mot de passe haché du compte (pour le lien de choix du mot de passe).
-export async function envoyerBienvenue({ event, email, nom, hash, choisirMotDePasse, store, essai }) {
+// Adresse qui reçoit la copie quand aucun administrateur n'est connecté (inscription par lien d'invitation) :
+// adresse de réponse du site (RESEND_REPLY_TO, à défaut FIDI_CONTACT_EMAIL), sinon le super-administrateur.
+export function adresseCopieDefaut() {
+  const s = String(process.env.SUPER_ADMIN_EMAIL || "").trim().toLowerCase();
+  return adresseReponse() || (/^[^\s@<>"']+@[^\s@<>"']+\.[a-z]{2,}$/i.test(s) ? s : "");
+}
+
+// Copie pour l'administrateur : même contenu (mot d'accueil, consignes, liens, pièces jointes), mais JAMAIS le lien personnel de choix du mot de
+// passe — il ne sert qu'une fois : ouvert depuis la copie, il priverait le client du sien. Au mieux : un échec ne change pas le résultat.
+async function envoyerCopie({ copie, email, nom, origin, avecLien, regl, attachments }) {
+  try {
+    const r = await envoyerEmail({
+      to: copie, subject: "[Copie] E-mail de bienvenue envoyé à " + email, lien: origin + "/", bouton: "Ouvrir l'application",
+      appel: avecLien ? "Dans l'e-mail du client, ce bouton est « Choisir mon mot de passe » (lien personnel valable 7 jours, non reproduit ici) :" : "Bouton de l'e-mail du client :",
+      liens: regl.liens, titreLiens: "Pour bien démarrer", ...(attachments.length ? { attachments } : {}),
+      message: "Copie de l'e-mail de bienvenue envoyé à " + email + ".\n———\n" + texteBienvenue({ nom, email, origin, avecLien, message: regl.message, nbPieces: attachments.length }),
+    });
+    if (r.statusCode !== 200) console.error("[bienvenue] copie non envoyée :", r.statusCode);
+    return r.statusCode === 200;
+  } catch (e) { console.error("[bienvenue] copie :", e.message); return false; }
+}
+
+// → "envoye" | "non_configure" | "echec". copie : adresse de l'administrateur mis en copie (facultative). hash : mot de passe haché du compte (pour le lien de choix du mot de passe).
+export async function envoyerBienvenue({ event, email, nom, hash, choisirMotDePasse, store, essai, copie }) {
   if (!process.env.RESEND_API_KEY || !process.env.RESEND_FROM) return "non_configure";
   const origin = origineDe(event);
   if (!origin || !email) return "echec";
@@ -109,14 +135,17 @@ export async function envoyerBienvenue({ event, email, nom, hash, choisirMotDePa
   try {
     const regl = await lireReglages(event, store);
     const attachments = regl.pieces.length ? await piecesJointes(event, regl.pieces, store) : [];
+    const nomPropre = String(nom || "").trim().slice(0, 80);
     const r = await envoyerEmail({
       to: email, subject: (essai ? "[Essai] " : "") + "Votre accès à l'application", lien,
       appel: avecLien ? "Pour commencer, choisissez votre mot de passe :" : "Pour commencer, ouvrez l'application :",
       liens: regl.liens, titreLiens: "Pour bien démarrer", ...(attachments.length ? { attachments } : {}),
       bouton: avecLien ? "Choisir mon mot de passe" : "Ouvrir l'application",
-      message: texteBienvenue({ nom: String(nom || "").trim().slice(0, 80), email, origin, avecLien, message: regl.message, nbPieces: attachments.length }),
+      message: texteBienvenue({ nom: nomPropre, email, origin, avecLien, message: regl.message, nbPieces: attachments.length }),
     });
     if (r.statusCode !== 200) { console.error("[bienvenue] e-mail non envoyé :", r.statusCode); return "echec"; }
+    const c = String(copie || "").trim().toLowerCase();
+    if (!essai && c && c !== String(email).trim().toLowerCase()) await envoyerCopie({ copie: c, email, nom: nomPropre, origin, avecLien, regl, attachments });
     return "envoye";
   } catch (e) { console.error("[bienvenue]", e.message); return "echec"; }
 }
