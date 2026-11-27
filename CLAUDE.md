@@ -162,6 +162,19 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
   écrit dans `localStorage` `fidi:clients` (liste commune à l'étude, à l'avis et à la facture). « Essai » vide et masque le destinataire.
   Rien n'est imprimé de ce bloc hors le titre. Tests : `tests/profils-bandeau.test.mjs`.
 
+### Potentiel constructible — `implantation.js` (`FidiImplantation`)
+- `compute(p)` (pur, testé sur des rectangles) : zone après reculs, emprise, surface de plancher, bâtiments placés. S'y ajoutent :
+  **voirie interne** (`p.voirie` : `true` / `false` = choix de l'utilisateur, non défini = proposée d'office si le terrain fait ≥ 50 m de long
+  et porte ≥ 3 bâtiments ; bande de `voirieLargeur` m — 5 par défaut — dans la longueur, position gardée = celle qui loge le plus de bâtiments ;
+  `res.voirie = { largeur, longueur, surface, runs }`), **espaces verts** (`pleineTerrePct` → `res.pleineTerre_m2` ; des bâtiments sont retirés
+  tant que `res.libre_m2` ne les couvre pas, `res.retiresEspaces`), **stationnement** (`placesLogt` × `logtsBati`, 25 m² par place →
+  `res.places`, `res.parking_m2`). L'emprise retenue est plafonnée par ces réserves (`limite_par = 'espaces'`).
+- `defauts(regles)` lit `pleine_terre.pct` et le nombre de places par logement dans la citation de `stationnement` (`_plu_regles.mjs`).
+  **La largeur minimale de voie n'est pas extraite du règlement** (5 m = usage courant, affiché comme tel). Emprise absente du règlement :
+  repli sur `data.emprise_pct`, sinon milieu de la fourchette de `window.__fidiRegleIndicative` (posé par `constructRules` dans `index.html`),
+  affiché « indicatif (règles de la zone) ». État par étude : `__fidiData.implantation.valeurs` (dont `voirie`).
+- Le stationnement n'est pas dessiné (surface seulement). Tests : `tests/implantation.test.mjs`.
+
 ### Profils & modules — `compte-profils.js` (rubrique `tabProfils`, administrateur)
 - `FidiProfils.monter()` rend dans `#profilsRoot` les profils (`/api/templates` : modèles système + personnalisés dans la base Notion des
   templates) et leurs modules cochables, groupés (`MODULES[].groupe` dans `templates.mjs`). Un compte porte un profil par le champ « Profil

@@ -3396,6 +3396,7 @@ function renderConstructibilite(lat, lon){
     : (gpu.parcelle && Number(gpu.parcelle.contenance));
   const surfLabel = nbExtra ? 'Surface du terrain (cadastre, '+(nbExtra+1)+' parcelles)' : 'Surface du terrain (cadastre)';
   const R = constructRules(z.typezone, cp);
+  window.__fidiRegleIndicative = R; // repris par le potentiel constructible (implantation.js) quand le règlement ne donne pas l'emprise
   // Surface constructible estimée = contenance × emprise médiane
   let surfCons = '';
   if(contenance){

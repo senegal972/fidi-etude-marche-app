@@ -218,3 +218,69 @@ test("défauts : H/2 appliqué, plafond ignoré, rien de lu = hypothèse signal�
   assert.equal(vide.srcVoie, null);
   assert.equal(vide.srcNiveaux, null);
 });
+
+// ── Voirie interne, espaces verts, stationnement ─────────────────────────────
+const LONG = { geoms: [rect(100, 30)], contenance: 3000, emprisePct: 40, reculVoie: 3, reculLimites: 3, niveaux: 1, coef: 1, batiLong: 12, batiLarg: 8, ecart: 4 };
+
+test("terrain long : la voirie interne est proposée d'office, large de 5 m, et les bâtiments ne la recouvrent pas", () => {
+  const r = compute({ ...LONG });
+  assert.ok(r.voirie, "voirie proposée");
+  assert.equal(r.voirieAuto, true);
+  assert.equal(r.voirie.largeur, 5);
+  proche(r.voirie.longueur, 100, 3, "la voie court sur la longueur du terrain");
+  proche(r.voirie.surface, 500, 40, "5 m × 100 m");
+  assert.ok(r.nb >= 3, "des bâtiments de part et d'autre : " + r.nb);
+  r.batiments.forEach((b) => assert.ok(b.j + b.h <= r.voirie.j || b.j >= r.voirie.j + r.voirie.h, "aucun bâtiment sur la voie"));
+  assert.match(svg(r), /Voie interne 5 m/);
+});
+
+test("voirie décochée (lots accessibles à pied) : aucune voie, et largeur réglable quand elle est voulue", () => {
+  const sans = compute({ ...LONG, voirie: false });
+  assert.equal(sans.voirie, null);
+  assert.doesNotMatch(svg(sans), /Voie interne/);
+  const large = compute({ ...LONG, voirie: true, voirieLargeur: 6 });
+  assert.equal(large.voirie.largeur, 6);
+  assert.ok(large.voirie.surface > compute({ ...LONG, voirie: true }).voirie.surface);
+  const court = compute({ geoms: [rect(40, 25)], contenance: 1000, emprisePct: 30, reculVoie: 3, reculLimites: 3, niveaux: 1, coef: 1, batiLong: 12, batiLarg: 10, ecart: 4 });
+  assert.equal(court.voirie, null, "terrain court : pas de voirie d'office");
+});
+
+test("stationnement : places par logement, logements par bâtiment, 25 m² par place", () => {
+  const r = compute({ ...LONG, voirie: false, placesLogt: 1.5, logtsBati: 2 });
+  assert.equal(r.logements, r.nb * 2);
+  assert.equal(r.places, Math.ceil(r.nb * 2 * 1.5));
+  assert.equal(r.parking_m2, r.places * 25);
+  const defaut = compute({ ...LONG, voirie: false });
+  assert.equal(defaut.places, defaut.nb * 2, "sans règle lue : 2 places par logement, 1 logement par bâtiment");
+});
+
+test("espaces verts exigés : le terrain libre restant les couvre, quitte à retirer des bâtiments", () => {
+  const libreSans = compute({ ...LONG });
+  const r = compute({ ...LONG, pleineTerrePct: 70 });
+  assert.equal(r.pleineTerre_m2, 2100);
+  assert.ok(r.libre_m2 >= r.pleineTerre_m2, `libre ${r.libre_m2} ≥ exigé ${r.pleineTerre_m2}`);
+  assert.ok(r.nb < libreSans.nb, "moins de bâtiments qu'en l'absence d'exigence");
+  assert.ok(r.retiresEspaces > 0 || r.nb < libreSans.nb);
+  assert.ok(r.emprise_m2 <= 3000 - 2100 - r.voirie.surface - r.parking_m2 + 1e-6, "emprise retenue plafonnée");
+  assert.equal(r.limite_par, "espaces");
+  const leger = compute({ ...LONG, pleineTerrePct: 20 });
+  assert.equal(leger.nb, libreSans.nb, "une exigence déjà satisfaite ne change rien");
+});
+
+test("règlement : pleine terre et stationnement lus, sinon hypothèses", () => {
+  const d = defauts({ pleine_terre: { pct: 30, page: 12, citation: "30 % en pleine terre" }, stationnement: { page: 14, citation: "il est exigé 1,5 place de stationnement par logement" } });
+  assert.equal(d.pleineTerrePct, 30); assert.equal(d.srcPleineTerre.page, 12);
+  assert.equal(d.placesLogt, 1.5); assert.equal(d.srcStationnement.page, 14);
+  const une = defauts({ stationnement: { page: 3, citation: "une place par logement" } });
+  assert.equal(une.placesLogt, 1);
+  const rien = defauts(null);
+  assert.equal(rien.pleineTerrePct, ""); assert.equal(rien.placesLogt, 2); assert.equal(rien.voirieLargeur, 5); assert.equal(rien.srcStationnement, null);
+});
+
+test("plusieurs terrains : voirie, places et espaces verts s'additionnent", () => {
+  const a = compute({ ...LONG, pleineTerrePct: 20 }), b = compute({ ...LONG, voirie: false, pleineTerrePct: 20 });
+  const t = agreger([a, b]);
+  assert.equal(t.places, a.places + b.places);
+  assert.equal(t.pleineTerre_m2, 1200);
+  proche(t.voirie.surface, a.voirie.surface, 0.001);
+});

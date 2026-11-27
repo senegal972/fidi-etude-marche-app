@@ -14,6 +14,11 @@
   const COEF_PLANCHER = 0.85;     // surface de plancher / surface brute (hypothèse)
   const COEF_MARGE = 0.05;        // ± pour la fourchette
   const BATI_LONG = 12, BATI_LARG = 10, ECART_DEFAUT = 4, RECUL_DEFAUT = 3;
+  // Voirie interne, stationnement, espaces verts (hypothèses courantes, toutes modifiables à l'écran).
+  const VOIRIE_LARGEUR = 5;       // m : largeur usuelle d'une voie privée de desserte
+  const VOIRIE_SEUIL_M = 50;      // m : terrain « tout en longueur » à partir de cette longueur
+  const PLACE_M2 = 25;            // m² par place de stationnement, dégagement compris
+  const PLACES_LOGT = 2;          // places par logement quand le règlement n'a pas pu être lu
 
   // ── Géométrie (pure) ──────────────────────────────────────────────────────
   // geoms GeoJSON (Polygon | MultiPolygon) → polygones en mètres, x vers l'est, y vers le sud.
@@ -130,6 +135,12 @@
     res.niveaux = niv.size === 1 ? connus[0].niveaux : null;
     res.batiLong = resultats[0] ? resultats[0].batiLong : BATI_LONG;
     res.batiLarg = resultats[0] ? resultats[0].batiLarg : BATI_LARG;
+    // Voirie, espaces verts et stationnement : additionnés sur l'ensemble des terrains.
+    ['places', 'parking_m2', 'logements', 'retiresEspaces'].forEach((k) => { res[k] = somme(k); });
+    res.pleineTerre_m2 = resultats.some((r) => r.pleineTerre_m2 != null) ? somme('pleineTerre_m2') : null;
+    res.libre_m2 = somme('libre_m2');
+    const voies = resultats.filter((r) => r.voirie);
+    res.voirie = voies.length ? { largeur: voies[0].voirie.largeur, surface: voies.reduce((t, r) => t + r.voirie.surface, 0), longueur: voies.reduce((t, r) => t + r.voirie.longueur, 0), runs: [] } : null;
     return res;
   }
 
@@ -204,7 +215,7 @@
       const cell = Math.max(0.25, Math.max(mxu - mnu, mxv - mnv) / 200);
       const nu = Math.ceil((mxu - mnu) / cell), nv = Math.ceil((mxv - mnv) / cell);
       const actifs = cotes.filter((c) => !c.interne);
-      const mask = new Uint8Array(nu * nv);
+      const mask = new Uint8Array(nu * nv), maskP = new Uint8Array(nu * nv);
       let nCell = 0;
       for (let j = 0; j < nv; j++) {
         const v = mnv + (j + 0.5) * cell;
@@ -212,6 +223,7 @@
           const u = mnu + (i + 0.5) * cell;
           const x = u * cos - v * sin, y = u * sin + v * cos;
           if (!polys.some((rs) => dansPolygone(x, y, rs))) continue;
+          maskP[j * nu + i] = 1;
           if (actifs.every((c) => distSeg(x, y, c.a, c.b) >= reculCote(c))) { mask[j * nu + i] = 1; nCell++; }
         }
       }
@@ -226,7 +238,7 @@
           res.runs.push([i, j, k - i]); i = k;
         }
       }
-      res._mask = mask;
+      res._mask = mask; res._maskP = maskP; res.longueur = mxu - mnu; res.largeur = mxv - mnv;
     }
 
     // Emprise : réglementaire, plafonnée par la zone restant après reculs.
@@ -241,23 +253,81 @@
     const niveaux = Math.max(1, Math.round(Number(p.niveaux) || 1));
     const coef = Number(p.coef) > 0 ? Number(p.coef) : COEF_PLANCHER;
     res.niveaux = niveaux; res.coef = coef;
-    if (res.emprise_m2 != null) {
+    const plancher = () => {
+      if (res.emprise_m2 == null) return;
       res.sdp = res.emprise_m2 * niveaux * coef;
       res.sdp_min = res.emprise_m2 * niveaux * Math.max(0.1, coef - COEF_MARGE);
       res.sdp_max = res.emprise_m2 * niveaux * Math.min(1, coef + COEF_MARGE);
-    }
+    };
+    plancher();
+
+    // Espaces verts / pleine terre exigés, stationnement à prévoir (surfaces à réserver sur le terrain).
+    const ptPct = Number(p.pleineTerrePct);
+    res.pleineTerre_m2 = ptPct > 0 && p.pleineTerrePct !== '' && p.pleineTerrePct != null ? surface * Math.min(100, ptPct) / 100 : null;
+    const parLogt = p.placesLogt === '' || p.placesLogt == null || !(Number(p.placesLogt) >= 0) ? PLACES_LOGT : Number(p.placesLogt);
+    const logtsBati = Math.max(1, Math.round(Number(p.logtsBati) || 1));
+    const places = (n) => Math.ceil(n * logtsBati * parLogt - 1e-9);
+    res.placesLogt = parLogt; res.logtsBati = logtsBati;
 
     // Bâtiments implantables : placement glouton, dans les deux orientations, plafonné à l'emprise.
     const L = Number(p.batiLong) > 0 ? Number(p.batiLong) : BATI_LONG;
     const l = Number(p.batiLarg) > 0 ? Number(p.batiLarg) : BATI_LARG;
     const e = Number(p.ecart) >= 0 ? Number(p.ecart) : ECART_DEFAUT;
     res.batiLong = L; res.batiLarg = l; res.ecart = e;
+    res.voirie = null; res.places = 0; res.parking_m2 = 0; res.logements = 0;
     if (res._mask && res.emprise_m2 != null) {
-      const budget = Math.floor(res.emprise_m2 / (L * l) + 1e-9);
-      const a = placer(res, L, l, e, budget), b = placer(res, l, L, e, budget);
-      res.batiments = b.length > a.length ? b : a;
-      res.nb = res.batiments.length;
-      res.budget = budget;
+      const masque0 = res._mask, { nu, nv, cell } = res;
+      const deux = (m, budget) => { res._mask = m; const a = placer(res, L, l, e, budget), b = placer(res, l, L, e, budget); return b.length > a.length ? b : a; };
+      const budget0 = Math.floor(res.emprise_m2 / (L * l) + 1e-9);
+      let bats = deux(masque0, budget0);
+      res.budget = budget0;
+
+      // Voirie interne : bande réservée dans la longueur du terrain, qui dessert les bâtiments des deux côtés.
+      // p.voirie : true / false = choix de l'utilisateur ; non défini = proposée d'office sur un terrain long portant 3 bâtiments ou plus.
+      const largeurVoie = Math.max(3, Number(p.voirieLargeur) || VOIRIE_LARGEUR);
+      res.voirieAuto = p.voirie == null;
+      const veut = p.voirie === true || (p.voirie == null && res.longueur >= VOIRIE_SEUIL_M && bats.length >= 3);
+      if (veut) {
+        const hb = Math.max(1, Math.round(largeurVoie / cell));
+        let j0 = nv, j1 = -1;
+        for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) if (masque0[j * nu + i]) { j0 = Math.min(j0, j); j1 = Math.max(j1, j); break; }
+        const candidats = Array.from(new Set([Math.round((j0 + j1 + 1 - hb) / 2), j0, j1 + 1 - hb])).filter((j) => j >= 0 && j + hb <= nv && j1 >= j0);
+        let mieux = null;
+        candidats.forEach((jc) => {
+          const m = masque0.slice(); let n = 0; const runs = [];
+          for (let j = jc; j < jc + hb; j++) {
+            let i = 0;
+            while (i < nu) {
+              if (!res._maskP[j * nu + i]) { i++; continue; }
+              let k = i; while (k < nu && res._maskP[j * nu + k]) k++;
+              runs.push([i, j, k - i]); n += k - i; i = k;
+            }
+            for (let i2 = 0; i2 < nu; i2++) m[j * nu + i2] = 0;
+          }
+          const surfaceV = n * cell * cell;
+          const plafond = Math.min(res.emprise_m2, Math.max(0, surface - (res.pleineTerre_m2 || 0) - surfaceV));
+          const b = deux(m, Math.floor(plafond / (L * l) + 1e-9));
+          if (!mieux || b.length > mieux.b.length) mieux = { jc, b, surfaceV, runs };
+        });
+        if (mieux) {
+          res.voirie = { j: mieux.jc, h: hb, largeur: largeurVoie, surface: mieux.surfaceV, longueur: mieux.surfaceV / (hb * cell), runs: mieux.runs };
+          bats = mieux.b;
+        }
+      }
+      // Espaces verts : on retire des bâtiments tant que le terrain libre (hors bâti, voirie et stationnement) ne suffit pas.
+      const surfaceVoie = res.voirie ? res.voirie.surface : 0;
+      const libre = (n) => surface - n * L * l - surfaceVoie - places(n) * PLACE_M2;
+      res.retiresEspaces = 0;
+      while (bats.length && res.pleineTerre_m2 != null && libre(bats.length) < res.pleineTerre_m2) { bats.pop(); res.retiresEspaces++; }
+      res.batiments = bats;
+      res.nb = bats.length;
+      res.logements = res.nb * logtsBati;
+      res.places = places(res.nb);
+      res.parking_m2 = res.places * PLACE_M2;
+      res.libre_m2 = libre(res.nb);
+      // L'emprise retenue ne peut pas dépasser ce qui reste une fois réservés espaces verts, voirie et stationnement.
+      const plafondEmprise = surface - (res.pleineTerre_m2 || 0) - surfaceVoie - res.parking_m2;
+      if (plafondEmprise < res.emprise_m2) { res.emprise_m2 = Math.max(0, plafondEmprise); res.limite_par = 'espaces'; plancher(); }
       // Parcelles occupées par chaque bâtiment : plusieurs = bâtiment à cheval sur une limite.
       const cs = Math.cos(res.angle), sn = Math.sin(res.angle);
       res.batiments.forEach((b) => {
@@ -272,7 +342,7 @@
       });
       res.aCheval = res.batiments.map((b, n) => (b.parcelles.length > 1 ? n + 1 : 0)).filter(Boolean);
     }
-    delete res._mask;
+    delete res._mask; delete res._maskP;
     return res;
   }
   function placer(res, wM, hM, gM, budget) {
@@ -461,6 +531,19 @@
       const coul = res.couleurs[rs.geom];
       if (coul) o += '<path d="' + rs.map((r) => 'M' + r.map((c) => fx(px(c[0], c[1]))).join('L') + 'Z').join('') + '" fill="' + coul + '" fill-opacity=".1" fill-rule="evenodd"/>';
     });
+    // Voirie interne (bande réservée à la desserte des bâtiments)
+    if (res.voirie && res.voirie.runs.length) {
+      const [mu, mv] = res.origine, c = res.cell;
+      let d = '', u0m = Infinity, u1m = -Infinity;
+      res.voirie.runs.forEach((r) => {
+        const u0 = mu + r[0] * c, u1 = mu + (r[0] + r[2]) * c, v0 = mv + r[1] * c, v1 = mv + (r[1] + 1) * c + c * 0.03;
+        u0m = Math.min(u0m, u0); u1m = Math.max(u1m, u1);
+        d += 'M' + fx(uv(u0, v0)) + 'L' + fx(uv(u1, v0)) + 'L' + fx(uv(u1, v1)) + 'L' + fx(uv(u0, v1)) + 'Z';
+      });
+      o += '<path d="' + d + '" fill="#aab2bd"/>';
+      const mil = uv((u0m + u1m) / 2, mv + (res.voirie.j + res.voirie.h / 2) * c);
+      o += '<text x="' + mil[0].toFixed(1) + '" y="' + (mil[1] + 3).toFixed(1) + '" text-anchor="middle" font-size="9.5" font-weight="700" fill="#2b3440" stroke="#fff" stroke-width="2.4" paint-order="stroke">Voie interne ' + String(res.voirie.largeur).replace('.', ',') + ' m</text>';
+    }
     // Bâtiments
     res.batiments.forEach((b, n) => {
       const [mu, mv] = res.origine, c = res.cell;
@@ -528,7 +611,15 @@
       ecart = Math.max(ent.m || 0, ent.formule === 'H/2' && h.egout_m ? h.egout_m / 2 : 0); srcE = srcOf(ent);
     }
     const em = r.emprise || null;
+    // Espaces verts / pleine terre (% du terrain) et stationnement (places par logement) lus dans le règlement.
+    const pt = r.pleine_terre || null, stat = r.stationnement || null;
+    let placesLogt = PLACES_LOGT, srcStat = null;
+    const mStat = stat && stat.citation ? String(stat.citation).match(/(\d+(?:[.,]\d+)?|une?)\s+(?:place|aire|emplacement)s?(?:\s+de\s+stationnement)?\s+(?:par|pour)\s+(?:chaque\s+)?logement/i) : null;
+    if (mStat) { placesLogt = /^une?$/i.test(mStat[1]) ? 1 : parseFloat(mStat[1].replace(',', '.')); srcStat = srcOf(stat); }
     return {
+      pleineTerrePct: pt && pt.pct != null ? pt.pct : '', srcPleineTerre: srcOf(pt),
+      placesLogt, srcStationnement: srcStat, citeStationnement: stat && !mStat ? srcOf(stat) : null,
+      voirieLargeur: VOIRIE_LARGEUR, logtsBati: 1,
       emprisePct: em && em.pct != null ? em.pct : '',
       empriseNonReglementee: !!(em && em.non_reglemente),
       empriseAmbigue: em && em.ambigu ? em.valeurs : null,
@@ -545,8 +636,8 @@
 
   // ── Interface écran ───────────────────────────────────────────────────────
   if (typeof document !== 'undefined') {
-    const CHAMPS_ZONE = ['emprisePct', 'reculVoie', 'reculLimites', 'niveaux', 'ecart'];
-    const CHAMPS_PROJET = ['coef', 'batiLong', 'batiLarg'];
+    const CHAMPS_ZONE = ['emprisePct', 'reculVoie', 'reculLimites', 'niveaux', 'ecart', 'pleineTerrePct', 'placesLogt'];
+    const CHAMPS_PROJET = ['coef', 'batiLong', 'batiLarg', 'voirieLargeur', 'logtsBati'];
     const m2 = (n) => (n == null || !isFinite(n)) ? '—' : Math.round(n).toLocaleString('fr-FR') + ' m²';
     const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const SANS_CONTOUR = 'Surface saisie sans contour';
@@ -676,6 +767,14 @@
       const lu = estPrincipale ? { etat: window.__fidiPluRegle ? 'ok' : 'attente', data: window.__fidiPluRegle } : (reglesLues.get(zone) || { etat: 'attente' });
       const data = lu.data || {};
       const def = defauts(data.regles || null);
+      // Emprise absente du règlement lu : on reprend celle des « règles de constructibilité de la zone » affichées plus haut
+      // (pourcentage du règlement s'il est connu, sinon milieu de la fourchette indicative du type de zone).
+      if (def.emprisePct === '' && !def.empriseNonReglementee && estPrincipale) {
+        const ind = window.__fidiRegleIndicative || null;
+        const mm = ind ? String(ind.emprise || '').match(/(\d+)\D+(\d+)\s*%/) : null;
+        if (Number(data.emprise_pct) > 0) def.emprisePct = Number(data.emprise_pct);
+        else if (mm) { def.emprisePct = Math.round((Number(mm[1]) + Number(mm[2])) / 2); def.empriseIndicative = ind.emprise; }
+      }
       const saisies = estPrincipale ? st.valeurs : (st.valeursZones[zone] || {});
       const val = {};
       CHAMPS_ZONE.forEach((k) => { val[k] = saisies[k] !== undefined ? saisies[k] : def[k]; });
@@ -683,6 +782,7 @@
       const nat = natureDe(typezone);
       return { def, val, nat, saisies, url: data.reglement_url || '', etat: lu.etat, zone,
         calc: Object.assign({}, val, {
+          voirie: st.valeurs.voirie === true ? true : (st.valeurs.voirie === false ? false : undefined),
           empriseNonReglementee: def.empriseNonReglementee && saisies.emprisePct === undefined,
           constructible: !(nat === 'agricole' || nat === 'naturel'),
         }) };
@@ -732,15 +832,29 @@
       '<span><span style="display:inline-block;width:14px;height:4px;background:#fd7e14;vertical-align:middle;"></span> côté sur voie</span>' +
       '<span><span style="display:inline-block;width:12px;height:10px;background:#bfe3cd;vertical-align:middle;"></span> zone après reculs</span>' +
       '<span><span style="display:inline-block;width:12px;height:10px;background:#1a4b8e;vertical-align:middle;"></span> bâtiment</span>' +
+      '<span><span style="display:inline-block;width:12px;height:10px;background:#aab2bd;vertical-align:middle;"></span> voirie interne</span>' +
       '</div>';
+    // Hypothèses de desserte : voirie interne (cochée d'office sur un terrain long, décochable pour des lots accessibles à pied).
+    let voirieAffichee = false;
+    function lignesProjet(P, hyp, st) {
+      const choix = st.valeurs.voirie;
+      const etatVoirie = choix === true ? 'prévue (votre choix)' : choix === false ? 'non prévue : lots accessibles à pied' : (voirieAffichee ? 'proposée : terrain tout en longueur' : 'non proposée : terrain court ou peu de bâtiments');
+      return '<tr><td style="color:#556;">Voirie interne (desserte des lots)</td><td colspan="2" style="font-size:.74rem;"><label style="cursor:pointer;"><input type="checkbox" class="form-check-input impl-case me-1" data-case="voirie"' +
+          ((choix === true || (choix === undefined && voirieAffichee)) ? ' checked' : '') + '>' + etatVoirie + '</label></td></tr>' +
+        champ('voirieLargeur', 'Voirie interne : largeur', 'm', P.val.voirieLargeur, st.valeurs.voirieLargeur !== undefined ? '<span class="impl-src" style="color:#556;">saisie</span>' : '<span class="impl-src" style="color:#8a6d3b;" title="5 m est la largeur usuelle d\'une voie privée de desserte ; le minimum exigé figure dans le règlement (article « accès et voirie »).">usage courant — minimum à lire dans le règlement</span>', 'min="3" step="0.5"', '') +
+        champ('logtsBati', 'Logements par bâtiment', '', P.val.logtsBati, hyp('logtsBati'), 'min="1" step="1"', '');
+    }
     function lignesResultat(res) {
       return [
         ['Surface du terrain', m2(res.surface)],
         ['Zone restant après reculs', m2(res.constructible_m2)],
         ['Emprise au sol maximale', res.emprise_max_m2 != null ? m2(res.emprise_max_m2) : '—'],
-        ['Emprise retenue', res.emprise_m2 != null ? m2(res.emprise_m2) + (res.limite_par === 'reculs' ? ' <span class="text-muted">(limitée par les reculs)</span>' : '') : '—'],
+        ['Emprise retenue', res.emprise_m2 != null ? m2(res.emprise_m2) + (res.limite_par === 'reculs' ? ' <span class="text-muted">(limitée par les reculs)</span>' : res.limite_par === 'espaces' ? ' <span class="text-muted">(limitée par les espaces verts, la voirie et le stationnement)</span>' : '') : '—'],
+        ['Voirie interne', res.voirie ? String(res.voirie.largeur).replace('.', ',') + ' m × ' + Math.round(res.voirie.longueur) + ' m, soit ' + m2(res.voirie.surface) : '<span class="text-muted">non prévue</span>'],
+        ['Espaces verts / pleine terre exigés', res.pleineTerre_m2 != null ? m2(res.pleineTerre_m2) + ' <span class="text-muted">— terrain libre restant : ' + m2(res.libre_m2) + '</span>' : '<span class="text-muted">non renseignés</span>'],
+        ['Stationnement à prévoir', res.emprise_m2 != null ? res.places + ' place' + (res.places > 1 ? 's' : '') + ' <span class="text-muted">(' + m2(res.parking_m2) + ') pour ' + res.logements + ' logement' + (res.logements > 1 ? 's' : '') + '</span>' : '—'],
         ['<b>Surface de plancher réalisable</b>', res.sdp != null ? '<b style="color:#1a4b8e;">' + m2(res.sdp_min) + ' à ' + m2(res.sdp_max) + '</b>' : '—'],
-        ['<b>Bâtiments implantables</b>', res.emprise_m2 != null ? '<b style="color:#1a4b8e;">' + res.nb + '</b> <span class="text-muted">de ' + res.batiLong + ' × ' + res.batiLarg + ' m</span>' : '—'],
+        ['<b>Bâtiments implantables</b>', res.emprise_m2 != null ? '<b style="color:#1a4b8e;">' + res.nb + '</b> <span class="text-muted">de ' + res.batiLong + ' × ' + res.batiLarg + ' m</span>' + (res.retiresEspaces ? ' <span style="color:#b45309;">(' + res.retiresEspaces + ' retiré' + (res.retiresEspaces > 1 ? 's' : '') + ' pour respecter les espaces verts)</span>' : '') : '—'],
       ].map((l) => '<tr><td style="color:#556;">' + l[0] + '</td><td class="text-end">' + l[1] + '</td></tr>').join('');
     }
     function colonneSchema(res, P) {
@@ -781,7 +895,7 @@
       zones.forEach((Z) => {
         const P = parametresZone(Z.zone, Z.typezone), def = P.def;
         const empSrc = P.saisies.emprisePct !== undefined ? '<span class="impl-src" style="color:#556;">saisie</span>'
-          : (def.empriseNonReglementee ? '<span class="impl-src" style="color:#1a6b3a;">non réglementée</span> ' + lienPage(def.srcEmprise, P.url) : (def.emprisePct !== '' ? lienPage(def.srcEmprise, P.url) : '<span class="impl-src" style="color:#8a6d3b;">à saisir</span>'));
+          : (def.empriseNonReglementee ? '<span class="impl-src" style="color:#1a6b3a;">non réglementée</span> ' + lienPage(def.srcEmprise, P.url) : (def.empriseIndicative ? '<span class="impl-src" style="color:#8a6d3b;" title="Fourchette indicative du type de zone : ' + esc(def.empriseIndicative) + '. À confirmer dans le règlement.">indicatif (règles de la zone)</span>' : def.emprisePct !== '' ? lienPage(def.srcEmprise, P.url) : '<span class="impl-src" style="color:#8a6d3b;">à saisir</span>'));
         const refAxe = def.reculVoieRef ? ' <span class="text-muted">(compté depuis l\'' + esc(def.reculVoieRef) + ')</span>' : '';
         const lecture = P.etat === 'attente' ? ' <span class="text-muted fw-normal">(lecture du règlement en cours…)</span>' : '';
         h += '<div class="fw-semibold small mb-1">' + (multi ? 'Règles de la zone ' + esc(Z.zone || '?') : 'Paramètres') + lecture + '</div>' +
@@ -791,12 +905,15 @@
           champ('reculLimites', 'Recul limites', 'm', P.val.reculLimites, sourceDe(P, 'reculLimites', def.srcLimites), null, Z.zone) +
           champ('niveaux', 'Niveaux', '', P.val.niveaux, sourceDe(P, 'niveaux', def.srcNiveaux), 'min="1" step="1"', Z.zone) +
           champ('ecart', 'Écart entre bâtiments', 'm', P.val.ecart, sourceDe(P, 'ecart', def.srcEcart), null, Z.zone) +
+          champ('pleineTerrePct', 'Espaces verts / pleine terre', '%', P.val.pleineTerrePct, P.saisies.pleineTerrePct !== undefined ? '<span class="impl-src" style="color:#556;">saisie</span>' : (def.pleineTerrePct !== '' ? lienPage(def.srcPleineTerre, P.url) : '<span class="impl-src" style="color:#8a6d3b;">à lire dans le règlement</span>'), 'min="0" max="100" step="1"', Z.zone) +
+          champ('placesLogt', 'Stationnement : places par logement', '', P.val.placesLogt, P.saisies.placesLogt !== undefined ? '<span class="impl-src" style="color:#556;">saisie</span>' : (def.srcStationnement ? lienPage(def.srcStationnement, P.url) : (def.citeStationnement ? '<span class="impl-src" style="color:#8a6d3b;">hypothèse</span> — voir ' + lienPage(def.citeStationnement, P.url) : lienPage(null))), 'min="0" step="0.5"', Z.zone) +
           (multi ? '</tbody></table>' : '');
         if (!multi) {
           const hyp = (k) => st.valeurs[k] !== undefined ? '<span class="impl-src" style="color:#556;">saisie</span>' : lienPage(null);
           h += champ('coef', 'Plancher / brut', '', P.val.coef, hyp('coef'), 'min="0.5" max="1" step="0.01"', '') +
             champ('batiLong', 'Bâtiment : longueur', 'm', P.val.batiLong, hyp('batiLong'), 'min="3" step="1"', '') +
             champ('batiLarg', 'Bâtiment : largeur', 'm', P.val.batiLarg, hyp('batiLarg'), 'min="3" step="1"', '') +
+            lignesProjet(P, hyp, st) +
             '</tbody></table>';
         }
         if (def.enLimitePossible) h += '<div class="text-muted" style="font-size:.7rem;">Implantation en limite possible sous conditions : voir le règlement. Saisir 0 pour ce scénario.</div>';
@@ -809,6 +926,7 @@
           champ('coef', 'Plancher / brut', '', P.val.coef, hyp('coef'), 'min="0.5" max="1" step="0.01"', '') +
           champ('batiLong', 'Bâtiment : longueur', 'm', P.val.batiLong, hyp('batiLong'), 'min="3" step="1"', '') +
           champ('batiLarg', 'Bâtiment : largeur', 'm', P.val.batiLarg, hyp('batiLarg'), 'min="3" step="1"', '') +
+            lignesProjet(P, hyp, st) +
           '</tbody></table>';
       }
       return h + '<button type="button" class="btn btn-sm btn-outline-secondary py-0 mt-1 no-print" id="implReset">Revenir aux valeurs du règlement</button>';
@@ -867,6 +985,7 @@
       const multi = parcs.length > 1;
       const groupes = grouper(parcs);
       const resGroupes = groupes.map(calculer);
+      voirieAffichee = resGroupes.some((r) => r.voirie);
       const resParcelles = multi ? parcs.map((p) => calculer([p])) : resGroupes;
       const total = resGroupes.length === 1 ? resGroupes[0] : agreger(resGroupes);
       window.__fidiImplantation = total;
@@ -979,6 +1098,11 @@
     }
     document.addEventListener('change', (e) => {
       const t = e.target;
+      if (t && t.classList && t.classList.contains('impl-case')) {
+        const s0 = etat(); if (!s0) return;
+        s0.valeurs[t.getAttribute('data-case')] = !!t.checked;
+        marqueModifie(); refresh(); return;
+      }
       if (!t || !t.classList || !t.classList.contains('impl-in')) return;
       const st = etat(); if (!st) return;
       const k = t.getAttribute('data-champ'), zone = t.getAttribute('data-zone') || '';
