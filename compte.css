@@ -57,6 +57,21 @@
 .cpt-titre p{color:#5b6573;font-size:.88rem;margin:.2rem 0 0;}
 .cpt-carte{background:#fff;border:1px solid #dfe3e9;border-radius:14px;padding:1.15rem 1.25rem 1.25rem;margin-bottom:1rem;}
 .cpt-carte h3{font-size:.98rem;font-weight:700;color:#1f2a3a;margin:0 0 .8rem;}
+/* Profils & modules (compte-profils.js) */
+.pf-aide{color:#5b6573;font-size:.82rem;margin:0 0 .7rem;}
+.pf-liste{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:.6rem;}
+.pf-carte{display:grid;grid-template-columns:1fr auto;gap:.1rem .5rem;align-items:center;text-align:left;background:#fff;border:1px solid #dfe3e9;border-radius:12px;padding:.7rem .85rem;cursor:pointer;}
+.pf-carte:hover,.pf-carte:focus-visible{border-color:var(--fidi-accent,#2652a0);box-shadow:0 0 0 3px rgba(38,82,160,.12);outline:0;}
+.pf-carte-nom{font-weight:700;color:#1f2a3a;font-size:.92rem;}
+.pf-carte-info{grid-column:1;color:#5b6573;font-size:.78rem;}
+.pf-carte i{grid-row:1 / span 2;grid-column:2;color:#8a94a3;}
+.pf-groupes{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:.8rem;}
+.pf-groupe{border:1px solid #dfe3e9;border-radius:12px;padding:.6rem .8rem .7rem;margin:0;min-width:0;}
+.pf-groupe legend{float:none;width:auto;font-size:.82rem;font-weight:700;color:#1f2a3a;padding:0 .35rem;margin:0;}
+.pf-groupe legend .cpt-lien-texte{font-weight:400;font-size:.74rem;margin-left:.3rem;}
+.pf-module{display:flex;align-items:flex-start;gap:.5rem;padding:.3rem 0;font-size:.86rem;cursor:pointer;}
+.pf-module input{flex:0 0 auto;margin-top:.15rem;width:1.1rem;height:1.1rem;}
+.pf-pied{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:1rem;}
 /* Réglages de l'e-mail de bienvenue (compte-bienvenue.js) */
 .bv-lien{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr) auto;gap:.5rem;margin-bottom:.5rem;}
 .bv-piece{display:flex;align-items:center;gap:.6rem;padding:.4rem .6rem;border:1px solid #dfe3e9;border-radius:8px;margin-bottom:.4rem;font-size:.86rem;}

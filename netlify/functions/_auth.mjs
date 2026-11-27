@@ -10,7 +10,7 @@ import {
   P, readText, readNumber, readSelect, readCheckbox,
 } from "./_notion.mjs";
 
-export const DEFAULT_QUOTA = 5; // essais de recherche avant édition, pour un utilisateur standard
+export const DEFAULT_QUOTA = 2; // essais de recherche avant édition, pour un utilisateur standard
 
 const JWT_TTL = 60 * 60 * 24 * 7; // 7 jours
 const COOKIE = "fidi_session";

@@ -87,8 +87,10 @@ export const handler = async (event) => {
       const password = b.password ? String(b.password) : genPassword();
       const role = wantsAdmin ? "Administrateur"
         : (b.role === "Test" ? "Test" : (b.role === "Éphémère" ? "Éphémère" : "Collaborateur"));
-      const credits = Number.isFinite(+b.credits) ? +b.credits : undefined;
-      const quota = Number.isFinite(+b.quota) ? +b.quota : undefined;
+      // Champ vide ou absent → valeur par défaut (crédits de départ, 2 essais). Number("") vaut 0 : un champ vide créait un compte à 0 essai.
+      const nombre = (v) => (v === "" || v == null || !Number.isFinite(+v) || +v < 0 ? undefined : Math.floor(+v));
+      const credits = nombre(b.credits);
+      const quota = nombre(b.quota);
       const createdPage = await createUser({ email, nom: b.nom || "", password, role,
         ...(credits != null ? { credits } : {}), ...(quota != null ? { quota } : {}), illimite: !!b.illimite });
       // Champs additionnels post-création (Réseau, Grille tarifaire, Expiration) si fournis

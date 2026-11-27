@@ -30,6 +30,7 @@
 <link href="/saisie.css" rel="stylesheet"/>
 <link href="/marque.css" rel="stylesheet"/>
 <link href="/facture.css" rel="stylesheet"/>
+<link href="/etude-actions.css" rel="stylesheet"/>
 <link href="/compte.css" rel="stylesheet"/>
 <link href="/compte-facturation.css" rel="stylesheet"/>
 <link href="/mobile.css" rel="stylesheet"/>
@@ -657,59 +658,62 @@ body.map-fs-on{overflow:hidden;}
   <!-- Résultats -->
   <div id="results-panel" class="d-none">
 
-    <!-- Bandeau localisation -->
-    <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
-      <div>
-        <h4 class="mb-0" id="res-titre" style="color:var(--fidi-blue);font-weight:800;"></h4>
-        <small class="text-muted" id="res-contexte"></small>
-      </div>
-      <div class="d-flex gap-2 align-items-center flex-wrap">
+    <!-- Bandeau de l'étude : titre, « Pour qui ? » (fiche contact compacte) et tableau des actions (etude-actions.js / etude-actions.css).
+         Identifiants conservés : res-titre, res-contexte, res-date, inputDestinataire, etudeClientsList, btnActualiserEtude, btnSaveEtude,
+         btnShareEtude, btnFactureEtude, btnAvisRes, ddResBar. -->
+    <div class="ea mb-3" id="etudeActions">
+      <div class="ea-tete">
+        <div>
+          <h4 class="mb-0" id="res-titre" style="color:var(--fidi-blue);font-weight:800;"></h4>
+          <small class="text-muted" id="res-contexte"></small>
+        </div>
         <span class="badge bg-secondary" id="res-date" style="font-size:.7rem;"></span>
-        <div class="input-group input-group-sm" style="max-width:280px;">
-          <input type="text" id="inputDestinataire" class="form-control form-control-sm" placeholder="Destinataire (optionnel)" title="Nom du destinataire de l'étude" list="etudeClientsList" autocomplete="off">
-          <datalist id="etudeClientsList"></datalist>
-          <button class="btn btn-outline-secondary" type="button" onclick="etudePickClient()" title="Choisir un client mémorisé"><i class="bi bi-person-lines-fill"></i></button>
-          <button class="btn btn-outline-secondary" type="button" onclick="etudeSaveClient()" title="Mémoriser ce client"><i class="bi bi-person-plus"></i></button>
-        </div>
-
-        <!-- Actualiser : recalcule constructibilité / règlement PLU / enrichissements avec la dernière version — SANS sauvegarder (sauvegarde manuelle). -->
-        <button class="btn btn-sm btn-outline-success" id="btnActualiserEtude" onclick="actualiserEtude()" title="Actualiser cette étude (règlement PLU, constructibilité, enrichissements) avec la dernière version de l'application — ne sauvegarde pas : cliquez ensuite Sauvegarder pour conserver.">
-          <i class="bi bi-arrow-clockwise me-1"></i>Actualiser
-        </button>
-
-        <!-- 3 actions primaires (visibles) -->
-        <button class="btn btn-sm btn-outline-info" id="btnSaveEtude" onclick="saveEtudeCloud()" title="Sauvegarder cette étude dans Notion">
-          <i class="bi bi-cloud-arrow-up me-1"></i>Sauvegarder
-        </button>
-        <button class="btn btn-sm btn-outline-primary" id="btnShareEtude" onclick="partagerEtude()" title="Partager cette étude (lien lecture seule)">
-          <i class="bi bi-share me-1"></i>Partager
-        </button>
-        <button class="btn btn-sm btn-outline-warning" id="btnFactureEtude" onclick="proposerFacture('etude')" title="Facturer & envoyer cette étude">
-          <i class="bi bi-receipt me-1"></i>Facturer
-        </button>
-
-        <!-- Bouton principal Avis (dropdown Vente/Location) -->
-        <div class="dropdown">
-          <button class="btn btn-sm dropdown-toggle" id="btnAvisRes" type="button" data-bs-toggle="dropdown" style="background:var(--fidi-gold);color:#1a2233;font-weight:600;" title="Générer un avis de valeur">
-            <i class="bi bi-file-earmark-text me-1"></i>Avis de valeur
-          </button>
-          <ul class="dropdown-menu dropdown-menu-end">
-            <li><a class="dropdown-item" href="#" onclick="AvisValeur.open('vente');return false;"><i class="bi bi-house-check me-2 text-warning"></i>Avis <strong>Vente</strong> (valeur vénale)</a></li>
-            <li><a class="dropdown-item" href="#" onclick="AvisValeur.open('location');return false;"><i class="bi bi-key me-2 text-primary"></i>Avis <strong>Location</strong> (valeur locative)</a></li>
-          </ul>
-        </div>
-
-        <!-- Dropdown "Plus" pour PDF/Imprimer -->
-        <div class="dropdown">
-          <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="ddResBar" data-bs-toggle="dropdown" aria-expanded="false" title="Autres actions">
-            <i class="bi bi-three-dots"></i>
-          </button>
-          <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="ddResBar">
-            <li><a class="dropdown-item btn-pdf" href="#" onclick="exportPdfServeur();return false;" title="Rendu Chromium serveur — texte vectoriel copiable, plus fidèle"><i class="bi bi-file-earmark-pdf-fill me-2 text-success"></i><strong>PDF haute qualité (serveur)</strong> <small class="text-muted">— recommandé</small></a></li>
-            <li><a class="dropdown-item btn-pdf" href="#" onclick="exportPdf();return false;"><i class="bi bi-file-earmark-pdf me-2 text-danger"></i>PDF navigateur (rapide)</a></li>
-            <li><a class="dropdown-item btn-print" href="#" onclick="exportPdf();return false;"><i class="bi bi-printer me-2"></i>Imprimer</a></li>
-          </ul>
-        </div>
+      </div>
+      <div class="ea-grille np">
+        <section class="ea-bloc ea-dossier" aria-labelledby="eaTitreDossier">
+          <div class="ea-bloc-tete">
+            <h5 id="eaTitreDossier"><i class="bi bi-person-vcard me-1"></i>Pour qui est cette étude ?</h5>
+            <div class="ea-choix" role="radiogroup" aria-label="Nature de l'étude">
+              <input type="radio" class="btn-check" name="etudeNature" id="etudeNatureClient" value="client" checked>
+              <label class="ea-choix-b" for="etudeNatureClient"><i class="bi bi-person-check"></i> Client</label>
+              <input type="radio" class="btn-check" name="etudeNature" id="etudeNatureTest" value="test">
+              <label class="ea-choix-b" for="etudeNatureTest"><i class="bi bi-flask"></i> Essai</label>
+            </div>
+          </div>
+          <div class="ea-champs" id="eaChamps">
+            <label class="ea-champ ea-champ-large"><span>Nom et prénom, ou société</span>
+              <input type="text" id="inputDestinataire" class="form-control" placeholder="Ex. Marie Dupont" title="Destinataire de l'étude (figure sur le document)" list="etudeClientsList" autocomplete="off" maxlength="120">
+              <datalist id="etudeClientsList"></datalist></label>
+            <label class="ea-champ"><span>E-mail</span>
+              <input type="email" id="etudeContactEmail" class="form-control" placeholder="nom@exemple.fr" autocomplete="off" maxlength="120"></label>
+            <label class="ea-champ"><span>Téléphone</span>
+              <input type="tel" id="etudeContactTel" class="form-control" placeholder="0696 00 00 00" autocomplete="off" maxlength="30"></label>
+            <button type="button" class="ea-memo" id="etudeContactMemo" title="Garder ce contact pour vos prochaines études, avis et factures"><i class="bi bi-bookmark-plus"></i> Mémoriser ce contact</button>
+          </div>
+          <p class="ea-note d-none" id="eaNoteTest"><i class="bi bi-flask me-1"></i>Étude d'essai : aucun destinataire ne figurera sur le document.</p>
+          <p class="ea-etat" id="eaEtat" role="status"></p>
+        </section>
+        <section class="ea-bloc ea-actions" aria-labelledby="eaTitreActions">
+          <div class="ea-bloc-tete"><h5 id="eaTitreActions"><i class="bi bi-grid me-1"></i>Que voulez-vous faire ?</h5></div>
+          <div class="ea-tuiles">
+            <button type="button" class="ea-tuile" id="btnSaveEtude" onclick="saveEtudeCloud()" title="Garder cette étude dans vos dossiers en ligne">
+              <i class="bi bi-cloud-arrow-up"></i><b>Sauvegarder</b><small>Garder dans mes dossiers</small></button>
+            <button type="button" class="ea-tuile" id="btnShareEtude" onclick="partagerEtude()" title="Envoyer un lien de lecture seule">
+              <i class="bi bi-share"></i><b>Partager</b><small>Lien de lecture</small></button>
+            <button type="button" class="ea-tuile ea-tuile-or" id="btnFactureEtude" onclick="proposerFacture('etude')" title="Facturer et envoyer cette étude">
+              <i class="bi bi-receipt"></i><b>Facturer</b><small>Facture et envoi</small></button>
+            <button type="button" class="ea-tuile ea-tuile-plein" id="btnAvisRes" data-flag="avis_valeur" onclick="AvisValeur.open('vente')" title="Avis de valeur de vente (valeur vénale)">
+              <i class="bi bi-house-check"></i><b>Avis de valeur</b><small>Vente — valeur vénale</small></button>
+            <button type="button" class="ea-tuile" data-flag="avis_valeur" onclick="AvisValeur.open('location')" title="Avis de valeur locative">
+              <i class="bi bi-key"></i><b>Avis de location</b><small>Valeur locative</small></button>
+            <button type="button" class="ea-tuile btn-pdf" id="ddResBar" data-flag="export_pdf" onclick="exportPdfServeur()" title="Rapport mis en page, texte net et copiable">
+              <i class="bi bi-file-earmark-pdf"></i><b>PDF</b><small>Rapport mis en page</small></button>
+            <button type="button" class="ea-tuile btn-print" data-flag="export_pdf" onclick="exportPdf()" title="Imprimer ou enregistrer en PDF depuis le navigateur">
+              <i class="bi bi-printer"></i><b>Imprimer</b><small>Ou PDF rapide</small></button>
+            <button type="button" class="ea-tuile" id="btnActualiserEtude" onclick="actualiserEtude()" title="Recalcule règlement PLU, constructibilité et enrichissements avec la dernière version — ne sauvegarde pas">
+              <i class="bi bi-arrow-clockwise"></i><b>Actualiser</b><small>Recalculer l'étude</small></button>
+          </div>
+        </section>
       </div>
     </div>
 
@@ -885,7 +889,7 @@ body.map-fs-on{overflow:hidden;}
     </div>
 
     <!-- ROW 2 : Graphiques prix & transactions -->
-    <div class="row g-3 mb-3">
+    <div class="row g-3 mb-3" data-flag="graphiques">
       <div class="col-md-6">
         <div class="chart-card">
           <h6><i class="bi bi-graph-up-arrow me-1"></i>Évolution des prix au m² (DVF)</h6>
@@ -904,7 +908,7 @@ body.map-fs-on{overflow:hidden;}
     <div class="row g-3 mb-3">
 
       <!-- DPE -->
-      <div class="col-md-4">
+      <div class="col-md-4" data-flag="dpe">
         <div class="chart-card h-100">
           <h6><i class="bi bi-lightning-charge me-1"></i>Distribution DPE (ADEME)</h6>
           <div id="dpeContainer">
@@ -915,7 +919,7 @@ body.map-fs-on{overflow:hidden;}
       </div>
 
       <!-- Territoire -->
-      <div class="col-md-4">
+      <div class="col-md-4" data-flag="territoire">
         <div class="territoire-card">
           <div class="section-title"><i class="bi bi-map"></i>Contexte territorial</div>
           <div id="territoireContainer">
@@ -925,7 +929,7 @@ body.map-fs-on{overflow:hidden;}
       </div>
 
       <!-- Risques -->
-      <div class="col-md-4">
+      <div class="col-md-4" data-flag="georisques">
         <div class="risques-card">
           <div class="section-title"><i class="bi bi-shield-exclamation"></i>Risques naturels (Géorisques)</div>
           <div id="risquesContainer">
@@ -1332,7 +1336,10 @@ window.FidiFlags = (function(){
     enrichLocalWrap:'enrichir', aleasPprWrap:'pprn', gpuInfo:'urbanisme',
     promoteurBox:'potentiel_foncier', terrainDecoteBox:'potentiel_foncier',
     estimationRow:'estimation_venale', dpeContainer:'dpe', rendementRow:'loyers_marche',
-    transProchesRow:'dvf', topComparRow:'dvf'
+    transProchesRow:'dvf', topComparRow:'dvf',
+    syntheseRow:'synthese', scoreRow:'score', constructInfo:'regles_plu', implantationRow:'implantation',
+    contexteLocalRow:'contexte_local', batimentSection:'batiment', permisSection:'permis', financeSection:'finance',
+    entrepriseSection:'entreprise', etudeNoteWrap:'note', btnAvisRes:'avis_valeur', ddResBar:'export_pdf'
   };
   function _style(){ if(injected) return; injected=true; try{ var s=document.createElement('style'); s.textContent='.flag-hidden{display:none!important}'; document.head.appendChild(s); }catch(e){} }
   function _user(){ try{ return (window.Compte && Compte.state && Compte.state.user) || null; }catch(e){ return null; } }
@@ -6569,6 +6576,8 @@ function copyShareUrl(){
 <script src="/compte-societes.js" defer></script>
 <script src="/compte-motdepasse.js" defer></script>
 <script src="/compte-bienvenue.js" defer></script>
+<script src="/compte-profils.js" defer></script>
+<script src="/etude-actions.js" defer></script>
 <script src="/entreprises-proches.js" defer></script>
 <script src="/facture-externe.js" defer></script>
 <script src="/facture.js" defer></script>
@@ -6837,6 +6846,7 @@ window.Compte = (function(){
           '<button type="button" class="nav-link cpt-lien" data-bs-toggle="tab" data-bs-target="#tabSocietes" onclick="Compte.loadSocietes()" title="Sociétés au nom desquelles vous facturez, RIB pour le virement"><i class="bi bi-building"></i><span>Mes sociétés</span></button>'+
           (admin ? '<div class="cpt-nav-titre">Administration</div>'+
             '<button type="button" class="nav-link cpt-lien" data-bs-toggle="tab" data-bs-target="#tabAdmin" title="Créer, modifier et suivre les comptes"><i class="bi bi-people"></i><span>Comptes</span></button>'+
+            '<button type="button" class="nav-link cpt-lien" data-bs-toggle="tab" data-bs-target="#tabProfils" onclick="FidiProfils.monter()" title="Profils d\'utilisateurs et modules de l\'analyse accessibles à chacun"><i class="bi bi-ui-checks-grid"></i><span>Profils &amp; modules</span></button>'+
             '<button type="button" class="nav-link cpt-lien" data-bs-toggle="tab" data-bs-target="#tabTarifs" title="Prestations proposées dans « Nouvelle facture »"><i class="bi bi-tags"></i><span>Grille tarifaire</span></button>'+
             '<button type="button" class="nav-link cpt-lien" data-bs-toggle="tab" data-bs-target="#tabFactAdmin" onclick="Compte.loadFactAdmin()" title="Suivi des règlements et des commissions"><i class="bi bi-receipt"></i><span>Facturation</span></button>' : '')+
         '</nav>'+
@@ -6885,8 +6895,8 @@ window.Compte = (function(){
             '</div>'+
             (unlimited ? '' :
               '<div class="cpt-tuile"><div class="cpt-tuile-k">Essais de recherche</div>'+
-                '<div class="cpt-tuile-v">'+(u.recherches||0)+'<small> / '+(u.quota!=null?u.quota:5)+'</small></div>'+
-                '<div class="cpt-jauge"><i style="width:'+Math.min(100,Math.round(100*(u.recherches||0)/Math.max(1,(u.quota!=null?u.quota:5))))+'%"></i></div>'+
+                '<div class="cpt-tuile-v">'+(u.recherches||0)+'<small> / '+(u.quota!=null?u.quota:2)+'</small></div>'+
+                '<div class="cpt-jauge"><i style="width:'+Math.min(100,Math.round(100*(u.recherches||0)/Math.max(1,(u.quota!=null?u.quota:2))))+'%"></i></div>'+
                 '<div class="cpt-tuile-s">utilisés dans le cycle en cours</div></div>')+
             '<div class="cpt-tuile"><div class="cpt-tuile-k">Débit des crédits</div>'+
               '<div class="cpt-tuile-v cpt-tuile-v-txt">'+(state.paywall?'Actif':'Désactivé')+'</div>'+
@@ -6922,7 +6932,7 @@ window.Compte = (function(){
               '<button class="btn btn-sm btn-outline-primary" onclick="Compte.copySignupLink()"><i class="bi bi-link-45deg me-1"></i>Copier lien inscription</button>'+
               '<button class="btn btn-sm btn-primary" onclick="Compte.openCreateForm()"><i class="bi bi-person-plus-fill me-1"></i>Créer un compte</button>'+
               '<button class="btn btn-sm btn-outline-primary" onclick="FidiBienvenue.basculer()" title="Mot d\'accueil, liens (vidéo, présentation) et pièces jointes envoyés à chaque nouveau compte"><i class="bi bi-envelope-heart me-1"></i>E-mail de bienvenue</button>'+
-              '<button class="btn btn-sm btn-outline-primary" onclick="Templates.open()" title="Gérer les profils types (modules visibles par client)"><i class="bi bi-grid-3x3-gap me-1"></i>Profils types</button>'+
+              '<button class="btn btn-sm btn-outline-primary" onclick="Compte.rubrique(\'tabProfils\');FidiProfils.monter()" title="Gérer les profils types (modules visibles par client)"><i class="bi bi-grid-3x3-gap me-1"></i>Profils types</button>'+
             '</div>'+
           '</div>'+
 
@@ -6943,8 +6953,8 @@ window.Compte = (function(){
                 '<select class="form-select form-select-sm" id="adRole" onchange="Compte.adCreateRoleChange()"><option value="Collaborateur">Collaborateur</option><option value="Administrateur">Administrateur</option><option value="Test">Test (supprimable avec ses factures)</option><option value="Éphémère">Éphémère (accès temporaire)</option></select>'+
               '</div>'+
               '<div class="col-md-3" id="adExpireWrap" style="display:none;"><label class="form-label small mb-0">Expire le</label><input type="date" class="form-control form-control-sm" id="adExpire"></div>'+
-              '<div class="col-md-3"><label class="form-label small mb-0">Crédits initiaux</label><input type="number" class="form-control form-control-sm" id="adCredits" placeholder="0"></div>'+
-              '<div class="col-md-3"><label class="form-label small mb-0">Essais recherches</label><input type="number" class="form-control form-control-sm" id="adQuota" placeholder="5"></div>'+
+              '<div class="col-md-3"><label class="form-label small mb-0">Crédits initiaux</label><input type="number" class="form-control form-control-sm" id="adCredits" min="0" value="3"></div>'+
+              '<div class="col-md-3"><label class="form-label small mb-0">Essais recherches</label><input type="number" class="form-control form-control-sm" id="adQuota" min="0" value="2"></div>'+
               '<div class="col-md-3"><label class="form-label small mb-0">Grille tarifaire</label>'+
                 '<select class="form-select form-select-sm" id="adTarifGroup"><option value="">Standard (par défaut)</option><option value="Sextant">Sextant</option><option value="Partenaire">Partenaire</option></select>'+
               '</div>'+
@@ -6968,6 +6978,10 @@ window.Compte = (function(){
         '</div>' : '')+
 
         // ─── Grille tarifaire (prestations facturées aux clients) ───
+        (admin ? '<div class="tab-pane fade" id="tabProfils">'+
+          '<header class="cpt-titre"><h2>Profils &amp; modules</h2><p>Un profil réunit les modules de l\'analyse ouverts à un type d\'utilisateur. Attribuez-le ensuite dans la fiche de chaque compte (rubrique Comptes, champ « Profil type »).</p></header>'+
+          '<div id="profilsRoot"></div>'+
+        '</div>' : '')+
         (admin ? '<div class="tab-pane fade" id="tabTarifs">'+
           '<header class="cpt-titre"><h2>Grille tarifaire</h2><p>Les prestations et leurs prix, proposés dans la fenêtre « Nouvelle facture ».</p></header>'+
           '<div class="cpt-outils">'+
@@ -7061,7 +7075,7 @@ window.Compte = (function(){
       const isAdm = u.role === 'Administrateur';
       const unlimited = isAdm || u.illimite;
       const credLabel = unlimited ? '<span title="Illimité" style="font-size:1.1rem;">∞</span>' : (u.credits + ' cr');
-      const essaisLabel = unlimited ? '—' : ((u.recherches||0)+'/'+(u.quota!=null?u.quota:5));
+      const essaisLabel = unlimited ? '—' : ((u.recherches||0)+'/'+(u.quota!=null?u.quota:2));
       const statutBg = u.statut==='Actif' ? 'success' : 'secondary';
       const reseauBadge = u.reseau ? '<span class="badge" style="background:#eaefeb;color:#1f4a3f;font-weight:500;">'+esc(u.reseau)+'</span>' : '<span class="text-muted small">—</span>';
       const tarifBadge = u.tarifGroup ? '<span class="badge" style="background:#f5f1e8;color:#b87333;font-weight:500;">'+esc(u.tarifGroup)+'</span>' : '<span class="text-muted small">Standard</span>';
@@ -7166,7 +7180,7 @@ window.Compte = (function(){
           '<div class="col-md-6" id="fcExpireWrap" style="'+(u.role==='Éphémère'?'':'display:none;')+'"><label class="form-label small mb-0">Expire le (accès temporaire)</label><input id="fcExpire" type="date" class="form-control form-control-sm" value="'+esc(u.expire||'')+'"></div>'+
           '<div class="col-md-6"><label class="form-label small mb-0">Statut</label><select id="fcStatut" class="form-select form-select-sm"><option value="Actif"'+(u.statut!=='Désactivé'?' selected':'')+'>Actif</option><option value="Désactivé"'+(u.statut==='Désactivé'?' selected':'')+'>Désactivé</option></select></div>'+
           '<div class="col-md-4"><label class="form-label small mb-0">Crédits</label><input id="fcCredits" type="number" min="0" class="form-control form-control-sm" value="'+(u.credits!=null?u.credits:0)+'"></div>'+
-          '<div class="col-md-4"><label class="form-label small mb-0">Quota essais</label><input id="fcQuota" type="number" min="0" class="form-control form-control-sm" value="'+(u.quota!=null?u.quota:5)+'"></div>'+
+          '<div class="col-md-4"><label class="form-label small mb-0">Quota essais</label><input id="fcQuota" type="number" min="0" class="form-control form-control-sm" value="'+(u.quota!=null?u.quota:2)+'"></div>'+
           '<div class="col-md-4 d-flex align-items-end"><div class="form-check"><input id="fcIllimite" type="checkbox" class="form-check-input"'+(u.illimite?' checked':'')+'><label class="form-check-label small" for="fcIllimite">Accès illimité (∞)</label></div></div>'+
           '<div class="col-md-6"><label class="form-label small mb-0">Réseau</label>'+
             '<input id="fcReseau" class="form-control form-control-sm" list="fcReseauList" value="'+esc(u.reseau||'')+'" placeholder="Optimmo Dom, Sextant…">'+
@@ -7176,7 +7190,7 @@ window.Compte = (function(){
             '<input id="fcTarif" class="form-control form-control-sm" list="fcTarifList" value="'+esc(u.tarifGroup||'')+'" placeholder="Standard, Partenaire, Banque…">'+
             '<datalist id="fcTarifList">'+((window._offresGrilles||['Standard']).map(function(g){return '<option value="'+esc(g)+'">';}).join(''))+'</datalist>'+
             '<div class="text-muted" style="font-size:.66rem;">Grilles créées dans Offres &amp; crédits. Vide = Standard.</div></div>'+
-          '<div class="col-md-6"><label class="form-label small mb-0">Template (modules visibles)</label>'+
+          '<div class="col-md-6"><label class="form-label small mb-0">Profil type (modules visibles)</label>'+
             '<select id="fcTemplate" class="form-select form-select-sm">'+
               '<option value="">Complet (par défaut)</option>'+
               ((window._templates||[]).map(function(t){ return '<option value="'+esc(t.slug)+'"'+((u.template===t.slug)?' selected':'')+'>'+esc(t.name)+'</option>'; }).join(''))+
@@ -7243,7 +7257,7 @@ window.Compte = (function(){
     const chk=function(id){ const el=document.getElementById(id); return el?el.checked:undefined; };
     const payload={ email:email,
       nom: val('fcNom'), role: val('fcRole'), statut: val('fcStatut'),
-      credits: val('fcCredits'), quota: val('fcQuota'), illimite: chk('fcIllimite'),
+      credits: val('fcCredits'), quota: (val('fcQuota') === '' ? '2' : val('fcQuota')), illimite: chk('fcIllimite'),
       reseau: val('fcReseau'), tarifGroup: val('fcTarif'), template: val('fcTemplate'),
       fidi_encaisse: chk('fcEncaisse'), commission: val('fcCommission'),
       expire: (val('fcRole')==='Éphémère') ? (val('fcExpire')||'') : '' };
@@ -7307,7 +7321,9 @@ window.Compte = (function(){
       : eb === 'non_configure' ? '<span class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>E-mail de bienvenue non envoyé : l\'envoi d\'e-mails n\'est pas réglé. Transmettez vous-même le lien de l\'application et le mot de passe.</span>'
       : eb === 'echec' ? '<span class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>L\'e-mail de bienvenue n\'a pas pu partir. Renvoyez-le depuis la fiche du compte, ou transmettez vous-même les accès.</span>'
       : '<span class="text-muted">Aucun e-mail de bienvenue pour ce type de compte.</span>') + '</div>';
-    ['adEmail','adNom','adPwd','adCredits','adQuota','adReseau'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; });
+    ['adEmail','adNom','adPwd','adReseau'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; });
+    // Crédits et essais ne restent jamais vides : valeurs de départ (3 crédits, 2 essais).
+    [['adCredits','3'],['adQuota','2']].forEach(p=>{ const e=document.getElementById(p[0]); if(e) e.value=p[1]; });
     document.getElementById('adIllimite').checked=false;
     adminList();
   }

@@ -110,6 +110,9 @@
       adresse = loc.label || inputs.adresse || loc.city || '';
       ref = typeof window.etudeRef === 'function' ? window.etudeRef(d, inputs) : '';
       doc = typeof window.etudeDoc === 'function' ? window.etudeDoc() : null;
+      // Contact saisi dans le bandeau de l'étude (« Pour qui est cette étude ? »).
+      var ce = typeof window.fidiEtudeContact === 'function' ? window.fidiEtudeContact() : null;
+      if (ce && ce.nature !== 'test') { client = client || ce.nom || ''; email = email || ce.email || ''; telephone = telephone || ce.telephone || ''; }
     } else if (kind === 'avis' && window.__factureAvisCtx) {
       var c = window.__factureAvisCtx;
       client = c.client || ''; email = c.email || ''; telephone = c.telephone || '';

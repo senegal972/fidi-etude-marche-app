@@ -154,6 +154,21 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
 - Le formulaire se replie en résumé quand `#results-panel` devient visible (MutationObserver) ;
   « Nouvelle étude » demande un second clic si `FidiGuard.isDirty()`.
 
+### Bandeau de l'étude après analyse — `etude-actions.js` / `etude-actions.css`
+- Bloc `#etudeActions` en tête de `#results-panel` : titre, puis « Pour qui est cette étude ? » (`etudeNatureClient` / `etudeNatureTest`, nom dans
+  `#inputDestinataire`, `etudeContactEmail`, `etudeContactTel`, `etudeContactMemo`) et tuiles `.ea-tuile` (mêmes identifiants et mêmes fonctions
+  qu'avant : `btnSaveEtude`, `btnShareEtude`, `btnFactureEtude`, `btnAvisRes`, `ddResBar`, `btnActualiserEtude`). **Toute nouvelle action de
+  l'étude est une tuile de ce tableau.** `window.fidiEtudeContact()` → `{ nature, nom, email, telephone }` (lu par `facture.js`) ; « Mémoriser »
+  écrit dans `localStorage` `fidi:clients` (liste commune à l'étude, à l'avis et à la facture). « Essai » vide et masque le destinataire.
+  Rien n'est imprimé de ce bloc hors le titre. Tests : `tests/profils-bandeau.test.mjs`.
+
+### Profils & modules — `compte-profils.js` (rubrique `tabProfils`, administrateur)
+- `FidiProfils.monter()` rend dans `#profilsRoot` les profils (`/api/templates` : modèles système + personnalisés dans la base Notion des
+  templates) et leurs modules cochables, groupés (`MODULES[].groupe` dans `templates.mjs`). Un compte porte un profil par le champ « Profil
+  type » de sa fiche (`Template` dans Notion) ; sans profil ou administrateur : tout est visible. **Tout nouveau bloc de résultats doit avoir une
+  clé dans `MODULES` et une étiquette** (`data-flag="<clé>"` dans le HTML, ou `TAG_BY_ID` de `FidiFlags`) — vérifié par le test.
+  Le masquage est fait dans le navigateur (`FidiFlags.apply`) ; côté serveur, seules les routes qui appellent `assertModule` refusent le module.
+
 ### Entreprises installées autour du bien — `entreprises-proches.js`
 - Option `optEntreprise` cochée **sans** SIREN ni nom : `lancerAnalyse()` appelle `FidiEntreprisesProches.charger(data.localisation)` →
   `GET /api/entreprises-adresse?lat=&lon=&radius=0.1` (`entreprises-adresse.mjs`, Recherche d'entreprises / Sirene, établissements actifs, sans clé).
@@ -193,6 +208,7 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
 ### Comptes : création, invitation, mot de passe
 - **Un mot de passe n'est jamais relisible** (haché dans Notion). Trois chemins :
   1. l'administrateur crée le compte (Mon compte → Comptes → « Créer un compte ») : mot de passe généré ou saisi, affiché une seule fois ;
+     quota d'essais `DEFAULT_QUOTA` = 2, champs Crédits / Essais jamais vides (un champ vide ne vaut jamais 0) ;
   2. invitation : « Copier lien inscription » → `POST /api/signup-link` (administrateur) rend `…/#signup?token=…` (JWT `purpose:"signup"`, 24 h).
      `inscription.js` lit ce fragment, affiche « Créer votre compte » (au-dessus de l'écran de connexion `#authGate`) et appelle
      `POST /api/signup-link { action:"inscrire", token, nom, email, password, reseau? }` (public) : l'invité choisit son mot de passe

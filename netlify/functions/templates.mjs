@@ -15,19 +15,36 @@ import { authResp, currentUser } from "./_auth.mjs";
 
 // Modules de l'application (source unique de vérité, alignée sur le frontend).
 export const MODULES = [
-  { key: "dvf", label: "Transactions DVF" },
-  { key: "estimation_venale", label: "Estimation vénale (bornes)" },
-  { key: "georisques", label: "Géorisques" },
-  { key: "pprn", label: "Zonage réglementaire PPRN" },
-  { key: "dpe", label: "DPE / ADEME" },
-  { key: "urbanisme", label: "Géoportail de l'Urbanisme" },
-  { key: "cadastre", label: "Cadastre / parcelle" },
-  { key: "potentiel_foncier", label: "Potentiel foncier (décote, promoteur)" },
-  { key: "loyers_marche", label: "Loyers de marché" },
-  { key: "delais_vente", label: "Délais de vente" },
-  { key: "avis_valeur", label: "Avis de valeur" },
-  { key: "export_pdf", label: "Export PDF / récap" },
-  { key: "enrichir", label: "Enrichissement (Géorisques/ONF/IDG)" },
+  // Marché
+  { key: "synthese", label: "Synthèse du marché (texte)", groupe: "Marché" },
+  { key: "score", label: "Score et indicateurs clés", groupe: "Marché" },
+  { key: "graphiques", label: "Graphiques des prix et des ventes", groupe: "Marché" },
+  { key: "dvf", label: "Transactions DVF (comparables, ventes à proximité)", groupe: "Marché" },
+  { key: "estimation_venale", label: "Estimation vénale (bornes)", groupe: "Marché" },
+  { key: "loyers_marche", label: "Loyers de marché et rendement locatif", groupe: "Marché" },
+  { key: "delais_vente", label: "Délais de vente", groupe: "Marché" },
+  // Localisation et terrain
+  { key: "cadastre", label: "Cadastre / parcelle", groupe: "Localisation et terrain" },
+  { key: "urbanisme", label: "Zonage PLU (Géoportail de l'urbanisme)", groupe: "Localisation et terrain" },
+  { key: "regles_plu", label: "Règles de constructibilité de la zone", groupe: "Localisation et terrain" },
+  { key: "potentiel_foncier", label: "Potentiel de constructibilité (surface de plancher, décote, promoteur)", groupe: "Localisation et terrain" },
+  { key: "implantation", label: "Schéma d'implantation", groupe: "Localisation et terrain" },
+  { key: "enrichir", label: "Enrichissement local (Géorisques, ONF, données régionales)", groupe: "Localisation et terrain" },
+  { key: "pprn", label: "Localisation et détail des aléas au point indiqué (PPR)", groupe: "Localisation et terrain" },
+  // Contexte
+  { key: "georisques", label: "Risques (Géorisques)", groupe: "Contexte" },
+  { key: "dpe", label: "DPE / ADEME", groupe: "Contexte" },
+  { key: "batiment", label: "Caractéristiques du bâti", groupe: "Contexte" },
+  { key: "territoire", label: "Territoire (population, revenus)", groupe: "Contexte" },
+  { key: "contexte_local", label: "Contexte local (fiscalité, vacance, sécurité)", groupe: "Contexte" },
+  // Vérifications complémentaires
+  { key: "entreprise", label: "Vérifications légales d'entreprise", groupe: "Vérifications complémentaires" },
+  { key: "finance", label: "Santé financière (Pappers)", groupe: "Vérifications complémentaires" },
+  { key: "permis", label: "Permis et logements neufs", groupe: "Vérifications complémentaires" },
+  // Documents
+  { key: "avis_valeur", label: "Avis de valeur", groupe: "Documents" },
+  { key: "export_pdf", label: "Export PDF / récapitulatif", groupe: "Documents" },
+  { key: "note", label: "Note / mémo de l'étude", groupe: "Documents" },
 ];
 const KEYS = MODULES.map((m) => m.key);
 const allFlags = (v) => Object.fromEntries(KEYS.map((k) => [k, v]));
@@ -37,9 +54,9 @@ const withOn = (base, on) => ({ ...base, ...Object.fromEntries(on.map((k) => [k,
 const SYSTEM = [
   { slug: "complet", name: "Complet (Agent immobilier)", is_system: true, flags: allFlags(true) },
   { slug: "banque", name: "Banque", is_system: true,
-    flags: withOn(allFlags(false), ["estimation_venale", "dvf", "georisques", "pprn", "dpe", "export_pdf", "avis_valeur", "enrichir"]) },
+    flags: withOn(allFlags(false), ["synthese", "score", "graphiques", "estimation_venale", "dvf", "georisques", "pprn", "dpe", "batiment", "territoire", "export_pdf", "avis_valeur", "enrichir", "note"]) },
   { slug: "promoteur", name: "Bureau d'études / Promoteur", is_system: true,
-    flags: withOn(allFlags(false), ["urbanisme", "cadastre", "potentiel_foncier", "dvf", "estimation_venale", "georisques", "pprn", "export_pdf"]) },
+    flags: withOn(allFlags(false), ["synthese", "urbanisme", "cadastre", "regles_plu", "potentiel_foncier", "implantation", "enrichir", "dvf", "estimation_venale", "georisques", "pprn", "permis", "export_pdf", "note"]) },
 ];
 
 // Base Notion « Templates » (créée sous « FIDI — Études de marché & Avis de valeur »).
