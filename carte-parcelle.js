@@ -268,8 +268,27 @@
   }
 
   // ── Fiche détaillée ─────────────────────────────────────────────────────────
+  // Une seule fenêtre de détail à la fois. Un second appui rapproché (double appui) est ignoré ; une fenêtre restée ouverte est
+  // retirée proprement, voile compris, avant d'ouvrir la suivante — deux fenêtres superposées figeaient tout l'écran (1.26 à 1.45).
+  var detailOuvertA = 0;
+  function retirerDetail() {
+    var ancien = document.getElementById('ficheParcModal');
+    if (ancien) {
+      try { var m = window.bootstrap && window.bootstrap.Modal.getInstance(ancien); if (m) m.dispose(); } catch (e) {}
+      ancien.remove();
+    }
+    if (!document.querySelector('.modal.show')) {
+      Array.prototype.forEach.call(document.querySelectorAll('.modal-backdrop'), function (v) { v.remove(); });
+      document.body.classList.remove('modal-open'); document.body.style.removeProperty('overflow'); document.body.style.removeProperty('padding-right');
+    }
+  }
   function detail() {
     var F = S.courante; if (!F || !F.p) return;
+    if (document.getElementById('ficheParcModal')) {
+      if (Date.now() - detailOuvertA < 1200) return;
+      retirerDetail();
+    }
+    detailOuvertA = Date.now();
     var opt = S.opt;
     var p = F.p, z = F.z, d = distance(F.lat, F.lon), l = liens(F.lat, F.lon), ref = reference(p);
     var ligne = function (k, v) { return v ? '<tr><th style="width:42%;font-weight:600;">' + k + '</th><td>' + v + '</td></tr>' : ''; };
@@ -321,7 +340,11 @@
     var el = document.getElementById('ficheParcModal');
     // Repli : le bouton ferme la fenêtre même si l'attribut de Bootstrap n'est pas pris en compte.
     Array.prototype.forEach.call(el.querySelectorAll('[data-bs-dismiss="modal"]'), function (b) {
-      b.addEventListener('click', function () { try { var m = window.bootstrap && window.bootstrap.Modal.getInstance(el); if (m) m.hide(); else el.remove(); } catch (e) { el.remove(); } });
+      b.addEventListener('click', function () {
+        try { var m = window.bootstrap && window.bootstrap.Modal.getInstance(el); if (m) m.hide(); else retirerDetail(); } catch (e) { retirerDetail(); }
+        // Filet : si la fermeture animée n'aboutit pas (fenêtre restée affichée), on retire tout d'office.
+        setTimeout(function () { if (document.body.contains(el)) retirerDetail(); }, 900);
+      });
     });
     el.addEventListener('hidden.bs.modal', function () { el.remove(); });
     if (typeof window.fidiStackModal === 'function') window.fidiStackModal(el);

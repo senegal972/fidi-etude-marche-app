@@ -9,6 +9,13 @@ import { paypalConfigured, paypalClientId, paypalEnv } from "./_paypal.mjs";
 import { findFactureByToken, factureFromPage, factureHtmlUrl, reqOrigin, fusionPossible, dossierUrl } from "./_facture.mjs";
 import { getNamedStore } from "./_blobs.mjs";
 import { ibanValide, bicValide } from "./marque.mjs";
+import { identiteFacture, PRODUIT, FABRICANT } from "./_identite.mjs";
+
+// Société émettrice de la facture affichée (lue dans son détail figé) : nom porté par l'en-tête et le pied de la page.
+// Une requête à la fois par fonction : la variable est reposée à chaque appel.
+let SOCIETE = "";
+const escNom = (s) => String(s || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const enTeteSociete = () => `<div class="logo">${SOCIETE ? escNom(SOCIETE) : "Vos documents"}</div>`;
 
 // Coordonnées bancaires du virement : celles de la société émettrice, figées avec la facture (store « fidi-factures ») ;
 // à défaut (facture antérieure, ou société sans IBAN), celles du déploiement : FIDI_VIREMENT_IBAN / _BIC / _TITULAIRE.
@@ -87,7 +94,7 @@ function page(inner, extraHead = "") {
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
-<title>FIDI Conseil — Remise de document</title>
+<title>${SOCIETE ? escNom(SOCIETE) + " — " : ""}Remise de document</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Segoe UI',system-ui,Arial,sans-serif;background:#eef1f6;color:#1a2233;
@@ -130,7 +137,7 @@ function page(inner, extraHead = "") {
         border-radius:50%;animation:sp .7s linear infinite;vertical-align:-3px;margin-right:6px}
   @keyframes sp{to{transform:rotate(360deg)}}
 </style>${extraHead}</head><body><div class="wrap">${inner}
-<div class="foot">FIDI Conseil · Cabinet conseil en immobilier · Martinique (972)</div>
+<div class="foot">${SOCIETE ? escNom(SOCIETE) + " · " : ""}Page émise avec ${PRODUIT} — une application ${FABRICANT}</div>
 </div></body></html>`;
 }
 
@@ -153,11 +160,13 @@ export const handler = async (event) => {
   if (!forcePay && /[?&]pay=(1|true)\b/.test(event.rawUrl || "")) forcePay = true;
 
   const shell = (msg) => ({ statusCode: 200, headers: HTML, body: page(
-    `<div class="card"><div class="hd"><div class="logo">FIDI<span>.</span></div><div class="sub">Cabinet conseil en immobilier</div></div>
+    `<div class="card"><div class="hd">${enTeteSociete()}<div class="sub">Remise de documents</div></div>
      <div class="bd center"><p style="color:#6a7686;font-size:14px">${msg}</p></div></div>`) });
 
   if (!hasToken()) return shell("Service momentanément indisponible.");
+  SOCIETE = "";
   if (!token) return shell("Lien invalide : aucun jeton fourni.");
+  SOCIETE = (await identiteFacture(event, token)).nom;
 
   let f;
   try {
@@ -191,10 +200,10 @@ export const handler = async (event) => {
       ? `<a class="btn btn-pay" href="/l/${encodeURIComponent(token)}?pay=1" id="btnPayer">Régler cette facture en ligne · ${eur(f.montant)} €</a>
          <p class="muted" style="margin-top:6px">Carte bancaire (sans compte PayPal) ou compte PayPal.</p>`
       : "";
-    const inner = `<div class="card"><div class="hd"><div class="logo">FIDI<span>.</span></div><div class="sub">Vos documents sont prêts</div></div>
+    const inner = `<div class="card"><div class="hd">${enTeteSociete()}<div class="sub">Vos documents sont prêts</div></div>
       <div class="bd">${statut}${recap}
       <div style="margin-top:16px">${blocDocuments(f.lienDocument, factureHtmlUrl(f, origin), typeLabel, f.paye, fusionPossible(f) ? { tout: dossierUrl(origin, token), doc: dossierUrl(origin, token, "doc") } : null)}${payBtn}</div>${virement}
-      <p class="muted">Documents fournis par FIDI Conseil. Conservez ce lien pour y accéder à nouveau.</p>
+      <p class="muted">Documents fournis par ${SOCIETE ? escNom(SOCIETE) : "votre conseil"}. Conservez ce lien pour y accéder à nouveau.</p>
       </div></div>`;
     return { statusCode: 200, headers: HTML, body: page(inner + SCRIPT_DOCS + (virement ? SCRIPT_COPIE : "")) };
   }
@@ -213,12 +222,12 @@ export const handler = async (event) => {
        <p class="aide"><b>Carte bancaire</b> : aucun compte PayPal n'est nécessaire, choisissez le bouton « Carte bancaire ».
        Votre banque peut vous demander de confirmer le paiement dans son application.<br>
        <b>Compte PayPal</b> : choisissez le bouton « PayPal ».</p>`
-    : `<div class="alert alert-err">${f.statut === "Annulée" ? "Cette facture a été annulée." : "Le paiement en ligne est momentanément indisponible. Contactez FIDI Conseil."}</div>`;
+    : `<div class="alert alert-err">${f.statut === "Annulée" ? "Cette facture a été annulée." : "Le paiement en ligne est momentanément indisponible. Contactez " + (SOCIETE ? escNom(SOCIETE) : "votre conseil") + "."}</div>`;
   const bq = f.statut !== "Annulée" ? await banqueDe(event, token) : null;
   const virement = blocVirement(bq, f, !f.unlocked);
   const retour = f.unlocked ? `<a class="lien" href="/l/${encodeURIComponent(token)}">← Revenir à mes documents</a>` : "";
 
-  const inner = `<div class="card"><div class="hd"><div class="logo">FIDI<span>.</span></div><div class="sub" id="sousTitre">Règlement de votre facture</div></div>
+  const inner = `<div class="card"><div class="hd">${enTeteSociete()}<div class="sub" id="sousTitre">Règlement de votre facture</div></div>
     <div class="bd">
       <div class="center" style="margin-bottom:6px"><span class="badge b-wait" id="etatBadge">En attente de paiement</span></div>
       ${recap}

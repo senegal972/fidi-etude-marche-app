@@ -12,6 +12,7 @@
 import crypto from "node:crypto";
 import { authResp, currentUser } from "./_auth.mjs";
 import { getNamedStore } from "./_blobs.mjs";
+import { identiteCompte } from "./_identite.mjs";
 import { BIENVENUE_STORE, LIENS_MAX, PIECES_MAX, TAILLE_PIECE_MAX, assainirReglages, assainirPiece, lireReglages, envoyerBienvenue } from "./_bienvenue.mjs";
 
 export async function traiter(event, me, store) {
@@ -58,7 +59,7 @@ export async function traiter(event, me, store) {
     return authResp(200, { ok: true, reglages, envoi, limites });
   }
   if (b.action === "essai") {
-    const etat = await envoyerBienvenue({ event, email: me.user.email, nom: me.user.nom, choisirMotDePasse: false, store, essai: true });
+    const etat = await envoyerBienvenue({ event, email: me.user.email, nom: me.user.nom, choisirMotDePasse: false, store, essai: true, identite: await identiteCompte(event, me) });
     if (etat === "non_configure") return authResp(503, { error: "L'envoi d'e-mails n'est pas réglé (RESEND_API_KEY, RESEND_FROM)." });
     if (etat !== "envoye") return authResp(502, { error: "L'e-mail d'essai n'a pas pu partir. Réessayez." });
     return authResp(200, { ok: true, envoye_a: me.user.email });

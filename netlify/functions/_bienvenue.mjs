@@ -110,21 +110,61 @@ export function adresseCopieDefaut() {
 
 // Copie pour l'administrateur : même contenu (mot d'accueil, consignes, liens, pièces jointes), mais JAMAIS le lien personnel de choix du mot de
 // passe — il ne sert qu'une fois : ouvert depuis la copie, il priverait le client du sien. Au mieux : un échec ne change pas le résultat.
-async function envoyerCopie({ copie, email, nom, origin, avecLien, regl, attachments }) {
+async function envoyerCopie({ copie, email, nom, origin, avecLien, regl, attachments, identite }) {
   try {
     const r = await envoyerEmail({
-      to: copie, subject: "[Copie] E-mail de bienvenue envoyé à " + email, lien: origin + "/", bouton: "Ouvrir l'application",
-      appel: avecLien ? "Dans l'e-mail du client, ce bouton est « Choisir mon mot de passe » (lien personnel valable 7 jours, non reproduit ici) :" : "Bouton de l'e-mail du client :",
-      liens: regl.liens, titreLiens: "Pour bien démarrer", ...(attachments.length ? { attachments } : {}),
-      message: "Copie de l'e-mail de bienvenue envoyé à " + email + ".\n———\n" + texteBienvenue({ nom, email, origin, avecLien, message: regl.message, nbPieces: attachments.length }),
+      to: copie, subject: "[Copie] E-mail de bienvenue envoyé à " + email, identite, ...(attachments.length ? { attachments } : {}),
+      corpsHtml: corpsBienvenue({ nom, email, origin, lien: origin + "/", avecLien, message: regl.message, liens: regl.liens, nbPieces: attachments.length, couleur: (identite || {}).couleur, copieDe: email })
+        .replace("Choisir mon mot de passe</a>", "Ouvrir l'application</a>"),
     });
     if (r.statusCode !== 200) console.error("[bienvenue] copie non envoyée :", r.statusCode);
     return r.statusCode === 200;
   } catch (e) { console.error("[bienvenue] copie :", e.message); return false; }
 }
 
+// ── Mise en page « lettre d'information » ────────────────────────────────────────────────────────────────────────────────
+// HTML pour messagerie : tableaux et styles en ligne seulement. Tout texte variable passe par h().
+const h = (v) => String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+const pictoLien = (url) => (/youtu\.?be|vimeo|dailymotion|\.mp4/i.test(url) ? "🎬" : /\.pdf(\?|$)/i.test(url) ? "📄" : /\.pptx?(\?|$)|docs\.google\.com\/presentation|canva|gamma\.app/i.test(url) ? "📊" : "🔗");
+
+export function corpsBienvenue({ nom, email, origin, lien, avecLien, message, liens, nbPieces, couleur, copieDe }) {
+  const c = /^#[0-9a-f]{6}$/i.test(couleur || "") ? couleur : "#1a3a6e";
+  const prenom = String(nom || "").trim().split(/\s+/)[0] || "";
+  const titre = (t) => `<p style="margin:26px 0 10px;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:${c};">${t}</p>`;
+  const etape = (n, t, d) => `<tr><td width="44" valign="top" style="padding:0 0 14px;"><div style="width:32px;height:32px;line-height:32px;border-radius:16px;background:${c};color:#fff;font-weight:700;text-align:center;font-size:15px;">${n}</div></td>
+    <td valign="top" style="padding:0 0 14px;font-size:14px;line-height:1.45;"><strong style="font-size:15px;">${t}</strong><br><span style="color:#4a5565;">${d}</span></td></tr>`;
+  const carte = (picto, t, d) => `<td width="50%" valign="top" style="padding:5px;"><div style="background:#f4f7fb;border:1px solid #e1e7f0;border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.45;min-height:92px;">
+    <div style="font-size:20px;line-height:1;margin-bottom:6px;">${picto}</div><strong>${t}</strong><br><span style="color:#4a5565;">${d}</span></div></td>`;
+  const adr = `<a href="${h(origin)}" style="color:${c};">${h(origin.replace(/^https?:\/\//, ""))}</a>`;
+  const ressources = (liens || []).filter((l) => l && /^https:\/\//i.test(l.url || "")).map((l) =>
+    `<tr><td style="padding:0 0 8px;"><a href="${h(l.url)}" style="display:block;border:1px solid #d5deea;border-radius:10px;padding:11px 14px;text-decoration:none;color:#1a2233;font-size:14px;font-weight:600;">${pictoLien(l.url)}&nbsp; ${h(l.libelle || l.url)} <span style="color:${c};float:right;">›</span></a></td></tr>`).join("");
+  return `
+    ${copieDe ? `<div style="background:#fff7e0;border:1px solid #f0dca0;border-radius:10px;padding:10px 14px;font-size:13px;margin:0 0 18px;">📋 <strong>Copie</strong> de l'e-mail de bienvenue envoyé à ${h(copieDe)}.${avecLien ? " Le lien personnel « Choisir mon mot de passe » n'est pas reproduit ici (il ne sert qu'une fois)." : ""}</div>` : ""}
+    <h1 style="margin:0 0 8px;font-size:24px;line-height:1.25;color:#1a2233;">Bienvenue${prenom ? " " + h(prenom) : ""} 👋</h1>
+    <p style="margin:0;font-size:15px;line-height:1.5;color:#4a5565;">Votre accès à l'application d'<strong>études de marché</strong> et d'<strong>avis de valeur</strong> immobiliers est prêt.</p>
+    ${message ? `<div style="margin:18px 0 0;border-left:4px solid ${c};background:#f4f7fb;border-radius:0 10px 10px 0;padding:12px 16px;font-size:14px;line-height:1.5;">${h(message).replace(/\r?\n/g, "<br>")}</div>` : ""}
+    <div style="margin:18px 0 0;background:#f4f7fb;border-radius:10px;padding:12px 16px;font-size:14px;">Votre identifiant de connexion<br><strong style="font-size:16px;">${h(email)}</strong></div>
+    <p style="text-align:center;margin:24px 0 6px;"><a href="${h(lien)}" style="display:inline-block;background:${c};color:#fff;text-decoration:none;padding:14px 34px;border-radius:26px;font-weight:700;font-size:16px;">${avecLien ? "Choisir mon mot de passe" : "Ouvrir l'application"}</a></p>
+    ${avecLien ? `<p style="text-align:center;margin:0;font-size:12px;color:#6c757d;">Lien personnel, valable 7 jours, utilisable une seule fois.</p>` : ""}
+    ${titre("Démarrez en 3 étapes")}
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+      ${etape(1, avecLien ? "Choisissez votre mot de passe" : "Connectez-vous", avecLien ? "Avec le bouton ci-dessus. Il vous servira à chaque connexion." : "Avec votre identifiant et le mot de passe que vous avez choisi.")}
+      ${etape(2, "Installez l'application", "Sur votre téléphone ou votre ordinateur : elle s'ouvre alors comme n'importe quelle application.")}
+      ${etape(3, "Lancez votre première étude", "Saisissez une adresse ou choisissez une parcelle sur la carte, puis cliquez sur « Analyser ».")}
+    </table>
+    ${titre("Installer l'application")}
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:0 -5px;">
+      <tr>${carte("📱", "iPhone", "Ouvrez " + adr + " dans Safari, touchez « Partager », puis « Sur l'écran d'accueil ».")}${carte("🤖", "Android", "Ouvrez " + adr + " dans Chrome, touchez le menu ⋮, puis « Installer l'application ».")}</tr>
+      <tr>${carte("💻", "Ordinateur — Chrome ou Edge", "Ouvrez " + adr + ", puis cliquez sur l'icône d'installation à droite de la barre d'adresse (ou menu ⋮, « Installer »).")}${carte("🍎", "Mac — Safari", "Ouvrez " + adr + ", puis menu Fichier, « Ajouter au Dock ».")}</tr>
+    </table>
+    <p style="margin:8px 0 0;font-size:12px;color:#6c757d;">Sans installation, l'application s'utilise aussi directement à l'adresse ${adr}.</p>
+    ${ressources ? titre("Pour bien démarrer") + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">${ressources}</table>` : ""}
+    ${nbPieces ? `<p style="margin:14px 0 0;font-size:14px;">📎 ${nbPieces > 1 ? nbPieces + " documents sont joints à ce message." : "Un document est joint à ce message."}</p>` : ""}
+    <p style="margin:22px 0 0;font-size:12px;color:#6c757d;">Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :<br><a href="${h(lien)}" style="color:${c};word-break:break-all;">${h(lien)}</a></p>`;
+}
+
 // → "envoye" | "non_configure" | "echec". copie : adresse de l'administrateur mis en copie (facultative). hash : mot de passe haché du compte (pour le lien de choix du mot de passe).
-export async function envoyerBienvenue({ event, email, nom, hash, choisirMotDePasse, store, essai, copie }) {
+export async function envoyerBienvenue({ event, email, nom, hash, choisirMotDePasse, store, essai, copie, identite }) {
   if (!process.env.RESEND_API_KEY || !process.env.RESEND_FROM) return "non_configure";
   const origin = origineDe(event);
   if (!origin || !email) return "echec";
@@ -137,15 +177,12 @@ export async function envoyerBienvenue({ event, email, nom, hash, choisirMotDePa
     const attachments = regl.pieces.length ? await piecesJointes(event, regl.pieces, store) : [];
     const nomPropre = String(nom || "").trim().slice(0, 80);
     const r = await envoyerEmail({
-      to: email, subject: (essai ? "[Essai] " : "") + "Votre accès à l'application", lien,
-      appel: avecLien ? "Pour commencer, choisissez votre mot de passe :" : "Pour commencer, ouvrez l'application :",
-      liens: regl.liens, titreLiens: "Pour bien démarrer", ...(attachments.length ? { attachments } : {}),
-      bouton: avecLien ? "Choisir mon mot de passe" : "Ouvrir l'application",
-      message: texteBienvenue({ nom: nomPropre, email, origin, avecLien, message: regl.message, nbPieces: attachments.length }),
+      to: email, subject: (essai ? "[Essai] " : "") + "Bienvenue — votre accès à l'application", identite, ...(attachments.length ? { attachments } : {}),
+      corpsHtml: corpsBienvenue({ nom: nomPropre, email, origin, lien, avecLien, message: regl.message, liens: regl.liens, nbPieces: attachments.length, couleur: (identite || {}).couleur }),
     });
     if (r.statusCode !== 200) { console.error("[bienvenue] e-mail non envoyé :", r.statusCode); return "echec"; }
     const c = String(copie || "").trim().toLowerCase();
-    if (!essai && c && c !== String(email).trim().toLowerCase()) await envoyerCopie({ copie: c, email, nom: nomPropre, origin, avecLien, regl, attachments });
+    if (!essai && c && c !== String(email).trim().toLowerCase()) await envoyerCopie({ copie: c, email, nom: nomPropre, origin, avecLien, regl, attachments, identite });
     return "envoye";
   } catch (e) { console.error("[bienvenue]", e.message); return "echec"; }
 }

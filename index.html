@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
-<meta name="description" content="Étude de marché immobilier — FIDI. Analyse complète d'une adresse à partir des données publiques data.gouv.fr (DVF, BDNB, BAN, Géorisques)."/>
+<meta name="description" content="Étude de marché & Avis de valeur — une application Optimmo Dom. Analyse complète d'une adresse à partir des données publiques data.gouv.fr (DVF, BDNB, BAN, Géorisques)."/>
 <meta name="theme-color" content="#0C447C"/>
 <meta name="color-scheme" content="light"/>
 <meta name="format-detection" content="telephone=no"/>
@@ -13,10 +13,10 @@
 <link rel="apple-touch-icon" sizes="180x180" href="/icones/apple-touch-icon.png"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
-<meta name="apple-mobile-web-app-title" content="FIDI Marché"/>
+<meta name="apple-mobile-web-app-title" content="Étude & Avis"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <!-- Open Graph -->
-<meta property="og:title" content="FIDI · Étude de Marché Immobilier"/>
+<meta property="og:title" content="Étude de marché & Avis de valeur — Optimmo Dom"/>
 <meta property="og:description" content="Évaluation complète d'un bien à partir des données publiques."/>
 <meta property="og:type" content="website"/>
 <meta property="og:url" content="https://fidi-etude-marche.netlify.app/"/>
@@ -296,7 +296,7 @@ body.map-fs-on{overflow:hidden;}
     </div>
 
     <!-- Bouton direct Présentation (chevalet visible, à côté du dropdown compte) -->
-    <button class="btn btn-sm btn-outline-warning d-none" id="btnPresentationDirect" type="button" onclick="Presentation.open()" title="Ouvrir la présentation ImmoData Pro (démo + partage)">
+    <button class="btn btn-sm btn-outline-warning d-none" id="btnPresentationDirect" type="button" onclick="Presentation.open()" title="Ouvrir la présentation de l'application et sa grille tarifaire (Optimmo Dom)">
       <i class="bi bi-easel-fill me-1"></i><span class="d-none d-md-inline">Présentation</span>
     </button>
 
@@ -308,7 +308,7 @@ body.map-fs-on{overflow:hidden;}
       <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="ddCompte">
         <li><a class="dropdown-item" href="#" id="miCompte" onclick="Compte.open();return false;"><i class="bi bi-gear me-2"></i>Mon compte</a></li>
         <li><a class="dropdown-item" href="#" id="btnMarque" onclick="return false;"><i class="bi bi-palette me-2"></i>Mise en page</a></li>
-        <li><a class="dropdown-item d-none" id="miPresentation" href="#" onclick="Presentation.open();return false;"><i class="bi bi-easel me-2 text-warning"></i>Présentation ImmoData Pro</a></li>
+        <li><a class="dropdown-item d-none" id="miPresentation" href="#" onclick="Presentation.open();return false;"><i class="bi bi-easel me-2 text-warning"></i>Présentation &amp; tarifs Optimmo Dom</a></li>
         <li><hr class="dropdown-divider"></li>
         <li><a class="dropdown-item small text-muted" href="https://www.data.gouv.fr" target="_blank" rel="noopener"><i class="bi bi-info-circle me-2"></i>À propos des sources</a></li>
       </ul>
@@ -1529,6 +1529,8 @@ function selectCommune(i){
 // Parcelle choisie sur la carte (saisie-carte.js) → champs de la recherche par référence cadastrale.
 // commune : objet de geo.api.gouv.fr ({ code, nom, codesPostaux, centre, departement, region }).
 // ajouter:true → parcelle supplémentaire de la même étude (leurs surfaces s'additionnent).
+// Nom de la société qui agit (société émettrice par défaut, à défaut la charte) pour les textes d'envoi ; suffixe ajouté s'il y a un nom.
+function fidiSociete(suffixe){ const n = (window.Marque && Marque.nomDoc()) || ''; return n ? n + (suffixe || '') : ''; }
 function fidiChoisirParcelle(o){
   if(!o || !o.commune || !o.section || !o.numero) return false;
   const r = document.getElementById('modeCadastre');
@@ -5234,7 +5236,7 @@ function recapText(){
   var zon = zone.libelle ? (zone.libelle+(zone.typezone?' ('+zone.typezone+')':'')) : (zone.typezone||'non déterminé');
   var cont = parc.contenance ? Number(parc.contenance).toLocaleString('fr-FR')+' m²' : '';
   var lignes = [
-    'FIDI · Étude de marché — Récapitulatif',
+    fidiSociete(' · ')+'Étude de marché — Récapitulatif',
     adr,
     med ? 'Estimation vénale : '+med+' (fourchette '+mn+' – '+mx+')' : '',
     zon ? 'Zonage : '+zon : '',
@@ -5485,7 +5487,7 @@ function implantationPdfTexte(titre){
   var nb=function(n){ return Math.round(n).toLocaleString('fr-FR')+' m²'; };
   var refs=(typeof cadRefsListe==='function')?cadRefsListe():[];
   return [
-    'FIDI · '+titre,
+    fidiSociete(' · ')+titre,
     loc.label || [loc.name, loc.postcode, loc.city].filter(Boolean).join(' '),
     refs.length ? 'Réf. cadastrale'+(refs.length>1?'s':'')+' : '+refs.join(', ') : '',
     r.surface ? 'Surface du terrain : '+nb(r.surface) : '',
@@ -5917,7 +5919,7 @@ window.relancerFacture = function(f, onDone){
     var docLien = origin + '/l/' + f.jeton; // sans ?pay=1 : page de remise / téléchargement
     try {
       var r = await fetch('/api/send-email', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ to:f.email, subject:'Vos documents FIDI — '+(f.ref||''), lien:docLien,
+        body:JSON.stringify({ to:f.email, subject:'Vos documents — '+(f.ref||''), lien:docLien,
           kind:(f.type||'document'), titre:(f.client||''),
           message:'Voici le lien pour accéder à vos documents. Si votre facture n\'est pas encore réglée, vous pourrez la régler depuis cette page.' })});
       var jj = await r.json().catch(function(){return{};});
@@ -6110,7 +6112,7 @@ async function factEnvoyerEmail(){
     : 'Votre '+(R.label||'document').toLowerCase()+' est disponible. Accédez à votre facture et à votre document via le lien ci-dessous.';
   try{
     const r = await fetch('/api/send-email', {method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ to:R.email, subject:'FIDI Conseil — '+(R.label||'Votre document')+(R.adresse?(' ('+R.adresse+')'):''),
+      body:JSON.stringify({ to:R.email, subject:fidiSociete(' — ')+(R.label||'Votre document')+(R.adresse?(' ('+R.adresse+')'):''),
         lien:R.delivery_url, message, kind:(R.label||'document'), titre:R.adresse||'' })});
     const j = await r.json().catch(()=>({}));
     if(j && j.ok){ if(status) status.innerHTML='<div class="alert alert-success py-1 px-2 small mb-0"><i class="bi bi-check-circle me-1"></i>E-mail envoyé à '+escHtml(R.email)+'.</div>'; }
@@ -6123,8 +6125,8 @@ async function factEnvoyerEmail(){
 // pointer vers un webmail non souhaité, ex. Orange). On propose le webmail voulu,
 // message déjà pré-rempli, ou la copie du message.
 function factEmailManuel(R, status, note){
-  const subject = 'FIDI Conseil — '+(R.label||'Votre document')+(R.adresse?(' ('+R.adresse+')'):'');
-  const body = 'Bonjour,\n\nVotre '+(R.label||'document').toLowerCase()+' est disponible via ce lien sécurisé :\n'+R.delivery_url+'\n\nCordialement,\nFIDI Conseil';
+  const subject = fidiSociete(' — ')+(R.label||'Votre document')+(R.adresse?(' ('+R.adresse+')'):'');
+  const body = 'Bonjour,\n\nVotre '+(R.label||'document').toLowerCase()+' est disponible via ce lien sécurisé :\n'+R.delivery_url+'\n\nCordialement,\n'+fidiSociete();
   window.__factMail = { to:R.email||'', subject, body };
   if(!status) return;
   status.innerHTML =
@@ -6159,7 +6161,7 @@ function factCopierMessage(){
 function factEnvoyerWhatsapp(){
   const R = window.__factRemise || {};
   const status = document.getElementById('factSendStatus');
-  const txt = 'Bonjour, voici votre '+(R.label||'document').toLowerCase()+' de FIDI Conseil.'+
+  const txt = 'Bonjour, voici votre '+(R.label||'document').toLowerCase()+(fidiSociete()?' de '+fidiSociete():'')+'.'+
     (R.payReq ? ' Vous pourrez régler et télécharger vos documents ici : ' : ' Accédez à votre facture et votre document ici : ')+R.delivery_url;
   const digits = String(R.tel||'').replace(/[^0-9]/g,'');
   const base = (digits.length>=10) ? ('https://wa.me/'+digits) : 'https://wa.me/';
@@ -6436,11 +6438,11 @@ async function fidiSendWhatsapp(kind, titre){
   if(btn){ btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Ouverture…'; }
   try{
     if(navigator.share && navigator.canShare && navigator.canShare({ files })){
-      await navigator.share({ files, title:(titre||kind||'FIDI Conseil') });
+      await navigator.share({ files, title:(titre||kind||fidiSociete()||'Document') });
       if(status) status.innerHTML='<div class="alert alert-success small py-1 mb-0"><i class="bi bi-check-circle me-1"></i>Partage ouvert ('+files.length+' fichier'+(files.length>1?'s':'')+').</div>';
     } else if(navigator.share && navigator.canShare && files.length>1 && navigator.canShare({ files:[files[0]] })){
       // Appareil qui ne supporte qu'un fichier à la fois : les partage séquentiellement
-      for(const f of files){ await navigator.share({ files:[f], title:(titre||kind||'FIDI Conseil') }); }
+      for(const f of files){ await navigator.share({ files:[f], title:(titre||kind||fidiSociete()||'Document') }); }
       if(status) status.innerHTML='<div class="alert alert-success small py-1 mb-0"><i class="bi bi-check-circle me-1"></i>Fichiers partagés un par un.</div>';
     } else {
       // Desktop : WhatsApp Web n'accepte pas de fichier par URL → ouvre WhatsApp, glisser-déposer
@@ -6471,8 +6473,8 @@ async function fidiSendEmail(kind, titre){
 
   // Repli : ouvre Gmail compose pré-rempli, l'utilisateur joint les fichiers (déjà sur disque)
   const gmailFallback = (note)=>{
-    const subject = (kind||'Document FIDI')+(titre?' — '+titre:'');
-    const body2 = 'Bonjour,\n\nVeuillez trouver ci-joint '+(kind||'le document').toLowerCase()+(titre?' — '+titre:'')+'.\n\nCordialement,\nFIDI Conseil';
+    const subject = (kind||'Document')+(titre?' — '+titre:'');
+    const body2 = 'Bonjour,\n\nVeuillez trouver ci-joint '+(kind||'le document').toLowerCase()+(titre?' — '+titre:'')+'.\n\nCordialement,\n'+fidiSociete();
     window.open('https://mail.google.com/mail/?view=cm&fs=1&to='+encodeURIComponent(email)+'&su='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body2), '_blank', 'noopener');
     const names = files.map(f=>escHtml(f.name)).join(', ');
     if(status) status.innerHTML='<div class="alert alert-info small py-1 mb-0"><i class="bi bi-info-circle me-1"></i>'
@@ -6500,7 +6502,7 @@ async function fidiSendEmail(kind, titre){
   try{
     const attachments = [{ filename: main.name, content: await fidiFileToB64(main) }];
     const resp = await fetch('/api/send-email',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ to:email, subject:(kind||'Document FIDI')+(titre?' — '+titre:''),
+      body:JSON.stringify({ to:email, subject:(kind||'Document')+(titre?' — '+titre:''),
         attachments, kind:kind||'Document', titre:titre||'' })});
     let j = {}; try{ j = await resp.json(); }catch(e){}
     if(j && j.ok){
@@ -6634,8 +6636,8 @@ window.Compte = (function(){
       '<div class="row g-4 align-items-center w-100">'+
         '<div class="col-lg-7 text-white">'+
           '<div class="d-flex align-items-center mb-3"><i class="bi bi-building fs-2 me-2"></i>'+
-            '<div><div class="fw-bold fs-3" style="letter-spacing:.3px;">FIDI · Étude de Marché</div>'+
-            '<div class="opacity-75 small text-uppercase" style="letter-spacing:1px;">L\'outil qui transforme vos analyses en revenus</div></div></div>'+
+            '<div><div class="fw-bold fs-3" style="letter-spacing:.3px;">Étude de marché &amp; Avis de valeur</div>'+
+            '<div class="opacity-75 small text-uppercase" style="letter-spacing:1px;">Une application Optimmo Dom</div></div></div>'+
           '<h1 class="fw-bold mb-3" style="line-height:1.15;">Commencez dès 2 crédits —<br>récupérez votre investissement<br>dès la première prestation.</h1>'+
           '<p class="opacity-75 mb-4" style="max-width:560px;">Études de marché & avis de valeur professionnels, à partir des données publiques officielles. Réservé aux mandataires et professionnels de l\'immobilier.</p>'+
           '<div class="row g-3" style="max-width:660px;">'+
@@ -6649,13 +6651,13 @@ window.Compte = (function(){
           '<div class="card shadow-lg border-0 mx-auto" style="max-width:400px;">'+
             '<div class="card-body p-4">'+
               '<h5 class="card-title mb-1"><i class="bi bi-lock me-1"></i>Connexion</h5>'+
-              '<p class="text-muted small mb-3">Accédez à votre espace FIDI.</p>'+
+              '<p class="text-muted small mb-3">Accédez à votre espace.</p>'+
               '<div class="mb-2"><label class="form-label small">E-mail</label><input type="email" class="form-control" id="gateEmail" autocomplete="username"></div>'+
               '<div class="mb-2"><label class="form-label small">Mot de passe</label><input type="password" class="form-control" id="gatePwd" autocomplete="current-password"></div>'+
               '<div class="text-danger small mb-2 d-none" id="gateErr"></div>'+
               '<button class="btn btn-primary w-100" id="gateBtn">Se connecter</button>'+
               '<button type="button" class="cpt-oubli" id="gateOubli" onclick="window.FidiInscription&&FidiInscription.oubli((document.getElementById(\'gateEmail\')||{}).value)">Mot de passe oublié ?</button>'+
-              '<p class="text-muted mt-3 mb-0" style="font-size:.75rem;">Pas encore de compte ? Contactez votre administrateur FIDI pour qu\'il vous en crée un.</p>'+
+              '<p class="text-muted mt-3 mb-0" style="font-size:.75rem;">Pas encore de compte ? Contactez votre administrateur pour qu\'il vous en crée un.</p>'+
             '</div>'+
           '</div>'+
         '</div>'+
@@ -7183,8 +7185,8 @@ window.Compte = (function(){
         '</div>'+
         '<div class="border rounded p-2 mt-3" style="background:#f5f9f5;">'+
           '<div class="form-check"><input id="fcEncaisse" type="checkbox" class="form-check-input"'+(u.fidi_encaisse?' checked':'')+'><label class="form-check-label small fw-semibold" for="fcEncaisse">FIDI encaisse pour ce collaborateur (solution de portage)</label></div>'+
-          '<div class="row g-2 align-items-end mt-1"><div class="col-6"><label class="form-label small mb-0">Commission FIDI (%)</label><input id="fcCommission" type="number" min="0" max="100" step="0.5" class="form-control form-control-sm" value="'+(u.commission!=null?u.commission:25)+'"></div>'+
-          '<div class="col-6 small text-muted">FIDI encaisse le règlement, garde la commission, reverse le reste au collaborateur.</div></div>'+
+          '<div class="row g-2 align-items-end mt-1"><div class="col-6"><label class="form-label small mb-0">Commission de la plateforme (%)</label><input id="fcCommission" type="number" min="0" max="100" step="0.5" class="form-control form-control-sm" value="'+(u.commission!=null?u.commission:25)+'"></div>'+
+          '<div class="col-6 small text-muted">La plateforme encaisse le règlement, garde la commission, reverse le reste au collaborateur.</div></div>'+
         '</div>'+
         '<div class="border rounded p-2 mt-3 cpt-mdp">'+
           '<div class="small fw-semibold mb-1"><i class="bi bi-key me-1"></i>Mot de passe</div>'+
@@ -7252,10 +7254,10 @@ window.Compte = (function(){
     adminList();
   }
   async function adminCommission(email, curEncaisse, curPct){
-    const enc = confirm('FIDI encaisse-t-il les prestations pour '+email+' ?\n\nOui = FIDI reçoit les paiements et reverse au collaborateur après commission.\nNon = le collaborateur encaisse lui-même.');
+    const enc = confirm('La plateforme encaisse-t-elle les prestations pour '+email+' ?\n\nOui = la plateforme reçoit les paiements et reverse au collaborateur après commission.\nNon = le collaborateur encaisse lui-même.');
     let pct = curPct;
     if(enc){
-      const s = prompt('Commission FIDI (%) :\n(par défaut 25 %, modifiable)', String(curPct||25));
+      const s = prompt('Commission de la plateforme (%) :\n(par défaut 25 %, modifiable)', String(curPct||25));
       if(s === null) return;
       pct = parseFloat(String(s).replace(',','.'));
       if(!isFinite(pct) || pct < 0 || pct > 100){ alert('Commission invalide (0-100).'); return; }
@@ -7436,7 +7438,7 @@ window.Compte = (function(){
     box.innerHTML = html;
   }
   function chooseOffer(palier, credits, prix){
-    alert('Pack « '+palier+' » — '+credits+' crédits pour '+prix+' € TTC.\n\nLe paiement en ligne (PayPal / carte bancaire) arrive très bientôt.\nEn attendant, contactez votre administrateur FIDI pour activer ce pack.');
+    alert('Pack « '+palier+' » — '+credits+' crédits pour '+prix+' € TTC.\n\nLe paiement en ligne (PayPal / carte bancaire) arrive très bientôt.\nEn attendant, contactez votre administrateur pour activer ce pack.');
   }
 
   // Charge le SDK PayPal une seule fois (Client ID public + carte bancaire).
@@ -7853,7 +7855,7 @@ window.Compte = (function(){
 })();
 </script>
 
-<!-- Présentation confidentielle ImmoData Pro (réservée aux professionnels connectés) -->
+<!-- Présentation confidentielle du logiciel (fabricant : Optimmo Dom) (réservée aux professionnels connectés) -->
 <div id="presModalRoot"></div>
 <script>
 window.Presentation = (function(){
@@ -7895,7 +7897,7 @@ window.Presentation = (function(){
     '<div class="alert alert-warning py-2 small mb-3"><i class="bi bi-shield-lock me-1"></i><b>Document confidentiel</b> — réservé aux professionnels. Ne pas diffuser.</div>'+
     '<div class="p-3 rounded text-white mb-3" style="background:linear-gradient(135deg,#12294d,#24508f);">'+
       '<div class="text-warning text-uppercase small fw-semibold" style="letter-spacing:1px;">Pitch modèle économique</div>'+
-      '<div class="fs-4 fw-bold">ImmoData Pro</div>'+
+      '<div class="fs-4 fw-bold">Étude de marché &amp; Avis de valeur</div><div class="small text-warning fw-semibold">Un logiciel Optimmo Dom — grille tarifaire du fabricant</div>'+
       '<div class="opacity-75">L\'outil qui transforme vos analyses en revenus — études de marché & avis de valeur.</div></div>'+
     '<div class="row g-2 mb-2">'+
       '<div class="col-md-6"><div class="border rounded p-2 h-100"><div class="fw-bold"><i class="bi bi-bar-chart-line me-1 text-primary"></i>Module 1 — Études de marché</div><div class="small text-muted">Analyse complète du marché local (DVF, socio-éco, tendances de prix).</div></div></div>'+
@@ -7916,7 +7918,7 @@ window.Presentation = (function(){
     if(typeof bootstrap === 'undefined'){ alert('Interface non chargée.'); return; }
     let root = document.getElementById('presModalRoot');
     root.innerHTML = '<div class="modal fade" id="presModal" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-scrollable">'+
-      '<div class="modal-content"><div class="modal-header"><h5 class="modal-title"><i class="bi bi-easel-fill me-1" style="color:#b87333;"></i>Présentation ImmoData Pro</h5>'+
+      '<div class="modal-content"><div class="modal-header"><h5 class="modal-title"><i class="bi bi-easel-fill me-1" style="color:#b87333;"></i>Étude de marché &amp; Avis de valeur — présentation Optimmo Dom</h5>'+
       '<div class="ms-auto d-flex gap-2 align-items-center">'+
         '<button class="btn btn-sm btn-outline-primary" onclick="Presentation.share()" title="Copier un lien de présentation à envoyer à un collaborateur"><i class="bi bi-share me-1"></i>Partager</button>'+
         '<button type="button" class="btn-close" data-bs-dismiss="modal"></button>'+
@@ -7926,10 +7928,10 @@ window.Presentation = (function(){
   }
   function share(){
     const url = location.origin + '/#presentation';
-    const shareText = 'Découvrez ImmoData Pro — l\'outil professionnel FIDI pour vos études de marché et avis de valeur immobilière :\n\n' + url;
+    const shareText = 'Découvrez « Étude de marché & Avis de valeur », le logiciel professionnel d\'Optimmo Dom pour vos études de marché et avis de valeur immobiliers :\n\n' + url;
     // Tente Web Share API (mobile), sinon copie presse-papiers, sinon prompt
     if(navigator.share){
-      navigator.share({ title:'ImmoData Pro — FIDI', text:shareText, url:url }).catch(()=>{});
+      navigator.share({ title:'Étude de marché & Avis de valeur — Optimmo Dom', text:shareText, url:url }).catch(()=>{});
       return;
     }
     if(navigator.clipboard){

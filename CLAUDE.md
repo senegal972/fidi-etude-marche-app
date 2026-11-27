@@ -283,6 +283,19 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
   `#fxEmetteurs` ; « Nouvelle facture » remonte le sien à chaque ouverture). La liste suit l'événement `marque:change`. `Compte.loadSocietes()`.
 - Migration : les mentions uniques de la v1.8.0 (bloc `facturation`) deviennent la première société à l'ouverture.
 
+### Qui signe quoi : société qui agit, produit, fabricant
+- **Société qui agit** = société émettrice par défaut du compte (`emetteurDefaut`), à défaut la charte. Serveur : `_identite.mjs`
+  (`identiteDeCharte`, `identiteCompte(event, me)`, `identiteFacture(event, jeton)` — détail figé —, ne lèvent jamais). Navigateur :
+  `Marque.document()` (charte avec nom, coordonnées et logo de la société par défaut), `Marque.nomDoc()`, `Marque.enTeteDoc()`, `fidiSociete()`.
+  Les **écrans** gardent la charte (`Marque.get()`), les **documents et envois** prennent `Marque.document()`.
+- **E-mails** : `envoyerEmail({ …, identite })` → `gabaritEmail` (bandeau au nom de la société, couleur de la charte, logo PNG/JPEG intégré en
+  `cid:logo-societe`), expéditeur `"<société>" <adresse de RESEND_FROM>` (`expediteur`), réponses vers l'e-mail de la société. La route
+  `/api/send-email` **impose** l'identité du compte (`identite` et `corpsHtml` reçus sont ignorés) ; `corpsHtml` est réservé au serveur.
+- **Logiciel** : produit « Étude de marché & Avis de valeur », fabricant « Optimmo Dom » (`PRODUIT`, `FABRICANT`, `Marque.signatureLogiciel()`),
+  en pied des e-mails, de la page `/l/<jeton>` et de la couverture du rapport. **Ne jamais écrire « FIDI Conseil » ni « ImmoData »** dans un
+  écran, un envoi ou une page client (`tests/identite.test.mjs`). L'ancien modèle de facture (`facture-html.mjs`, factures sans détail) garde
+  l'identité d'origine : ce sont des pièces déjà émises.
+
 ### Mise en page / marque blanche — `marque.js` / `marque.css` / `marque.json`
 - L'application est destinée à être commercialisée : **aucune enseigne, couleur ou coordonnée client
   ne doit être écrite en dur** dans les écrans et documents imprimés. (« FIDI » reste le nom de la plateforme
@@ -392,4 +405,6 @@ Chargé avant l'écran (`<script src="/carte-parcelle.js">`, sans `defer`). Dép
   Les options sont toutes facultatives sauf `carte` ; sans `urlRisques`, la rubrique Risques n'apparaît pas.
 - Fenêtre de détail : bouton `.fiche-parc-fermer` en pied, plein écran à 768 px et moins. **iPhone, application installée** (`black-translucent` +
   `viewport-fit=cover`) : le haut de l'écran est sous la barre d'état ; `mobile.css` écarte toute `.modal` par `env(safe-area-inset-*)`.
+- **Une seule fenêtre de détail** : `detail()` ignore un second appui dans les 1,2 s et `retirerDetail()` retire fenêtre et voile ; deux fenêtres
+  superposées (double appui) figeaient l'écran de la 1.26 à la 1.45.
 - Tests : `tests/carte-parcelle.test.mjs` (branchements, regroupement des ventes, bulle). Le comportement réel se vérifie dans un navigateur.

@@ -156,7 +156,7 @@
   // ── Charte de marque (module « Mise en page », marque.js) ───────────────
   // Enseigne, logo, couleurs et coordonnées de la charte active ; neutre si marque.js est absent.
   function charte() {
-    var m = (window.Marque && window.Marque.get()) || null;
+    var m = (window.Marque && (window.Marque.document ? window.Marque.document() : window.Marque.get())) || null;
     return { enseigne: m ? m.enseigne : '', logo: m ? m.logo : '', coord: (m && m.coordonnees) || {} };
   }
   function nomSociete() { return window.Marque ? window.Marque.nomDoc() : ''; }

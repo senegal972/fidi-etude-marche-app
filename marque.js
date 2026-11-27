@@ -556,21 +556,40 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', demarrer);
   else demarrer();
 
+  // Identité portée par les DOCUMENTS (rapport, récapitulatif, avis de valeur, textes d'envoi) : la société qui agit, c'est-à-dire
+  // la société émettrice par défaut du compte (son nom, ses coordonnées, son logo — à défaut celui de la charte si « avecLogo »).
+  // Sans société enregistrée : la charte telle quelle. Les écrans de l'application gardent la charte (get()).
+  function identiteDocument() {
+    var m = clone(courante), l = m.emetteurs || [], co = m.coordonnees || {};
+    var e = l.filter(function (x) { return x.id === m.emetteurDefaut; })[0] || l[0];
+    if (!e || !e.raisonSociale) return m;
+    m.enseigne = e.raisonSociale;
+    m.logo = e.logo || (e.avecLogo ? (m.logo || '') : '');
+    m.coordonnees = { raisonSociale: e.raisonSociale, adresse: e.adresse || '', telephone: e.telephone || '', email: e.email || '',
+      mentions: e.mentions || (e.avecLogo ? (co.mentions || '') : '') };
+    return m;
+  }
+  var FABRICANT = 'Optimmo Dom', PRODUIT = 'Étude de marché & Avis de valeur';
+
   window.Marque = {
     get: function () { return clone(courante); },
+    document: identiteDocument,
+    // Le logiciel se signe à part de la société qui agit : produit + fabricant.
+    fabricant: FABRICANT, produitLogiciel: PRODUIT,
+    signatureLogiciel: function () { return PRODUIT + ' — une application ' + FABRICANT; },
     couleur: function (nom) { return courante.couleurs[nom] || courante.couleurs.principale; },
     recolorer: recolorer,
     // Modifie la charte (mêmes règles que le panneau) : utilisé par l'écran de facturation.
     maj: function (modif) { if (modif && typeof modif === 'object') majPerso(modif); },
     // Nom à faire figurer sur les documents (raison sociale, à défaut l'enseigne).
-    nomDoc: function () { return courante.coordonnees.raisonSociale || courante.enseigne || ''; },
+    nomDoc: function () { var d = identiteDocument(); return d.coordonnees.raisonSociale || d.enseigne || ''; },
     // Bloc d'identité (logo ou enseigne + coordonnées) pour l'en-tête des documents imprimés.
     enTeteDoc: function (date) {
-      var co = courante.coordonnees;
+      var doc = identiteDocument(), co = doc.coordonnees;
       var e = function (t) { return String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
-      var ident = courante.logo
-        ? '<img src="' + e(courante.logo) + '" alt="' + e(courante.enseigne) + '" style="max-height:34px;max-width:150px;object-fit:contain;display:block;margin-left:auto;"/>'
-        : '<div class="logo" style="font-size:15px;letter-spacing:-.3px;">' + e(courante.enseigne) + '</div>';
+      var ident = doc.logo
+        ? '<img src="' + e(doc.logo) + '" alt="' + e(doc.enseigne) + '" style="max-height:34px;max-width:150px;object-fit:contain;display:block;margin-left:auto;"/>'
+        : '<div class="logo" style="font-size:15px;letter-spacing:-.3px;">' + e(doc.enseigne) + '</div>';
       var ligne = [co.telephone, co.email, date].filter(Boolean).map(e).join(' · ');
       return ident + (ligne ? '<div style="font-size:9px;color:#667">' + ligne + '</div>' : '');
     },

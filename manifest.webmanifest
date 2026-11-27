@@ -1,6 +1,6 @@
 {
-  "name": "FIDI · Étude de Marché Immobilier",
-  "short_name": "FIDI Marché",
+  "name": "Étude de marché & Avis de valeur — Optimmo Dom",
+  "short_name": "Étude & Avis",
   "description": "Évaluation du potentiel d'un bien immobilier à partir des données publiques data.gouv.fr (DVF, BDNB, BAN, Géorisques, INSEE).",
   "start_url": "/?source=pwa",
   "scope": "/",

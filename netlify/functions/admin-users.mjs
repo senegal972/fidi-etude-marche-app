@@ -12,6 +12,7 @@ function readReseau(props) {
 }
 import { authResp, currentUser, createUser, setCredits, userFromPage } from "./_auth.mjs";
 import { envoyerBienvenue } from "./_bienvenue.mjs";
+import { identiteCompte } from "./_identite.mjs";
 
 // Mot de passe fort auto-généré : 16 chars mixed (majuscules + minuscules + chiffres + symboles)
 // avec au moins 1 de chaque catégorie garanti. Style Chrome/Google auto-generate.
@@ -105,7 +106,7 @@ export const handler = async (event) => {
         if (!hash) { // la page rendue à la création ne porte pas toujours ses propriétés : relecture
           try { const r = await queryDatabase(DB.users, { filter: { property: "Email", title: { equals: email } }, page_size: 1 }); hash = userFromPage(r.results[0]).hash || ""; } catch {}
         }
-        bienvenue = await envoyerBienvenue({ event, email, nom: b.nom || "", hash, choisirMotDePasse: true, copie: me.user.email });
+        bienvenue = await envoyerBienvenue({ event, email, nom: b.nom || "", hash, choisirMotDePasse: true, copie: me.user.email, identite: await identiteCompte(event, me) });
       }
       return authResp(200, { ok: true, created: email, temp_password: b.password ? undefined : password, email_bienvenue: bienvenue });
     }
@@ -227,7 +228,7 @@ export const handler = async (event) => {
     if (action === "bienvenue") {
       const u = userFromPage(page);
       if (u.role === "Administrateur" && !isSuperAdmin(me.user.email)) return authResp(403, { error: "Seul le super-administrateur peut envoyer ce lien à un administrateur." });
-      const etat = await envoyerBienvenue({ event, email, nom: u.nom, hash: u.hash, choisirMotDePasse: true, copie: me.user.email });
+      const etat = await envoyerBienvenue({ event, email, nom: u.nom, hash: u.hash, choisirMotDePasse: true, copie: me.user.email, identite: await identiteCompte(event, me) });
       if (etat === "non_configure") return authResp(503, { error: "L'envoi d'e-mails n'est pas réglé (RESEND_API_KEY, RESEND_FROM)." });
       if (etat !== "envoye") return authResp(502, { error: "L'e-mail n'a pas pu partir. Réessayez." });
       return authResp(200, { ok: true, email_bienvenue: etat });

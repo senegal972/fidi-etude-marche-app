@@ -8,6 +8,7 @@ import { DB, P, hasToken, updatePage, createPage, jsonResp } from "./_notion.mjs
 import { paypalConfigured, captureOrder, lireCapture, erreurPaypal, journalPaypal } from "./_paypal.mjs";
 import { findFactureByToken, factureFromPage, factureHtmlUrl, fusionPossible, dossierUrl, reqOrigin } from "./_facture.mjs";
 import { envoyerEmail } from "./send-email.mjs";
+import { identiteFacture } from "./_identite.mjs";
 
 // Dossier en un seul PDF, quand le document est un PDF déposé par l'application.
 const liensDossier = (f, origin) => fusionPossible(f)
@@ -98,7 +99,7 @@ export const handler = async (event) => {
         : (document_url && /^https?:/i.test(document_url) ? document_url : "");
       const payload = {
         to: f.email,
-        subject: `Votre ${kind} — FIDI Conseil (${f.numero})`,
+        subject: `Votre ${kind} (${f.numero})`,
         kind,
         titre,
         lien: deliveryUrl || facture_url,
@@ -107,7 +108,8 @@ export const handler = async (event) => {
       // Fire-and-forget (pas d'await pour ne pas ralentir la réponse au client).
       // Appel direct du cœur d'envoi : la route /api/send-email exige une session, et ici
       // le paiement vient d'être vérifié (jeton de facture + commande PayPal concordants).
-      envoyerEmail(payload).catch(() => {});
+      // L'e-mail part au nom de la société émettrice de la facture (détail figé) ; sans détail, au nom du logiciel.
+      identiteFacture(event, f.jeton).then((identite) => envoyerEmail({ ...payload, identite })).catch(() => {});
     }
 
     return jsonResp(200, {

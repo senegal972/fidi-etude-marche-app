@@ -24,6 +24,41 @@ export const adresseContact = () => lireAdresse(process.env.FIDI_CONTACT_EMAIL);
 export const adresseReponse = () => lireAdresse(process.env.RESEND_REPLY_TO) || adresseContact();
 
 import { currentUser } from "./_auth.mjs";
+import { PRODUIT, FABRICANT, identiteCompte } from "./_identite.mjs";
+
+// Habillage commun de tous les e-mails : bandeau au nom de la SOCIÉTÉ QUI AGIT (identite : nom, baseline, couleur, logo, email),
+// pied signé du logiciel (produit + fabricant). Sans identité : le bandeau porte le nom du produit. `corps` est du HTML déjà échappé.
+export function gabaritEmail({ identite, corps, contact }) {
+  const id = identite || {};
+  const couleur = /^#[0-9a-f]{6}$/i.test(id.couleur || "") ? id.couleur : "#1a3a6e";
+  const nom = escHtml(id.nom || PRODUIT);
+  const sous = escHtml(id.nom ? (id.baseline || "") : `Une application ${FABRICANT}`);
+  const logo = id.logo ? `<img src="cid:logo-societe" alt="${nom}" height="44" style="display:block;height:44px;max-width:220px;background:#fff;border-radius:8px;padding:6px 10px;margin:0 0 12px;">` : "";
+  const piedContact = [id.nom ? nom : "", id.telephone ? escHtml(id.telephone) : "", contact ? `<a href="mailto:${escHtml(contact)}" style="color:${couleur};">${escHtml(contact)}</a>` : ""].filter(Boolean).join(" · ");
+  return `
+<div style="background:#eef1f5;padding:18px 8px;">
+<div style="font-family:Arial,Helvetica,sans-serif;max-width:620px;margin:0 auto;color:#1a2233;">
+  <div style="background:${couleur};padding:22px 28px;border-radius:12px 12px 0 0;">
+    ${logo}<h2 style="color:#fff;margin:0;font-size:1.35rem;line-height:1.25;">${nom}</h2>
+    ${sous ? `<p style="color:#ffffff;opacity:.82;margin:4px 0 0;font-size:.85rem;">${sous}</p>` : ""}
+  </div>
+  <div style="padding:28px;border:1px solid #dee2e6;border-top:none;border-radius:0 0 12px 12px;background:#fff;">
+    ${corps}
+    <hr style="margin:22px 0 14px;border:none;border-top:1px solid #dee2e6;">
+    <p style="color:#6c757d;font-size:11px;margin:0;line-height:1.5;">
+      ${piedContact ? piedContact + "<br>" : ""}Message envoyé avec ${escHtml(PRODUIT)} — une application ${escHtml(FABRICANT)}.
+    </p>
+  </div>
+</div>
+</div>`.trim();
+}
+
+// Expéditeur affiché : le nom de la société qui agit, sur l'adresse d'envoi du site (RESEND_FROM).
+export function expediteur(from, nom) {
+  const adresse = (String(from).match(/<([^<>\s]+@[^<>\s]+)>/) || [])[1] || (/^[^\s<>]+@[^\s<>]+$/.test(String(from).trim()) ? String(from).trim() : "");
+  const n = String(nom || "").replace(/[\u0000-\u001f<>"\\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 70);
+  return adresse && n ? `"${n}" <${adresse}>` : from;
+}
 
 const CORS = {
   "Content-Type": "application/json; charset=utf-8",
@@ -57,7 +92,8 @@ export async function envoyerEmail(b) {
     return jsonResp(400, { error: "Adresse e-mail invalide : " + to });
   }
 
-  const subject  = (b.subject  || "Document FIDI Conseil").slice(0, 200);
+  const identite = (b.identite && typeof b.identite === "object") ? b.identite : {};
+  const subject  = (b.subject  || ("Document" + (identite.nom ? " — " + identite.nom : ""))).slice(0, 200);
   const filename = (b.filename || "document.pdf").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 100);
   const kind     = escHtml(b.kind  || "document");
   const titre    = escHtml(b.titre || "");
@@ -65,8 +101,9 @@ export async function envoyerEmail(b) {
   if (!from) {
     return jsonResp(503, { error: "Envoi email non configuré. Ajoutez RESEND_FROM dans les variables Netlify.", not_configured: true });
   }
-  const contact  = adresseContact();
-  const replyTo  = adresseReponse();
+  // Contact et réponses : l'adresse de la société qui agit, à défaut celles du site.
+  const contact  = lireAdresse(identite.email) || adresseContact();
+  const replyTo  = lireAdresse(identite.email) || adresseReponse();
 
   // Lien de remise (page /l/<jeton>) : e-mail « avec bouton » plutôt que pièce jointe.
   let lien = String(b.lien || "").trim();
@@ -81,36 +118,22 @@ export async function envoyerEmail(b) {
     .map((l) => `<li style="margin:4px 0;"><a href="${escHtml(l.url)}" style="color:#1a3a6e;font-weight:600;">${escHtml(String(l.libelle || l.url).slice(0, 120))}</a></li>`).join("");
   const blocLiens = liensPlus ? `<p style="margin-bottom:4px;"><strong>${escHtml(String(b.titreLiens || "À consulter").slice(0, 80))}</strong></p><ul style="margin-top:0;padding-left:20px;">${liensPlus}</ul>` : "";
 
-  const corps = lien
+  const corps = typeof b.corpsHtml === "string" && b.corpsHtml ? b.corpsHtml : lien
     ? `<p style="margin-top:0;">Bonjour,</p>
        ${messagePerso ? `<p>${messagePerso}</p>` : `<p>Votre ${kind}${titre ? " <strong>— " + titre + "</strong>" : ""} est disponible.</p>`}
        <p>${b.appel ? escHtml(String(b.appel).slice(0, 160)) : "Cliquez sur le bouton ci-dessous pour y accéder :"}</p>
        <p style="text-align:center;margin:26px 0;">
-         <a href="${escHtml(lien)}" style="display:inline-block;background:#1a3a6e;color:#fff;text-decoration:none;padding:13px 30px;border-radius:8px;font-weight:700;font-size:15px;">${bouton}</a>
+         <a href="${escHtml(lien)}" style="display:inline-block;background:${/^#[0-9a-f]{6}$/i.test(identite.couleur || "") ? identite.couleur : "#1a3a6e"};color:#fff;text-decoration:none;padding:13px 30px;border-radius:8px;font-weight:700;font-size:15px;">${bouton}</a>
        </p>
        <p style="font-size:12px;color:#6c757d;">Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :<br><a href="${escHtml(lien)}" style="color:#1a3a6e;word-break:break-all;">${escHtml(lien)}</a></p>${blocLiens}`
     : `<p style="margin-top:0;">Bonjour,</p>
        <p>Veuillez trouver ci-joint ${kind}${titre ? " <strong>— " + titre + "</strong>" : ""}.</p>
-       <p>Ce document a été généré par l'application FIDI · Étude de Marché.</p>`;
+       ${messagePerso ? `<p>${messagePerso}</p>` : ""}`;
 
-  const htmlBody = `
-<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#1a2233;">
-  <div style="background:#1a3a6e;padding:20px 28px;border-radius:8px 8px 0 0;">
-    <h2 style="color:#fff;margin:0;font-size:1.3rem;">FIDI Conseil</h2>
-    <p style="color:#c5d5ea;margin:4px 0 0;font-size:.85rem;">Conseil en immobilier · Martinique</p>
-  </div>
-  <div style="padding:28px;border:1px solid #dee2e6;border-top:none;border-radius:0 0 8px 8px;background:#fff;">
-    ${corps}
-    <hr style="margin:20px 0;border:none;border-top:1px solid #dee2e6;">
-    <p style="color:#6c757d;font-size:11px;margin:0;">
-      FIDI Conseil${contact ? ` · <a href="mailto:${contact}" style="color:#1a3a6e;">${contact}</a>` : ""}<br>
-      Ce message a été envoyé automatiquement depuis l'application FIDI.
-    </p>
-  </div>
-</div>`.trim();
+  const htmlBody = gabaritEmail({ identite, corps, contact });
 
   const payload = {
-    from,
+    from: expediteur(from, identite.nom),
     to: [to],
     subject,
     html: htmlBody,
@@ -138,6 +161,11 @@ export async function envoyerEmail(b) {
       return jsonResp(413, { error: "Pièces jointes trop volumineuses (max 20 Mo au total)" });
     }
     payload.attachments = atts;
+  }
+  // Logo de la société, intégré au message (image « cid »), en plus des pièces jointes.
+  const logo = /^data:image\/(png|jpeg);base64,/.exec(String(identite.logo || ""));
+  if (logo) {
+    payload.attachments = [...(payload.attachments || []), { filename: "logo." + (logo[1] === "jpeg" ? "jpg" : "png"), content: String(identite.logo).slice(logo[0].length), content_id: "logo-societe" }];
   }
 
   try {
@@ -179,5 +207,8 @@ export const handler = async (event) => {
   catch { return jsonResp(400, { error: "JSON invalide" }); }
   if (!b || typeof b !== "object") b = {};
 
+  // L'identité vient de la charte du compte (société par défaut), jamais de la demande : `identite` et `corpsHtml` transmis sont ignorés.
+  delete b.corpsHtml;
+  b.identite = await identiteCompte(event, moi);
   return envoyerEmail(b);
 };

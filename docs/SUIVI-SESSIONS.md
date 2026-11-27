@@ -42,7 +42,8 @@ Ce dépôt est modifié depuis plusieurs outils (Claude Code sur le PC, Claude C
 | 1.42.0 | Suite du 2026-11-23 | Claude Code (cloud) | Position imprécise écartée (carte de choix, « Ma position ») ; titre de la barre du haut sur deux lignes | 4c5baf5 |
 | 1.43.0 | 2026-11-26 | Claude Code (cloud) | E-mail de bienvenue automatique à la création d'un compte ; zone de réglage (mot d'accueil, liens, pièces jointes) | 1d10ed3 |
 | 1.44.0 | 2026-11-26 | Claude Code (cloud) | Vérification d'entreprise sans SIREN : établissements installés autour du bien (Sirene) | e2b1df5 |
-| 1.45.0 | 2026-11-26 | Claude Code (cloud) | Copie des e-mails de bienvenue à l'administrateur ; installation sur ordinateur dans l'e-mail | (ce commit) |
+| 1.45.0 | 2026-11-26 | Claude Code (cloud) | Copie des e-mails de bienvenue à l'administrateur ; installation sur ordinateur dans l'e-mail | fcb1d72 |
+| 1.46.0 | 2026-11-27 | Claude Code (cloud) | Identité de la société qui agit (e-mails, documents, page client), produit / fabricant Optimmo Dom, bienvenue en lettre d'information, double fenêtre de détail corrigée | (ce commit) |
 
 ## État des branches au 2026-11-16
 

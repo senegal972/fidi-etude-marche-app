@@ -160,7 +160,7 @@ test("facture-pay-capture se charge et expose son handler", async () => {
 test("garde-fou : facture-pay-capture appelle le cœur d'envoi, jamais la route publique", () => {
   const src = readFileSync(new URL("../netlify/functions/facture-pay-capture.mjs", import.meta.url), "utf8");
   assert.match(src, /import \{ envoyerEmail \} from "\.\/send-email\.mjs"/);
-  assert.match(src, /envoyerEmail\(payload\)/);
+  assert.match(src, /envoyerEmail\(\{ \.\.\.payload, identite \}\)/);
   assert.doesNotMatch(src, /\/\.netlify\/functions\/send-email/);
 });
 

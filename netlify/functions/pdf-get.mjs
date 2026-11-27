@@ -14,7 +14,7 @@ function htmlError(status, message) {
     body: `<!doctype html><meta charset="utf-8"><title>Lien indisponible</title>` +
       `<div style="font-family:system-ui,sans-serif;max-width:480px;margin:80px auto;text-align:center;color:#334">` +
       `<h2 style="color:#1a3a6e">Document indisponible</h2><p>${message}</p>` +
-      `<p style="font-size:.85rem;color:#888">FIDI Conseil · Étude de marché</p></div>`,
+      `<p style="font-size:.85rem;color:#888">Étude de marché &amp; Avis de valeur — une application Optimmo Dom</p></div>`,
   };
 }
 

@@ -15,7 +15,8 @@
 // puis incrémente « Relances » et « Dernière relance » sur la facture Notion.
 
 import { DB, queryDatabase, updatePage, ensureProperty, P, hasToken } from "./_notion.mjs";
-import { adresseReponse } from "./send-email.mjs";
+import { envoyerEmail } from "./send-email.mjs";
+import { identiteFacture } from "./_identite.mjs";
 
 export const config = { schedule: "@daily" };
 
@@ -25,28 +26,15 @@ function daysBetween(iso, now) {
   return Math.floor((now - d.getTime()) / 86400000);
 }
 
-async function sendResend({ to, subject, lien, message }) {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) return { ok: false, error: "RESEND_API_KEY manquant" };
-  const from = process.env.RESEND_FROM;
-  if (!from) return { ok: false, error: "RESEND_FROM manquant" };
-  const replyTo = adresseReponse();
-  const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#1a2233;">
-    <div style="background:#1a3a6e;padding:20px 28px;border-radius:8px 8px 0 0;"><h2 style="color:#fff;margin:0;font-size:1.3rem;">FIDI Conseil</h2></div>
-    <div style="padding:28px;border:1px solid #dee2e6;border-top:none;border-radius:0 0 8px 8px;background:#fff;">
-      <p>Bonjour,</p><p>${esc(message)}</p>
-      <p style="text-align:center;margin:26px 0;"><a href="${esc(lien)}" style="display:inline-block;background:#1a3a6e;color:#fff;text-decoration:none;padding:13px 30px;border-radius:8px;font-weight:700;">Régler ma facture (carte / PayPal)</a></p>
-      <p style="font-size:12px;color:#6c757d;">Si le bouton ne fonctionne pas : <a href="${esc(lien)}">${esc(lien)}</a></p>
-    </div></div>`;
+// Envoi par le cœur commun (habillage au nom de la société émettrice de la facture, pied signé du logiciel).
+async function sendResend({ to, subject, lien, message, jeton }) {
+  if (!process.env.RESEND_API_KEY) return { ok: false, error: "RESEND_API_KEY manquant" };
+  if (!process.env.RESEND_FROM) return { ok: false, error: "RESEND_FROM manquant" };
   try {
-    const r = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to: [to], subject, html, ...(replyTo ? { reply_to: replyTo } : {}) }),
-    });
-    const j = await r.json().catch(() => ({}));
-    return r.ok ? { ok: true, id: j.id } : { ok: false, error: j.message || ("HTTP " + r.status) };
+    const identite = await identiteFacture(null, jeton);
+    const r = await envoyerEmail({ to, subject, lien, message, bouton: "Régler ma facture (carte / PayPal)", appel: "Pour régler en ligne :", identite });
+    const j = JSON.parse(r.body || "{}");
+    return r.statusCode === 200 ? { ok: true, id: j.id } : { ok: false, error: j.error || ("HTTP " + r.statusCode) };
   } catch (e) { return { ok: false, error: e.message }; }
 }
 
@@ -104,7 +92,7 @@ export const handler = async () => {
         if (!enabled) { out.relances.push({ numero, email, niveau, age, sent: false, simulation: true }); continue; }
         if (!lien) { out.skipped++; continue; }
 
-        const sent = await sendResend({ to: email, subject, lien, message });
+        const sent = await sendResend({ to: email, subject, lien, message, jeton });
         if (sent.ok) {
           try {
             await updatePage(pg.id, {

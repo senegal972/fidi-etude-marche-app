@@ -16,7 +16,7 @@
   // Charte de marque active (marque.js, module « Mise en page ») ; le signataire mémorisé
   // dans l'avis de valeur (localStorage fidi:avis:signataire) reste prioritaire s'il existe.
   function charte() {
-    return (window.Marque && window.Marque.get()) || { enseigne: '', baseline: '', logo: '', coordonnees: {} };
+    return (window.Marque && (window.Marque.document ? window.Marque.document() : window.Marque.get())) || { enseigne: '', baseline: '', logo: '', coordonnees: {} };
   }
   function societe() {
     const m = charte(), co = m.coordonnees || {};
@@ -283,7 +283,7 @@
       + '<tr><td>Périmètre</td><td>' + esc(inputs.perimetre || '—') + '</td></tr>'
       + '</tbody></table>'
       + mapImg
-      + '<div class="rpt-note" style="margin-top:10mm;">Document établi à partir des données publiques officielles (DVF, INSEE, ADEME, Géorisques, IGN).</div>'
+      + '<div class="rpt-note" style="margin-top:10mm;">Document établi à partir des données publiques officielles (DVF, INSEE, ADEME, Géorisques, IGN).' + (window.Marque && window.Marque.signatureLogiciel ? '<br>Réalisé avec ' + esc(window.Marque.signatureLogiciel()) + '.' : '') + '</div>'
       + '</div>';
   }
 

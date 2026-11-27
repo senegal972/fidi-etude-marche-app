@@ -126,7 +126,7 @@ test("/api/bienvenue : enregistrer, joindre, retirer, essai", async () => {
 
 test("branchements : création, inscription, renvoi, écran de réglage", () => {
   const admin = lire("netlify/functions/admin-users.mjs"), insc = lire("netlify/functions/signup-link.mjs"), page = lire("index.html");
-  assert.match(admin, /envoyerBienvenue\(\{ event, email, nom: b\.nom \|\| "", hash, choisirMotDePasse: true, copie: me\.user\.email \}\)/);
+  assert.match(admin, /envoyerBienvenue\(\{ event, email, nom: b\.nom \|\| "", hash, choisirMotDePasse: true, copie: me\.user\.email, identite: await identiteCompte\(event, me\) \}\)/);
   assert.match(admin, /action === "bienvenue"/);
   assert.match(insc, /envoyerBienvenue\(\{ event, email, nom, choisirMotDePasse: false, copie: adresseCopieDefaut\(\) \}\)/);
   assert.match(page, /compte-bienvenue\.js/); assert.match(page, /id="bienvenueRoot"/); assert.match(page, /FidiBienvenue\.basculer\(\)/);
