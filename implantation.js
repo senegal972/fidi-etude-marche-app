@@ -619,7 +619,9 @@
     return {
       pleineTerrePct: pt && pt.pct != null ? pt.pct : '', srcPleineTerre: srcOf(pt),
       placesLogt, srcStationnement: srcStat, citeStationnement: stat && !mStat ? srcOf(stat) : null,
-      voirieLargeur: VOIRIE_LARGEUR, logtsBati: 1,
+      // Largeur minimale de voie lue dans le règlement (voie nouvelle, à défaut accès) ; sinon 5 m, usage courant.
+      voirieLargeur: r.voirie && r.voirie.m ? r.voirie.m : VOIRIE_LARGEUR, srcVoirie: srcOf(r.voirie), voirieObjet: r.voirie ? r.voirie.objet : null,
+      logtsBati: 1,
       emprisePct: em && em.pct != null ? em.pct : '',
       empriseNonReglementee: !!(em && em.non_reglemente),
       empriseAmbigue: em && em.ambigu ? em.valeurs : null,
@@ -841,7 +843,7 @@
       const etatVoirie = choix === true ? 'prévue (votre choix)' : choix === false ? 'non prévue : lots accessibles à pied' : (voirieAffichee ? 'proposée : terrain tout en longueur' : 'non proposée : terrain court ou peu de bâtiments');
       return '<tr><td style="color:#556;">Voirie interne (desserte des lots)</td><td colspan="2" style="font-size:.74rem;"><label style="cursor:pointer;"><input type="checkbox" class="form-check-input impl-case me-1" data-case="voirie"' +
           ((choix === true || (choix === undefined && voirieAffichee)) ? ' checked' : '') + '>' + etatVoirie + '</label></td></tr>' +
-        champ('voirieLargeur', 'Voirie interne : largeur', 'm', P.val.voirieLargeur, st.valeurs.voirieLargeur !== undefined ? '<span class="impl-src" style="color:#556;">saisie</span>' : '<span class="impl-src" style="color:#8a6d3b;" title="5 m est la largeur usuelle d\'une voie privée de desserte ; le minimum exigé figure dans le règlement (article « accès et voirie »).">usage courant — minimum à lire dans le règlement</span>', 'min="3" step="0.5"', '') +
+        champ('voirieLargeur', 'Voirie interne : largeur', 'm', P.val.voirieLargeur, st.valeurs.voirieLargeur !== undefined ? '<span class="impl-src" style="color:#556;">saisie</span>' : P.def.srcVoirie ? lienPage(P.def.srcVoirie, P.url) + (P.def.voirieObjet === 'accès' ? ' <span class="text-muted">(largeur d\'accès)</span>' : ' <span class="text-muted">(minimum)</span>') : '<span class="impl-src" style="color:#8a6d3b;" title="5 m est la largeur usuelle d\'une voie privée de desserte ; le minimum exigé figure dans le règlement (article « accès et voirie »).">usage courant — minimum à lire dans le règlement</span>', 'min="3" step="0.5"', '') +
         champ('logtsBati', 'Logements par bâtiment', '', P.val.logtsBati, hyp('logtsBati'), 'min="1" step="1"', '');
     }
     function lignesResultat(res) {

@@ -90,3 +90,19 @@ test("clôtures et m² ne sont pas des hauteurs de construction", () => {
   const r = parseZoneRules(pages, "UD");
   assert.equal(r.hauteur, null);
 });
+
+// ── Largeur minimale de voie ─────────────────────────────────────────────────
+test("largeur minimale de voie : voie avant accès, formulations courantes, faux amis écartés", async () => {
+  const { regleVoirie } = await import("../netlify/functions/_plu_regles.mjs");
+  const lu = (t) => regleVoirie(t, [0], { start: 0, end: t.length });
+  assert.deepEqual([lu("Les voies nouvelles ouvertes à la circulation doivent avoir une largeur minimale de 5 mètres.").m, lu("Les voies nouvelles doivent avoir une largeur minimale de 5 mètres.").objet], [5, "voie"]);
+  assert.equal(lu("Toute voie nouvelle doit présenter une emprise d'au moins 8 m, dont une chaussée de 5 m.").m, 8);
+  assert.equal(lu("La largeur de chaussée ne peut être inférieure à 3,50 m.").m, 3.5);
+  assert.equal(lu("Une largeur minimale de 6 m est exigée pour les voies en impasse.").m, 6);
+  const acces = lu("Les accès doivent avoir une largeur minimum de 3,5 m.");
+  assert.deepEqual([acces.m, acces.objet], [3.5, "accès"]);
+  assert.equal(lu("Les accès doivent avoir une largeur minimum de 3,5 m. Les voies nouvelles auront une largeur minimale de 6 m.").m, 6, "la voie passe avant l'accès");
+  assert.equal(lu("Les voies doivent être adaptées. La hauteur minimale est de 5 m."), null);
+  assert.equal(lu("Les voies en impasse comportent une aire de retournement d'une surface minimale de 50 m²."), null);
+  assert.equal(lu("Les voies doivent avoir une largeur minimale de 50 m."), null, "valeur hors de toute vraisemblance");
+});

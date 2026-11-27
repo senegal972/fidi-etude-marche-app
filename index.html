@@ -31,6 +31,7 @@
 <link href="/marque.css" rel="stylesheet"/>
 <link href="/facture.css" rel="stylesheet"/>
 <link href="/etude-actions.css" rel="stylesheet"/>
+<link href="/valorisation.css" rel="stylesheet"/>
 <link href="/compte.css" rel="stylesheet"/>
 <link href="/compte-facturation.css" rel="stylesheet"/>
 <link href="/mobile.css" rel="stylesheet"/>
@@ -983,6 +984,9 @@ body.map-fs-on{overflow:hidden;}
             <button type="button" class="btn btn-sm btn-light" style="font-weight:600;" onclick="ruineOpen()">
               <i class="bi bi-bricks me-1"></i>Bâtiment en ruine / à détruire / vétuste…
             </button>
+            <button type="button" class="btn btn-sm btn-light" style="font-weight:600;" id="btnValoriser" onclick="FidiValorisation.ouvrir()" title="Fiche descriptive du bien (pièces, surfaces, annexes) et plus-value des atouts : piscine, vue, terrasse, prestations…">
+              <i class="bi bi-stars me-1"></i>Valoriser le bien (pièces, annexes, atouts)…
+            </button>
             <button type="button" class="btn btn-sm btn-light" style="font-weight:600;" onclick="etatOpen()" title="Décote d'état / vétusté (grille d'expertise) — bâti sans démolition">
               <i class="bi bi-clipboard2-check me-1"></i>État &amp; vétusté du bien…
             </button>
@@ -991,9 +995,11 @@ body.map-fs-on{overflow:hidden;}
             </button>
             <span id="ruineAppliedTag" class="ms-2 small fw-semibold" style="color:#ffd54f;"></span>
             <span id="etatAppliedTag" class="ms-2 small fw-semibold" style="color:#ffd54f;"></span>
+            <span id="valoAppliedTag" class="ms-2 small fw-semibold" style="color:#ffd54f;"></span>
           </div>
           <div id="ruinePanel" class="mt-2 d-none" style="clear:both;"></div>
           <div id="etatPanel" class="mt-2 d-none" style="clear:both;"></div>
+          <div id="valoResume" class="valo-resume mt-2 d-none"></div>
         </div>
       </div>
       <!-- Estimations par type : Maison / Appartement / Terrain -->
@@ -3104,6 +3110,7 @@ function renderResults(d){
 
   // Estimation
   try { ruineReset(); } catch(e){}  // réinitialise le bâti-ruine à chaque nouvelle analyse
+  try { if(window.FidiValorisation) FidiValorisation.reinitialiser(); } catch(e){} // la valorisation ne suit pas d'une étude à l'autre
   if(est){
     renderEstimation(est, d.type_bien, d.estimations);
     document.getElementById('estimationRow').classList.remove('d-none');
@@ -5132,6 +5139,7 @@ function ruineApply(add){
   dd.estimation.ruine_delta=applied; dd.estimation.etat_decote_pct=0;
   dd.estimation.valeur_med=med; dd.estimation.valeur_min=mn; dd.estimation.valeur_max=mx;
   if(window.__ruineLast) window.__ruineLast.applied = !!applied; // trace l'état pour le récap
+  if(window.FidiValorisation) FidiValorisation.apresAjustement(); // la valorisation (atouts, annexes) se repose sur la nouvelle valeur
 }
 function ruineReset(){ window.__estBase=null; window.__ruineDelta=0; window.__ruineAppliedDelta=0; window.__ruineLast=null;
   var t=document.getElementById('ruineAppliedTag'); if(t) t.textContent='';
@@ -5232,6 +5240,7 @@ function etatApply(apply){
   var dd=window.__fidiData||{}; dd.estimation=dd.estimation||{};
   dd.estimation.etat_decote_pct=pct; dd.estimation.ruine_delta=0;
   dd.estimation.valeur_med=med; dd.estimation.valeur_min=mn; dd.estimation.valeur_max=mx;
+  if(window.FidiValorisation) FidiValorisation.apresAjustement(); // la valorisation (atouts, annexes) se repose sur la valeur décotée
 }
 
 // ═══ Récapitulatif de l'étude — 1 page A4 (synthèse, estimation, transactions,
@@ -6579,6 +6588,7 @@ function copyShareUrl(){
 <script src="/compte-bienvenue.js" defer></script>
 <script src="/compte-profils.js" defer></script>
 <script src="/etude-actions.js" defer></script>
+<script src="/valorisation.js" defer></script>
 <script src="/entreprises-proches.js" defer></script>
 <script src="/facture-externe.js" defer></script>
 <script src="/facture.js" defer></script>

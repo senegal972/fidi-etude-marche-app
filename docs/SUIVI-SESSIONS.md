@@ -45,7 +45,8 @@ Ce dépôt est modifié depuis plusieurs outils (Claude Code sur le PC, Claude C
 | 1.45.0 | 2026-11-26 | Claude Code (cloud) | Copie des e-mails de bienvenue à l'administrateur ; installation sur ordinateur dans l'e-mail | fcb1d72 |
 | 1.46.0 | 2026-11-27 | Claude Code (cloud) | Identité de la société qui agit (e-mails, documents, page client), produit / fabricant Optimmo Dom, bienvenue en lettre d'information, double fenêtre de détail corrigée | ca6dc07 |
 | 1.47.0 | 2026-11-27 | Claude Code (cloud) | Bandeau de l'étude (fiche « Pour qui ? », tuiles d'actions), rubrique « Profils & modules », quota d'essais à 2 | 3800f39 |
-| 1.48.0 | 2026-11-27 | Claude Code (cloud) | Potentiel constructible : emprise reprise des règles de la zone, voirie interne décochable, espaces verts, stationnement | (ce commit) |
+| 1.48.0 | 2026-11-27 | Claude Code (cloud) | Potentiel constructible : emprise reprise des règles de la zone, voirie interne décochable, espaces verts, stationnement | 68d1741 |
+| 1.49.0 | 2026-11-27 | Claude Code (cloud) | « Valoriser le bien » : fiche descriptive, annexes pondérées, atouts ; largeur minimale de voie lue dans le PLU | (ce commit) |
 
 ## État des branches au 2026-11-16
 

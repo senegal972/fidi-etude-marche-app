@@ -296,6 +296,29 @@ function regleStationnement(text, starts, range) {
   return { citation: extraitAutour(t, m.index, 240), page: pageAt(starts, range.start + m.index) };
 }
 
+// Largeur minimale d'une voie nouvelle (ou, à défaut, d'un accès) : « les voies nouvelles doivent avoir une largeur minimale de 5 m »,
+// « emprise d'au moins 8 mètres », « largeur de chaussée ne pouvant être inférieure à 3,50 m ». Une voie passe avant un accès.
+// Valeur retenue seulement entre 2,5 et 20 m (une surface « 5 m² » ou une hauteur ne sont pas des largeurs de voie).
+const NB_METRES = "(\\d{1,2}(?:[.,]\\d{1,2})?)\\s*m(?:[èe]tres?)?(?![²2a-zà-ÿ])";
+const SEUIL_VOIE = "(?:minim\\w+|au moins|sup[ée]rieure?s? ou [ée]gale?s? [àa]|(?:pas|[êe]tre) inf[ée]rieure?s? [àa])";
+const MOTIFS_VOIRIE = [
+  { objet: "voie", re: new RegExp("(?:voies?|voirie|chauss[ée]e|plate-?forme)[^.;]{0,160}?(?:largeur|emprise)[^.;]{0,70}?" + SEUIL_VOIE + "[^.;\\d]{0,40}?" + NB_METRES, "i") },
+  { objet: "voie", re: new RegExp("(?:largeur|emprise)[^.;]{0,40}?" + SEUIL_VOIE + "[^.;\\d]{0,40}?" + NB_METRES + "[^.;]{0,80}?(?:voies?|voirie|chauss[ée]e)", "i") },
+  { objet: "voie", re: new RegExp("(?:largeur|emprise)[^.;]{0,30}?(?:voies?|voirie|chauss[ée]e|plate-?forme)[^.;]{0,90}?" + SEUIL_VOIE + "[^.;\\d]{0,40}?" + NB_METRES, "i") },
+  { objet: "accès", re: new RegExp("acc[èe]s[^.;]{0,160}?largeur[^.;]{0,70}?" + SEUIL_VOIE + "[^.;\\d]{0,40}?" + NB_METRES, "i") },
+];
+export function regleVoirie(text, starts, range) {
+  const t = text.slice(range.start, range.end);
+  for (const { objet, re } of MOTIFS_VOIRIE) {
+    const m = t.match(re);
+    if (!m) continue;
+    const v = parseFloat(m[1].replace(",", "."));
+    if (!(v >= 2.5 && v <= 20)) continue;
+    return { m: v, objet, citation: extraitAutour(t, m.index, 260), page: pageAt(starts, range.start + m.index) };
+  }
+  return null;
+}
+
 function reglePleineTerre(text, starts, range, zone) {
   const t = text.slice(range.start, range.end);
   // Tableau par code : « UDa 30% UDb 40% » sous un titre d'espaces verts.
@@ -330,5 +353,6 @@ export function parseZoneRules(pages, zone) {
     entre_batiments: range ? regleRecul(text, starts, scope, zone, TITRES.entre) : null,
     stationnement: range ? regleStationnement(text, starts, scope) : null,
     pleine_terre: range ? reglePleineTerre(text, starts, scope, zone) : null,
+    voirie: range ? regleVoirie(text, starts, scope) : null,
   };
 }

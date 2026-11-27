@@ -170,10 +170,24 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
   tant que `res.libre_m2` ne les couvre pas, `res.retiresEspaces`), **stationnement** (`placesLogt` × `logtsBati`, 25 m² par place →
   `res.places`, `res.parking_m2`). L'emprise retenue est plafonnée par ces réserves (`limite_par = 'espaces'`).
 - `defauts(regles)` lit `pleine_terre.pct` et le nombre de places par logement dans la citation de `stationnement` (`_plu_regles.mjs`).
-  **La largeur minimale de voie n'est pas extraite du règlement** (5 m = usage courant, affiché comme tel). Emprise absente du règlement :
+  **Largeur minimale de voie** : `regleVoirie()` (`_plu_regles.mjs` → `regles.voirie = { m, objet:'voie'|'accès', page, citation }`, voie avant
+  accès, valeurs de 2,5 à 20 m seulement) → `voirieLargeur` avec sa page ; sans lecture : 5 m, usage courant. Emprise absente du règlement :
   repli sur `data.emprise_pct`, sinon milieu de la fourchette de `window.__fidiRegleIndicative` (posé par `constructRules` dans `index.html`),
   affiché « indicatif (règles de la zone) ». État par étude : `__fidiData.implantation.valeurs` (dont `voirie`).
 - Le stationnement n'est pas dessiné (surface seulement). Tests : `tests/implantation.test.mjs`.
+
+### Valoriser le bien — `valorisation.js` / `valorisation.css` (`FidiValorisation`)
+- Bouton `#btnValoriser` de la carte « Estimation vénale » → `ouvrir()` : fenêtre `#valoModal` (composition, surfaces par pièce, annexes, atouts).
+  `calculer(fiche, avant, prixM2)` (pur, testé) : **valeur × (1 + Σ % des atouts) + Σ surface × coefficient × prix au m²**, sur les trois bornes ;
+  catalogue `ANNEXES` (coefficients 0,2 à 0,5) et `ATOUTS` (pourcentage proposé + fourchette de repère) — repères d'usage, **aucun barème
+  officiel**, tout est modifiable à l'écran ; cumul > 35 % signalé, jamais bloqué. `typologie()` : T + pièces principales (ou chambres + 1).
+- **Ordre des ajustements** : la valorisation s'applique après la décote d'état ou l'ajustement « ruine » (exclusifs entre eux). `etatApply` et
+  `ruineApply` appellent `apresAjustement()` ; une nouvelle analyse appelle `reinitialiser()`. `appliquer()` pose `window.__estBase` s'il est vide
+  pour que l'état / la ruine repartent toujours de la valeur d'origine.
+- Données : `__fidiData.fiche_bien` (la fiche) et `__fidiData.estimation.valorisation` (`pct`, `annexes_eur`, `lignes`, `avant_med`, `med`) ;
+  `estimation.valeur_min / med / max` portent la valeur valorisée (lue par les documents). Rappel à l'écran : `#valoResume`, `#valoAppliedTag`.
+  Non fait : détail de la fiche dans le rapport A4 et l'avis de valeur ; l'étiquette n'est pas reposée à la réouverture d'une étude sauvegardée.
+  Tests : `tests/valorisation.test.mjs`.
 
 ### Profils & modules — `compte-profils.js` (rubrique `tabProfils`, administrateur)
 - `FidiProfils.monter()` rend dans `#profilsRoot` les profils (`/api/templates` : modèles système + personnalisés dans la base Notion des

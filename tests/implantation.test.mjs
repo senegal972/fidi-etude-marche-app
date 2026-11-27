@@ -284,3 +284,9 @@ test("plusieurs terrains : voirie, places et espaces verts s'additionnent", () =
   assert.equal(t.pleineTerre_m2, 1200);
   proche(t.voirie.surface, a.voirie.surface, 0.001);
 });
+
+test("largeur de voie lue dans le règlement : reprise avec sa page, sinon 5 m", () => {
+  const d = defauts({ voirie: { m: 6, objet: "voie", page: 9, citation: "largeur minimale de 6 m" } });
+  assert.equal(d.voirieLargeur, 6); assert.equal(d.srcVoirie.page, 9); assert.equal(d.voirieObjet, "voie");
+  assert.equal(defauts({}).voirieLargeur, 5); assert.equal(defauts({}).srcVoirie, null);
+});
