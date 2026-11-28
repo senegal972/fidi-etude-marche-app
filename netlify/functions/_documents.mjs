@@ -104,3 +104,18 @@ export async function accesDossier(lecteur, page) {
   const compte = comptes.find((c) => c.email === proprietaire) || null;
   return { voir: peutVoir(lecteur, compte), modifier: false, proprietaire };
 }
+
+// E-mails des comptes dont le lecteur peut voir les documents, les clients et les factures (lui compris). L'administrateur voit tout :
+// { admin:true }. Si la liste des comptes ne peut pas être lue, un compte ordinaire ne voit que les siens.
+export async function emailsVisibles(lecteur) {
+  if (lecteur.role === "Administrateur") return { admin: true, emails: [] };
+  let comptes = [];
+  try { comptes = await chargerComptes(); } catch { comptes = []; }
+  const emails = new Set(comptesVisibles(lecteur, comptes).map((c) => c.email));
+  emails.add(lecteur.email);
+  return { admin: false, emails: Array.from(emails).filter(Boolean) };
+}
+// Colonne « propriétaire » d'une base quelconque (factures, contacts) : créée au besoin, false si impossible.
+export async function colonneCompte(databaseId, nom = PROP_PROPRIETAIRE) {
+  try { return !!(await ensureProperty(databaseId, nom, { rich_text: {} })); } catch { return false; }
+}

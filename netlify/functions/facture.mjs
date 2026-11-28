@@ -21,6 +21,7 @@ import { reqOrigin } from "./_facture.mjs";
 import { getNamedStore } from "./_blobs.mjs";
 import { calculerFacture, libelleCourt } from "./_facture_calc.mjs";
 import { assainirMarque, MARQUE_STORE } from "./marque.mjs";
+import { colonneCompte, PROP_PROPRIETAIRE } from "./_documents.mjs";
 
 export const FACTURES_STORE = "fidi-factures";
 
@@ -242,7 +243,11 @@ export const handler = async (event) => {
       catch (e) { return authResp(503, { error: "Enregistrement du détail de la facture impossible, réessayez.", blobs_error: true }); }
     }
 
+    // Confidentialité : la facture porte le compte qui l'émet (historique d'un client visible de ce compte et des membres de son
+    // groupe à qui il ouvre ses documents). Au mieux : sans la colonne, la facture est créée quand même (visible de l'administrateur).
+    const avecCompte = await colonneCompte(DB.facture);
     await createPage(DB.facture, {
+      ...(avecCompte ? { [PROP_PROPRIETAIRE]: P.text(String(me.user.email || "").toLowerCase()) } : {}),
       "Numéro":            P.title(factRef),
       "Date":              P.date(today),
       "Client":            P.text(client),

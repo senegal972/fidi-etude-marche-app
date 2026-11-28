@@ -1995,7 +1995,7 @@ function etudeGetClients(){
 function etudeGetCrmCache(){
   try {
     if (localStorage.getItem('fidi:crm:enabled') !== '1') return [];
-    var raw = localStorage.getItem('fidi:crm:cache:clients'); var a = raw ? JSON.parse(raw) : [];
+    var raw = localStorage.getItem('fidi:crm:cache:clients:v2'); var a = raw ? JSON.parse(raw) : [];
     return Array.isArray(a) ? a : [];
   } catch(e){ return []; }
 }

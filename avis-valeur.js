@@ -495,7 +495,8 @@
   var CLIENTS_KEY = 'fidi:clients';                // [{id,label,nom,adresse,cp,ville,email,telephone,type,notes,source}]
   var CLIENT_LAST_KEY = 'fidi:clients:last';       // id dernier client chargé
   var CRM_ENABLED_KEY = 'fidi:crm:enabled';        // '1' | ''
-  var CRM_CACHE_KEY = 'fidi:crm:cache:clients';    // cache résultats CRM
+  var CRM_CACHE_KEY = 'fidi:crm:cache:clients:v2'; // v2 : carnet cloisonné par compte (l'ancien cache, commun à tous, est effacé)
+  try { localStorage.removeItem('fidi:crm:cache:clients'); } catch (e) {}    // cache résultats CRM
   function listClients() {
     try {
       var raw = localStorage.getItem(CLIENTS_KEY);

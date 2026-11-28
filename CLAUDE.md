@@ -207,7 +207,13 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
 - Écran : `FidiDocuments.ouvrir()` (bouton `#ddDocs`) — onglets « Les miens », « Mon groupe », « Tous les comptes » (administrateur, par groupe
   puis par personne, dont « Sans propriétaire »), filtre études / avis, recherche, réglage « Qui peut voir mes documents ? ». Une étude se rouvre par
   `reopenEtude(ref)` ; un avis par `AvisDossiers.ouvrir(ref)` (recherche pré-remplie). L'écran présente : il ne décide pas de la confidentialité.
-- Non couvert : `/api/crm-clients` et `/api/factures/client` listent encore les clients de tous les comptes (session exigée seulement).
+- **Clients et factures, mêmes règles** (`emailsVisibles(lecteur)`, `colonneCompte`) : `/api/crm-clients` ne rend que les contacts dont la colonne
+  « Compte application » (`PROP_COMPTE`, posée à la création) est un compte visible — filtre dans la requête et revérification ; le carnet
+  d'origine, sans compte, est réservé à l'administrateur. `facture.mjs` pose « Propriétaire » sur toute nouvelle facture (au mieux : sans la
+  colonne, la facture est créée quand même) ; `/api/factures/client` filtre sur ce compte ; `/api/facture/cancel` n'agit que pour l'émetteur ou
+  l'administrateur (404 sinon). Factures antérieures, sans compte : administrateur. Cache navigateur du carnet : `fidi:crm:cache:clients:v2`.
+- Non couvert : les contacts mémorisés dans le navigateur (`localStorage` `fidi:clients`) sont propres au poste, pas au compte : deux personnes
+  qui partagent un même navigateur les voient tous les deux.
   Tests : `tests/documents.test.mjs`, `tests/notion-session.test.mjs`, `tests/avis-store.test.mjs`.
 
 ### Profils & modules — `compte-profils.js` (rubrique `tabProfils`, administrateur)
@@ -317,7 +323,8 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
   (non modifiable). L'enregistrement reporte l'adresse principale et le téléphone sur toutes les factures du client dans Notion (« Email client »
   sert aux relances). Sans fiche, `GET` relève les coordonnées sur les factures (`provisoire:true`). Dans le module : `etat.contacts`, `emailsDe(f)`,
   panneau `contact` (`formulaireContact`, `data-fa-email`), panneau `renvoyer` (cases `.fa-dest`, `#faDestAutre`) : **un e-mail par destinataire**.
-- `/api/crm-clients` et `/api/factures/client` exigent une session (401 sinon). Tests : `tests/contacts.test.mjs`.
+- `/api/crm-clients` et `/api/factures/client` exigent une session (401 sinon) et sont cloisonnés par compte (voir « Mes documents et
+  confidentialité »). Tests : `tests/contacts.test.mjs`, `tests/clients-cloisonnes.test.mjs`.
 - Identifiants conservés : `factAdminRoot`, `factStatsBox`, `factAlertsBox`, `factListBody`, `factCollabBody`, `factSeuilA`, `factSeuilB`.
 - Non couvert : paiement partiel ou en plusieurs fois, avoir partiel, remboursement automatique, rapprochement bancaire, renommer un client, fusionner deux fiches.
 

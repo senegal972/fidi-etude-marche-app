@@ -6,6 +6,7 @@
 import { DB, hasToken, queryDatabase } from "./_notion.mjs";
 import { authResp, currentUser } from "./_auth.mjs";
 import { factureFromPage, factureHtmlUrl, reqOrigin } from "./_facture.mjs";
+import { lecteurDe, emailsVisibles, proprietaireDePage } from "./_documents.mjs";
 
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return authResp(200, {});
@@ -45,8 +46,13 @@ export const handler = async (event) => {
       cursor = r.next_cursor;
     }
 
+    // Confidentialité : seules les factures émises par le compte, ou par un membre de son groupe qui lui ouvre ses documents.
+    // Une facture sans compte émetteur (antérieure à la 1.51) n'est visible que de l'administrateur.
+    const portee = await emailsVisibles(lecteurDe(me));
+    const visibles = portee.admin ? pages : pages.filter((p) => portee.emails.includes(proprietaireDePage(p)));
+
     const origin = reqOrigin(event);
-    const items = pages.map((p) => {
+    const items = visibles.map((p) => {
       const f = factureFromPage(p);
       const props = p.properties || {};
       return {

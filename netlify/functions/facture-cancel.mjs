@@ -7,6 +7,7 @@
 
 import { DB, P, hasToken, updatePage, queryDatabase } from "./_notion.mjs";
 import { authResp, currentUser } from "./_auth.mjs";
+import { lecteurDe, proprietaireDePage, peutModifier } from "./_documents.mjs";
 
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return authResp(200, {});
@@ -32,6 +33,8 @@ export const handler = async (event) => {
     if (!q.results?.length) return authResp(404, { error: "Facture introuvable" });
 
     const p = q.results[0];
+    // Seuls le compte émetteur de la facture et l'administrateur l'annulent (même réponse qu'une facture absente sinon).
+    if (!peutModifier(lecteurDe(me), proprietaireDePage(p))) return authResp(404, { error: "Facture introuvable" });
     const props = p.properties || {};
     const statut = props["Statut"]?.select?.name || "";
     const numero = props["Numéro"]?.title?.[0]?.plain_text || "";

@@ -9,6 +9,11 @@
 
 import { hasToken, queryDatabase, createPage } from "./_notion.mjs";
 import { currentUser } from "./_auth.mjs";
+import { lecteurDe, emailsVisibles, colonneCompte } from "./_documents.mjs";
+
+// Compte de l'application qui a créé le contact : colonne propre à l'application, pour ne pas toucher aux champs du CRM.
+export const PROP_COMPTE = "Compte application";
+const compteDuContact = (page) => ((page.properties || {})[PROP_COMPTE]?.rich_text || []).map((t) => t.plain_text).join("").trim().toLowerCase();
 
 const CORS = {
   "Content-Type": "application/json; charset=utf-8",
@@ -88,6 +93,10 @@ export const handler = async (event) => {
   let me = null;
   try { me = await currentUser(event); } catch { me = null; }
   if (!me) return j(401, { error: "Connexion requise.", need_auth: true });
+  // Confidentialité (mêmes règles que les documents) : un compte voit les contacts qu'il a créés et ceux des membres de son groupe
+  // qui lui ouvrent leurs documents ; un contact sans compte (carnet d'origine) n'est visible que de l'administrateur.
+  const lecteur = lecteurDe(me);
+  const portee = await emailsVisibles(lecteur);
 
   if (event.httpMethod === "POST") {
     if (!CRM_DB || !hasToken()) {
@@ -103,6 +112,9 @@ export const handler = async (event) => {
     if (!body.nom && !body.email) return j(400, { error: "nom ou email requis" });
     try {
       const props = toNotionProps(body);
+      const colonne = await colonneCompte(CRM_DB, PROP_COMPTE);
+      if (colonne) props[PROP_COMPTE] = { rich_text: [{ text: { content: lecteur.email } }] };
+      else if (!portee.admin) return j(503, { error: "Le contact ne peut pas être rattaché à votre compte pour l'instant. Réessayez.", configured: true });
       const page = await createPage(CRM_DB, props);
       return j(200, { ok: true, created: true, id: page.id, client: toClient(page) });
     } catch (e) {
@@ -136,6 +148,10 @@ export const handler = async (event) => {
       };
     } catch { filter = undefined; }
 
+    if (!portee.admin) {
+      if (!(await colonneCompte(CRM_DB, PROP_COMPTE))) return j(200, { ok: true, configured: true, count: 0, items: [] });
+      filter = { or: portee.emails.slice(0, 90).map((e) => ({ property: PROP_COMPTE, rich_text: { equals: e } })) };
+    }
     const pages = [];
     let cursor;
     for (let i = 0; i < 5; i++) {
@@ -148,7 +164,8 @@ export const handler = async (event) => {
       if (!r.has_more) break;
       cursor = r.next_cursor;
     }
-    const items = pages.map(toClient).filter((c) => c.nom || c.email);
+    // Revérification contact par contact, en plus du filtre de la requête.
+    const items = pages.filter((pg) => portee.admin || portee.emails.includes(compteDuContact(pg))).map(toClient).filter((c) => c.nom || c.email);
     return j(200, {
       ok: true, configured: true, count: items.length, items,
       filter_applied: !!filter,
