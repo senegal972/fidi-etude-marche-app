@@ -186,7 +186,12 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
   pour que l'état / la ruine repartent toujours de la valeur d'origine.
 - Données : `__fidiData.fiche_bien` (la fiche) et `__fidiData.estimation.valorisation` (`pct`, `annexes_eur`, `lignes`, `avant_med`, `med`) ;
   `estimation.valeur_min / med / max` portent la valeur valorisée (lue par les documents). Rappel à l'écran : `#valoResume`, `#valoAppliedTag`.
-  Non fait : détail de la fiche dans le rapport A4 et l'avis de valeur ; l'étiquette n'est pas reposée à la réouverture d'une étude sauvegardée.
+- **Rapport A4** : `htmlRapport(d)` (pur, défini avant la partie écran — c'est le seul endroit du module qui porte des styles en ligne, aux
+  teintes de référence du rapport) rend le bloc « Fiche descriptive du bien » ; `rapport-a4.js` l'ajoute après l'estimation (même case
+  d'impression `estimation`) et rappelle la valorisation dans le bandeau. Sans valorisation appliquée : relevé des éléments cochés, sans chiffre.
+- **Conservation** : `notion-save` écrit `{ fiche, valorisation }` dans la propriété « Fiche du bien » de l'étude (JSON, au mieux) ;
+  `propsToEtude` les rend dans `data.fiche_bien` et `estimation.valorisation` ; `reopenEtude` appelle `restaurer()` (valeur de départ =
+  `valorisation.avant`). Non fait : fiche dans l'avis de valeur ; la décote d'état, elle, n'est toujours pas restaurée à la réouverture.
   Tests : `tests/valorisation.test.mjs`.
 
 ### Mes documents et confidentialité — `_documents.mjs`, `documents.mjs`, `mes-documents.js` / `mes-documents.css`

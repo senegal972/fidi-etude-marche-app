@@ -97,7 +97,49 @@
     return m.join(' · ');
   }
 
-  var api = { ANNEXES: ANNEXES, ATOUTS: ATOUTS, PIECES: PIECES, calculer: calculer, typologie: typologie, surfacePiece: surfacePiece, resumeComposition: resumeComposition };
+  // ── Fiche du bien pour le rapport A4 (pur : rend du HTML à partir des données de l'étude) ────────────────────────────────
+  // Écrit avec les teintes de référence du rapport (#1a3a6e, #eaf0f8…) : la charte les remplace à l'impression (Marque.recolorer).
+  var h = function (v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
+  var fr = function (n, d) { return Number(n).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: d == null ? 2 : d }); };
+  var euro = function (n) { return Math.round(Number(n) || 0).toLocaleString('fr-FR') + ' €'; };
+  function htmlRapport(d) {
+    var f = (d && d.fiche_bien) || null, v = (d && d.estimation && d.estimation.valorisation) || null;
+    if (!f && !v) return '';
+    f = f || {};
+    var compo = resumeComposition(f);
+    var infos = [['Terrain', nombre(f.terrain) > 0 ? fr(nombre(f.terrain)) + ' m²' : ''], ['Exposition', f.exposition], ['Assainissement', f.assainissement], ['Mitoyenneté', f.mitoyennete]]
+      .filter(function (x) { return x[1]; }).map(function (x) { return '<span style="margin-right:10pt;"><span style="color:#6a7385;">' + x[0] + ' :</span> <b>' + h(x[1]) + '</b></span>'; }).join('');
+    var pieces = (f.listePieces || []).filter(function (p) { return (p.nom || '').trim() || surfacePiece(p) > 0; });
+    var total = pieces.reduce(function (t, p) { return t + surfacePiece(p); }, 0);
+    var th = 'style="text-align:left;font-size:7.5pt;color:#1a3a6e;border-bottom:1pt solid #1a3a6e;padding:2pt 4pt;"', td = 'style="font-size:8pt;padding:2pt 4pt;border-bottom:.5pt solid #dfe5ee;"', tdr = 'style="font-size:8pt;padding:2pt 4pt;border-bottom:.5pt solid #dfe5ee;text-align:right;white-space:nowrap;"';
+    var tablePieces = pieces.length ? '<table style="width:100%;border-collapse:collapse;margin-top:4pt;"><thead><tr><th ' + th + '>Pièce</th><th ' + th + '>Dimensions</th><th ' + th.replace('text-align:left', 'text-align:right') + '>Surface</th></tr></thead><tbody>' +
+      pieces.map(function (p) { var L = nombre(p.longueur), l = nombre(p.largeur), sp = surfacePiece(p);
+        return '<tr><td ' + td + '>' + h(p.nom || 'Pièce') + '</td><td ' + td + '>' + (L > 0 && l > 0 ? fr(L) + ' × ' + fr(l) + ' m' : '—') + '</td><td ' + tdr + '>' + (sp > 0 ? fr(sp) + ' m²' : '—') + '</td></tr>'; }).join('') +
+      (total > 0 ? '<tr><td ' + td + ' colspan="2"><b>Total des pièces décrites</b>' + (nombre(f.habitable) > 0 ? ' <span style="color:#6a7385;">(surface habitable déclarée : ' + fr(nombre(f.habitable)) + ' m²)</span>' : '') + '</td><td ' + tdr + '><b>' + fr(total, 1) + ' m²</b></td></tr>' : '') +
+      '</tbody></table>' : '';
+    // Valorisation appliquée : chaque ligne avec son effet ; sinon, simple relevé des annexes et atouts cochés.
+    var bloc = '';
+    if (v && v.lignes && v.lignes.length) {
+      bloc = '<table style="width:100%;border-collapse:collapse;margin-top:6pt;"><thead><tr><th ' + th + '>Élément valorisant</th><th ' + th + '>Base</th><th ' + th.replace('text-align:left', 'text-align:right') + '>Effet</th></tr></thead><tbody>' +
+        v.lignes.map(function (l) { return l.type === 'atout'
+          ? '<tr><td ' + td + '>' + h(l.nom) + '</td><td ' + td + '>pourcentage de la valeur</td><td ' + tdr + '>+ ' + fr(l.pct, 1) + ' %</td></tr>'
+          : '<tr><td ' + td + '>' + h(l.nom) + '</td><td ' + td + '>' + fr(l.surface) + ' m² × ' + fr(l.coef) + ' (surface pondérée)</td><td ' + tdr + '>+ ' + euro(l.valeur) + '</td></tr>'; }).join('') +
+        '<tr><td ' + td + ' colspan="2"><b>Valeur médiane avant valorisation → valorisée</b></td><td ' + tdr + '><b>' + euro(v.avant_med) + ' → ' + euro(v.med) + '</b></td></tr></tbody></table>';
+    } else {
+      var releve = [];
+      ANNEXES.forEach(function (a) { var x = (f.annexes || {})[a.cle]; if (x && x.actif) releve.push(a.nom + (nombre(x.surface) > 0 ? ' (' + fr(nombre(x.surface)) + ' m²)' : '')); });
+      ATOUTS.forEach(function (a) { var x = (f.atouts || {})[a.cle]; if (x && x.actif) releve.push(a.nom); });
+      if (releve.length) bloc = '<div style="font-size:8pt;margin-top:5pt;"><span style="color:#6a7385;">Annexes et atouts relevés (non chiffrés dans l\'estimation) :</span> ' + h(releve.join(' · ')) + '</div>';
+    }
+    if (!compo && !infos && !tablePieces && !bloc) return '';
+    return '<div class="rpt-block rpt-sec"><h3>Fiche descriptive du bien</h3>' +
+      (compo ? '<div style="font-size:9.5pt;font-weight:700;color:#1a3a6e;">' + h(compo) + '</div>' : '') +
+      (infos ? '<div style="font-size:8pt;margin-top:3pt;">' + infos + '</div>' : '') + tablePieces + bloc +
+      '<div class="rpt-note">' + (v ? 'Valorisation indicative : annexes retenues pour une fraction de leur surface au prix au m² du bien, atouts en pourcentage de la valeur. Repères d\'usage, sans barème officiel — à confirmer par les ventes comparables. ' : '') +
+      'Description déclarative établie lors de l\'étude ; les surfaces ne valent pas mesurage.</div></div>';
+  }
+
+  var api = { ANNEXES: ANNEXES, ATOUTS: ATOUTS, PIECES: PIECES, calculer: calculer, typologie: typologie, surfacePiece: surfacePiece, resumeComposition: resumeComposition, htmlRapport: htmlRapport };
   if (typeof window !== 'undefined') window.FidiValorisation = api;
   if (typeof document === 'undefined') return;
 
@@ -148,7 +190,7 @@
     if (!(etat.avant.med > 0)) return null;
     var r = calculer(fiche(), etat.avant, prixM2());
     etat.actif = r.pct > 0 || r.annexes_eur > 0;
-    if (etat.actif) { ecrire(r); d.estimation.valorisation = { pct: r.pct, annexes_eur: r.annexes_eur, lignes: r.lignes, avant_med: etat.avant.med, med: r.med }; }
+    if (etat.actif) { ecrire(r); d.estimation.valorisation = { pct: r.pct, annexes_eur: r.annexes_eur, lignes: r.lignes, avant_med: etat.avant.med, med: r.med, avant: { med: etat.avant.med, min: etat.avant.min, max: etat.avant.max } }; }
     else { ecrire({ med: etat.avant.med, min: etat.avant.min, max: etat.avant.max }); delete d.estimation.valorisation; }
     majResume();
     if (window.FidiGuard && window.FidiGuard.setDirty) window.FidiGuard.setDirty();
@@ -163,6 +205,13 @@
   // Nouvelle analyse : la valorisation de l'étude précédente ne suit pas.
   api.reinitialiser = function () { etat.avant = null; etat.actif = false; var t = $('valoAppliedTag'); if (t) t.textContent = ''; var r = $('valoResume'); if (r) { r.classList.add('d-none'); r.innerHTML = ''; } };
   api.retirer = retirer;
+  // Étude rouverte : la fiche et la valorisation enregistrées reprennent leur place (rappel sous l'estimation, valeur de départ).
+  api.restaurer = function () {
+    var d = donnees(), v = d.estimation.valorisation;
+    etat.avant = null; etat.actif = false;
+    if (v && v.avant && v.avant.med > 0 && d.fiche_bien) { etat.avant = { med: v.avant.med, min: v.avant.min, max: v.avant.max }; etat.actif = true; window.__estBase = window.__estBase || { med: v.avant.med, min: v.avant.min, max: v.avant.max }; appliquer(); }
+    else majResume();
+  };
 
   // ── Fenêtre ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
   function champN(id, lib, val, attrs) { return '<label class="valo-champ"><span>' + lib + '</span><input type="number" inputmode="decimal" class="form-control" id="' + id + '" value="' + esc(val) + '" ' + (attrs || 'min="0" step="1"') + '></label>'; }

@@ -49,7 +49,8 @@ Ce dépôt est modifié depuis plusieurs outils (Claude Code sur le PC, Claude C
 | 1.49.0 | 2026-11-27 | Claude Code (cloud) | « Valoriser le bien » : fiche descriptive, annexes pondérées, atouts ; largeur minimale de voie lue dans le PLU | 24ce418 |
 | 1.50.0 | 2026-11-28 | Claude Code (cloud) | Confidentialité des documents : propriétaire, partage au sein du groupe, écran « Mes documents » | 0654c12 |
 | 1.51.0 | 2026-11-28 | Claude Code (cloud) | Carnet de clients, historique des factures d'un client et annulation cloisonnés selon les règles des documents | f4aa5b5 |
-| 1.52.0 | 2026-11-28 | Claude Code (cloud) | Attribution des factures à un compte (une à une, ou toutes les anciennes d'un coup) | (ce commit) |
+| 1.52.0 | 2026-11-28 | Claude Code (cloud) | Attribution des factures à un compte (une à une, ou toutes les anciennes d'un coup) | fa6840d |
+| 1.53.0 | 2026-11-28 | Claude Code (cloud) | Fiche descriptive du bien dans le rapport A4 ; fiche et valorisation enregistrées avec l'étude | (ce commit) |
 
 ## État des branches au 2026-11-16
 

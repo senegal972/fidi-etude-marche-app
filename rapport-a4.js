@@ -332,11 +332,15 @@
       estHtml = '<div class="rpt-band rpt-block rpt-sec"><div style="display:flex;justify-content:space-between;align-items:center;">'
         + '<div><div style="font-size:8pt;color:#c5d5ea;text-transform:uppercase;letter-spacing:.5pt;">Estimation vénale — ' + esc(LAB[(d.type_bien || '').toLowerCase()] || 'Bien') + ' · ' + (est.surface || '—') + ' m²</div>'
         + '<div style="font-size:20pt;font-weight:900;">' + eur(est.valeur_med) + '</div>'
-        + '<div style="font-size:8pt;color:#c5d5ea;">Base : ' + eur(est.prix_m2) + '/m² (médiane du marché local)</div></div>'
+        + '<div style="font-size:8pt;color:#c5d5ea;">Base : ' + eur(est.prix_m2) + '/m² (médiane du marché local)'
+        + (est.valorisation ? ' · valorisation incluse : ' + [est.valorisation.pct ? '+' + String(est.valorisation.pct).replace('.', ',') + ' %' : '', est.valorisation.annexes_eur ? '+' + eur(est.valorisation.annexes_eur) + ' d\'annexes' : ''].filter(Boolean).join(' et ') : '') + '</div></div>'
         + '<div style="text-align:right;font-size:9pt;"><div>Fourchette basse : <strong>' + eur(est.valeur_min) + '</strong></div>'
         + '<div>Fourchette haute : <strong>' + eur(est.valeur_max) + '</strong></div></div>'
         + '</div></div>';
     }
+
+    // Fiche descriptive du bien (« Valoriser le bien », valorisation.js) : composition, pièces, annexes et atouts, à la suite de l'estimation.
+    if (window.FidiValorisation && window.FidiValorisation.htmlRapport) { try { estHtml += window.FidiValorisation.htmlRapport(d); } catch (e) {} }
 
     let estTypes = '';
     const tdefs = [['maison', 'Maison', '#e4241c'], ['appartement', 'Appartement', '#0d6efd'], ['terrain', 'Terrain', '#198754']];

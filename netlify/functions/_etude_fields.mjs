@@ -310,7 +310,13 @@ export function propsToEtude(p, anneeRows) {
   try { terrainParcelles = JSON.parse(txt("Parcelles terrain") || "[]"); } catch { terrainParcelles = []; }
   if (!Array.isArray(terrainParcelles)) terrainParcelles = [];
 
+  // Fiche descriptive du bien et valorisation (valorisation.js), enregistrées en JSON.
+  let ficheBien = null;
+  try { ficheBien = JSON.parse((p["Fiche du bien"]?.rich_text || []).map((t) => t.plain_text ?? t.text?.content ?? "").join("") || "null"); } catch { ficheBien = null; }
+  if (ficheBien && ficheBien.valorisation && estimation) estimation.valorisation = ficheBien.valorisation;
+
   const data = {
+    ...(ficheBien && ficheBien.fiche ? { fiche_bien: ficheBien.fiche } : {}),
     localisation,
     commune_info,
     dvf_annees,

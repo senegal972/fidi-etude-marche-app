@@ -98,6 +98,13 @@ export const handler = async (event) => {
       const ok = await ensureProperty(DB.etude, "Parcelles terrain", { rich_text: {} });
       if (ok) props["Parcelles terrain"] = P.text(JSON.stringify(Array.isArray(b.terrain_parcelles) ? b.terrain_parcelles : []));
     } catch (_) { /* best-effort */ }
+    // Fiche descriptive du bien et valorisation (« Valoriser le bien ») : gardées pour la réouverture et le rapport. Au mieux.
+    try {
+      const d0 = (b.data && b.data.data) || {};
+      const fiche = { fiche: d0.fiche_bien || null, valorisation: (d0.estimation && d0.estimation.valorisation) || null };
+      const json = fiche.fiche || fiche.valorisation ? JSON.stringify(fiche) : "";
+      if (json.length < 150000 && await ensureProperty(DB.etude, "Fiche du bien", { rich_text: {} })) props["Fiche du bien"] = bigText(json);
+    } catch (_) { /* best-effort */ }
   }
 
   try {

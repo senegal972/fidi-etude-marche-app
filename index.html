@@ -2640,6 +2640,8 @@ async function reopenEtude(ref){
     renderResults(d);
     // Réhydrate les parcelles terrain multiples (perdues au rechargement) → carte + total + estimation.
     try { rehydrateTerrainParcelles(d); } catch(e){}
+    // Fiche descriptive du bien et valorisation enregistrées avec l'étude (valorisation.js).
+    try { if(window.FidiValorisation) FidiValorisation.restaurer(); } catch(e){}
     document.getElementById('results-panel').classList.remove('d-none');
     document.getElementById('btnPrint').classList.remove('d-none');
     document.getElementById('btnPdf').classList.remove('d-none');

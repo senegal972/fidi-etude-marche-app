@@ -61,5 +61,46 @@ test("branchements : bouton, rappel sous l'estimation, raccord avec l'état et l
   assert.equal((page.match(/FidiValorisation\.apresAjustement\(\)/g) || []).length, 2, "après la décote d'état et après l'ajustement « ruine »");
   assert.match(page, /FidiValorisation\.reinitialiser\(\)/);
   assert.match(page, /valorisation\.js/); assert.match(page, /valorisation\.css/);
-  assert.doesNotMatch(lire("valorisation.js"), /style="/, "pas de style en ligne");
+  // L'écran n'a pas de style en ligne (classes de valorisation.css) ; seul le bloc du rapport imprimé, avant la partie écran, en porte.
+  const src = lire("valorisation.js");
+  assert.doesNotMatch(src.slice(src.indexOf("if (typeof document === 'undefined') return;")), /style="/, "pas de style en ligne à l'écran");
+});
+
+// ── Fiche du bien dans le rapport A4 et conservation avec l'étude ────────────
+const FICHE = { pieces: 4, chambres: 3, sdb: 1, sde: 1, wc: 2, habitable: 98.5, terrain: 640, exposition: "Sud-Est", assainissement: "Individuel (fosse)", mitoyennete: "Indépendant",
+  listePieces: [{ nom: "Salon / séjour", longueur: "6", largeur: "4,5" }, { nom: "Chambre <1>", surface: "12" }, { nom: "", longueur: "", largeur: "", surface: "" }],
+  atouts: { piscine: { actif: true, pct: 8 }, vue_mer: { actif: true, pct: 15 } }, annexes: { terrasse_couverte: { actif: true, surface: 20, coef: 0.5 } } };
+
+test("rapport A4 : composition, pièces et total, effets de la valorisation, réserves", () => {
+  const r = V.calculer(FICHE, BASE, 2500);
+  const html = V.htmlRapport({ fiche_bien: FICHE, estimation: { valorisation: { pct: r.pct, annexes_eur: r.annexes_eur, lignes: r.lignes, avant_med: 300000, med: r.med } } });
+  assert.match(html, /Fiche descriptive du bien/);
+  assert.match(html, /T4 · 3 chambres · 1 salle de bain · 1 salle d'eau · 2 WC · 98,5 m² habitables/);
+  for (const t of ["Sud-Est", "Individuel (fosse)", "640 m²", "6 × 4,5 m", "27 m²", "12 m²", "39 m²", "Piscine", "+ 8 %", "Vue mer", "+ 15 %", "20 m² × 0,5", "+ 25", "300", "sans barème officiel", "ne valent pas mesurage"]) assert.ok(html.includes(t), t);
+  assert.match(html, /Chambre &lt;1&gt;/, "le nom d'une pièce est échappé");
+  assert.equal((html.match(/<tr>/g) || []).length, 1 + 2 + 1 + 1 + 3 + 1, "la ligne de pièce vide n'est pas imprimée");
+});
+
+test("rapport A4 : sans valorisation appliquée, les atouts cochés sont relevés sans chiffre ; sans fiche, rien", () => {
+  const html = V.htmlRapport({ fiche_bien: FICHE, estimation: {} });
+  assert.match(html, /Annexes et atouts relevés \(non chiffrés dans l'estimation\)/);
+  assert.match(html, /Terrasse couverte \/ varangue \(20 m²\) · Piscine · Vue mer/);
+  assert.doesNotMatch(html, /\+ 8 %/);
+  assert.equal(V.htmlRapport({ estimation: {} }), "");
+  assert.equal(V.htmlRapport({ fiche_bien: { listePieces: [], atouts: {}, annexes: {} }, estimation: {} }), "", "fiche vide : pas de bloc");
+});
+
+test("la fiche est enregistrée avec l'étude et revient à la réouverture", async () => {
+  process.env.NOTION_TOKEN = process.env.NOTION_TOKEN || "x";
+  const { propsToEtude } = await import("../netlify/functions/_etude_fields.mjs");
+  const json = JSON.stringify({ fiche: FICHE, valorisation: { pct: 23, annexes_eur: 25000, lignes: [], avant_med: 300000, med: 394000, avant: BASE } });
+  const p = { "Fiche du bien": { rich_text: [{ plain_text: json.slice(0, 200) }, { plain_text: json.slice(200) }] }, "Estimation": { number: 394000 }, "Surface m2": { number: 98 }, "Prix m2": { number: 2500 } };
+  const { data } = propsToEtude(p, []);
+  assert.equal(data.fiche_bien.chambres, 3);
+  if (data.estimation) assert.equal(data.estimation.valorisation.avant.med, 300000);
+  assert.equal(propsToEtude({}, []).data.fiche_bien, undefined, "étude sans fiche : rien d'ajouté");
+  const save = lire("netlify/functions/notion-save.mjs");
+  assert.match(save, /props\["Fiche du bien"\] = bigText\(json\)/);
+  assert.match(lire("index.html"), /FidiValorisation\.restaurer\(\)/);
+  assert.match(lire("rapport-a4.js"), /FidiValorisation\.htmlRapport\(d\)/);
 });
