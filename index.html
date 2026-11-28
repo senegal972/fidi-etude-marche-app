@@ -34,6 +34,7 @@
 <link href="/valorisation.css" rel="stylesheet"/>
 <link href="/mes-documents.css" rel="stylesheet"/>
 <link href="/assistance.css" rel="stylesheet"/>
+<link href="/presentation.css" rel="stylesheet"/>
 <link href="/compte-statistiques.css" rel="stylesheet"/>
 <link href="/compte.css" rel="stylesheet"/>
 <link href="/compte-facturation.css" rel="stylesheet"/>
@@ -295,7 +296,7 @@ body.map-fs-on{overflow:hidden;}
     </div>
 
     <!-- Bouton direct Présentation (chevalet visible, à côté du dropdown compte) -->
-    <button class="btn btn-sm btn-outline-warning d-none" id="btnPresentationDirect" type="button" onclick="Presentation.open()" title="Ouvrir la présentation de l'application et sa grille tarifaire (Optimmo Dom)">
+    <button class="btn btn-sm btn-outline-warning d-none" id="btnPresentationDirect" type="button" onclick="Presentation.open()" title="Présentation de l'application et tarifs">
       <i class="bi bi-easel-fill me-1"></i><span class="d-none d-md-inline">Présentation</span>
     </button>
 
@@ -312,7 +313,7 @@ body.map-fs-on{overflow:hidden;}
       <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="ddCompte">
         <li><a class="dropdown-item" href="#" id="miCompte" onclick="Compte.open();return false;"><i class="bi bi-gear me-2"></i>Mon compte</a></li>
         <li><a class="dropdown-item" href="#" id="btnMarque" onclick="return false;"><i class="bi bi-palette me-2"></i>Mise en page</a></li>
-        <li><a class="dropdown-item d-none" id="miPresentation" href="#" onclick="Presentation.open();return false;"><i class="bi bi-easel me-2 text-warning"></i>Présentation &amp; tarifs Optimmo Dom</a></li>
+        <li><a class="dropdown-item d-none" id="miPresentation" href="#" onclick="Presentation.open();return false;"><i class="bi bi-easel me-2 text-warning"></i>Présentation &amp; tarifs</a></li>
         <li><hr class="dropdown-divider"></li>
         <li><a class="dropdown-item small text-muted" href="https://www.data.gouv.fr" target="_blank" rel="noopener"><i class="bi bi-info-circle me-2"></i>À propos des sources</a></li>
       </ul>
@@ -6595,6 +6596,7 @@ function copyShareUrl(){
 <script src="/valorisation.js" defer></script>
 <script src="/mes-documents.js" defer></script>
 <script src="/assistance.js" defer></script>
+<script src="/presentation.js" defer></script>
 <script src="/compte-statistiques.js" defer></script>
 <script src="/entreprises-proches.js" defer></script>
 <script src="/facture-externe.js" defer></script>
@@ -7928,94 +7930,9 @@ window.Compte = (function(){
 })();
 </script>
 
-<!-- Présentation confidentielle du logiciel (fabricant : Optimmo Dom) (réservée aux professionnels connectés) -->
+<!-- Présentation des formules : presentation.js -->
 <div id="presModalRoot"></div>
 <script>
-window.Presentation = (function(){
-  // Base tarifaire UNIFORME : 45,00 € / crédit — identique pour l'étude de marché
-  // ET l'avis de valeur. Crédits vendus par 2 → pack Starter (2 crédits) = 90 € TTC
-  // (souhait métier FIDI, 2026-10-28). La grille cumulative reste au même tarif.
-  // Prix TTC = round(crédits × prix_crédit) ; prix_crédit = round(45 × (1 − économie%) × 100)/100.
-  // Courbe d'économie par palier conservée : 0 / 12 / 20 / 27 / 33 / 42 / 49 %.
-  const GRIDS = {
-    'Études de Marché': { entree:'dès 2 crédits à 90 € TTC (45 € / crédit)', rows:[
-      ['Starter',2,'90 €','45,00 €','—'],['Essentiel ★',5,'198 €','39,60 €','-12 %'],
-      ['Pro',10,'360 €','36,00 €','-20 %'],['Business',20,'657 €','32,85 €','-27 %'],
-      ['Premium',50,'1 508 €','30,15 €','-33 %'],['Enterprise',100,'2 610 €','26,10 €','-42 %']]},
-    'Avis de Valeur': { entree:'dès 2 crédits à 90 € TTC (45 € / crédit)', rows:[
-      ['Starter',2,'90 €','45,00 €','—'],['Essentiel ★',5,'198 €','39,60 €','-12 %'],
-      ['Pro',10,'360 €','36,00 €','-20 %'],['Business',20,'657 €','32,85 €','-27 %'],
-      ['Premium',50,'1 508 €','30,15 €','-33 %'],['Enterprise',100,'2 610 €','26,10 €','-42 %']]},
-    'Cumulatif (offre phare)': { entree:'crédits universels — études OU avis — 45 € / crédit (tarif unique)', rows:[
-      ['Starter',2,'90 €','45,00 €','—'],['Essentiel',5,'198 €','39,60 €','-12 %'],
-      ['Pro ★',10,'360 €','36,00 €','-20 %'],['Business',20,'657 €','32,85 €','-27 %'],
-      ['Premium',50,'1 508 €','30,15 €','-33 %'],['Enterprise',100,'2 610 €','26,10 €','-42 %'],
-      ['Platinum',200,'4 590 €','22,95 €','-49 %']]},
-  };
-  const DOM = [['Martinique (972)','3 154 €/m²','Marché en croissance constante'],
-    ['Guadeloupe (971)','3 612 €/m²','Forte demande résidentielle'],
-    ['La Réunion (974)','2 914 €/m²','Marché dynamique et tendu'],
-    ['Guyane (973)','2 283 €/m²','Territoire en plein développement']];
-
-  function gridTable(title, g){
-    return '<h6 class="fw-bold mt-3">'+title+' <span class="text-muted small fw-normal">— '+g.entree+'</span></h6>'+
-      '<div class="table-responsive"><table class="table table-sm table-striped align-middle mb-1">'+
-      '<thead><tr><th>Palier</th><th class="text-end">Crédits</th><th class="text-end">Prix TTC</th><th class="text-end">Prix / crédit</th><th class="text-end">Économie</th></tr></thead><tbody>'+
-      g.rows.map(r=>'<tr><td>'+r[0]+'</td><td class="text-end">'+r[1]+'</td><td class="text-end fw-semibold">'+r[2]+'</td><td class="text-end">'+r[3]+'</td><td class="text-end text-success">'+r[4]+'</td></tr>').join('')+
-      '</tbody></table></div>';
-  }
-
-  function body(){
-    return ''+
-    '<div class="alert alert-warning py-2 small mb-3"><i class="bi bi-shield-lock me-1"></i><b>Document confidentiel</b> — réservé aux professionnels. Ne pas diffuser.</div>'+
-    '<div class="p-3 rounded text-white mb-3" style="background:linear-gradient(135deg,#12294d,#24508f);">'+
-      '<div class="text-warning text-uppercase small fw-semibold" style="letter-spacing:1px;">Pitch modèle économique</div>'+
-      '<div class="fs-4 fw-bold">Étude de marché &amp; Avis de valeur</div><div class="small text-warning fw-semibold">Un logiciel Optimmo Dom — grille tarifaire du fabricant</div>'+
-      '<div class="opacity-75">L\'outil qui transforme vos analyses en revenus — études de marché & avis de valeur.</div></div>'+
-    '<div class="row g-2 mb-2">'+
-      '<div class="col-md-6"><div class="border rounded p-2 h-100"><div class="fw-bold"><i class="bi bi-bar-chart-line me-1 text-primary"></i>Module 1 — Études de marché</div><div class="small text-muted">Analyse complète du marché local (DVF, socio-éco, tendances de prix).</div></div></div>'+
-      '<div class="col-md-6"><div class="border rounded p-2 h-100"><div class="fw-bold"><i class="bi bi-file-earmark-text me-1 text-primary"></i>Module 2 — Avis de valeur</div><div class="small text-muted">Avis de valeur professionnels argumentés, export PDF à vos couleurs.</div></div></div>'+
-    '</div>'+
-    '<div class="border rounded p-2 mb-2 small"><b>Modèle de crédits :</b> 1 crédit = 1 étude de marché OU 1 avis de valeur. Zéro engagement, crédits universels valables 12 mois, dégressivité sur les volumes.</div>'+
-    '<div class="border rounded p-2 mb-2 small"><b>Rentabilité :</b> avis de valeur revendu 450–600 € (métropole) / 400–550 € (DOM) ; étude de marché 200–400 € (métropole). Marge brute ~87–95 %. Une seule prestation vendue rembourse le pack Starter.</div>'+
-    gridTable('Grille — Études de Marché', GRIDS['Études de Marché'])+
-    gridTable('Grille — Avis de Valeur', GRIDS['Avis de Valeur'])+
-    gridTable('Grille — '+ 'Cumulatif (offre phare)', GRIDS['Cumulatif (offre phare)'])+
-    '<h6 class="fw-bold mt-3">Couverture territoriale — France + DOM</h6>'+
-    '<div class="row g-2">'+DOM.map(d=>'<div class="col-md-6"><div class="border rounded p-2"><b>'+d[0]+'</b> · '+d[1]+'<div class="small text-muted">'+d[2]+'</div></div></div>').join('')+'</div>'+
-    '<div class="alert alert-primary mt-3 mb-0 small"><i class="bi bi-flag me-1"></i><b>Conclusion :</b> commencez avec 2 crédits, récupérez votre investissement dès la première prestation. Outil exclusif réseau · ROI garanti dès la 1ʳᵉ prestation · aucun engagement de durée.</div>';
-  }
-
-  function open(){
-    if(!(window.Compte && Compte.state.authenticated)){ alert('Présentation réservée aux professionnels connectés.'); return; }
-    if(typeof bootstrap === 'undefined'){ alert('Interface non chargée.'); return; }
-    let root = document.getElementById('presModalRoot');
-    root.innerHTML = '<div class="modal fade" id="presModal" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-scrollable">'+
-      '<div class="modal-content"><div class="modal-header"><h5 class="modal-title"><i class="bi bi-easel-fill me-1" style="color:#b87333;"></i>Étude de marché &amp; Avis de valeur — présentation Optimmo Dom</h5>'+
-      '<div class="ms-auto d-flex gap-2 align-items-center">'+
-        '<button class="btn btn-sm btn-outline-primary" onclick="Presentation.share()" title="Copier un lien de présentation à envoyer à un collaborateur"><i class="bi bi-share me-1"></i>Partager</button>'+
-        '<button type="button" class="btn-close" data-bs-dismiss="modal"></button>'+
-      '</div></div>'+
-      '<div class="modal-body">'+body()+'</div></div></div></div>';
-    new bootstrap.Modal(document.getElementById('presModal')).show();
-  }
-  function share(){
-    const url = location.origin + '/#presentation';
-    const shareText = 'Découvrez « Étude de marché & Avis de valeur », le logiciel professionnel d\'Optimmo Dom pour vos études de marché et avis de valeur immobiliers :\n\n' + url;
-    // Tente Web Share API (mobile), sinon copie presse-papiers, sinon prompt
-    if(navigator.share){
-      navigator.share({ title:'Étude de marché & Avis de valeur — Optimmo Dom', text:shareText, url:url }).catch(()=>{});
-      return;
-    }
-    if(navigator.clipboard){
-      navigator.clipboard.writeText(shareText).then(()=>{
-        alert('Lien de présentation copié dans le presse-papiers.\n\n'+url+'\n\nCollez-le dans un e-mail, WhatsApp, SMS…');
-      }).catch(()=>prompt('Copiez et envoyez ce lien :', url));
-    } else prompt('Copiez et envoyez ce lien :', url);
-  }
-  return { open, share };
-})();
-
 // ─── Convention FIDI : affichage version + build date ────────────────────────
 (function loadAppVersion(){
   var LOADED = null; // version actuellement chargée (celle qui tourne)

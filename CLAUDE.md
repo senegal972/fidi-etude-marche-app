@@ -247,6 +247,17 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
   l'adresse de contact : **aucune adresse n'est écrite dans le code**.
 - Mon compte → Assistance (`tabAssistance`, `#assistanceAdminRoot`, `FidiAssistance.monterAdmin()`). Tests : `tests/assistance.test.mjs`.
 
+### Présentation & tarifs — `presentation.js` / `presentation.css` (`FidiPresentation`, `window.Presentation`)
+- `Presentation.open()` (boutons `#btnPresentationDirect`, `#miPresentation`, connexion exigée) : fenêtre `#presModal` — deux grilles (Études de marché,
+  Avis de valeur), interrupteur `#presGlobal` (formule globale = module « Cumulatif »), texte par grille (`MODULES`), cartes de prix, aide
+  « Lequel choisir ? » (`COMPARATIF` + `conseiller(m, { documents, volume })` : jamais plus de crédits que le besoin d'une année) et calcul de marge
+  (`marge(prixVente, prixCredit)`, prix de vente saisi par l'utilisateur). **Les prix viennent de `/api/offres`** (`modele(offres, grille)`, offres
+  actives de la grille du compte ; économie recalculée sur les prix affichés) ; `reference()` n'est qu'un repli, signalé à l'écran.
+- **Rien ne s'achète ici** : « Choisir » ferme la fenêtre et ouvre Mon compte → Offres (le circuit PayPal n'est pas touché). Le lien partagé
+  `/#presentation` ouvre la présentation après connexion (événement `fidi:compte`). **Ni promesse de résultat, ni prix de marché en dur, ni mention
+  « confidentiel »** (test). Les crédits forment un solde unique (`Crédits` du compte), quel que soit le module de l'offre achetée : ne pas écrire
+  qu'un crédit est réservé à un type de document. Tests : `tests/presentation.test.mjs`.
+
 ### Statistiques — `compte-statistiques.js` / `compte-statistiques.css`, `statistiques.mjs`
 - `GET /api/statistiques` (administrateur) lit les bases Notion Études et Avis (1 000 dossiers par base au plus) et les comptes, puis
   `agreger(dossiers, comptes, maintenant)` (pur, testé) : totaux et 30 jours, douze mois glissants, jours de la semaine, types de biens, et —

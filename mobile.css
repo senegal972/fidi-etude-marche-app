@@ -294,3 +294,32 @@
   .av-av-bouton{min-height:32px;}
   .av-av-liste li{flex-direction:column;gap:0;}
 }
+
+/* Présentation des formules (presentation.js) */
+@media (max-width: 768px){
+  .pres-modal .modal-content{border-radius:0;}
+  .pres-corps>*{margin-left:.8rem;margin-right:.8rem;}
+  .pres-corps>.pres-hero{padding:1.3rem .9rem 2.6rem;}
+  .pres-hero h2{font-size:1.4rem;}
+  .pres-hero p{font-size:.9rem;}
+  .pres-puces li{font-size:.74rem;padding:.22rem .6rem;}
+  .pres-choix{gap:.6rem;}
+  .pres-choix .pres-seg{display:flex;width:100%;}
+  .pres-choix .pres-seg button{flex:1;padding:.5rem .3rem;font-size:.82rem;}
+  .pres-choix .pres-seg button i{display:none;}
+  .pres-aide{margin-left:auto;padding:.4rem .7rem;font-size:.8rem;}
+  .pres-module{flex-direction:column;gap:.5rem;}
+  .pres-module h3 span{display:block;margin-left:0;}
+  .pres-module ul{flex-direction:column;}
+  .pres-packs{grid-template-columns:1fr 1fr;gap:.9rem .6rem;}
+  .pres-pack-prix{font-size:1.3rem;}
+  .pres-marge input,.pres-marge select,.pres-q input{font-size:16px;}
+  .pres-marge select{max-width:100%;width:100%;}
+  .pres-marge label{width:100%;}
+  .pres-corps>.pres-guide{padding:0;}
+  .pres-guide-boite{border-radius:0;min-height:100%;padding:1rem .9rem calc(1rem + env(safe-area-inset-bottom));}
+  .pres-cols{grid-template-columns:1fr;}
+  .pres-guide .pres-seg{display:flex;width:100%;}
+  .pres-guide .pres-seg button{flex:1;padding:.5rem .2rem;font-size:.8rem;}
+  .pres-guide-pied .pres-btn{flex:1;}
+}
