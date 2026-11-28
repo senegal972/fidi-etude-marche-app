@@ -233,7 +233,7 @@
   // teinte sert aussi de couleur d'alerte « orange » ; on ne la remplace que dans les feuilles de style).
   function recolorer(html, options) {
     if (typeof html !== 'string' || !html) return html;
-    var c = courante.couleurs;
+    var a = auteurDe(options && options.contexte), c = (a ? a.marque : courante).couleurs;
     var out = html
       .replace(/#1a3a6e/gi, c.principale)
       .replace(/#12294d/gi, melange(c.principale, 0, 0.3))
@@ -559,8 +559,31 @@
   // Identité portée par les DOCUMENTS (rapport, récapitulatif, avis de valeur, textes d'envoi) : la société qui agit, c'est-à-dire
   // la société émettrice par défaut du compte (son nom, ses coordonnées, son logo — à défaut celui de la charte si « avecLogo »).
   // Sans société enregistrée : la charte telle quelle. Les écrans de l'application gardent la charte (get()).
-  function identiteDocument() {
-    var m = clone(courante), l = m.emetteurs || [], co = m.coordonnees || {};
+  // Document d'un autre compte (ressorti par l'administrateur ou un membre du groupe) : il garde l'identité de son auteur.
+  // auteurs[clé] = { marque, nom, email } ; clé = 'etude:<e-mail>' (étude affichée) ou 'avis:<référence>'.
+  var auteurs = {};
+  function cleEtude() { try { var d = window.__fidiData; return d && d.__auteurEmail ? 'etude:' + d.__auteurEmail : ''; } catch (e) { return ''; } }
+  function auteurDe(cle) { return auteurs[cle == null ? cleEtude() : cle] || null; }
+  function poserAuteur(cle, info) { if (!cle) return; if (info && info.marque) auteurs[cle] = { marque: fusion(DEFAUT, assainir(info.marque)), nom: info.nom || '', email: info.email || '' }; else delete auteurs[cle]; }
+  function chargerAuteur(cle, emailAuteur, nom) {
+    if (!cle || !emailAuteur) return Promise.resolve(null);
+    if (auteurs[cle] && auteurs[cle].email === emailAuteur) return Promise.resolve(auteurs[cle]);
+    return fetch('/api/marque?compte=' + encodeURIComponent(emailAuteur), { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { if (j && j.marque) poserAuteur(cle, { marque: j.marque, nom: (j.compte && j.compte.nom) || nom, email: emailAuteur }); return auteurs[cle] || null; })
+      .catch(function () { return null; });
+  }
+  // « Réalisé par … — édité le … par … » : seulement quand celui qui édite n'est pas l'auteur.
+  function mentionEdition(cle, nomAuteur) {
+    var a = auteurDe(cle), auteur = (a && a.nom) || nomAuteur || '';
+    var moi = ''; try { moi = (window.Compte.state.user.nom || '').trim(); } catch (e) {}
+    if (!auteur || !moi || auteur.trim().toLowerCase() === moi.toLowerCase()) return '';
+    var societe = (function () { var d = identiteDe(courante); return d.coordonnees.raisonSociale || d.enseigne || ''; })();
+    return 'Réalisé par ' + auteur + ' — édité le ' + new Date().toLocaleDateString('fr-FR') + ' par ' + moi + (societe ? ' (' + societe + ')' : '');
+  }
+  function identiteDocument(cle) { var a = auteurDe(cle); return identiteDe(a ? a.marque : courante); }
+  function identiteDe(source) {
+    var m = clone(source), l = m.emetteurs || [], co = m.coordonnees || {};
     var e = l.filter(function (x) { return x.id === m.emetteurDefaut; })[0] || l[0];
     if (!e || !e.raisonSociale) return m;
     m.enseigne = e.raisonSociale;
@@ -574,6 +597,7 @@
   window.Marque = {
     get: function () { return clone(courante); },
     document: identiteDocument,
+    auteur: poserAuteur, chargerAuteur: chargerAuteur, mentionEdition: mentionEdition,
     // Le logiciel se signe à part de la société qui agit : produit + fabricant.
     fabricant: FABRICANT, produitLogiciel: PRODUIT,
     signatureLogiciel: function () { return PRODUIT + ' — une application ' + FABRICANT; },
@@ -582,10 +606,10 @@
     // Modifie la charte (mêmes règles que le panneau) : utilisé par l'écran de facturation.
     maj: function (modif) { if (modif && typeof modif === 'object') majPerso(modif); },
     // Nom à faire figurer sur les documents (raison sociale, à défaut l'enseigne).
-    nomDoc: function () { var d = identiteDocument(); return d.coordonnees.raisonSociale || d.enseigne || ''; },
+    nomDoc: function (cle) { var d = identiteDocument(cle); return d.coordonnees.raisonSociale || d.enseigne || ''; },
     // Bloc d'identité (logo ou enseigne + coordonnées) pour l'en-tête des documents imprimés.
-    enTeteDoc: function (date) {
-      var doc = identiteDocument(), co = doc.coordonnees;
+    enTeteDoc: function (date, cle) {
+      var doc = identiteDocument(cle), co = doc.coordonnees;
       var e = function (t) { return String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
       var ident = doc.logo
         ? '<img src="' + e(doc.logo) + '" alt="' + e(doc.enseigne) + '" style="max-height:34px;max-width:150px;object-fit:contain;display:block;margin-left:auto;"/>'

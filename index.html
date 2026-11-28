@@ -2600,7 +2600,7 @@ async function openEtudesRecentes(){
         : '<button class="btn btn-sm btn-outline-danger me-2" title="Supprimer cette étude (corbeille Notion)" onclick="supprimerEtude(\''+ref+'\', this)"><i class="bi bi-trash"></i></button>';
       return '<div class="d-flex justify-content-between align-items-center border rounded p-2 mb-2" data-etude-ref="'+escHtml(m.ref)+'">'+
         dot + delBtn +
-        '<div class="flex-grow-1"><div class="fw-bold small">'+escHtml(m.ref)+clientBadge+'</div>'+
+        '<div class="flex-grow-1"><div class="fw-bold small">'+escHtml(FidiNomenclature.afficher(m.ref, m.proprietaire_nom))+clientBadge+'</div>'+
         '<div class="text-muted" style="font-size:.75rem;">'+escHtml(sub)+'</div>'+
         '<div class="small">'+escHtml(m.adresse||'')+'</div></div>'+
         '<div class="text-end"><div class="small fw-semibold">'+est+'</div>'+
@@ -2640,6 +2640,13 @@ async function reopenEtude(ref){
     const stored = j.data;
     const d = stored.data || stored; // rétro-compat
     const inputs = stored.inputs || {};
+    // Étude d'un autre compte : initiales de l'auteur dans la référence, et document à son identité (société, logo, couleurs).
+    try {
+      const moiE = ((window.Compte && Compte.state.user && Compte.state.user.email) || '').toLowerCase();
+      const autre = j.proprietaire && String(j.proprietaire).toLowerCase() !== moiE;
+      d.__auteur = j.proprietaire_nom || ''; d.__auteurEmail = autre ? String(j.proprietaire).toLowerCase() : '';
+      if (autre && window.Marque && Marque.chargerAuteur) await Marque.chargerAuteur('etude:' + d.__auteurEmail, d.__auteurEmail, d.__auteur);
+    } catch(e){}
     window.__fidiData = d;
     window.__fidiInputs = inputs;
     window.__fidiDecotesHidden = undefined; // l'affichage de l'étude précédente ne se reporte pas
@@ -6574,6 +6581,7 @@ function copyShareUrl(){
 </script>
 
 <!-- Moteur de rapport A4 (impression documentaire paginée) -->
+<script src="/nomenclature.js"></script>
 <script src="/carte-parcelle.js"></script>
 <script src="/implantation.js" defer></script>
 <script src="/rapport-a4.js" defer></script>

@@ -53,15 +53,18 @@
   function filtres(d) {
     if (etat.type !== 'tous' && d.type !== etat.type) return false;
     var f = etat.recherche.trim().toLowerCase();
-    return !f || [d.ref, d.adresse, d.commune, d.client, d.nom, d.groupe].join(' ').toLowerCase().indexOf(f) >= 0;
+    return !f || [d.ref, nomRef(d), d.adresse, d.commune, d.client, d.nom, d.groupe].join(' ').toLowerCase().indexOf(f) >= 0;
   }
   var dePortee = { moi: function (d) { return d.aMoi; }, groupe: function (d) { return !d.aMoi && !!d.proprietaire && !!etat.moi.groupe && d.groupe && d.groupe.trim().toLowerCase() === etat.moi.groupe.trim().toLowerCase(); }, tous: function () { return true; } };
+
+  // Référence affichée : initiales de l'auteur à la place de « FIDI » (nomenclature.js).
+  function nomRef(d) { var N = window.FidiNomenclature; return N ? N.afficher(d.ref, d.nom || (d.aMoi ? N.moi() : '')) : d.ref; }
 
   function ligne(d) {
     var sous = [d.adresse, d.commune].filter(Boolean).join(' · ');
     return '<div class="md-doc" data-ref="' + esc(d.ref) + '" data-type="' + d.type + '">' +
       '<span class="md-type md-type-' + d.type + '" title="' + (d.type === 'etude' ? 'Étude de marché' : 'Avis de valeur') + '"><i class="bi ' + (d.type === 'etude' ? 'bi-bar-chart-line' : 'bi-file-earmark-text') + '"></i></span>' +
-      '<div class="md-doc-corps"><div class="md-doc-ref">' + esc(d.ref) + (d.client ? ' <span class="md-client"><i class="bi bi-person"></i> ' + esc(d.client) + '</span>' : '') +
+      '<div class="md-doc-corps"><div class="md-doc-ref">' + esc(nomRef(d)) + (d.client ? ' <span class="md-client"><i class="bi bi-person"></i> ' + esc(d.client) + '</span>' : '') +
         (d.verrou ? ' <span class="md-verrou" title="Dossier ' + esc(d.raison || 'envoyé') + ' : suppression interdite"><i class="bi bi-lock-fill"></i></span>' : '') + '</div>' +
         '<div class="md-doc-sous">' + esc([dateFr(d.date), sous, eur(d.valeur)].filter(Boolean).join(' · ')) + '</div></div>' +
       '<div class="md-doc-actions">' +

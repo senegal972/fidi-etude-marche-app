@@ -18,6 +18,8 @@
     return Number(n).toLocaleString('fr-FR', { minimumFractionDigits: dec || 0, maximumFractionDigits: dec || 0 });
   }
   function fmtE(n) { return (n === '' || n === null || n === undefined || isNaN(Number(n))) ? '—' : fmt(n) + ' €'; }
+  // Référence affichée : initiales de l'auteur à la place de « FIDI » (nomenclature.js). La clé enregistrée ne change pas.
+  function refAff(ref, auteur) { var N = window.FidiNomenclature; return N ? N.afficher(ref, auteur || N.moi()) : String(ref || ''); }
   function esc(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -156,12 +158,14 @@
   // ── Charte de marque (module « Mise en page », marque.js) ───────────────
   // Enseigne, logo, couleurs et coordonnées de la charte active ; neutre si marque.js est absent.
   function charte() {
-    var m = (window.Marque && (window.Marque.document ? window.Marque.document() : window.Marque.get())) || null;
+    var m = (window.Marque && (window.Marque.document ? window.Marque.document(cleAuteur()) : window.Marque.get())) || null;
     return { enseigne: m ? m.enseigne : '', logo: m ? m.logo : '', coord: (m && m.coordonnees) || {} };
   }
-  function nomSociete() { return window.Marque ? window.Marque.nomDoc() : ''; }
+  function nomSociete() { return window.Marque ? window.Marque.nomDoc(cleAuteur()) : ''; }
+  // Avis d'un autre compte : il garde l'identité de son auteur (Marque.chargerAuteur, posé par avis-dossiers.js).
+  function cleAuteur() { try { return 'avis:' + ((state.data && state.data.metadata && state.data.metadata.ref) || ''); } catch (e) { return 'avis:'; } }
   // Les documents sont écrits avec les teintes de référence puis passés à la charte active.
-  function recolor(html, opts) { return window.Marque ? window.Marque.recolorer(html, opts) : html; }
+  function recolor(html, opts) { var o = {}; for (var k in (opts || {})) o[k] = opts[k]; o.contexte = cleAuteur(); return window.Marque ? window.Marque.recolorer(html, o) : html; }
 
   function defaultData() {
     var y = new Date().getFullYear();
@@ -1593,8 +1597,8 @@
           return '<option value="' + c.id + '"' + sel + '>' + lbl + src + '</option>';
         }).join('');
       return head('Référence et destinataire', "Identifiants administratifs de l'avis + coordonnées client. Les destinataires peuvent être mémorisés pour réutilisation.") +
-        (d.metadata.refEtude ? '<div class="av-tip" style="margin-bottom:.6rem;"><i class="bi bi-link-45deg"></i> Avis établi à partir de l\'étude de marché <b>' + esc(d.metadata.refEtude) + '</b> : bien, cadastre, zonage, risques et marché en sont repris.</div>' : '') +
-        fld('Référence interne', 'metadata.ref', { tip: 'Format conseillé : FIDI-AV-AAAA-NNN' }) +
+        (d.metadata.refEtude ? '<div class="av-tip" style="margin-bottom:.6rem;"><i class="bi bi-link-45deg"></i> Avis établi à partir de l\'étude de marché <b>' + esc(refAff(d.metadata.refEtude, d.metadata.auteur)) + '</b> : bien, cadastre, zonage, risques et marché en sont repris.</div>' : '') +
+        fld('Référence interne', 'metadata.ref', { tip: 'Clé du dossier, à ne pas modifier. À l\'écran et sur le document, « FIDI » est remplacé par les initiales de l\'auteur.' }) +
         '<div class="av-grid-3">' + fld("Date d'établissement", 'metadata.date', { type: 'date' }) +
         fld("Lieu d'établissement (ville du bien)", 'metadata.lieuEtablissement', { flag: true, tip: 'Doit correspondre à la commune du bien évalué' }) +
         fld('Lieu-dit', 'metadata.lieuDit', { flag: true, ph: 'ex : Quartier Morne Vert' }) + '</div>' +
@@ -4299,7 +4303,7 @@
         // Libellé reconnaissable : n° · nom (destinataire, sinon type + commune) · réf · date · valeur.
         var n = metas.length - i;
         var nom = m.client || [m.type, m.commune].filter(Boolean).join(' ') || 'Sans destinataire';
-        var parts = ['#' + n, nom, m.ref];
+        var parts = ['#' + n, nom, refAff(m.ref)];
         if (m.date) parts.push(dmy(m.date));
         if (m.valeur) parts.push(m.valeur);
         return '<option value="' + esc(m.ref) + '">' + esc(parts.join(' · ')) + '</option>';
@@ -4314,7 +4318,7 @@
     var metas = avisList();
     var rows = metas.length ? metas.map(function (m) {
       return '<div class="av-lib-item">' +
-        '<div class="av-lib-info"><div class="av-lib-ref">' + esc(m.ref) + '</div>' +
+        '<div class="av-lib-info"><div class="av-lib-ref">' + esc(refAff(m.ref)) + '</div>' +
         '<div class="av-lib-sub">' + esc((m.type ? m.type + ' · ' : '') + (m.commune || '') + (m.date ? ' · ' + m.date : '')) + '</div>' +
         '<div class="av-lib-val">' + (m.valeur || '—') + '</div></div>' +
         '<div class="av-lib-act">' +
@@ -4742,7 +4746,7 @@
           : '<button class="btn btn-sm btn-outline-danger" title="Supprimer (corbeille Notion)" onclick="AvisValeur.cloudDelete(\'' + r + '\', this)"><i class="bi bi-trash"></i></button>';
         return '<div class="av-lib-item" data-avis-ref="' + esc(m.ref) + '">' +
           '<div class="av-lib-info"><div class="av-lib-ref">' + dot +
-            '<span class="text-muted me-1" style="font-variant-numeric:tabular-nums;">#' + n + '</span>' + esc(m.ref) +
+            '<span class="text-muted me-1" style="font-variant-numeric:tabular-nums;">#' + n + '</span>' + esc(refAff(m.ref)) +
             '<span class="badge bg-light text-dark ms-2" style="font-weight:600;"><i class="bi bi-calendar3 me-1"></i>' + dmy(m.date) + '</span></div>' +
           '<div class="av-lib-sub">' + esc(meta) + '</div><div class="av-lib-val">' + val + '</div></div>' +
           '<div class="av-lib-act">' + delB + '<button class="btn btn-sm btn-primary ms-1" onclick="AvisValeur.cloudOpen(\'' + r + '\')">Ouvrir</button></div></div>';
@@ -5865,8 +5869,9 @@
     var _client = (data.metadata && data.metadata.client) || '';
     html += '<div class="title-block"><div class="t1">' + _titreDoc + '</div>' +
       '<div class="t2">' + esc(b.type || '[Type de bien]') + _locStr + (_adrClean ? ', ' + esc(_adrClean) : '') + '</div>' +
-      '<div class="t3">Réf. : ' + esc(data.metadata.ref) + '  –  Établi le ' + (formatDateFR(data.metadata.date) || '[date]') + '</div>' +
-      (data.metadata.refEtude ? '<div class="t3" style="margin-top:2pt;">D\'après l\'étude de marché ' + esc(data.metadata.refEtude) + '</div>' : '') +
+      '<div class="t3">Réf. : ' + esc(refAff(data.metadata.ref, data.metadata.auteur)) + '  –  Établi le ' + (formatDateFR(data.metadata.date) || '[date]') + '</div>' +
+      (function () { var t = window.Marque && Marque.mentionEdition ? Marque.mentionEdition(cleAuteur(), data.metadata.auteur) : ''; return t ? '<div class="t3" style="margin-top:2pt;">' + esc(t) + '</div>' : ''; })() +
+      (data.metadata.refEtude ? '<div class="t3" style="margin-top:2pt;">D\'après l\'étude de marché ' + esc(refAff(data.metadata.refEtude, data.metadata.auteur)) + '</div>' : '') +
       (_client ?
         '<div class="t3" style="margin-top:4pt;">Destinataire : <b>' + esc(_client) + '</b>' +
         (data.metadata.adresseClient ? ' — ' + esc(data.metadata.adresseClient) : '') +
@@ -6540,7 +6545,7 @@
         state.data.__saved = true;
         state.section = 'metadata';
         refDemande = state.data.metadata.ref;   // marque comme chargé → évite le prefill destructif
-        toast('Avis rechargé : ' + state.data.metadata.ref);
+        toast('Avis rechargé : ' + refAff(state.data.metadata.ref, state.data.metadata.auteur));
       } else if (sref) {
         // Pas trouvé en local : l'avis existe peut-être dans le CLOUD (autre poste / stockage
         // effacé). On programme un repli cloud et on BLOQUE autosave + sauvegarde d'ici là,

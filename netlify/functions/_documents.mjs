@@ -119,12 +119,12 @@ export async function colonneProprietaire(databaseId) {
 // Décision d'accès à un dossier pour un lecteur : { voir, modifier, proprietaire }. Charge les comptes seulement si nécessaire.
 export async function accesDossier(lecteur, page) {
   const proprietaire = proprietaireDePage(page), admin = lecteur.role === "Administrateur";
-  if (proprietaire && proprietaire === email(lecteur.email)) return { voir: true, modifier: true, proprietaire };
+  if (proprietaire && proprietaire === email(lecteur.email)) return { voir: true, modifier: true, proprietaire, nom: lecteur.nom || "" };
   if (!proprietaire) return { voir: admin, modifier: admin, proprietaire };
   const comptes = await chargerComptes();
   const compte = comptes.find((c) => c.email === proprietaire) || null;
   const voir = peutVoir(lecteur, compte);
-  return { voir, modifier: admin && voir, proprietaire };
+  return { voir, modifier: admin && voir, proprietaire, nom: voir && compte ? (compte.nom || "") : "" };
 }
 
 // E-mails des comptes dont le lecteur peut voir les documents, les clients et les factures (lui compris). L'administrateur voit tout :

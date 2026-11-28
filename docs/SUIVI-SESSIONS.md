@@ -55,7 +55,8 @@ Ce dépôt est modifié depuis plusieurs outils (Claude Code sur le PC, Claude C
 | 1.55.0 | 2026-11-28 | Claude Code (cloud) | Deux écosystèmes de comptes : cercle interne (visible de l'administrateur) / clients publics (données inaccessibles à l'administrateur) | c91fe37 |
 | 1.56.0 | 2026-11-28 | Claude Code (cloud) | Assistance : signalement guidé (nature, partie concernée, gravité, captures), e-mail, liste administrateur | b5480fd |
 | 1.57.0 | 2026-11-28 | Claude Code (cloud) | Statistiques d'usage (administrateur) : volumes, rythme, secteurs, types, groupes ; agrégats seuls pour les clients publics | `5d8a699` |
-| 1.58.0 | 2026-11-28 | Claude Code (cloud) | Présentation & tarifs repensée : deux grilles + formule globale, aide « Lequel choisir ? », calcul de marge, prix lus sur la grille du compte | (ce commit) |
+| 1.58.0 | 2026-11-28 | Claude Code (cloud) | Présentation & tarifs repensée : deux grilles + formule globale, aide « Lequel choisir ? », calcul de marge, prix lus sur la grille du compte | `9e1124e` |
+| 1.59.0 | 2026-11-28 | Claude Code (cloud) | Références affichées aux initiales de l'auteur (clé inchangée) ; document d'un autre compte à l'identité de son auteur, mention d'édition | (ce commit) |
 
 ## État des branches au 2026-11-16
 

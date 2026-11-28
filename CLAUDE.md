@@ -247,6 +247,21 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
   l'adresse de contact : **aucune adresse n'est écrite dans le code**.
 - Mon compte → Assistance (`tabAssistance`, `#assistanceAdminRoot`, `FidiAssistance.monterAdmin()`). Tests : `tests/assistance.test.mjs`.
 
+### Nomenclature et identité de l'auteur — `nomenclature.js` (`FidiNomenclature`), `marque.js`
+- **Référence affichée ≠ clé enregistrée.** La clé reste `FIDI-EM-…` / `FIDI-AV-…` (crédits consommés, factures, lien étude ↔ avis, versions
+  diffusées, stockage local) : **ne jamais la renommer en base**. À l'affichage, `FidiNomenclature.afficher(ref, nomAuteur)` remplace « FIDI » par
+  `initiales(nom)` = 2 lettres du nom + 2 du prénom (« Prénom Nom » ; un mot tout en capitales est le nom). Auteur inconnu : inchangé. Branché
+  dans `mes-documents.js` / `avis-dossiers.js` (`nomRef`, recherche sur les deux formes), la liste des études d'`index.html`, `avis-valeur.js`
+  (`refAff`, `metadata.auteur`) et `rapport-a4.js` (`d.__auteur`). `notion-get` renvoie `proprietaire_nom` (`accesDossier().nom`).
+- **Document d'un autre compte = identité de son auteur.** `GET /api/marque?compte=<e-mail>` rend la charte d'un autre compte si
+  `peutVoir(lecteur, compte)` (`compteAuteur`, sinon 404 ; jamais un client public), sans IBAN / BIC (`sansBanque`). Navigateur :
+  `Marque.chargerAuteur(clé, email, nom)` — clé `etude:<e-mail>` (posée par `reopenEtude` avec `d.__auteurEmail`) ou `avis:<référence>` (posée par
+  `avis-dossiers.js` à l'ouverture) ; `Marque.document(clé)`, `nomDoc(clé)`, `enTeteDoc(date, clé)` et `recolorer(html, { contexte:clé })` prennent
+  alors la charte de l'auteur (sans clé : l'étude affichée). `Marque.mentionEdition(clé, nomAuteur)` → « Réalisé par … — édité le … par … (société) »,
+  seulement si celui qui édite n'est pas l'auteur (couverture du rapport, bloc de titre de l'avis). Tests : `tests/nomenclature.test.mjs`.
+- Non couvert : la référence d'une étude est recalculée avec la date du jour (`etudeRef`), y compris à la réimpression d'une étude rouverte ;
+  les e-mails et la facture restent au nom du compte qui les envoie.
+
 ### Présentation & tarifs — `presentation.js` / `presentation.css` (`FidiPresentation`, `window.Presentation`)
 - `Presentation.open()` (boutons `#btnPresentationDirect`, `#miPresentation`, connexion exigée) : fenêtre `#presModal` — deux grilles (Études de marché,
   Avis de valeur), interrupteur `#presGlobal` (formule globale = module « Cumulatif »), texte par grille (`MODULES`), cartes de prix, aide

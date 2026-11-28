@@ -82,7 +82,7 @@ export const handler = async (event) => {
       ref,
       page_id: page.id,
       page_url: page.url,
-      proprietaire: acces.proprietaire, lecture_seule: !acces.modifier,
+      proprietaire: acces.proprietaire, proprietaire_nom: acces.nom || "", lecture_seule: !acces.modifier,
       data: parsed,
       source,
     });

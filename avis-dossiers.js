@@ -88,6 +88,9 @@
   // ── Fenêtre « Mes avis & versions » ─────────────────────────────────────────
   var etat = { docs: [], choisi: null, versions: [], apercu: null, filtre: '', admin: false };
 
+  // Référence affichée : initiales de l'auteur à la place de « FIDI » (nomenclature.js).
+  function nomRef(d) { var N = window.FidiNomenclature; return N ? N.afficher(d.ref, d.aMoi ? N.moi() : d.nomAuteur) : d.ref; }
+
   function avisLocaux() {
     try { return (window.AvisValeur.listAvis() || []).filter(function (m) { return m && m.ref; }); } catch (e) { return []; }
   }
@@ -142,7 +145,7 @@
       etat.admin = !!enLigne.admin;
       (enLigne.documents || []).forEach(function (d) {
         var o = { ref: d.ref, proprio: d.a_moi ? '' : d.proprio, aMoi: !!d.a_moi, enLigne: true, local: false, ancien: false,
-          client: d.client, commune: d.commune, type: d.type, date: d.date, maj: d.maj, auteur: d.auteur,
+          client: d.client, commune: d.commune, type: d.type, date: d.date, maj: d.maj, auteur: d.auteur, nomAuteur: d.proprietaire_nom || '', emailAuteur: d.proprietaire || '',
           valeur_min: d.valeur_min, valeur_max: d.valeur_max, diffusions: d.diffusions || 0 };
         parCle[cle(o.ref, o.proprio)] = o; docs.push(o);
       });
@@ -157,7 +160,7 @@
         if (!n || !n.ref || parCle[cle(n.ref, '')]) return;
         if (docs.some(function (d) { return d.ref === n.ref; })) return; // déjà en ligne chez son auteur
         // Le serveur ne renvoie que les dossiers visibles ; a_moi dit si celui-ci est le mien (sinon : partagé, en lecture).
-        docs.push({ ref: n.ref, proprio: '', aMoi: n.a_moi !== false, auteur: n.proprietaire_nom || '', enLigne: false, local: false, ancien: true, client: n.client, commune: n.commune,
+        docs.push({ ref: n.ref, proprio: '', aMoi: n.a_moi !== false, auteur: n.proprietaire_nom || '', nomAuteur: n.proprietaire_nom || '', emailAuteur: n.proprietaire || '', enLigne: false, local: false, ancien: true, client: n.client, commune: n.commune,
           type: n.type_bien, date: n.date, maj: n.date, valeur_min: n.valeur, valeur_max: n.valeur, diffusions: 0, verrou: !!n.verrou });
       });
       docs.sort(function (a, b) { return String(b.maj || '').localeCompare(String(a.maj || '')); });
@@ -211,7 +214,7 @@
     var zone = document.getElementById('avdDocs'); if (!zone) return;
     var f = etat.filtre.trim().toLowerCase();
     var docs = etat.docs.filter(function (d) {
-      return !f || [d.ref, d.client, d.commune, d.type, d.auteur].join(' ').toLowerCase().indexOf(f) >= 0;
+      return !f || [d.ref, nomRef(d), d.client, d.commune, d.type, d.auteur].join(' ').toLowerCase().indexOf(f) >= 0;
     });
     if (!docs.length) {
       zone.innerHTML = '<div class="avd-vide">' + (etat.docs.length ? 'Aucun avis ne correspond à la recherche.' : 'Aucun avis enregistré pour le moment.') + '</div>';
@@ -223,7 +226,7 @@
       var actif = etat.choisi === d ? ' avd-actif' : '';
       return '<button type="button" class="avd-doc' + actif + '" data-avd-doc="' + i + '">' +
         '<span class="avd-nom">' + esc(nom) + '</span>' +
-        '<span class="avd-sous">' + esc([d.client ? d.type : '', d.client ? d.commune : '', d.ref].filter(Boolean).join(' · ')) + '</span>' +
+        '<span class="avd-sous">' + esc([d.client ? d.type : '', d.client ? d.commune : '', nomRef(d)].filter(Boolean).join(' · ')) + '</span>' +
         '<span class="avd-valeur">' + esc(fourchette(d) || d.valeurTexte || '—') + '</span>' +
         '<span class="avd-ligne">' + badges(d) + '<span class="avd-date">' + esc(dateHeure(d.maj) || d.date || '') + '</span></span>' +
         '</button>';
@@ -246,10 +249,10 @@
 
   function afficherVersions(erreur) {
     var d = etat.choisi, zone = document.getElementById('avdVersions'); if (!zone || !d) return;
-    var nom = d.client || [d.type, d.commune].filter(Boolean).join(' · ') || d.ref;
+    var nom = d.client || [d.type, d.commune].filter(Boolean).join(' · ') || nomRef(d);
     var supprimable = d.aMoi && !d.diffusions && !d.verrou;
     var html = '<button type="button" class="btn btn-sm btn-link avd-retour" data-avd-action="retour-liste"><i class="bi bi-arrow-up me-1"></i>Tous les avis</button>' +
-      '<div class="avd-titre">' + esc(nom) + '<small>' + esc(d.ref) + '</small></div>' +
+      '<div class="avd-titre">' + esc(nom) + '<small>' + esc(nomRef(d)) + '</small></div>' +
       '<div class="d-flex gap-1 flex-wrap mb-2">' +
         '<button type="button" class="btn btn-sm btn-primary" data-avd-action="ouvrir"><i class="bi bi-pencil-square me-1"></i>Ouvrir l\'avis</button>' +
         (supprimable ? '<button type="button" class="btn btn-sm btn-outline-danger" data-avd-action="supprimer" title="Supprimer cet avis"><i class="bi bi-trash"></i></button>' :
@@ -426,7 +429,10 @@
       donnees(d, 'courant').then(function (data) {
         if (!data) { alert('Contenu introuvable pour cet avis.'); return; }
         fermer();
-        setTimeout(function () { window.AvisValeur.charger(data, { message: 'Avis ouvert : ' + d.ref }); }, 250);
+        if (!d.aMoi && d.nomAuteur) { data.metadata = data.metadata || {}; data.metadata.auteur = d.nomAuteur; }
+        // Avis d'un autre compte : le document garde l'identité (société, logo, couleurs) de son auteur.
+        var avant = !d.aMoi && d.emailAuteur && window.Marque && Marque.chargerAuteur ? Marque.chargerAuteur('avis:' + d.ref, d.emailAuteur, d.nomAuteur) : Promise.resolve();
+        avant.then(function () { setTimeout(function () { window.AvisValeur.charger(data, { message: 'Avis ouvert : ' + nomRef(d) }); }, 250); });
       });
     } else if (a === 'reprendre') {
       if (!etat.donneesApercu) return;

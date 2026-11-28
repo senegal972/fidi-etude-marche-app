@@ -279,6 +279,7 @@
       + (dest ? '<tr><td>Destinataire</td><td><strong>' + esc(dest) + '</strong></td></tr>' : '')
       + '<tr><td>Date</td><td>' + dateFr() + '</td></tr>'
       + '<tr><td>Référence</td><td>' + esc(ref) + '</td></tr>'
+      + (function () { var t = window.Marque && Marque.mentionEdition ? Marque.mentionEdition(null, d && d.__auteur) : ''; return t ? '<tr><td>Édition</td><td>' + esc(t) + '</td></tr>' : ''; })()
       + '<tr><td>Type de bien</td><td>' + esc(typ) + (inputs.surface ? ' · ' + inputs.surface + ' m²' : '') + '</td></tr>'
       + '<tr><td>Périmètre</td><td>' + esc(inputs.perimetre || '—') + '</td></tr>'
       + '</tbody></table>'
@@ -711,8 +712,10 @@
     const d = window.__fidiData;
     if (!d) return null;
     const inputs = window.__fidiInputs || {};
-    const ref = (typeof window.etudeRef === 'function' || typeof etudeRef === 'function')
+    const refCle = (typeof window.etudeRef === 'function' || typeof etudeRef === 'function')
       ? (window.etudeRef || etudeRef)(d, inputs) : '';
+    // Référence imprimée (couverture et pieds de page) : initiales de l'auteur de l'étude à la place de « FIDI ».
+    const ref = window.FidiNomenclature ? FidiNomenclature.afficher(refCle, d.__auteur || FidiNomenclature.moi()) : refCle;
     const note = imprime('note')
       ? '<div class="rpt-block rpt-sec"><h3>Note</h3><p>' + esc(document.getElementById('etudeNote').value) + '</p></div>' : '';
     const decotes = imprime('decotes') ? decotesPage(d, ref) : '';

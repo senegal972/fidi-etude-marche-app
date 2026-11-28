@@ -105,6 +105,6 @@ test("document : l'estimation de l'étude n'est plus présentée comme un prix d
   assert.ok(js.includes("!d.bien._prixVerifie && num(d.bien.prixVente) === estMed") && js.includes("Prix de cession retiré"));
   assert.ok(js.includes('id="avAccStatut"') && js.includes("d.bien.statut = a.statut;"));
   assert.ok(js.includes("Écart à arbitrer avant diffusion :</b> cette stratégie part de la synthèse des méthodes"));
-  assert.ok(js.includes("D\\'après l\\'étude de marché ' + esc(data.metadata.refEtude)"));
+  assert.ok(js.includes("D\\'après l\\'étude de marché ' + esc(refAff(data.metadata.refEtude"));
   assert.ok(!js.includes("v.niveau === 'orange' ? '⚠️ ' : '• ';"), "plus de puce doublée dans les vigilances");
 });

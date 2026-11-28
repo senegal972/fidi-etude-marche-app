@@ -10,6 +10,7 @@
 
 import { authResp, currentUser } from "./_auth.mjs";
 import { getNamedStore } from "./_blobs.mjs";
+import { chargerComptes, lecteurDe, peutVoir } from "./_documents.mjs";
 
 export const MARQUE_STORE = "fidi-marques";
 const TAILLE_MAX = 2_600_000; // octets — charte, logo, et un logo par société (10 sociétés au plus, 200 ko chacun au plus)
@@ -115,6 +116,21 @@ export function assainirMarque(src) {
   return out;
 }
 
+// Charte d'un AUTRE compte, pour imprimer son document à son identité : seulement si le lecteur a le droit de voir ses documents
+// (mêmes règles que « Mes documents » : groupe et partage, administrateur sauf clients publics). Rend le compte ou null.
+export function compteAuteur(lecteur, comptes, emailDemande) {
+  const e = String(emailDemande || "").trim().toLowerCase();
+  if (!e || !lecteur) return null;
+  const c = (comptes || []).find((x) => x.email === e) || null;
+  return c && peutVoir(lecteur, c) ? c : null;
+}
+// La charte d'un autre ne sort jamais avec ses coordonnées bancaires.
+export function sansBanque(marque) {
+  const m = assainirMarque(marque);
+  m.emetteurs = (m.emetteurs || []).map((x) => { const { iban, bic, titulaire, ...reste } = x; return reste; });
+  return m;
+}
+
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return authResp(200, {});
   if (event.httpMethod !== "GET" && event.httpMethod !== "POST") {
@@ -140,6 +156,15 @@ export const handler = async (event) => {
   catch (e) { return authResp(503, { error: "Stockage indisponible", blobs_error: true }); }
 
   try {
+    const autre = event.httpMethod === "GET" ? String((event.queryStringParameters || {}).compte || "").trim().toLowerCase() : "";
+    if (autre && autre !== String(found.user.email || "").toLowerCase()) {
+      let comptes;
+      try { comptes = await chargerComptes(); } catch (e) { return authResp(503, { error: "Comptes indisponibles" }); }
+      const c = compteAuteur(lecteurDe(found), comptes, autre);
+      if (!c) return authResp(404, { error: "Compte introuvable" });
+      const b = await store.get(String(c.id), { type: "json" });
+      return authResp(200, { compte: { nom: c.nom || "", email: c.email }, marque: b ? sansBanque(b) : null });
+    }
     if (event.httpMethod === "GET") {
       const brut = await store.get(cle, { type: "json" });
       return authResp(200, { compte, marque: brut ? assainirMarque(brut) : null });
