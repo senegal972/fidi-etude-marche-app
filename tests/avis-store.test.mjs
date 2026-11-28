@@ -28,7 +28,8 @@ const pageCompte = (email) => { const c = COMPTES[email]; return { id: c.id, pro
   "Email": { title: [{ plain_text: email }] }, "Nom": { rich_text: [{ plain_text: "Agent Démo" }] }, "Statut": { select: { name: "Actif" } }, "Rôle": { select: { name: c.role } },
   ...(c.reseau ? { "Réseau": { rich_text: [{ plain_text: c.reseau }] } } : {}),
   ...(c.partage ? { "Partage documents": { select: { name: c.partage } } } : {}),
-  ...(c.avec ? { "Partage avec": { rich_text: [{ plain_text: c.avec }] } } : {}) } }; };
+  ...(c.avec ? { "Partage avec": { rich_text: [{ plain_text: c.avec }] } } : {}),
+  ...(c.ecosysteme ? { "Écosystème": { select: { name: c.ecosysteme } } } : {}) } }; };
 
 globalThis.fetch = async (url, options = {}) => {
   const u = new URL(String(url));
@@ -273,4 +274,18 @@ test("privé ou personnes choisies : seuls les membres désignés du groupe lise
   reglage(AGENT, { reseau: "Agence Nord", partage: "Personnes choisies", avec: "autre@exemple.fr" }); reglage(AUTRE, { reseau: "Agence Sud" });
   assert.equal((await lire(AUTRE, { liste: "1" })).documents.length, 0);
   reglage(AGENT, {}); reglage(AUTRE, {});
+});
+
+test("client de l'écosystème public : l'administrateur ne liste pas ses avis, ne les ouvre pas et n'y écrit pas", async () => {
+  COMPTES[AUTRE].ecosysteme = "Public";
+  await enregistrer(AGENT, avis(1));
+  await enregistrer(AUTRE, avis(9), undefined, "FIDI-AV-CLIENT");
+  const liste = await lire(ADMIN, { liste: "1" });
+  assert.deepEqual(liste.documents.map((d) => d.proprio), ["page-agent"], "seul le cercle interne est listé");
+  assert.equal((await lire(ADMIN, { ref: "FIDI-AV-CLIENT", proprio: "page-autre" })).code, 404);
+  assert.equal((await lire(ADMIN, { ref: "FIDI-AV-CLIENT", versions: "1", proprio: "page-autre" })).code, 404);
+  assert.equal((await ecrire(ADMIN, { action: "supprimer", ref: "FIDI-AV-CLIENT", proprio: "page-autre" })).code, 404);
+  assert.equal((await lire(AUTRE, { ref: "FIDI-AV-CLIENT" })).data.bien.surface, 9, "le client, lui, garde ses avis");
+  assert.equal((await lire(ADMIN, { ref: "FIDI-AV-TEST", proprio: "page-agent" })).data.bien.surface, 1, "le cercle interne reste ouvert à l'administrateur");
+  delete COMPTES[AUTRE].ecosysteme;
 });

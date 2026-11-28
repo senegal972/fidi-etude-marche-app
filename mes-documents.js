@@ -111,11 +111,13 @@
         '<div class="md-membres' + (m.partage === 'choisi' ? '' : ' d-none') + '" id="mdMembres">' + (etat.membres.length ? etat.membres.map(function (c) {
           return '<label class="md-radio"><input class="form-check-input" type="checkbox" value="' + esc(c.email) + '"' + ((m.avec || []).indexOf(c.email) >= 0 ? ' checked' : '') + '><span>' + esc(c.nom) + (c.nom !== c.email ? ' <small>' + esc(c.email) + '</small>' : '') + '</span></label>';
         }).join('') : '<p class="md-aide">Aucun autre membre dans votre groupe pour l\'instant.</p>') + '</div>' +
-        '<p class="md-aide">Un partage donne la lecture seule : personne d\'autre que vous ne modifie ni ne supprime vos documents. Les comptes d\'un autre groupe ne les voient jamais. L\'administrateur voit tous les documents.</p>' +
+        '<p class="md-aide">Un partage donne la lecture seule : personne d\'autre que vous ne modifie ni ne supprime vos documents. Les comptes d\'un autre groupe ne les voient jamais. ' +
+          (m.ecosysteme === 'public' ? 'L\'administrateur de la plateforme n\'a pas accès à vos documents, à vos clients ni à vos factures : il ne gère que votre compte (mot de passe, crédits).' : 'L\'administrateur voit vos documents.') + '</p>' +
         '<div class="md-conf-pied"><button type="button" class="btn btn-sm btn-primary" data-md="enregistrer-partage"><i class="bi bi-check-lg me-1"></i>Enregistrer</button>' +
         '<button type="button" class="btn btn-sm btn-outline-secondary" data-md="fermer-partage">Annuler</button><span class="md-message" id="mdMessage" role="status"></span></div></div>';
     }
-    return '<div class="md-conf"><span><i class="bi bi-shield-lock me-1"></i>Mes documents sont visibles <b>' + esc(texte) + '</b>' + (m.groupe ? ' <small>· groupe « ' + esc(m.groupe) + ' »</small>' : ' <small>· aucun groupe</small>') + '</span>' +
+    return '<div class="md-conf"><span><i class="bi bi-shield-lock me-1"></i>Mes documents sont visibles <b>' + esc(texte) + '</b>' + (m.groupe ? ' <small>· groupe « ' + esc(m.groupe) + ' »</small>' : ' <small>· aucun groupe</small>') +
+      ' <small>· ' + (m.ecosysteme === 'public' ? 'l\'administrateur de la plateforme n\'y a pas accès' : 'l\'administrateur les voit') + '</small></span>' +
       '<button type="button" class="btn btn-sm btn-outline-primary" data-md="ouvrir-partage">Modifier</button></div>';
   }
   function afficher() {

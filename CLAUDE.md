@@ -204,6 +204,14 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
   un compte règle qui voit les siens — `prive`, `groupe` (membres de son groupe = champ « Réseau »), `choisi` (membres désignés du même groupe) —
   dans les propriétés Notion du compte « Partage documents » et « Partage avec » ; **jamais d'un groupe à l'autre**, ni entre comptes sans groupe ;
   l'administrateur voit tout. **Un partage ne donne que la lecture** : seuls le propriétaire et l'administrateur modifient ou suppriment.
+- **Deux écosystèmes** (propriété Notion « Écosystème » du compte : `Interne` par défaut, `Public`) : `interne` = cercle de l'administrateur,
+  qui en voit toutes les données ; `public` = client ayant acheté une prestation — **l'administrateur n'accède à aucune de ses données**
+  (`peutVoir(admin, compte public) === false`, `peutModifierDossier`, `emailsVisibles(admin)` → `exclus`, `dansPortee`) et ne gère que le compte
+  (`admin-users`). `memeGroupe` exige le même écosystème. Sans la liste des comptes, l'administrateur ne reçoit rien (503) plutôt que tout.
+  Routes concernées : `notion-list` (`does_not_equal` + revérification), `notion-get/save/delete`, `avis-store`, `crm-clients`, `factures-client`,
+  `factures-admin`, `facture-cancel`. Écran : `adEcosysteme` / `fcEcosysteme`, `Compte.libellesPartage()`. **Barrière applicative, pas un
+  chiffrement** : qui détient les accès Notion / Netlify peut lire les bases en dehors de l'application. Non couvert : les routes d'action sur une
+  facture par son numéro (`facture-paiement`, `facture-avoir`, `facture-relance`, `facture-delete`, `contacts`) ne vérifient pas l'écosystème.
 - **Propriétaire d'un dossier** : propriété Notion « Propriétaire » (e-mail) sur les bases Études et Avis, posée par `notion-save` à la création ;
   avis en ligne : dossier du compte dans Blobs (`d/<compte>/…`). **Dossier sans propriétaire (antérieur à la 1.50) : administrateur seulement**,
   qui l'attribue (`POST /api/documents { action:"attribuer", kind, ref, email }`).

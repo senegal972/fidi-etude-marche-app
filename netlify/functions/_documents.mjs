@@ -6,7 +6,12 @@
 //   • un compte choisit qui voit les siens : « prive » (lui seul), « groupe » (tous les membres de son groupe),
 //     « choisi » (les membres de son groupe qu'il désigne) — champs « Partage documents » et « Partage avec » du compte ;
 //   • jamais d'un groupe à l'autre : sans groupe commun (champ « Réseau »), aucun partage ;
-//   • l'administrateur voit tout, et fixe ces réglages à la création d'un compte ou dans sa fiche ;
+//   • DEUX ÉCOSYSTÈMES (champ « Écosystème » du compte, fixé par l'administrateur) :
+//       – « interne » : le cercle de l'administrateur (ses collaborateurs, ses sociétés, les réseaux rattachés). Il en voit tous les
+//         documents, et fixe ces réglages à la création d'un compte ou dans sa fiche ;
+//       – « public » : les clients qui ont acheté une prestation. L'ADMINISTRATEUR N'A ACCÈS À AUCUNE DE LEURS DONNÉES (études, avis,
+//         clients, factures), ni son cercle. Il ne gère que le compte lui-même (mot de passe, statut, crédits).
+//     Aucun partage ne franchit la frontière entre les deux écosystèmes ;
 //   • un dossier sans propriétaire (enregistré avant la 1.50) n'est visible que de l'administrateur.
 // Seuls le propriétaire et l'administrateur modifient ou suppriment un dossier : un partage ne donne que la lecture.
 import { DB, queryDatabase, readText, readSelect, ensureProperty } from "./_notion.mjs";
@@ -34,26 +39,43 @@ export function compteDePage(page) {
   const p = (page && page.properties) || {};
   const pa = lirePartage(p);
   return { id: page.id, email: email(readText(p["Email"])), nom: readText(p["Nom"]) || "", role: readSelect(p["Rôle"]) || "Collaborateur",
-    statut: readSelect(p["Statut"]) || "Actif", groupe: lireGroupe(p), partage: pa.mode, avec: pa.avec };
+    statut: readSelect(p["Statut"]) || "Actif", groupe: lireGroupe(p), partage: pa.mode, avec: pa.avec, ecosysteme: lireEcosysteme(p) };
 }
-export const memeGroupe = (a, b) => !!(a && b && norm(a.groupe) && norm(a.groupe) === norm(b.groupe));
+export const ECOSYSTEMES = ["interne", "public"];
+export const LIBELLE_ECOSYSTEME = { interne: "Interne", public: "Public" };
+// « Public » seulement si la fiche le dit : un compte sans valeur est du cercle de l'administrateur (comptes antérieurs).
+export const lireEcosysteme = (props) => (norm(readSelect((props || {})["Écosystème"]) || "") === "public" ? "public" : "interne");
+export const estPublic = (c) => !!c && c.ecosysteme === "public";
+// Même groupe ET même écosystème : un client public ne rejoint jamais un groupe du cercle interne, même s'il en porte le nom.
+export const memeGroupe = (a, b) => !!(a && b && norm(a.groupe) && norm(a.groupe) === norm(b.groupe) && (a.ecosysteme || "interne") === (b.ecosysteme || "interne"));
 
 // Le compte `lecteur` peut-il voir les documents du compte `proprietaire` ? Pur, testé.
 export function peutVoir(lecteur, proprietaire) {
   if (!lecteur) return false;
-  if (lecteur.role === "Administrateur") return true;
+  if (proprietaire && proprietaire.email && email(proprietaire.email) === email(lecteur.email)) return true;
+  // Administrateur : tout son écosystème (et les dossiers sans propriétaire), JAMAIS les données d'un client public.
+  if (lecteur.role === "Administrateur") return !estPublic(proprietaire);
   if (!proprietaire || !proprietaire.email) return false;            // dossier sans propriétaire : administrateur seulement
-  if (email(proprietaire.email) === email(lecteur.email)) return true;
   if (!memeGroupe(lecteur, proprietaire)) return false;              // jamais d'un groupe à l'autre
   if (proprietaire.partage === "groupe") return true;
   if (proprietaire.partage === "choisi") return (proprietaire.avec || []).map(email).includes(email(lecteur.email));
   return false;
 }
 // Seuls le propriétaire et l'administrateur modifient ou suppriment.
-export function peutModifier(lecteur, emailProprietaire) {
+// compteProprietaire (facultatif) : fiche du propriétaire, pour l'administrateur — il ne modifie pas le dossier d'un client public.
+export function peutModifier(lecteur, emailProprietaire, compteProprietaire) {
   if (!lecteur) return false;
-  if (lecteur.role === "Administrateur") return true;
-  return !!emailProprietaire && email(emailProprietaire) === email(lecteur.email);
+  if (!!emailProprietaire && email(emailProprietaire) === email(lecteur.email)) return true;
+  if (lecteur.role === "Administrateur") return !estPublic(compteProprietaire);
+  return false;
+}
+// Même décision, en lisant la fiche du propriétaire quand le lecteur est administrateur. Refus si les comptes ne peuvent pas être lus.
+export async function peutModifierDossier(lecteur, emailProprietaire) {
+  if (!lecteur) return false;
+  if (!!emailProprietaire && email(emailProprietaire) === email(lecteur.email)) return true;
+  if (lecteur.role !== "Administrateur") return false;
+  if (!emailProprietaire) return true;                               // dossier antérieur, sans propriétaire
+  try { const c = (await chargerComptes()).find((x) => x.email === email(emailProprietaire)) || null; return !estPublic(c); } catch { return false; }
 }
 // Réglage demandé → réglage enregistré : les personnes désignées doivent être du même groupe que le compte.
 export function assainirPartage(compte, demande, comptes) {
@@ -96,25 +118,31 @@ export async function colonneProprietaire(databaseId) {
 }
 // Décision d'accès à un dossier pour un lecteur : { voir, modifier, proprietaire }. Charge les comptes seulement si nécessaire.
 export async function accesDossier(lecteur, page) {
-  const proprietaire = proprietaireDePage(page);
-  const modifier = peutModifier(lecteur, proprietaire);
-  if (modifier) return { voir: true, modifier: true, proprietaire };
-  if (!proprietaire) return { voir: false, modifier: false, proprietaire };
+  const proprietaire = proprietaireDePage(page), admin = lecteur.role === "Administrateur";
+  if (proprietaire && proprietaire === email(lecteur.email)) return { voir: true, modifier: true, proprietaire };
+  if (!proprietaire) return { voir: admin, modifier: admin, proprietaire };
   const comptes = await chargerComptes();
   const compte = comptes.find((c) => c.email === proprietaire) || null;
-  return { voir: peutVoir(lecteur, compte), modifier: false, proprietaire };
+  const voir = peutVoir(lecteur, compte);
+  return { voir, modifier: admin && voir, proprietaire };
 }
 
 // E-mails des comptes dont le lecteur peut voir les documents, les clients et les factures (lui compris). L'administrateur voit tout :
 // { admin:true }. Si la liste des comptes ne peut pas être lue, un compte ordinaire ne voit que les siens.
 export async function emailsVisibles(lecteur) {
-  if (lecteur.role === "Administrateur") return { admin: true, emails: [] };
   let comptes = [];
+  if (lecteur.role === "Administrateur") {
+    // L'administrateur voit tout SAUF les données des comptes publics (exclus). Comptes illisibles : il ne voit que les siennes.
+    try { comptes = await chargerComptes(); } catch { return { admin: false, emails: [lecteur.email], exclus: [] }; }
+    return { admin: true, emails: [], exclus: comptes.filter(estPublic).map((c) => c.email) };
+  }
   try { comptes = await chargerComptes(); } catch { comptes = []; }
   const emails = new Set(comptesVisibles(lecteur, comptes).map((c) => c.email));
   emails.add(lecteur.email);
-  return { admin: false, emails: Array.from(emails).filter(Boolean) };
+  return { admin: false, emails: Array.from(emails).filter(Boolean), exclus: [] };
 }
+// Un élément (contact, facture) rattaché au compte `proprietaire` est-il dans la portée rendue par emailsVisibles ?
+export const dansPortee = (portee, proprietaire) => (portee.admin ? !(portee.exclus || []).includes(email(proprietaire)) : portee.emails.includes(email(proprietaire)));
 // Colonne « propriétaire » d'une base quelconque (factures, contacts) : créée au besoin, false si impossible.
 export async function colonneCompte(databaseId, nom = PROP_PROPRIETAIRE) {
   try { return !!(await ensureProperty(databaseId, nom, { rich_text: {} })); } catch { return false; }

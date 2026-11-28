@@ -34,7 +34,7 @@ export const handler = async (event) => {
   try {
     const comptes = await chargerComptes();
     const membres = comptes.filter((c) => c.email !== moi.email && c.statut !== "Désactivé" && memeGroupe(c, moi)).map((c) => ({ email: c.email, nom: c.nom || c.email }));
-    const vue = () => ({ moi: { email: moi.email, nom: moi.nom, groupe: moi.groupe, partage: moi.partage, avec: moi.avec, admin }, membres });
+    const vue = () => ({ moi: { email: moi.email, nom: moi.nom, groupe: moi.groupe, partage: moi.partage, avec: moi.avec, admin, ecosysteme: moi.ecosysteme }, membres });
 
     if (event.httpMethod === "GET") return authResp(200, vue());
     if (event.httpMethod !== "POST") return authResp(405, { error: "Méthode non admise." });

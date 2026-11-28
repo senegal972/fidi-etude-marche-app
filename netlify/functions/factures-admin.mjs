@@ -5,7 +5,7 @@
 import { DB, hasToken, queryDatabase } from "./_notion.mjs";
 import { authResp, currentUser } from "./_auth.mjs";
 import { factureFromPage, factureHtmlUrl, reqOrigin } from "./_facture.mjs";
-import { proprietaireDePage } from "./_documents.mjs";
+import { proprietaireDePage, lecteurDe, emailsVisibles, dansPortee } from "./_documents.mjs";
 
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return authResp(200, {});
@@ -41,8 +41,10 @@ export const handler = async (event) => {
       cursor = r.next_cursor;
     }
 
+    // Les factures émises par un client de l'écosystème public ne sont pas des données de l'administrateur : elles sont écartées.
+    const portee = await emailsVisibles(lecteurDe(me));
     const origin = reqOrigin(event);
-    const items = pages.map((p) => {
+    const items = pages.filter((p) => dansPortee(portee, proprietaireDePage(p))).map((p) => {
       const f = factureFromPage(p);
       const props = p.properties || {};
       // Champs facultatifs FIDI (facturation split)

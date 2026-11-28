@@ -28,7 +28,7 @@ export const handler = async (event) => {
         email: u.email, nom: u.nom, role: u.role, statut: u.statut, credits: u.credits,
         illimite: u.illimite, quota: u.quota, recherches: u.recherches,
         template,
-        groupe: doc.groupe, partage: doc.partage, partage_avec: doc.avec,
+        groupe: doc.groupe, partage: doc.partage, partage_avec: doc.avec, ecosysteme: doc.ecosysteme,
       },
     });
   } catch (e) {

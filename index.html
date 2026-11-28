@@ -6967,8 +6967,11 @@ window.Compte = (function(){
               '<div class="col-md-3"><label class="form-label small mb-0">Grille tarifaire</label>'+
                 '<select class="form-select form-select-sm" id="adTarifGroup"><option value="">Standard (par défaut)</option><option value="Sextant">Sextant</option><option value="Partenaire">Partenaire</option></select>'+
               '</div>'+
+              '<div class="col-md-3"><label class="form-label small mb-0">Écosystème</label>'+
+                '<select class="form-select form-select-sm" id="adEcosysteme" onchange="Compte.libellesPartage(\'ad\')" title="Mon cercle : collaborateurs, sociétés et réseaux rattachés — vous voyez leurs documents. Client public : il a acheté une prestation — vous n\'avez accès à aucune de ses données, seulement à la gestion de son compte."><option value="interne">Mon cercle</option><option value="public">Client public</option></select>'+
+              '</div>'+
               '<div class="col-md-3"><label class="form-label small mb-0">Ses documents sont visibles</label>'+
-                '<select class="form-select form-select-sm" id="adPartage" title="Qui voit les études et avis de ce compte. Le partage ne se fait qu\'entre membres d\'un même groupe ; l\'utilisateur peut ensuite le modifier."><option value="prive">de lui seul</option><option value="groupe">de tout son groupe</option></select>'+
+                '<select class="form-select form-select-sm" id="adPartage" title="Qui voit les études et avis de ce compte. Le partage ne se fait qu\'entre membres d\'un même groupe ; l\'utilisateur peut ensuite le modifier."><option value="prive">de lui et de l\'administrateur</option><option value="groupe">de son groupe et de l\'administrateur</option></select>'+
               '</div>'+
               '<div class="col-md-8 d-flex align-items-end">'+
                 '<div class="form-check"><input class="form-check-input" type="checkbox" id="adIllimite"><label class="form-check-label small" for="adIllimite">Accès illimité (aucun crédit consommé)</label></div>'+
@@ -7121,7 +7124,7 @@ window.Compte = (function(){
     }).join('');
     body.innerHTML = rows || '<tr><td colspan="8" class="text-muted small p-3">Aucun compte trouvé avec ces critères.</td></tr>';
   }
-  function openCreateForm(){ document.getElementById('adCreateForm').classList.remove('d-none'); document.getElementById('adEmail').focus(); }
+  function openCreateForm(){ document.getElementById('adCreateForm').classList.remove('d-none'); libellesPartage('ad'); document.getElementById('adEmail').focus(); }
   function adCreateRoleChange(){ const r=(document.getElementById('adRole')||{}).value; const w=document.getElementById('adExpireWrap'); if(w) w.style.display=(r==='Éphémère')?'':'none'; }
   function closeCreateForm(){ document.getElementById('adCreateForm').classList.add('d-none'); document.getElementById('adMsg').innerHTML=''; }
   function openTarifForm(){ document.getElementById('tfCreateForm').classList.remove('d-none'); document.getElementById('tfNom').focus(); }
@@ -7198,9 +7201,13 @@ window.Compte = (function(){
             '<input id="fcReseau" class="form-control form-control-sm" list="fcReseauList" value="'+esc(u.reseau||'')+'" placeholder="Optimmo Dom, Sextant…">'+
             '<datalist id="fcReseauList">'+reseaux.map(function(rz){return '<option value="'+esc(rz)+'">';}).join('')+'</datalist>'+
           '</div>'+
+          '<div class="col-md-6"><label class="form-label small mb-0">Écosystème</label>'+
+            '<select id="fcEcosysteme" class="form-select form-select-sm" onchange="Compte.libellesPartage(\'fc\')">'+
+              [['interne','Mon cercle (collaborateurs, sociétés, réseaux rattachés)'],['public','Client public (a acheté une prestation)']].map(function(o){return '<option value="'+o[0]+'"'+((u.ecosysteme||'interne')===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>'+
+            '<div class="text-muted" style="font-size:.66rem;" id="fcEcosystemeAide"></div></div>'+
           '<div class="col-md-6"><label class="form-label small mb-0">Ses documents sont visibles</label>'+
-            '<select id="fcPartage" class="form-select form-select-sm" title="Études et avis de ce compte. Jamais visibles d\'un autre groupe.">'+
-              [['prive','de lui seul'],['groupe','de tout son groupe'],['choisi','de personnes choisies de son groupe']].map(function(o){return '<option value="'+o[0]+'"'+((u.partage||'prive')===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>'+
+            '<select id="fcPartage" class="form-select form-select-sm" title="Études et avis de ce compte. Jamais visibles d\'un autre groupe ni d\'un autre écosystème.">'+
+              [['prive','de lui'],['groupe','de son groupe'],['choisi','de personnes choisies de son groupe']].map(function(o){return '<option value="'+o[0]+'"'+((u.partage||'prive')===o[0]?' selected':'')+' data-base="'+o[1]+'">'+o[1]+'</option>';}).join('')+'</select>'+
             '<input id="fcPartageAvec" class="form-control form-control-sm mt-1" value="'+esc((u.partage_avec||[]).join(', '))+'" placeholder="Personnes choisies : e-mails séparés par une virgule">'+
             '<div class="text-muted" style="font-size:.66rem;">Le groupe est le champ Réseau. L\'utilisateur peut modifier ce réglage dans « Mes documents ».</div></div>'+
           '<div class="col-md-6"><label class="form-label small mb-0">Grille tarifaire</label>'+
@@ -7239,6 +7246,7 @@ window.Compte = (function(){
     dlg.addEventListener('click', function(e){ if(e.target===dlg) dlg.remove(); });
     // Focus initial dans la fiche pour capter le clavier immédiatement.
     setTimeout(function(){ var el=document.getElementById('fcNom'); if(el) el.focus(); }, 30);
+    libellesPartage('fc'); // libellés selon l'écosystème du compte
   }
   function ficheRoleChange(){
     const r=(document.getElementById('fcRole')||{}).value;
@@ -7250,6 +7258,16 @@ window.Compte = (function(){
     if(!confirm('Envoyer à ' + email + ' l\'e-mail de bienvenue (lien de l\'application, installation sur téléphone, lien pour choisir son mot de passe) ?')) return;
     const {ok,data} = await admin('bienvenue', {email});
     alert(ok ? 'E-mail de bienvenue envoyé à ' + email + '.' : (data.error || 'Envoi impossible.'));
+  }
+  // Libellés de « Ses documents sont visibles » selon l'écosystème : dans le cercle interne l'administrateur voit toujours les
+  // documents ; pour un client public il n'y a jamais accès (seule la gestion du compte lui reste).
+  function libellesPartage(prefixe){
+    var eco = document.getElementById(prefixe + 'Ecosysteme'), sel = document.getElementById(prefixe + 'Partage'); if(!eco || !sel) return;
+    var pub = eco.value === 'public';
+    var base = { prive:'de lui', groupe:'de son groupe', choisi:'de personnes choisies de son groupe' };
+    [].forEach.call(sel.options, function(o){ var b = base[o.value] || o.textContent; o.textContent = pub ? (o.value === 'prive' ? 'de lui seul' : b + ' seulement') : b + ' et de l\'administrateur'; });
+    var aide = document.getElementById(prefixe + 'EcosystemeAide');
+    if(aide) aide.textContent = pub ? 'Vous n\'avez accès à aucune de ses données (études, avis, clients, factures). Vous gérez seulement son compte : mot de passe, statut, crédits.' : 'Vous voyez ses documents, ses clients et ses factures.';
   }
   async function ficheMotDePasse(email){
     const box = document.getElementById('fcMdp'); if(!box) return;
@@ -7276,7 +7294,7 @@ window.Compte = (function(){
       nom: val('fcNom'), role: val('fcRole'), statut: val('fcStatut'),
       credits: val('fcCredits'), quota: (val('fcQuota') === '' ? '2' : val('fcQuota')), illimite: chk('fcIllimite'),
       reseau: val('fcReseau'), tarifGroup: val('fcTarif'), template: val('fcTemplate'),
-      partage: val('fcPartage'), partage_avec: val('fcPartageAvec'),
+      partage: val('fcPartage'), partage_avec: val('fcPartageAvec'), ecosysteme: val('fcEcosysteme'),
       fidi_encaisse: chk('fcEncaisse'), commission: val('fcCommission'),
       expire: (val('fcRole')==='Éphémère') ? (val('fcExpire')||'') : '' };
     const msg=document.getElementById('fcMsg'); if(msg) msg.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Enregistrement…';
@@ -7322,11 +7340,12 @@ window.Compte = (function(){
     const reseau=(document.getElementById('adReseau')||{}).value||'';
     const tarifGroup=(document.getElementById('adTarifGroup')||{}).value||'';
     const partage=(document.getElementById('adPartage')||{}).value||'prive';
+    const ecosysteme=(document.getElementById('adEcosysteme')||{}).value||'interne';
     const expire=(role==='Éphémère') ? ((document.getElementById('adExpire')||{}).value||'') : '';
     const msg=document.getElementById('adMsg');
     if(!email){ msg.innerHTML='<span class="text-danger">E-mail requis.</span>'; return; }
     if(password && password.length < 8){ msg.innerHTML='<span class="text-danger">Mot de passe manuel : 8 caractères minimum.</span>'; return; }
-    const {ok,data}=await admin('create',Object.assign({email,nom,credits,quota,illimite,role,reseau,tarifGroup,expire,partage}, password?{password}:{}));
+    const {ok,data}=await admin('create',Object.assign({email,nom,credits,quota,illimite,role,reseau,tarifGroup,expire,partage,ecosysteme}, password?{password}:{}));
     if(!ok){ msg.innerHTML='<span class="text-danger">'+esc(data.error||'Erreur')+'</span>'; return; }
     if(data.temp_password){
       const pw = data.temp_password;
@@ -7881,7 +7900,7 @@ window.Compte = (function(){
 
   return { open, rubrique, loadSocietes, miseEnPage, collaborateurs, doLogin, logout, refresh, setCredits, setRecherches, consume, renduPdf, confirmerCredit, adminCreate, adminCredit, adminToggle,
            adminIllimite, adminQuota, adminDelete, adminReseau, adminTarifGroup, adminRefresh,
-           adminEditNom, adminCommission, openFiche, ficheRoleChange, ficheSave, ficheMotDePasse, ficheBienvenue, loadFactAdmin, factRelance, relanceVia, factDelete, factFicheClient,
+           adminEditNom, adminCommission, openFiche, ficheRoleChange, ficheSave, ficheMotDePasse, ficheBienvenue, libellesPartage, loadFactAdmin, factRelance, relanceVia, factDelete, factFicheClient,
            openRapportCompta, rcSetMonth, rcSetYear, genRapportCompta, factSaveContact,
            openCreateForm, closeCreateForm, adCreateRoleChange, openTarifForm, closeTarifForm, copySignupLink,
            loadOffres, chooseOffer, payOffer, offerToggle, offerPrice, bulkRecalc, bulkSyncCumul, offresSelectGrille, offresCreateGrid,

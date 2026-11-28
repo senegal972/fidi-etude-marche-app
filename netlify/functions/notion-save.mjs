@@ -61,7 +61,7 @@ async function syncEtudeAnnees(parentId, b, isUpdate) {
 }
 
 import { sessionRequise } from "./_auth.mjs";
-import { lecteurDe, pageParRef, proprietaireDePage, peutModifier, colonneProprietaire, PROP_PROPRIETAIRE } from "./_documents.mjs";
+import { lecteurDe, pageParRef, proprietaireDePage, peutModifierDossier, colonneProprietaire, PROP_PROPRIETAIRE } from "./_documents.mjs";
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return jsonResp(200, {});
   if (event.httpMethod !== "POST") return jsonResp(405, { error: "POST requis" });
@@ -115,7 +115,7 @@ export const handler = async (event) => {
     // l'administrateur ; un dossier sans propriétaire (antérieur) n'est repris que par l'administrateur, qui en devient propriétaire.
     const p0 = await pageParRef(databaseId, ref);
     const proprietaire = p0 ? proprietaireDePage(p0) : "";
-    if (p0 && !peutModifier(lecteur, proprietaire)) {
+    if (p0 && !(await peutModifierDossier(lecteur, proprietaire))) {
       return jsonResp(403, { ok: false, autre_compte: true, error: "Cette référence est déjà celle d'un dossier d'un autre compte : il ne peut pas être modifié d'ici. Changez le destinataire ou la date, ou adressez-vous à l'administrateur." });
     }
     if (await colonneProprietaire(databaseId)) props[PROP_PROPRIETAIRE] = P.text(proprietaire || lecteur.email);

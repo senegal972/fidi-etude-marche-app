@@ -101,12 +101,10 @@ export const handler = async (event) => {
   const lesComptes = async () => { if (!comptes) { try { comptes = await chargerComptes(); } catch { comptes = []; } } return comptes; };
   let compte = moi;
   if (COMPTE_VALIDE.test(vise) && vise !== moi) {
-    if (admin) compte = vise;
-    else if (event.httpMethod === "GET") {
-      const cible = (await lesComptes()).find((c) => c.id === vise) || null;
-      if (peutVoir(lecteur, cible)) compte = vise;
-      else return authResp(404, { error: "Avis introuvable" });
-    }
+    // Compte visé inconnu, ou client de l'écosystème public : refus, y compris pour l'administrateur.
+    const cible = (await lesComptes()).find((c) => c.id === vise) || null;
+    if (cible && peutVoir(lecteur, cible) && (admin || event.httpMethod === "GET")) compte = vise;
+    else if (admin || event.httpMethod === "GET") return authResp(404, { error: "Avis introuvable" });
   }
 
   let store;
@@ -120,7 +118,11 @@ export const handler = async (event) => {
         const tous = await lesComptes();
         const parId = Object.fromEntries(tous.map((c) => [c.id, c]));
         let blobs = [];
-        if (admin) ({ blobs } = await store.list({ prefix: "d/" }));
+        if (admin) {
+          // Tous les avis, sauf ceux des comptes de l'écosystème public (et, par prudence, ceux d'un compte que la liste ne connaît pas).
+          ({ blobs } = await store.list({ prefix: "d/" }));
+          blobs = blobs.filter((b) => { const id = b.key.split("/")[1]; return id === moi || (parId[id] && peutVoir(lecteur, parId[id])); });
+        }
         else {
           const ids = Array.from(new Set([moi, ...comptesVisibles(lecteur, tous).map((c) => c.id)])).filter((id) => COMPTE_VALIDE.test(id)).slice(0, 60);
           for (const id of ids) blobs.push(...(await store.list({ prefix: `d/${id}/` })).blobs);

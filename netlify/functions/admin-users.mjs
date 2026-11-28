@@ -13,7 +13,7 @@ function readReseau(props) {
 import { authResp, currentUser, createUser, setCredits, userFromPage } from "./_auth.mjs";
 import { envoyerBienvenue } from "./_bienvenue.mjs";
 import { identiteCompte } from "./_identite.mjs";
-import { lirePartage, assainirPartage, compteDePage, chargerComptes } from "./_documents.mjs";
+import { lirePartage, assainirPartage, compteDePage, chargerComptes, lireEcosysteme, LIBELLE_ECOSYSTEME } from "./_documents.mjs";
 import { ecrirePartage } from "./documents.mjs";
 
 // Mot de passe fort auto-généré : 16 chars mixed (majuscules + minuscules + chiffres + symboles)
@@ -70,7 +70,7 @@ export const handler = async (event) => {
         return { email: u.email, nom: u.nom, role: u.role, statut: u.statut, credits: u.credits,
                  illimite: u.illimite, quota: u.quota, recherches: u.recherches,
                  reseau, tarifGroup, fidi_encaisse: fidiEncaisse, commission, expire, template,
-                 partage: lirePartage(props).mode, partage_avec: lirePartage(props).avec };
+                 partage: lirePartage(props).mode, partage_avec: lirePartage(props).avec, ecosysteme: lireEcosysteme(props) };
       });
       return authResp(200, { ok: true, users, super_admin: SUPER_ADMIN_EMAIL, me: me.user.email });
     }
@@ -103,6 +103,11 @@ export const handler = async (event) => {
       if (b.expire) { await ensureProperty(DB.users, "Expire le", { date: {} }); extra["Expire le"] = P.date(String(b.expire)); }
       if (Object.keys(extra).length && createdPage?.id) {
         try { await updatePage(createdPage.id, extra); } catch {}
+      }
+      // Écosystème : « public » = client qui a acheté une prestation (l'administrateur n'accède pas à ses données) ; sinon cercle interne.
+      if (createdPage?.id && b.ecosysteme === "public") {
+        await ensureProperty(DB.users, "Écosystème", { select: {} });
+        await updatePage(createdPage.id, { "Écosystème": P.select(LIBELLE_ECOSYSTEME.public) });
       }
       // Confidentialité des documents : l'administrateur fixe dès la création qui verra les documents du compte (privé par défaut).
       if (createdPage?.id && (b.partage === "groupe" || b.partage === "prive")) {
@@ -146,9 +151,16 @@ export const handler = async (event) => {
       if (b.illimite != null) patch["Illimité"] = P.checkbox(!!b.illimite);
       if (b.quota != null && b.quota !== "") { const q = parseInt(b.quota); if (Number.isFinite(q) && q >= 0) patch["Quota recherches"] = P.number(q); }
       if (b.reseau != null) { await ensureProperty(DB.users, "Réseau", { rich_text: {} }); patch["Réseau"] = P.text(String(b.reseau).slice(0, 100)); }
+      // Écosystème du compte (interne = cercle de l'administrateur ; public = client, données inaccessibles à l'administrateur).
+      if (b.ecosysteme != null) {
+        if (email === me.user.email && b.ecosysteme === "public") return authResp(400, { error: "Le compte administrateur reste dans l'écosystème interne." });
+        await ensureProperty(DB.users, "Écosystème", { select: {} });
+        patch["Écosystème"] = P.select(LIBELLE_ECOSYSTEME[b.ecosysteme === "public" ? "public" : "interne"]);
+      }
       // Confidentialité des documents du compte : privé, groupe, ou personnes choisies du même groupe (_documents.mjs).
       if (b.partage != null) {
         const cible = compteDePage(page);
+        if (b.ecosysteme != null) cible.ecosysteme = b.ecosysteme === "public" ? "public" : "interne";
         if (b.reseau != null) cible.groupe = String(b.reseau).trim();
         const r = assainirPartage(cible, { mode: b.partage, avec: Array.isArray(b.partage_avec) ? b.partage_avec : String(b.partage_avec || "").split(/[\s,;]+/).filter(Boolean) }, await chargerComptes());
         if (!r.ok) return authResp(400, { error: r.erreur });

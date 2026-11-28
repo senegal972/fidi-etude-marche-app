@@ -9,7 +9,7 @@
 
 import { hasToken, queryDatabase, createPage } from "./_notion.mjs";
 import { currentUser } from "./_auth.mjs";
-import { lecteurDe, emailsVisibles, colonneCompte } from "./_documents.mjs";
+import { lecteurDe, emailsVisibles, colonneCompte, dansPortee } from "./_documents.mjs";
 
 // Compte de l'application qui a créé le contact : colonne propre à l'application, pour ne pas toucher aux champs du CRM.
 export const PROP_COMPTE = "Compte application";
@@ -165,7 +165,7 @@ export const handler = async (event) => {
       cursor = r.next_cursor;
     }
     // Revérification contact par contact, en plus du filtre de la requête.
-    const items = pages.filter((pg) => portee.admin || portee.emails.includes(compteDuContact(pg))).map(toClient).filter((c) => c.nom || c.email);
+    const items = pages.filter((pg) => dansPortee(portee, compteDuContact(pg))).map(toClient).filter((c) => c.nom || c.email);
     return j(200, {
       ok: true, configured: true, count: items.length, items,
       filter_applied: !!filter,

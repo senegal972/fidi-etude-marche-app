@@ -8,7 +8,7 @@ import { DB, jsonResp, hasToken, findByRef, archivePage } from "./_notion.mjs";
 import { factureLockForRef } from "./_facture.mjs";
 
 import { sessionRequise } from "./_auth.mjs";
-import { lecteurDe, pageParRef, proprietaireDePage, peutModifier } from "./_documents.mjs";
+import { lecteurDe, pageParRef, proprietaireDePage, peutModifierDossier } from "./_documents.mjs";
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return jsonResp(200, {});
   if (event.httpMethod !== "POST") return jsonResp(405, { error: "POST requis" });
@@ -31,7 +31,7 @@ export const handler = async (event) => {
   try {
     // Confidentialité : seuls le propriétaire du dossier et l'administrateur le suppriment (un partage ne donne que la lecture).
     const dossier = await pageParRef(databaseId, ref);
-    if (!dossier || !peutModifier(lecteur, proprietaireDePage(dossier))) return jsonResp(404, { error: `Dossier introuvable : ${ref}` });
+    if (!dossier || !(await peutModifierDossier(lecteur, proprietaireDePage(dossier)))) return jsonResp(404, { error: `Dossier introuvable : ${ref}` });
     // Verrou : interdit de supprimer un dossier déjà envoyé ou payé (vérif serveur,
     // même si le client a tenté de contourner le bouton grisé).
     const lock = await factureLockForRef(ref);

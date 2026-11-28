@@ -55,11 +55,13 @@ export const handler = async (event) => {
     // Le filtre est posé dans la requête ET revérifié dossier par dossier ; l'administrateur voit tout.
     const colonne = await colonneProprietaire(databaseId);
     let comptes = [];
-    try { comptes = await chargerComptes(); } catch (e) { if (!admin) comptes = [lecteur]; }
+    // Administrateur : sans la liste des comptes, impossible d'écarter ceux de l'écosystème public → rien n'est rendu.
+    try { comptes = await chargerComptes(); } catch (e) { if (admin) return jsonResp(503, { error: "Comptes indisponibles, réessayez." }); comptes = [lecteur]; }
     const visibles = comptesVisibles(lecteur, comptes.some((c) => c.email === lecteur.email) ? comptes : [...comptes, lecteur]);
     const parEmail = Object.fromEntries(comptes.map((c) => [c.email, c]));
     if (!admin && !colonne) return jsonResp(200, { kind, count: 0, items: [], moi: lecteur.email });
-    const filtre = admin ? null : { or: visibles.slice(0, 90).map((c) => ({ property: PROP_PROPRIETAIRE, rich_text: { equals: c.email } })) };
+    const publics = comptes.filter((c) => c.ecosysteme === "public").map((c) => c.email);
+    const filtre = admin ? (publics.length ? { and: publics.slice(0, 90).map((e) => ({ property: PROP_PROPRIETAIRE, rich_text: { does_not_equal: e } })) } : null) : { or: visibles.slice(0, 90).map((c) => ({ property: PROP_PROPRIETAIRE, rich_text: { equals: c.email } })) };
     const [data, lockMap] = await Promise.all([
       queryDatabase(databaseId, {
         sorts: [{ property: "Date", direction: "descending" }],
@@ -71,7 +73,8 @@ export const handler = async (event) => {
     // verrou = dossier envoyé/payé → non supprimable (icône rouge côté client).
     const items = (data.results || []).filter((pg) => {
       const pr = proprietaireDePage(pg);
-      return admin || pr === lecteur.email || peutVoir(lecteur, parEmail[pr] || null);
+      // Un dossier dont le propriétaire est un client public n'est jamais rendu à l'administrateur.
+      return pr === lecteur.email || peutVoir(lecteur, parEmail[pr] || null);
     }).map((pg) => {
       const it = summarize(kind, pg);
       const pr = proprietaireDePage(pg), cp = parEmail[pr] || null;
