@@ -854,6 +854,18 @@
     // Référence de l'étude de marché dont l'avis est tiré (traçabilité entre les deux documents).
     try { var refEt = typeof window.currentEtudeRef === 'function' ? window.currentEtudeRef() : (typeof currentEtudeRef === 'function' ? currentEtudeRef() : ''); if (refEt) { d.metadata = d.metadata || {}; d.metadata.refEtude = String(refEt); } } catch (e) {}
 
+    // Fiche descriptive du bien de l'étude (« Valoriser le bien », valorisation.js) : reprise à chaque ouverture ; elle complète
+    // les champs de l'avis restés vides (pièces, terrasse, surface) sans jamais remplacer une saisie.
+    try {
+      if (d.bien && fidi.fiche_bien) {
+        var fb = JSON.parse(JSON.stringify(fidi.fiche_bien)), V0 = window.FidiValorisation;
+        d.bien.fiche = fb;
+        if (!d.bien.nbPieces && Number(fb.pieces) > 0) d.bien.nbPieces = String(Math.round(Number(fb.pieces)));
+        if (!d.bien.terrasse && V0 && V0.surfaceExterieure(fb) > 0) d.bien.terrasse = String(V0.surfaceExterieure(fb));
+        if (!d.bien.surfaceCarrez && !isTerrain(d.bien.type) && Number(fb.habitable) > 0) d.bien.surfaceCarrez = String(fb.habitable);
+      }
+    } catch (e) {}
+
     // Cadastre / urbanisme (GPU)
     var gpu = window.__fidiGpu || {};
     var parc = gpu.parcelle || {};
@@ -1659,6 +1671,8 @@
           '<button type="button" class="btn btn-sm btn-outline-primary" onclick="avisPrefillBati()" title="Pré-remplit description immeuble depuis les données publiques ADEME + RNB"><i class="bi bi-buildings me-1"></i>Pré-remplir bâti (ADEME/RNB)</button>' +
           '<span class="text-muted small align-self-center">Récupère année approximative + DPE dominant + surface via ADEME et RNB (BDNB CSTB complète nécessite abonnement CSTB, non intégrée).</span>' +
         '</div>' +
+        (b.fiche && window.FidiValorisation && window.FidiValorisation.resumeComposition && !isTerrain(b.type)
+          ? '<div class="av-tip" style="margin-bottom:.6rem;"><i class="bi bi-stars"></i> Fiche du bien reprise de l\'étude : <b>' + esc(window.FidiValorisation.resumeComposition(b.fiche) || 'pièces, annexes et atouts') + '</b>. Elle figure dans le document, à la suite de la description. Pour la modifier : bouton « Valoriser le bien » de l\'étude, puis rouvrez l\'avis.</div>' : '') +
         fld('Description immeuble', 'bien.immeuble', { tip: 'Année de livraison, niveaux, ascenseur…', ph: 'Résidence 2009 – R+3 – 16 lots' }) +
         (isTerrain(b.type) || isLoc ? '' : '<div class="av-grid-2">' + fld('Bien neuf ou ancien', 'bien.segment', { type: 'select', options: ['ancien', 'neuf'], tip: 'neuf = jamais habité, vendu par le promoteur. Les comparables de l\'autre catégorie sont écartés du calcul.' }) + '<div class="av-field"></div></div>') +
         '<div class="av-grid-4">' + fld(isTerrain(b.type) ? 'Surface du terrain (m²)' : (isLoc ? 'Surface habitable (m²)' : 'Surface Carrez (m²)'), 'bien.surfaceCarrez', { type: 'number', flag: true, tip: isTerrain(b.type) ? 'Contenance cadastrale (m²)' : (isLoc ? 'Loi Boutin en location, Carrez en copro à la vente' : 'Loi Carrez (obligatoire vente copro)') }) + fld('Surface SHOB (m²)', 'bien.surfaceShob', { type: 'number' }) + fld('Séjour (m²)', 'bien.sejour', { type: 'number' }) + fld('Terrasse/Balcon (m²)', 'bien.terrasse', { type: 'number', step: '0.01' }) + '</div>' +
@@ -5944,6 +5958,11 @@
       (occ && b.loyer ? row('Rapport locatif annuel', fmtE(num(b.loyer) * 12) + ' / an (hors charges)') : '') +
       ((calc.vetuste > 0 || data.etat.commentaire) ? row('État / vétusté', (calc.vetuste ? 'Vétusté estimée ' + calc.vetuste + ' %' : '') + (data.etat.commentaire ? (calc.vetuste ? ' — ' : '') + esc(data.etat.commentaire) : '')) : '') +
       '</table>';
+
+    // ── Fiche descriptive du bien, reprise de l'étude (valorisation.js) : composition, pièces, annexes, atouts — sans montant ──
+    if (b.fiche && !isTerrain(b.type) && window.FidiValorisation && window.FidiValorisation.htmlAvis) {
+      try { html += window.FidiValorisation.htmlAvis(b.fiche); } catch (e) {}
+    }
 
     // ── Ensemble de parcelles (cadastre multi-parcelles) ─────────────────────
     if (_cadDoc.mode === 'multiple' && (_cadDoc.parcelles || []).length) {

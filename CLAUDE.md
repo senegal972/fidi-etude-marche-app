@@ -42,7 +42,8 @@ Les redirections `/api/<nom>` sont déclarées dans `netlify.toml`.
 - **Repris de l'étude à chaque ouverture** (`injectEtudeGeoCadastre`, même étude seulement) : localisation, cadastre, zonage, risques ; plus
   `window.__fidiPluRegle` (`reglePluEtude`, `reglePluTexte` → `cadastre.droitsResiduels` tant que le texte commence par « D'après le règlement
   du PLU », et emprise du règlement pour `shobAutorisee` avant `empriseMedianeZone`), `window.__fidiAleas` (`aleasEtudeTexte` → `loc.ppr`) et
-  `metadata.refEtude` (`currentEtudeRef()`). Non repris à ce jour : `__fidiDaafOnf`, `__fidiImplantation`, note de l'étude.
+  `metadata.refEtude` (`currentEtudeRef()`), et la fiche descriptive du bien (`bien.fiche`, voir « Valoriser le bien »). Non repris à ce jour :
+  `__fidiDaafOnf`, `__fidiImplantation`, note de l'étude.
 - **Avancement** : `manquesRubrique(id)` → éléments essentiels vides (`[]` complète, `null` rien d'exigé) ; `majAvancement()` marque les onglets
   (`av-tab-ok` / `av-tab-manque`), les options de `#avSecSelect` et la barre `#avAvancement` (jauge, « Voir ce qui reste », liens `data-av-aller`).
   Appelé par `showSection()` et, à la saisie, par `planifierAvancement()`. Guide seulement : rien n'est bloqué.
@@ -191,7 +192,11 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
   d'impression `estimation`) et rappelle la valorisation dans le bandeau. Sans valorisation appliquée : relevé des éléments cochés, sans chiffre.
 - **Conservation** : `notion-save` écrit `{ fiche, valorisation }` dans la propriété « Fiche du bien » de l'étude (JSON, au mieux) ;
   `propsToEtude` les rend dans `data.fiche_bien` et `estimation.valorisation` ; `reopenEtude` appelle `restaurer()` (valeur de départ =
-  `valorisation.avant`). Non fait : fiche dans l'avis de valeur ; la décote d'état, elle, n'est toujours pas restaurée à la réouverture.
+  `valorisation.avant`). Non fait : la décote d'état n'est toujours pas restaurée à la réouverture.
+- **Avis de valeur** : `injectEtudeGeoCadastre` copie `fidi.fiche_bien` dans `bien.fiche` à chaque ouverture et complète `bien.nbPieces`,
+  `bien.terrasse` (`surfaceExterieure`) et `bien.surfaceCarrez` **seulement s'ils sont vides**. Le document ajoute `htmlAvis(b.fiche)` après la
+  rubrique 2 (bien bâti seulement). **La fiche y est descriptive : ni montant ni pourcentage appliqué** — l'avis fixe sa valeur par ses propres
+  méthodes, et reporter la valorisation de l'étude afficherait deux valeurs. La fiche se modifie dans l'étude, pas dans l'avis.
   Tests : `tests/valorisation.test.mjs`.
 
 ### Mes documents et confidentialité — `_documents.mjs`, `documents.mjs`, `mes-documents.js` / `mes-documents.css`

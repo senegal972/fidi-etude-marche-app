@@ -139,7 +139,41 @@
       'Description déclarative établie lors de l\'étude ; les surfaces ne valent pas mesurage.</div></div>';
   }
 
-  var api = { ANNEXES: ANNEXES, ATOUTS: ATOUTS, PIECES: PIECES, calculer: calculer, typologie: typologie, surfacePiece: surfacePiece, resumeComposition: resumeComposition, htmlRapport: htmlRapport };
+  // ── Fiche du bien pour l'avis de valeur (pur) ────────────────────────────────────────────────────────────────────────────
+  // L'avis fixe sa valeur par ses propres méthodes : la fiche y est DESCRIPTIVE. Les atouts sont cités comme facteurs d'appréciation,
+  // avec leur repère, sans montant — le chiffre de la valorisation de l'étude n'est pas reporté, pour ne pas afficher deux valeurs.
+  // Utilise les balises du document de l'avis (h2, table, th, td.center) : sa feuille de style s'y applique.
+  function htmlAvis(f) {
+    if (!f) return '';
+    var compo = resumeComposition(f);
+    var infos = [['Terrain', nombre(f.terrain) > 0 ? '≈ ' + fr(nombre(f.terrain)) + ' m²' : ''], ['Exposition', f.exposition], ['Assainissement', f.assainissement], ['Mitoyenneté', f.mitoyennete]].filter(function (x) { return x[1]; });
+    var pieces = (f.listePieces || []).filter(function (p) { return (p.nom || '').trim() || surfacePiece(p) > 0; });
+    var total = pieces.reduce(function (t, p) { return t + surfacePiece(p); }, 0);
+    var annexes = [], atouts = [];
+    ANNEXES.forEach(function (a) { var x = (f.annexes || {})[a.cle]; if (x && x.actif) annexes.push({ nom: a.nom, surface: nombre(x.surface) }); });
+    ATOUTS.forEach(function (a) { var x = (f.atouts || {})[a.cle]; if (x && x.actif) atouts.push({ nom: a.nom, groupe: a.groupe, repere: a.repere }); });
+    if (!compo && !infos.length && !pieces.length && !annexes.length && !atouts.length) return '';
+    var o = '<h2>Fiche descriptive du bien</h2>';
+    if (compo || infos.length) o += '<table>' + (compo ? '<tr><th>Composition</th><td>' + h(compo) + '</td></tr>' : '') +
+      infos.map(function (x) { return '<tr><th>' + x[0] + '</th><td>' + h(x[1]) + '</td></tr>'; }).join('') + '</table>';
+    if (pieces.length) o += '<table><thead><tr><th>Pièce</th><th class="center">Dimensions</th><th class="center">Surface</th></tr></thead><tbody>' +
+      pieces.map(function (p) { var L = nombre(p.longueur), l = nombre(p.largeur), sp = surfacePiece(p);
+        return '<tr><td>' + h(p.nom || 'Pièce') + '</td><td class="center">' + (L > 0 && l > 0 ? fr(L) + ' × ' + fr(l) + ' m' : '—') + '</td><td class="center">' + (sp > 0 ? fr(sp) + ' m²' : '—') + '</td></tr>'; }).join('') +
+      (total > 0 ? '<tr class="gold-row"><td colspan="2">TOTAL DES PIÈCES DÉCRITES</td><td class="center">' + fr(total, 1) + ' m²</td></tr>' : '') + '</tbody></table>';
+    if (annexes.length) o += '<table><thead><tr><th>Annexe</th><th class="center">Surface</th></tr></thead><tbody>' +
+      annexes.map(function (a) { return '<tr><td>' + h(a.nom) + '</td><td class="center">' + (a.surface > 0 ? fr(a.surface) + ' m²' : '—') + '</td></tr>'; }).join('') + '</tbody></table>';
+    if (atouts.length) o += '<table><thead><tr><th>Atout relevé</th><th>Nature</th><th class="center">Repère d\'usage</th></tr></thead><tbody>' +
+      atouts.map(function (a) { return '<tr><td>' + h(a.nom) + '</td><td>' + h(a.groupe) + '</td><td class="center">' + h(a.repere) + '</td></tr>'; }).join('') + '</tbody></table>';
+    return o + '<p style="font-size:8.5pt;color:#5c6470;">Description déclarative relevée lors de l\'étude ; les surfaces ne valent pas mesurage. ' +
+      (atouts.length || annexes.length ? 'Les annexes et atouts sont des facteurs d\'appréciation, pris en compte dans le choix des références et l\'arbitrage de la valeur retenue ; les repères d\'usage sont indicatifs, sans barème officiel.' : '') + '</p>';
+  }
+  // Surface cumulée des terrasses, balcons et loggias de la fiche (pour le champ « Terrasse / Balcon » de l'avis).
+  function surfaceExterieure(f) {
+    return ['terrasse_couverte', 'terrasse', 'balcon'].reduce(function (t, k) { var x = ((f && f.annexes) || {})[k]; return t + (x && x.actif ? nombre(x.surface) : 0); }, 0);
+  }
+
+  var api = { ANNEXES: ANNEXES, ATOUTS: ATOUTS, PIECES: PIECES, calculer: calculer, typologie: typologie, surfacePiece: surfacePiece, resumeComposition: resumeComposition, htmlRapport: htmlRapport,
+    htmlAvis: htmlAvis, surfaceExterieure: surfaceExterieure };
   if (typeof window !== 'undefined') window.FidiValorisation = api;
   if (typeof document === 'undefined') return;
 

@@ -104,3 +104,25 @@ test("la fiche est enregistrée avec l'étude et revient à la réouverture", as
   assert.match(lire("index.html"), /FidiValorisation\.restaurer\(\)/);
   assert.match(lire("rapport-a4.js"), /FidiValorisation\.htmlRapport\(d\)/);
 });
+
+// ── Fiche du bien dans l'avis de valeur ──────────────────────────────────────
+test("avis de valeur : la fiche est descriptive — composition, pièces, annexes, atouts avec leur repère, aucun montant", () => {
+  const html = V.htmlAvis(FICHE);
+  assert.match(html, /<h2>Fiche descriptive du bien<\/h2>/);
+  for (const t of ["T4 · 3 chambres", "≈ 640 m²", "Sud-Est", "6 × 4,5 m", "27 m²", "TOTAL DES PIÈCES DÉCRITES", "39 m²", "Terrasse couverte / varangue", "20 m²", "Piscine", "5 à 20 %", "Vue mer", "10 à 30 %", "ne valent pas mesurage", "sans barème officiel"]) assert.ok(html.includes(t), t);
+  assert.doesNotMatch(html, /€/, "aucun montant : l'avis fixe sa valeur par ses propres méthodes");
+  assert.doesNotMatch(html, /\+ ?8 %|\+ ?15 %/, "le pourcentage appliqué dans l'étude n'est pas reporté");
+  assert.match(html, /Chambre &lt;1&gt;/);
+  assert.equal(V.htmlAvis(null), ""); assert.equal(V.htmlAvis({ listePieces: [], atouts: {}, annexes: {} }), "");
+});
+
+test("avis de valeur : surface extérieure de la fiche, reprise à l'ouverture sans écraser une saisie", () => {
+  assert.equal(V.surfaceExterieure({ annexes: { terrasse_couverte: { actif: true, surface: 20 }, balcon: { actif: true, surface: "6,5" }, garage: { actif: true, surface: 18 }, terrasse: { actif: false, surface: 30 } } }), 26.5);
+  assert.equal(V.surfaceExterieure({}), 0);
+  const avis = lire("avis-valeur.js");
+  assert.match(avis, /d\.bien\.fiche = fb;/);
+  assert.match(avis, /if \(!d\.bien\.nbPieces && Number\(fb\.pieces\) > 0\)/, "un champ déjà rempli n'est pas remplacé");
+  assert.match(avis, /if \(!d\.bien\.terrasse && /);
+  assert.match(avis, /window\.FidiValorisation\.htmlAvis\(b\.fiche\)/);
+  assert.match(avis, /b\.fiche && !isTerrain\(b\.type\)/, "pas de fiche de logement sur un terrain");
+});

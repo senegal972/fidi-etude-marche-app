@@ -50,7 +50,8 @@ Ce dépôt est modifié depuis plusieurs outils (Claude Code sur le PC, Claude C
 | 1.50.0 | 2026-11-28 | Claude Code (cloud) | Confidentialité des documents : propriétaire, partage au sein du groupe, écran « Mes documents » | 0654c12 |
 | 1.51.0 | 2026-11-28 | Claude Code (cloud) | Carnet de clients, historique des factures d'un client et annulation cloisonnés selon les règles des documents | f4aa5b5 |
 | 1.52.0 | 2026-11-28 | Claude Code (cloud) | Attribution des factures à un compte (une à une, ou toutes les anciennes d'un coup) | fa6840d |
-| 1.53.0 | 2026-11-28 | Claude Code (cloud) | Fiche descriptive du bien dans le rapport A4 ; fiche et valorisation enregistrées avec l'étude | (ce commit) |
+| 1.53.0 | 2026-11-28 | Claude Code (cloud) | Fiche descriptive du bien dans le rapport A4 ; fiche et valorisation enregistrées avec l'étude | 19ddfba |
+| 1.54.0 | 2026-11-28 | Claude Code (cloud) | Fiche descriptive du bien reprise dans l'avis de valeur (descriptive, sans montant) | (ce commit) |
 
 ## État des branches au 2026-11-16
 
