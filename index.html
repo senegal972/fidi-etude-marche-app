@@ -34,6 +34,7 @@
 <link href="/valorisation.css" rel="stylesheet"/>
 <link href="/mes-documents.css" rel="stylesheet"/>
 <link href="/assistance.css" rel="stylesheet"/>
+<link href="/compte-statistiques.css" rel="stylesheet"/>
 <link href="/compte.css" rel="stylesheet"/>
 <link href="/compte-facturation.css" rel="stylesheet"/>
 <link href="/mobile.css" rel="stylesheet"/>
@@ -6594,6 +6595,7 @@ function copyShareUrl(){
 <script src="/valorisation.js" defer></script>
 <script src="/mes-documents.js" defer></script>
 <script src="/assistance.js" defer></script>
+<script src="/compte-statistiques.js" defer></script>
 <script src="/entreprises-proches.js" defer></script>
 <script src="/facture-externe.js" defer></script>
 <script src="/facture.js" defer></script>
@@ -6862,6 +6864,7 @@ window.Compte = (function(){
           '<button type="button" class="nav-link cpt-lien" data-bs-toggle="tab" data-bs-target="#tabSocietes" onclick="Compte.loadSocietes()" title="Sociétés au nom desquelles vous facturez, RIB pour le virement"><i class="bi bi-building"></i><span>Mes sociétés</span></button>'+
           (admin ? '<div class="cpt-nav-titre">Administration</div>'+
             '<button type="button" class="nav-link cpt-lien" data-bs-toggle="tab" data-bs-target="#tabAdmin" title="Créer, modifier et suivre les comptes"><i class="bi bi-people"></i><span>Comptes</span></button>'+
+            '<button type="button" class="nav-link cpt-lien" data-bs-toggle="tab" data-bs-target="#tabStats" onclick="FidiStatistiques.monter()" title="Ce qui se pratique dans l\'application : volumes, secteurs, types de biens, groupes"><i class="bi bi-graph-up"></i><span>Statistiques</span></button>'+
             '<button type="button" class="nav-link cpt-lien" data-bs-toggle="tab" data-bs-target="#tabAssistance" onclick="FidiAssistance.monterAdmin()" title="Erreurs, idées et questions signalées par les utilisateurs"><i class="bi bi-life-preserver"></i><span>Assistance</span></button>'+
             '<button type="button" class="nav-link cpt-lien" data-bs-toggle="tab" data-bs-target="#tabProfils" onclick="FidiProfils.monter()" title="Profils d\'utilisateurs et modules de l\'analyse accessibles à chacun"><i class="bi bi-ui-checks-grid"></i><span>Profils &amp; modules</span></button>'+
             '<button type="button" class="nav-link cpt-lien" data-bs-toggle="tab" data-bs-target="#tabTarifs" title="Prestations proposées dans « Nouvelle facture »"><i class="bi bi-tags"></i><span>Grille tarifaire</span></button>'+
@@ -7001,6 +7004,10 @@ window.Compte = (function(){
         '</div>' : '')+
 
         // ─── Grille tarifaire (prestations facturées aux clients) ───
+        (admin ? '<div class="tab-pane fade" id="tabStats">'+
+          '<header class="cpt-titre"><h2>Statistiques</h2><p>Ce qui se pratique dans l\'application : volumes, rythme, secteurs et types de biens les plus demandés, activité par groupe.</p></header>'+
+          '<div id="statsRoot"></div>'+
+        '</div>' : '')+
         (admin ? '<div class="tab-pane fade" id="tabAssistance">'+
           '<header class="cpt-titre"><h2>Assistance</h2><p>Erreurs, idées d\'amélioration et questions envoyées par les utilisateurs depuis le bouton « Aide ».</p></header>'+
           '<div id="assistanceAdminRoot"></div>'+

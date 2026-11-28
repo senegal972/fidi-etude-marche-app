@@ -388,6 +388,11 @@
   status = 200
 
 [[redirects]]
+  from   = "/api/statistiques"
+  to     = "/.netlify/functions/statistiques"
+  status = 200
+
+[[redirects]]
   from   = "/api/bienvenue"
   to     = "/.netlify/functions/bienvenue"
   status = 200

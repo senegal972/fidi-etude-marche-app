@@ -1,0 +1,38 @@
+/* Mon compte → Statistiques (compte-statistiques.js). Séries : bleu #257de0 (études), orange #f47230 (avis) — palette validée. */
+#statsRoot{--st-s1:#257de0;--st-s2:#f47230;}
+.st-tuiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.6rem;margin-bottom:1rem;}
+.st-tuiles-3{grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:.6rem;}
+.st-tuile{background:#fff;border:1px solid #dfe3e9;border-radius:14px;padding:.7rem .85rem;min-width:0;}
+.st-tuile-t{font-size:.76rem;font-weight:600;color:#5b6573;}
+.st-tuile-v{font-size:1.6rem;font-weight:800;color:#1f2a3a;line-height:1.15;}
+.st-tuile-s{font-size:.74rem;color:#7a8493;}
+.st-carte-tete{display:flex;align-items:center;justify-content:space-between;gap:.6rem;flex-wrap:wrap;margin-bottom:.4rem;}
+.st-carte-tete h3{margin:0;}
+#statsRoot h3 small{font-weight:400;color:#7a8493;font-size:.76rem;margin-left:.3rem;}
+.st-legende{display:flex;align-items:center;gap:.9rem;flex-wrap:wrap;font-size:.8rem;color:#3a4553;}
+.st-pastille{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:.3rem;vertical-align:-1px;}
+.st-pastille.st-s1{background:var(--st-s1);} .st-pastille.st-s2{background:var(--st-s2);}
+.st-graph{position:relative;}
+.st-svg{width:100%;height:auto;display:block;}
+.st-svg .st-s1{fill:var(--st-s1);} .st-svg .st-s2{fill:var(--st-s2);}
+.st-grille{stroke:#e6eaf0;stroke-width:1;} .st-base{stroke:#9aa4b2;stroke-width:1;}
+.st-axe{font-size:9.5px;fill:#6a7385;} .st-val{font-size:10px;font-weight:700;fill:#1f2a3a;}
+.st-cible{fill:transparent;} .st-mois:hover .st-cible,.st-mois:focus .st-cible{fill:rgba(31,42,58,.05);} .st-mois{outline:0;}
+.st-bulle{position:absolute;top:0;background:#1f2a3a;color:#fff;border-radius:8px;padding:.35rem .6rem;font-size:.76rem;display:flex;gap:.7rem;align-items:center;pointer-events:none;white-space:nowrap;}
+.st-deux{display:grid;grid-template-columns:1fr 1fr;gap:1rem;}
+.st-rang-l{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(40px,1fr) auto;gap:.6rem;align-items:center;padding:.22rem 0;font-size:.84rem;}
+.st-rang-n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#1f2a3a;}
+.st-rang-b{height:8px;background:#eef1f5;border-radius:4px;overflow:hidden;}
+.st-rang-b i{display:block;height:100%;background:var(--st-s1);border-radius:0 4px 4px 0;}
+.st-rang-v{white-space:nowrap;color:#1f2a3a;} .st-rang-v small{color:#7a8493;font-size:.72rem;}
+.st-jours{display:grid;grid-template-columns:repeat(7,1fr);gap:.4rem;align-items:end;}
+.st-jour{display:flex;flex-direction:column;align-items:center;gap:.2rem;font-size:.76rem;color:#1f2a3a;}
+.st-jour span{display:flex;align-items:flex-end;width:100%;max-width:26px;height:70px;}
+.st-jour span i{display:block;width:100%;background:var(--st-s1);border-radius:4px 4px 0 0;}
+.st-jour small{color:#6a7385;}
+.st-table{width:100%;border-collapse:collapse;font-size:.84rem;}
+.st-table th{text-align:left;font-size:.74rem;color:#5b6573;font-weight:600;border-bottom:1px solid #cfd6e0;padding:.3rem .4rem;}
+.st-table td{padding:.3rem .4rem;border-bottom:1px solid #eef0f3;}
+.st-note{font-size:.76rem;color:#6a7385;margin:.6rem 0 0;} .st-vide{font-size:.84rem;color:#7a8493;margin:0;}
+.st-public{background:#f7f9fc;} .st-sous{font-size:.86rem !important;margin-top:.4rem !important;}
+@media (max-width:768px){.st-tuiles{grid-template-columns:1fr 1fr;} .st-tuiles-3{grid-template-columns:1fr;} .st-deux{grid-template-columns:1fr;gap:0;} .st-axe{font-size:11px;}}

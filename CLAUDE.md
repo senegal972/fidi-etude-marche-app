@@ -247,6 +247,15 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
   l'adresse de contact : **aucune adresse n'est écrite dans le code**.
 - Mon compte → Assistance (`tabAssistance`, `#assistanceAdminRoot`, `FidiAssistance.monterAdmin()`). Tests : `tests/assistance.test.mjs`.
 
+### Statistiques — `compte-statistiques.js` / `compte-statistiques.css`, `statistiques.mjs`
+- `GET /api/statistiques` (administrateur) lit les bases Notion Études et Avis (1 000 dossiers par base au plus) et les comptes, puis
+  `agreger(dossiers, comptes, maintenant)` (pur, testé) : totaux et 30 jours, douze mois glissants, jours de la semaine, types de biens, et —
+  **cercle interne seulement** — secteurs, groupes, utilisateurs. **Clients publics : des nombres seulement** (`parEcosysteme.public`,
+  `secteursPublic` à partir de `SEUIL_PUBLIC` = 3 dossiers), jamais de détail par compte ; les secteurs détaillés excluent les dossiers publics
+  pour qu'aucune soustraction ne les révèle. La réponse ne contient ni adresse e-mail, ni client, ni adresse de bien.
+- Écran : rubrique `tabStats` / `#statsRoot`, `FidiStatistiques.monter()`. Graphique mensuel en SVG, deux séries (bleu `#257de0`, orange
+  `#f47230`, palette validée), légende, détail au survol, **équivalent en tableau** (« Voir en tableau »). Tests : `tests/statistiques.test.mjs`.
+
 ### Profils & modules — `compte-profils.js` (rubrique `tabProfils`, administrateur)
 - `FidiProfils.monter()` rend dans `#profilsRoot` les profils (`/api/templates` : modèles système + personnalisés dans la base Notion des
   templates) et leurs modules cochables, groupés (`MODULES[].groupe` dans `templates.mjs`). Un compte porte un profil par le champ « Profil
