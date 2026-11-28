@@ -33,6 +33,7 @@
 <link href="/etude-actions.css" rel="stylesheet"/>
 <link href="/valorisation.css" rel="stylesheet"/>
 <link href="/mes-documents.css" rel="stylesheet"/>
+<link href="/assistance.css" rel="stylesheet"/>
 <link href="/compte.css" rel="stylesheet"/>
 <link href="/compte-facturation.css" rel="stylesheet"/>
 <link href="/mobile.css" rel="stylesheet"/>
@@ -295,6 +296,11 @@ body.map-fs-on{overflow:hidden;}
     <!-- Bouton direct Présentation (chevalet visible, à côté du dropdown compte) -->
     <button class="btn btn-sm btn-outline-warning d-none" id="btnPresentationDirect" type="button" onclick="Presentation.open()" title="Ouvrir la présentation de l'application et sa grille tarifaire (Optimmo Dom)">
       <i class="bi bi-easel-fill me-1"></i><span class="d-none d-md-inline">Présentation</span>
+    </button>
+
+    <!-- Assistance : signalement guidé d'une erreur, d'une idée ou d'une question (assistance.js) -->
+    <button class="btn btn-sm btn-outline-light" type="button" id="btnAssistance" onclick="FidiAssistance.ouvrir()" title="Signaler une erreur, proposer une amélioration, poser une question">
+      <i class="bi bi-life-preserver me-1"></i><span class="nav-lbl">Aide</span>
     </button>
 
     <!-- Dropdown Compte + Ressources -->
@@ -6587,6 +6593,7 @@ function copyShareUrl(){
 <script src="/etude-actions.js" defer></script>
 <script src="/valorisation.js" defer></script>
 <script src="/mes-documents.js" defer></script>
+<script src="/assistance.js" defer></script>
 <script src="/entreprises-proches.js" defer></script>
 <script src="/facture-externe.js" defer></script>
 <script src="/facture.js" defer></script>
@@ -6855,6 +6862,7 @@ window.Compte = (function(){
           '<button type="button" class="nav-link cpt-lien" data-bs-toggle="tab" data-bs-target="#tabSocietes" onclick="Compte.loadSocietes()" title="Sociétés au nom desquelles vous facturez, RIB pour le virement"><i class="bi bi-building"></i><span>Mes sociétés</span></button>'+
           (admin ? '<div class="cpt-nav-titre">Administration</div>'+
             '<button type="button" class="nav-link cpt-lien" data-bs-toggle="tab" data-bs-target="#tabAdmin" title="Créer, modifier et suivre les comptes"><i class="bi bi-people"></i><span>Comptes</span></button>'+
+            '<button type="button" class="nav-link cpt-lien" data-bs-toggle="tab" data-bs-target="#tabAssistance" onclick="FidiAssistance.monterAdmin()" title="Erreurs, idées et questions signalées par les utilisateurs"><i class="bi bi-life-preserver"></i><span>Assistance</span></button>'+
             '<button type="button" class="nav-link cpt-lien" data-bs-toggle="tab" data-bs-target="#tabProfils" onclick="FidiProfils.monter()" title="Profils d\'utilisateurs et modules de l\'analyse accessibles à chacun"><i class="bi bi-ui-checks-grid"></i><span>Profils &amp; modules</span></button>'+
             '<button type="button" class="nav-link cpt-lien" data-bs-toggle="tab" data-bs-target="#tabTarifs" title="Prestations proposées dans « Nouvelle facture »"><i class="bi bi-tags"></i><span>Grille tarifaire</span></button>'+
             '<button type="button" class="nav-link cpt-lien" data-bs-toggle="tab" data-bs-target="#tabFactAdmin" onclick="Compte.loadFactAdmin()" title="Suivi des règlements et des commissions"><i class="bi bi-receipt"></i><span>Facturation</span></button>' : '')+
@@ -6993,6 +7001,10 @@ window.Compte = (function(){
         '</div>' : '')+
 
         // ─── Grille tarifaire (prestations facturées aux clients) ───
+        (admin ? '<div class="tab-pane fade" id="tabAssistance">'+
+          '<header class="cpt-titre"><h2>Assistance</h2><p>Erreurs, idées d\'amélioration et questions envoyées par les utilisateurs depuis le bouton « Aide ».</p></header>'+
+          '<div id="assistanceAdminRoot"></div>'+
+        '</div>' : '')+
         (admin ? '<div class="tab-pane fade" id="tabProfils">'+
           '<header class="cpt-titre"><h2>Profils &amp; modules</h2><p>Un profil réunit les modules de l\'analyse ouverts à un type d\'utilisateur. Attribuez-le ensuite dans la fiche de chaque compte (rubrique Comptes, champ « Profil type »).</p></header>'+
           '<div id="profilsRoot"></div>'+

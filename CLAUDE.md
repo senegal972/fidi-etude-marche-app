@@ -238,6 +238,15 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
   qui partagent un même navigateur les voient tous les deux.
   Tests : `tests/documents.test.mjs`, `tests/notion-session.test.mjs`, `tests/avis-store.test.mjs`.
 
+### Assistance — `assistance.js` / `assistance.css`, `assistance.mjs`
+- Bouton `#btnAssistance` (« Aide ») → `FidiAssistance.ouvrir()` : fenêtre en trois étapes (nature → partie concernée et gravité → description),
+  captures par fichier ou collage, réduites par `preparerImage` (JPEG, 1 600 px) ; la partie concernée est pré-sélectionnée selon l'écran ouvert.
+- `GET|POST /api/assistance` (session exigée) : `signaler` (`assainirSignalement`, pur : nature obligatoire, texte ≥ 10 caractères ou une capture,
+  3 captures de 1,4 Mo au plus, PNG / JPEG / WebP) → numéro `A-AAAAMMJJ-XXXXXX` ; Blobs `fidi-assistance` (`t/<n°>`, `c/<n°>/<i>`) **écrits avant**
+  l'e-mail à `adresseContact()` (au mieux). Liste, lecture, captures et `etat` (`ouvert` / `traite`) : administrateur. `GET` sans paramètre rend
+  l'adresse de contact : **aucune adresse n'est écrite dans le code**.
+- Mon compte → Assistance (`tabAssistance`, `#assistanceAdminRoot`, `FidiAssistance.monterAdmin()`). Tests : `tests/assistance.test.mjs`.
+
 ### Profils & modules — `compte-profils.js` (rubrique `tabProfils`, administrateur)
 - `FidiProfils.monter()` rend dans `#profilsRoot` les profils (`/api/templates` : modèles système + personnalisés dans la base Notion des
   templates) et leurs modules cochables, groupés (`MODULES[].groupe` dans `templates.mjs`). Un compte porte un profil par le champ « Profil

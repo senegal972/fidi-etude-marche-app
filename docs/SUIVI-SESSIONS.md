@@ -52,7 +52,8 @@ Ce dépôt est modifié depuis plusieurs outils (Claude Code sur le PC, Claude C
 | 1.52.0 | 2026-11-28 | Claude Code (cloud) | Attribution des factures à un compte (une à une, ou toutes les anciennes d'un coup) | fa6840d |
 | 1.53.0 | 2026-11-28 | Claude Code (cloud) | Fiche descriptive du bien dans le rapport A4 ; fiche et valorisation enregistrées avec l'étude | 19ddfba |
 | 1.54.0 | 2026-11-28 | Claude Code (cloud) | Fiche descriptive du bien reprise dans l'avis de valeur (descriptive, sans montant) | b1e11bc |
-| 1.55.0 | 2026-11-28 | Claude Code (cloud) | Deux écosystèmes de comptes : cercle interne (visible de l'administrateur) / clients publics (données inaccessibles à l'administrateur) | (ce commit) |
+| 1.55.0 | 2026-11-28 | Claude Code (cloud) | Deux écosystèmes de comptes : cercle interne (visible de l'administrateur) / clients publics (données inaccessibles à l'administrateur) | c91fe37 |
+| 1.56.0 | 2026-11-28 | Claude Code (cloud) | Assistance : signalement guidé (nature, partie concernée, gravité, captures), e-mail, liste administrateur | (ce commit) |
 
 ## État des branches au 2026-11-16
 

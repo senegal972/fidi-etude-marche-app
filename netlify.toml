@@ -383,6 +383,11 @@
   status = 200
 
 [[redirects]]
+  from   = "/api/assistance"
+  to     = "/.netlify/functions/assistance"
+  status = 200
+
+[[redirects]]
   from   = "/api/bienvenue"
   to     = "/.netlify/functions/bienvenue"
   status = 200
