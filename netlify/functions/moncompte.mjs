@@ -1,6 +1,7 @@
 // Netlify Function — Profil + solde de l'utilisateur connecté.
 // GET /api/moncompte  (et /api/auth/me)
 import { authResp, currentUser, paywallOn, costEtude, loginRequired } from "./_auth.mjs";
+import { compteDePage } from "./_documents.mjs";
 import { paypalConfigured, paypalClientId, paypalEnv } from "./_paypal.mjs";
 
 const paypalInfo = () => ({ configured: paypalConfigured(), client_id: paypalClientId(), env: paypalEnv() });
@@ -13,6 +14,7 @@ export const handler = async (event) => {
       return authResp(200, { authenticated: false, paywall: paywallOn(), login_required: loginRequired(), cost_etude: costEtude(), paypal: paypalInfo() });
     }
     const u = found.user;
+    const doc = compteDePage(found.page); // groupe et réglage de confidentialité des documents
     // Template (profil type) assigné au compte — pilote les feature flags côté app.
     const tplProp = (found.page.properties || {})["Template"];
     const template = (tplProp && tplProp.select && tplProp.select.name) || "";
@@ -26,6 +28,7 @@ export const handler = async (event) => {
         email: u.email, nom: u.nom, role: u.role, statut: u.statut, credits: u.credits,
         illimite: u.illimite, quota: u.quota, recherches: u.recherches,
         template,
+        groupe: doc.groupe, partage: doc.partage, partage_avec: doc.avec,
       },
     });
   } catch (e) {

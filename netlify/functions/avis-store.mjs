@@ -26,6 +26,7 @@
 import crypto from "node:crypto";
 import { authResp, currentUser } from "./_auth.mjs";
 import { getNamedStore } from "./_blobs.mjs";
+import { lecteurDe, chargerComptes, comptesVisibles, peutVoir } from "./_documents.mjs";
 
 export const AVIS_STORE = "fidi-avis";
 export const TAILLE_MAX = 5_500_000;      // octets : la fonction refuse au-delà de 6 Mo
@@ -92,9 +93,21 @@ export const handler = async (event) => {
     try { corps = JSON.parse(event.body || "{}"); } catch { return authResp(400, { error: "JSON invalide" }); }
   }
 
-  // Un administrateur peut viser le compte d'un autre ; sinon le paramètre est ignoré.
+  // Un administrateur peut viser le compte d'un autre. Un compte ordinaire peut LIRE (jamais écrire) les avis d'un membre de son
+  // groupe qui les lui ouvre (_documents.mjs) ; tout autre compte visé est ignoré : il retombe sur ses propres avis.
   const vise = String((event.httpMethod === "GET" ? q.proprio : corps.proprio) || "");
-  const compte = admin && COMPTE_VALIDE.test(vise) ? vise : moi;
+  const lecteur = lecteurDe(found);
+  let comptes = null;
+  const lesComptes = async () => { if (!comptes) { try { comptes = await chargerComptes(); } catch { comptes = []; } } return comptes; };
+  let compte = moi;
+  if (COMPTE_VALIDE.test(vise) && vise !== moi) {
+    if (admin) compte = vise;
+    else if (event.httpMethod === "GET") {
+      const cible = (await lesComptes()).find((c) => c.id === vise) || null;
+      if (peutVoir(lecteur, cible)) compte = vise;
+      else return authResp(404, { error: "Avis introuvable" });
+    }
+  }
 
   let store;
   try { store = await getNamedStore(event, AVIS_STORE); }
@@ -103,11 +116,20 @@ export const handler = async (event) => {
   try {
     if (event.httpMethod === "GET") {
       if (q.liste) {
-        const { blobs } = await store.list({ prefix: admin ? "d/" : `d/${moi}/` });
+        // Mes avis, plus ceux des membres de mon groupe qui me les ouvrent ; l'administrateur voit ceux de tous.
+        const tous = await lesComptes();
+        const parId = Object.fromEntries(tous.map((c) => [c.id, c]));
+        let blobs = [];
+        if (admin) ({ blobs } = await store.list({ prefix: "d/" }));
+        else {
+          const ids = Array.from(new Set([moi, ...comptesVisibles(lecteur, tous).map((c) => c.id)])).filter((id) => COMPTE_VALIDE.test(id)).slice(0, 60);
+          for (const id of ids) blobs.push(...(await store.list({ prefix: `d/${id}/` })).blobs);
+        }
         const documents = await Promise.all(blobs.map(async (b) => {
           const [, proprio, ...reste] = b.key.split("/");
-          const m = await meta(store, b.key);
-          return { ref: reste.join("/"), proprio, a_moi: proprio === moi, ...assainirResume(m), maj: m.maj || null, auteur: m.auteur || "", diffusions: m.diffusions || 0 };
+          const m = await meta(store, b.key), cp = parId[proprio] || null;
+          return { ref: reste.join("/"), proprio, a_moi: proprio === moi, ...assainirResume(m), maj: m.maj || null, auteur: m.auteur || (cp ? cp.nom : ""), diffusions: m.diffusions || 0,
+            proprietaire: cp ? cp.email : "", proprietaire_nom: cp ? (cp.nom || cp.email) : "", groupe: cp ? cp.groupe : "" };
         }));
         documents.sort((a, b) => String(b.maj || "").localeCompare(String(a.maj || "")));
         return authResp(200, { documents, admin });

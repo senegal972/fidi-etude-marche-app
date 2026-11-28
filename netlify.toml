@@ -388,6 +388,11 @@
   status = 200
 
 [[redirects]]
+  from   = "/api/documents"
+  to     = "/.netlify/functions/documents"
+  status = 200
+
+[[redirects]]
   from   = "/api/contacts"
   to     = "/.netlify/functions/contacts"
   status = 200

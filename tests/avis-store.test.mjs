@@ -21,23 +21,22 @@ const COMPTES = {
   "agent@exemple.fr": { id: "page-agent", role: "Collaborateur" },
   "autre@exemple.fr": { id: "page-autre", role: "Collaborateur" },
   "admin@exemple.fr": { id: "page-admin", role: "Administrateur" },
+  // Même groupe que « agent » : sert aux essais de partage (réglage posé par chaque essai).
+  "collegue@exemple.fr": { id: "page-collegue", role: "Collaborateur", reseau: "Agence Nord" },
 };
+const pageCompte = (email) => { const c = COMPTES[email]; return { id: c.id, properties: {
+  "Email": { title: [{ plain_text: email }] }, "Nom": { rich_text: [{ plain_text: "Agent Démo" }] }, "Statut": { select: { name: "Actif" } }, "Rôle": { select: { name: c.role } },
+  ...(c.reseau ? { "Réseau": { rich_text: [{ plain_text: c.reseau }] } } : {}),
+  ...(c.partage ? { "Partage documents": { select: { name: c.partage } } } : {}),
+  ...(c.avec ? { "Partage avec": { rich_text: [{ plain_text: c.avec }] } } : {}) } }; };
 
 globalThis.fetch = async (url, options = {}) => {
   const u = new URL(String(url));
   if (u.hostname === "api.notion.com") {
     const corps = JSON.parse(options.body || "{}");
     const email = corps?.filter?.title?.equals || corps?.filter?.rich_text?.equals || corps?.filter?.email?.equals || "";
-    const c = COMPTES[email];
-    const results = c ? [{
-      id: c.id,
-      properties: {
-        "Email": { title: [{ plain_text: email }] },
-        "Nom": { rich_text: [{ plain_text: "Agent Démo" }] },
-        "Statut": { select: { name: "Actif" } },
-        "Rôle": { select: { name: c.role } },
-      },
-    }] : [];
+    // Sans filtre : la liste de tous les comptes (règles de partage) ; avec un e-mail : ce compte.
+    const results = email ? (COMPTES[email] ? [pageCompte(email)] : []) : Object.keys(COMPTES).map(pageCompte);
     return new Response(JSON.stringify({ results }), { status: 200 });
   }
   if (u.hostname === "edge.test") {
@@ -186,8 +185,10 @@ test("chaque compte ne voit et ne lit que ses avis, même avec le paramètre pro
   assert.equal(liste.documents.length, 1);
   assert.equal(liste.documents[0].client, "Client 1");
   assert.equal(liste.documents[0].diffusions, 1);
-  assert.equal((await lire(AGENT, { ref: "FIDI-AV-TEST", proprio: "page-autre" })).data.bien.surface, 1, "proprio ignoré");
-  assert.equal((await lire(AUTRE, { ref: "FIDI-AV-TEST", versions: "1", proprio: "page-agent" })).versions.length, 0);
+  const refus = await lire(AGENT, { ref: "FIDI-AV-TEST", proprio: "page-autre" });
+  assert.equal(refus.data, undefined, "l'avis d'un autre compte n'est pas lu");
+  assert.match(refus.error, /introuvable/);
+  assert.equal((await lire(AUTRE, { ref: "FIDI-AV-TEST", versions: "1", proprio: "page-agent" })).versions, undefined);
   // Même référence chez deux comptes : deux avis distincts, aucun écrasement.
   assert.equal((await lire(AUTRE, { ref: "FIDI-AV-TEST" })).data.bien.surface, 9);
 });
@@ -236,4 +237,40 @@ test("stockage en panne : 503 signalé, jamais un 200 trompeur", async () => {
   const r = await lire(AGENT, { liste: "1" });
   assert.equal(r.code, 503);
   assert.equal(r.blobs_error, true);
+});
+
+// ── Partage au sein d'un groupe (confidentialité des documents) ──────────────
+const COLLEGUE = "collegue@exemple.fr";
+const reglage = (email, r) => { Object.assign(COMPTES[email], { reseau: undefined, partage: undefined, avec: undefined }, r); };
+
+test("partage au groupe : un membre du même groupe lit l'avis, sans pouvoir l'écrire ni le supprimer", async () => {
+  reglage(AGENT, { reseau: "Agence Nord", partage: "Groupe" }); reglage(COLLEGUE, { reseau: "agence nord" }); reglage(AUTRE, { reseau: "Agence Sud" });
+  await enregistrer(AGENT, avis(1));
+  const liste = await lire(COLLEGUE, { liste: "1" });
+  assert.deepEqual(liste.documents.map((d) => [d.proprio, d.a_moi, d.proprietaire]), [["page-agent", false, AGENT]]);
+  assert.equal((await lire(COLLEGUE, { ref: "FIDI-AV-TEST", proprio: "page-agent" })).data.bien.surface, 1);
+  // Écriture visant le compte d'un autre : elle retombe sur le compte de celui qui écrit, l'original est intact.
+  await ecrire(COLLEGUE, { action: "enregistrer", ref: "FIDI-AV-TEST", proprio: "page-agent", data: avis(7), resume: {} });
+  assert.equal((await lire(AGENT, { ref: "FIDI-AV-TEST" })).data.bien.surface, 1, "l'avis du propriétaire n'est pas modifié");
+  await ecrire(COLLEGUE, { action: "supprimer", ref: "FIDI-AV-TEST", proprio: "page-agent" });
+  assert.equal((await lire(AGENT, { ref: "FIDI-AV-TEST" })).data.bien.surface, 1, "ni supprimé");
+  // Un autre groupe ne voit rien, même avec l'identifiant du compte.
+  assert.equal((await lire(AUTRE, { liste: "1" })).documents.length, 0);
+  assert.equal((await lire(AUTRE, { ref: "FIDI-AV-TEST", proprio: "page-agent" })).code, 404);
+  reglage(AGENT, {}); reglage(COLLEGUE, { reseau: "Agence Nord" }); reglage(AUTRE, {});
+});
+
+test("privé ou personnes choisies : seuls les membres désignés du groupe lisent", async () => {
+  reglage(AGENT, { reseau: "Agence Nord", partage: "Privé" }); reglage(COLLEGUE, { reseau: "Agence Nord" });
+  await enregistrer(AGENT, avis(1));
+  assert.equal((await lire(COLLEGUE, { liste: "1" })).documents.length, 0, "privé : personne d'autre");
+  assert.equal((await lire(COLLEGUE, { ref: "FIDI-AV-TEST", proprio: "page-agent" })).code, 404);
+  reglage(AGENT, { reseau: "Agence Nord", partage: "Personnes choisies", avec: "quelquun@exemple.fr" });
+  assert.equal((await lire(COLLEGUE, { liste: "1" })).documents.length, 0, "non désigné");
+  reglage(AGENT, { reseau: "Agence Nord", partage: "Personnes choisies", avec: "quelquun@exemple.fr, collegue@exemple.fr" });
+  assert.equal((await lire(COLLEGUE, { liste: "1" })).documents.length, 1, "désigné");
+  // Désigné mais d'un autre groupe : jamais.
+  reglage(AGENT, { reseau: "Agence Nord", partage: "Personnes choisies", avec: "autre@exemple.fr" }); reglage(AUTRE, { reseau: "Agence Sud" });
+  assert.equal((await lire(AUTRE, { liste: "1" })).documents.length, 0);
+  reglage(AGENT, {}); reglage(AUTRE, {});
 });

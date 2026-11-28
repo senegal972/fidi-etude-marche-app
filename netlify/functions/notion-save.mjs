@@ -61,12 +61,14 @@ async function syncEtudeAnnees(parentId, b, isUpdate) {
 }
 
 import { sessionRequise } from "./_auth.mjs";
+import { lecteurDe, pageParRef, proprietaireDePage, peutModifier, colonneProprietaire, PROP_PROPRIETAIRE } from "./_documents.mjs";
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return jsonResp(200, {});
   if (event.httpMethod !== "POST") return jsonResp(405, { error: "POST requis" });
 
   // Session vérifiée avant tout le reste : ces dossiers contiennent des noms de clients.
-  { const s = await sessionRequise(event); if (s.refus) return s.refus; }
+  const s = await sessionRequise(event); if (s.refus) return s.refus;
+  const lecteur = lecteurDe(s.found);
 
   if (!hasToken()) {
     return jsonResp(503, {
@@ -102,10 +104,18 @@ export const handler = async (event) => {
     // Sauvegarde automatique d'une étude : la référence ne contient ni adresse ni parcelle
     // (jour + destinataire + commune). Deux études du même jour dans la même commune la
     // partagent : une sauvegarde automatique ne remplace jamais l'étude d'une autre adresse.
+    // Confidentialité : le dossier porte son propriétaire. Un dossier existant ne se modifie que par son propriétaire ou par
+    // l'administrateur ; un dossier sans propriétaire (antérieur) n'est repris que par l'administrateur, qui en devient propriétaire.
+    const p0 = await pageParRef(databaseId, ref);
+    const proprietaire = p0 ? proprietaireDePage(p0) : "";
+    if (p0 && !peutModifier(lecteur, proprietaire)) {
+      return jsonResp(403, { ok: false, autre_compte: true, error: "Cette référence est déjà celle d'un dossier d'un autre compte : il ne peut pas être modifié d'ici. Changez le destinataire ou la date, ou adressez-vous à l'administrateur." });
+    }
+    if (await colonneProprietaire(databaseId)) props[PROP_PROPRIETAIRE] = P.text(proprietaire || lecteur.email);
+    else return jsonResp(503, { ok: false, error: "Le dossier ne peut pas être rattaché à votre compte pour l'instant (colonne « Propriétaire » indisponible). Réessayez." });
+
     let existingId;
     if (kind === "etude" && b.auto) {
-      const deja = await queryDatabase(databaseId, { filter: { property: "Référence", title: { equals: ref } }, page_size: 1 });
-      const p0 = deja.results?.[0];
       existingId = p0?.id || null;
       const autre = p0 ? (p0.properties?.["Adresse"]?.rich_text || []).map((t) => t.plain_text).join("").trim() : "";
       const ici = String(b.adresse || "").trim();
@@ -113,7 +123,7 @@ export const handler = async (event) => {
         return jsonResp(409, { ok: false, conflit: true, adresse_existante: autre, error: "Une autre étude porte déjà cette référence." });
       }
     } else {
-      existingId = await findByRef(databaseId, "Référence", ref);
+      existingId = p0 ? p0.id : null;
     }
     let page;
     if (existingId) {

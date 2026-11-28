@@ -35,11 +35,13 @@ async function rebuildEtude(page) {
 }
 
 import { sessionRequise } from "./_auth.mjs";
+import { lecteurDe, accesDossier } from "./_documents.mjs";
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return jsonResp(200, {});
 
   // Session vérifiée avant tout le reste : ces dossiers contiennent des noms de clients.
-  { const s = await sessionRequise(event); if (s.refus) return s.refus; }
+  const s = await sessionRequise(event); if (s.refus) return s.refus;
+  const lecteur = lecteurDe(s.found);
 
   if (!hasToken()) {
     return jsonResp(503, { error: "Notion non configuré (NOTION_TOKEN absent).", configured: false });
@@ -58,6 +60,9 @@ export const handler = async (event) => {
     });
     const page = data.results?.[0];
     if (!page) return jsonResp(404, { error: `Dossier introuvable : ${ref}` });
+    // Confidentialité : même réponse qu'un dossier absent quand le lecteur n'y a pas droit (rien n'est révélé).
+    const acces = await accesDossier(lecteur, page);
+    if (!acces.voir) return jsonResp(404, { error: `Dossier introuvable : ${ref}` });
 
     const p = page.properties || {};
 
@@ -77,6 +82,7 @@ export const handler = async (event) => {
       ref,
       page_id: page.id,
       page_url: page.url,
+      proprietaire: acces.proprietaire, lecture_seule: !acces.modifier,
       data: parsed,
       source,
     });

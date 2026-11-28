@@ -32,6 +32,7 @@
 <link href="/facture.css" rel="stylesheet"/>
 <link href="/etude-actions.css" rel="stylesheet"/>
 <link href="/valorisation.css" rel="stylesheet"/>
+<link href="/mes-documents.css" rel="stylesheet"/>
 <link href="/compte.css" rel="stylesheet"/>
 <link href="/compte-facturation.css" rel="stylesheet"/>
 <link href="/mobile.css" rel="stylesheet"/>
@@ -273,16 +274,10 @@ body.map-fs-on{overflow:hidden;}
       <i class="bi bi-coin me-1"></i><span id="creditsVal">0</span><span class="nav-lbl"> crédits</span>
     </span>
 
-    <!-- Dropdown Mes documents (études + avis) -->
-    <div class="dropdown">
-      <button class="btn btn-sm btn-outline-light dropdown-toggle" type="button" id="ddDocs" data-bs-toggle="dropdown" aria-expanded="false" title="Mes dossiers">
-        <i class="bi bi-folder2-open me-1"></i><span class="nav-lbl">Mes documents</span>
-      </button>
-      <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="ddDocs">
-        <li><a class="dropdown-item" href="#" onclick="openEtudesRecentes();return false;"><i class="bi bi-clock-history me-2 text-primary"></i>Études récentes</a></li>
-        <li><a class="dropdown-item" href="#" onclick="AvisValeur.cloud();return false;"><i class="bi bi-file-earmark-text me-2 text-warning"></i>Mes avis de valeur</a></li>
-      </ul>
-    </div>
+    <!-- Mes documents : études et avis classés par propriétaire, avec le réglage de confidentialité (mes-documents.js) -->
+    <button class="btn btn-sm btn-outline-light" type="button" id="ddDocs" onclick="FidiDocuments.ouvrir()" title="Mes études et avis de valeur, ceux de mon groupe, et qui peut voir les miens">
+      <i class="bi bi-folder2-open me-1"></i><span class="nav-lbl">Mes documents</span>
+    </button>
 
     <!-- Dropdown Actions étude courante (visible après analyse) -->
     <div class="dropdown d-none" id="ddResultsWrap">
@@ -6589,6 +6584,7 @@ function copyShareUrl(){
 <script src="/compte-profils.js" defer></script>
 <script src="/etude-actions.js" defer></script>
 <script src="/valorisation.js" defer></script>
+<script src="/mes-documents.js" defer></script>
 <script src="/entreprises-proches.js" defer></script>
 <script src="/facture-externe.js" defer></script>
 <script src="/facture.js" defer></script>
@@ -6969,6 +6965,9 @@ window.Compte = (function(){
               '<div class="col-md-3"><label class="form-label small mb-0">Grille tarifaire</label>'+
                 '<select class="form-select form-select-sm" id="adTarifGroup"><option value="">Standard (par défaut)</option><option value="Sextant">Sextant</option><option value="Partenaire">Partenaire</option></select>'+
               '</div>'+
+              '<div class="col-md-3"><label class="form-label small mb-0">Ses documents sont visibles</label>'+
+                '<select class="form-select form-select-sm" id="adPartage" title="Qui voit les études et avis de ce compte. Le partage ne se fait qu\'entre membres d\'un même groupe ; l\'utilisateur peut ensuite le modifier."><option value="prive">de lui seul</option><option value="groupe">de tout son groupe</option></select>'+
+              '</div>'+
               '<div class="col-md-8 d-flex align-items-end">'+
                 '<div class="form-check"><input class="form-check-input" type="checkbox" id="adIllimite"><label class="form-check-label small" for="adIllimite">Accès illimité (aucun crédit consommé)</label></div>'+
                 '<div class="ms-3 form-check"><input class="form-check-input" type="checkbox" id="adAutoPwd" checked><label class="form-check-label small" for="adAutoPwd">Générer mot de passe fort (16 chars, style Google)</label></div>'+
@@ -7197,6 +7196,11 @@ window.Compte = (function(){
             '<input id="fcReseau" class="form-control form-control-sm" list="fcReseauList" value="'+esc(u.reseau||'')+'" placeholder="Optimmo Dom, Sextant…">'+
             '<datalist id="fcReseauList">'+reseaux.map(function(rz){return '<option value="'+esc(rz)+'">';}).join('')+'</datalist>'+
           '</div>'+
+          '<div class="col-md-6"><label class="form-label small mb-0">Ses documents sont visibles</label>'+
+            '<select id="fcPartage" class="form-select form-select-sm" title="Études et avis de ce compte. Jamais visibles d\'un autre groupe.">'+
+              [['prive','de lui seul'],['groupe','de tout son groupe'],['choisi','de personnes choisies de son groupe']].map(function(o){return '<option value="'+o[0]+'"'+((u.partage||'prive')===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>'+
+            '<input id="fcPartageAvec" class="form-control form-control-sm mt-1" value="'+esc((u.partage_avec||[]).join(', '))+'" placeholder="Personnes choisies : e-mails séparés par une virgule">'+
+            '<div class="text-muted" style="font-size:.66rem;">Le groupe est le champ Réseau. L\'utilisateur peut modifier ce réglage dans « Mes documents ».</div></div>'+
           '<div class="col-md-6"><label class="form-label small mb-0">Grille tarifaire</label>'+
             '<input id="fcTarif" class="form-control form-control-sm" list="fcTarifList" value="'+esc(u.tarifGroup||'')+'" placeholder="Standard, Partenaire, Banque…">'+
             '<datalist id="fcTarifList">'+((window._offresGrilles||['Standard']).map(function(g){return '<option value="'+esc(g)+'">';}).join(''))+'</datalist>'+
@@ -7270,6 +7274,7 @@ window.Compte = (function(){
       nom: val('fcNom'), role: val('fcRole'), statut: val('fcStatut'),
       credits: val('fcCredits'), quota: (val('fcQuota') === '' ? '2' : val('fcQuota')), illimite: chk('fcIllimite'),
       reseau: val('fcReseau'), tarifGroup: val('fcTarif'), template: val('fcTemplate'),
+      partage: val('fcPartage'), partage_avec: val('fcPartageAvec'),
       fidi_encaisse: chk('fcEncaisse'), commission: val('fcCommission'),
       expire: (val('fcRole')==='Éphémère') ? (val('fcExpire')||'') : '' };
     const msg=document.getElementById('fcMsg'); if(msg) msg.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Enregistrement…';
@@ -7314,11 +7319,12 @@ window.Compte = (function(){
     const role=document.getElementById('adRole').value;
     const reseau=(document.getElementById('adReseau')||{}).value||'';
     const tarifGroup=(document.getElementById('adTarifGroup')||{}).value||'';
+    const partage=(document.getElementById('adPartage')||{}).value||'prive';
     const expire=(role==='Éphémère') ? ((document.getElementById('adExpire')||{}).value||'') : '';
     const msg=document.getElementById('adMsg');
     if(!email){ msg.innerHTML='<span class="text-danger">E-mail requis.</span>'; return; }
     if(password && password.length < 8){ msg.innerHTML='<span class="text-danger">Mot de passe manuel : 8 caractères minimum.</span>'; return; }
-    const {ok,data}=await admin('create',Object.assign({email,nom,credits,quota,illimite,role,reseau,tarifGroup,expire}, password?{password}:{}));
+    const {ok,data}=await admin('create',Object.assign({email,nom,credits,quota,illimite,role,reseau,tarifGroup,expire,partage}, password?{password}:{}));
     if(!ok){ msg.innerHTML='<span class="text-danger">'+esc(data.error||'Erreur')+'</span>'; return; }
     if(data.temp_password){
       const pw = data.temp_password;

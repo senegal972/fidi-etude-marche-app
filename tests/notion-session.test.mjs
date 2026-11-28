@@ -18,17 +18,22 @@ const { handler: del } = await import("../netlify/functions/notion-delete.mjs");
 const vraiFetch = globalThis.fetch;
 let appels = [];
 let pageAvis = null;
+let partageVoisin = "";
+const { DB } = await import("../netlify/functions/_notion.mjs");
+const BASE_COMPTES = String(DB.users);
+const A_MOI = { "Propriétaire": { rich_text: [{ plain_text: "agent@exemple.fr" }] } };
+const de = (email) => ({ "Propriétaire": { rich_text: [{ plain_text: email }] } });
 globalThis.fetch = async (url, options = {}) => {
   const u = String(url);
   appels.push(u);
   const corps = JSON.parse(options.body || "{}");
   if (u.includes("/query")) {
     const email = corps?.filter?.title?.equals || corps?.filter?.rich_text?.equals || corps?.filter?.email?.equals || "";
-    if (email === "agent@exemple.fr") {
-      return new Response(JSON.stringify({ results: [{ id: "u1", properties: {
-        "Email": { title: [{ plain_text: email }] }, "Statut": { select: { name: "Actif" } }, "Rôle": { select: { name: "Collaborateur" } },
-      } }] }), { status: 200 });
-    }
+    const compte = (e, id, reseau, partage) => ({ id, properties: { "Email": { title: [{ plain_text: e }] }, "Statut": { select: { name: "Actif" } }, "Rôle": { select: { name: "Collaborateur" } },
+      "Réseau": { rich_text: [{ plain_text: reseau }] }, ...(partage ? { "Partage documents": { select: { name: partage } } } : {}) } });
+    const COMPTES = { "agent@exemple.fr": compte("agent@exemple.fr", "u1", "Agence Nord"), "voisin@exemple.fr": compte("voisin@exemple.fr", "u2", "Agence Nord", partageVoisin), "ailleurs@exemple.fr": compte("ailleurs@exemple.fr", "u3", "Agence Sud", "Groupe") };
+    if (COMPTES[email]) return new Response(JSON.stringify({ results: [COMPTES[email]] }), { status: 200 });
+    if (u.includes(BASE_COMPTES) && !corps.filter) return new Response(JSON.stringify({ results: Object.values(COMPTES) }), { status: 200 });
     return new Response(JSON.stringify({ results: pageAvis ? [pageAvis] : [] }), { status: 200 });
   }
   return new Response(JSON.stringify({ id: "p1", url: "https://notion.test/p1" }), { status: 200 });
@@ -59,7 +64,7 @@ test("jeton invalide ou compte inconnu : 401", async () => {
 });
 
 test("avec session : la lecture passe la garde", async () => {
-  pageAvis = { id: "p1", url: "u", properties: { "Donnees JSON": packBig({ metadata: { ref: "X" } }) } };
+  pageAvis = { id: "p1", url: "u", properties: { ...A_MOI, "Donnees JSON": packBig({ metadata: { ref: "X" } }) } };
   const r = await get({ httpMethod: "GET", headers: session, queryStringParameters: { kind: "avis", ref: "X" } });
   assert.equal(r.statusCode, 200);
   assert.equal(JSON.parse(r.body).data.metadata.ref, "X");
@@ -101,7 +106,7 @@ test("avis léger : copie Notion inchangée, photos comprises", () => {
 });
 
 test("lecture d'une copie marquée trop lourde : data null et source explicite", async () => {
-  pageAvis = { id: "p1", url: "u", properties: { "Donnees JSON": { rich_text: [{ plain_text: '{"__trop_lourd":true}' }] } } };
+  pageAvis = { id: "p1", url: "u", properties: { ...A_MOI, "Donnees JSON": { rich_text: [{ plain_text: '{"__trop_lourd":true}' }] } } };
   const d = JSON.parse((await get({ httpMethod: "GET", headers: session, queryStringParameters: { kind: "avis", ref: "X" } })).body);
   assert.equal(d.data, null);
   assert.equal(d.source, "trop_lourd");
@@ -115,7 +120,7 @@ const etude = (adresse, auto) => save({ httpMethod: "POST", headers: session, bo
 const ecritures = () => appels.filter((u) => /\/pages(\/|$)/.test(u)).length;
 
 test("sauvegarde automatique d'une étude : ne remplace pas l'étude d'une autre adresse", async () => {
-  pageAvis = { id: "e1", url: "u", properties: { "Adresse": { rich_text: [{ plain_text: "1 rue A" }] } } };
+  pageAvis = { id: "e1", url: "u", properties: { ...A_MOI, "Adresse": { rich_text: [{ plain_text: "1 rue A" }] } } };
   appels = [];
   const r = await etude("9 rue B", true);
   assert.equal(r.statusCode, 409);
@@ -126,7 +131,7 @@ test("sauvegarde automatique d'une étude : ne remplace pas l'étude d'une autre
 });
 
 test("sauvegarde automatique : même adresse mise à jour, étude nouvelle créée", async () => {
-  pageAvis = { id: "e1", url: "u", properties: { "Adresse": { rich_text: [{ plain_text: "1 Rue A" }] } } };
+  pageAvis = { id: "e1", url: "u", properties: { ...A_MOI, "Adresse": { rich_text: [{ plain_text: "1 Rue A" }] } } };
   appels = [];
   assert.equal((await etude("1 rue a", true)).statusCode, 200);
   assert.ok(ecritures() >= 1);
@@ -136,8 +141,58 @@ test("sauvegarde automatique : même adresse mise à jour, étude nouvelle cré�
 });
 
 test("sauvegarde manuelle : remplace, comme avant (c'est le choix de l'utilisateur)", async () => {
-  pageAvis = { id: "e1", url: "u", properties: { "Adresse": { rich_text: [{ plain_text: "1 rue A" }] } } };
+  pageAvis = { id: "e1", url: "u", properties: { ...A_MOI, "Adresse": { rich_text: [{ plain_text: "1 rue A" }] } } };
   appels = [];
   assert.equal((await etude("9 rue B", false)).statusCode, 200);
   assert.ok(ecritures() >= 1);
+});
+
+// ── Confidentialité : propriétaire, groupe, partage ──────────────────────────
+const lireRef = () => get({ httpMethod: "GET", headers: session, queryStringParameters: { kind: "etude", ref: "X" } });
+
+test("dossier d'un autre compte : invisible sauf partage au sein du même groupe ; jamais d'un groupe à l'autre", async () => {
+  pageAvis = { id: "p1", url: "u", properties: { ...de("voisin@exemple.fr"), "Donnees JSON": packBig({ data: {} }) } };
+  partageVoisin = "";            // privé
+  assert.equal((await lireRef()).statusCode, 404, "privé : comme s'il n'existait pas");
+  partageVoisin = "Groupe";
+  const r = await lireRef();
+  assert.equal(r.statusCode, 200);
+  assert.equal(JSON.parse(r.body).lecture_seule, true);
+  assert.equal(JSON.parse(r.body).proprietaire, "voisin@exemple.fr");
+  pageAvis = { id: "p1", url: "u", properties: { ...de("ailleurs@exemple.fr"), "Donnees JSON": packBig({ data: {} }) } };
+  assert.equal((await lireRef()).statusCode, 404, "autre groupe, même s'il partage avec le sien");
+  partageVoisin = "";
+});
+
+test("dossier sans propriétaire (antérieur) : invisible, non modifiable et non supprimable pour un compte ordinaire", async () => {
+  pageAvis = { id: "p1", url: "u", properties: { "Adresse": { rich_text: [{ plain_text: "1 rue A" }] }, "Donnees JSON": packBig({ data: {} }) } };
+  assert.equal((await lireRef()).statusCode, 404);
+  appels = [];
+  const s1 = await etude("1 rue A", false);
+  assert.equal(s1.statusCode, 403); assert.equal(JSON.parse(s1.body).autre_compte, true);
+  assert.equal((await del({ httpMethod: "POST", headers: session, body: JSON.stringify({ kind: "etude", ref: "X" }) })).statusCode, 404);
+  assert.equal(ecritures(), 0, "aucune écriture dans Notion");
+});
+
+test("un partage ne donne que la lecture : ni enregistrement ni suppression du dossier d'un collègue", async () => {
+  partageVoisin = "Groupe";
+  pageAvis = { id: "e1", url: "u", properties: { ...de("voisin@exemple.fr"), "Adresse": { rich_text: [{ plain_text: "1 rue A" }] } } };
+  appels = [];
+  assert.equal((await etude("1 rue A", false)).statusCode, 403);
+  assert.equal((await del({ httpMethod: "POST", headers: session, body: JSON.stringify({ kind: "etude", ref: "X" }) })).statusCode, 404);
+  assert.equal(ecritures(), 0);
+  partageVoisin = "";
+});
+
+test("nouveau dossier : il est rattaché au compte qui l'enregistre ; la liste ne demande que les comptes visibles", async () => {
+  pageAvis = null; appels = [];
+  let ecrit = null; const avant = globalThis.fetch;
+  globalThis.fetch = async (url, o = {}) => { if (/\/pages$/.test(String(url)) && o.method === "POST") ecrit = JSON.parse(o.body); return avant(url, o); };
+  try { assert.equal((await etude("9 rue B", false)).statusCode, 200); } finally { globalThis.fetch = avant; }
+  assert.equal(ecrit.properties["Propriétaire"].rich_text[0].text.content, "agent@exemple.fr");
+  // Liste : filtre posé dans la requête Notion.
+  partageVoisin = "Groupe"; let filtre = null;
+  globalThis.fetch = async (url, o = {}) => { const c = JSON.parse(o.body || "{}"); if (String(url).includes("/query") && c.filter && c.filter.or) filtre = c.filter.or; return avant(url, o); };
+  try { await list({ httpMethod: "GET", headers: session, queryStringParameters: { kind: "etude" } }); } finally { globalThis.fetch = avant; partageVoisin = ""; }
+  assert.deepEqual(filtre.map((f) => f.rich_text.equals).sort(), ["agent@exemple.fr", "voisin@exemple.fr"], "moi et le collègue qui partage — pas l'autre groupe");
 });

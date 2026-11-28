@@ -189,6 +189,27 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
   Non fait : détail de la fiche dans le rapport A4 et l'avis de valeur ; l'étiquette n'est pas reposée à la réouverture d'une étude sauvegardée.
   Tests : `tests/valorisation.test.mjs`.
 
+### Mes documents et confidentialité — `_documents.mjs`, `documents.mjs`, `mes-documents.js` / `mes-documents.css`
+- **Règle, appliquée côté serveur** (`_documents.mjs`, pur et testé : `peutVoir`, `peutModifier`, `assainirPartage`) : chacun voit ses documents ;
+  un compte règle qui voit les siens — `prive`, `groupe` (membres de son groupe = champ « Réseau »), `choisi` (membres désignés du même groupe) —
+  dans les propriétés Notion du compte « Partage documents » et « Partage avec » ; **jamais d'un groupe à l'autre**, ni entre comptes sans groupe ;
+  l'administrateur voit tout. **Un partage ne donne que la lecture** : seuls le propriétaire et l'administrateur modifient ou suppriment.
+- **Propriétaire d'un dossier** : propriété Notion « Propriétaire » (e-mail) sur les bases Études et Avis, posée par `notion-save` à la création ;
+  avis en ligne : dossier du compte dans Blobs (`d/<compte>/…`). **Dossier sans propriétaire (antérieur à la 1.50) : administrateur seulement**,
+  qui l'attribue (`POST /api/documents { action:"attribuer", kind, ref, email }`).
+- Routes : `notion-list` (filtre `or` sur « Propriétaire » dans la requête **et** revérification par dossier ; items annotés `proprietaire`,
+  `proprietaire_nom`, `groupe`, `a_moi`, `modifiable`), `notion-get` (404 identique à un dossier absent si le lecteur n'y a pas droit ; `lecture_seule`),
+  `notion-delete` et `notion-save` (403 `{ autre_compte:true }` sur le dossier d'un autre), `avis-store` (liste = mes avis + ceux des comptes visibles ;
+  `proprio` d'un autre compte : lecture si `peutVoir`, sinon 404 ; l'écriture ne vise jamais le compte d'un autre, sauf administrateur).
+  **Toute nouvelle route qui lit ou écrit un dossier passe par ces fonctions.**
+- `GET|POST /api/documents` (`documents.mjs`) : réglage du compte connecté (`action:"partage"`) et membres de son groupe ; `ecrirePartage` sert aussi à
+  `admin-users` (`create` : `partage` ; `update` : `partage`, `partage_avec`). `moncompte` renvoie `groupe`, `partage`, `partage_avec`.
+- Écran : `FidiDocuments.ouvrir()` (bouton `#ddDocs`) — onglets « Les miens », « Mon groupe », « Tous les comptes » (administrateur, par groupe
+  puis par personne, dont « Sans propriétaire »), filtre études / avis, recherche, réglage « Qui peut voir mes documents ? ». Une étude se rouvre par
+  `reopenEtude(ref)` ; un avis par `AvisDossiers.ouvrir(ref)` (recherche pré-remplie). L'écran présente : il ne décide pas de la confidentialité.
+- Non couvert : `/api/crm-clients` et `/api/factures/client` listent encore les clients de tous les comptes (session exigée seulement).
+  Tests : `tests/documents.test.mjs`, `tests/notion-session.test.mjs`, `tests/avis-store.test.mjs`.
+
 ### Profils & modules — `compte-profils.js` (rubrique `tabProfils`, administrateur)
 - `FidiProfils.monter()` rend dans `#profilsRoot` les profils (`/api/templates` : modèles système + personnalisés dans la base Notion des
   templates) et leurs modules cochables, groupés (`MODULES[].groupe` dans `templates.mjs`). Un compte porte un profil par le champ « Profil

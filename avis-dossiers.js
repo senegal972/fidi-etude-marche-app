@@ -112,7 +112,8 @@
       '</div></div></div>';
   }
 
-  function ouvrir() {
+  // filtre (facultatif) : texte posé d'office dans la recherche (ex. la référence choisie dans « Mes documents »).
+  function ouvrir(filtre) {
     if (typeof bootstrap === 'undefined' || !window.AvisValeur) { alert('Interface non chargée. Rechargez la page.'); return; }
     var racine = document.getElementById('avisDossiersRoot');
     if (!racine) { racine = document.createElement('div'); racine.id = 'avisDossiersRoot'; document.body.appendChild(racine); }
@@ -124,7 +125,8 @@
     el.querySelector('#avdFiltre').addEventListener('input', function () { etat.filtre = this.value; afficherDocs(); });
     if (typeof window.fidiStackModal === 'function') window.fidiStackModal(el);
     new bootstrap.Modal(el).show();
-    etat = { docs: [], choisi: null, versions: [], apercu: null, filtre: '', admin: false };
+    etat = { docs: [], choisi: null, versions: [], apercu: null, filtre: typeof filtre === 'string' ? filtre : '', admin: false };
+    if (etat.filtre) el.querySelector('#avdFiltre').value = etat.filtre;
     charger();
   }
 
@@ -154,7 +156,8 @@
       notion.forEach(function (n) {
         if (!n || !n.ref || parCle[cle(n.ref, '')]) return;
         if (docs.some(function (d) { return d.ref === n.ref; })) return; // déjà en ligne chez son auteur
-        docs.push({ ref: n.ref, proprio: '', aMoi: true, enLigne: false, local: false, ancien: true, client: n.client, commune: n.commune,
+        // Le serveur ne renvoie que les dossiers visibles ; a_moi dit si celui-ci est le mien (sinon : partagé, en lecture).
+        docs.push({ ref: n.ref, proprio: '', aMoi: n.a_moi !== false, auteur: n.proprietaire_nom || '', enLigne: false, local: false, ancien: true, client: n.client, commune: n.commune,
           type: n.type_bien, date: n.date, maj: n.date, valeur_min: n.valeur, valeur_max: n.valeur, diffusions: 0, verrou: !!n.verrou });
       });
       docs.sort(function (a, b) { return String(b.maj || '').localeCompare(String(a.maj || '')); });

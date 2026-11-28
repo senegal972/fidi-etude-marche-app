@@ -13,6 +13,8 @@ function readReseau(props) {
 import { authResp, currentUser, createUser, setCredits, userFromPage } from "./_auth.mjs";
 import { envoyerBienvenue } from "./_bienvenue.mjs";
 import { identiteCompte } from "./_identite.mjs";
+import { lirePartage, assainirPartage, compteDePage, chargerComptes } from "./_documents.mjs";
+import { ecrirePartage } from "./documents.mjs";
 
 // Mot de passe fort auto-généré : 16 chars mixed (majuscules + minuscules + chiffres + symboles)
 // avec au moins 1 de chaque catégorie garanti. Style Chrome/Google auto-generate.
@@ -67,7 +69,8 @@ export const handler = async (event) => {
         const template = props["Template"]?.select?.name || "";
         return { email: u.email, nom: u.nom, role: u.role, statut: u.statut, credits: u.credits,
                  illimite: u.illimite, quota: u.quota, recherches: u.recherches,
-                 reseau, tarifGroup, fidi_encaisse: fidiEncaisse, commission, expire, template };
+                 reseau, tarifGroup, fidi_encaisse: fidiEncaisse, commission, expire, template,
+                 partage: lirePartage(props).mode, partage_avec: lirePartage(props).avec };
       });
       return authResp(200, { ok: true, users, super_admin: SUPER_ADMIN_EMAIL, me: me.user.email });
     }
@@ -100,6 +103,10 @@ export const handler = async (event) => {
       if (b.expire) { await ensureProperty(DB.users, "Expire le", { date: {} }); extra["Expire le"] = P.date(String(b.expire)); }
       if (Object.keys(extra).length && createdPage?.id) {
         try { await updatePage(createdPage.id, extra); } catch {}
+      }
+      // Confidentialité des documents : l'administrateur fixe dès la création qui verra les documents du compte (privé par défaut).
+      if (createdPage?.id && (b.partage === "groupe" || b.partage === "prive")) {
+        try { if (b.partage === "prive" || b.reseau) await ecrirePartage(createdPage.id, { mode: b.partage, avec: [] }); } catch {}
       }
       // E-mail de bienvenue (lien de l'application, installation, choix du mot de passe). Jamais bloquant ; pas pour un compte de test.
       let bienvenue = "non_envoye";
@@ -139,6 +146,14 @@ export const handler = async (event) => {
       if (b.illimite != null) patch["Illimité"] = P.checkbox(!!b.illimite);
       if (b.quota != null && b.quota !== "") { const q = parseInt(b.quota); if (Number.isFinite(q) && q >= 0) patch["Quota recherches"] = P.number(q); }
       if (b.reseau != null) { await ensureProperty(DB.users, "Réseau", { rich_text: {} }); patch["Réseau"] = P.text(String(b.reseau).slice(0, 100)); }
+      // Confidentialité des documents du compte : privé, groupe, ou personnes choisies du même groupe (_documents.mjs).
+      if (b.partage != null) {
+        const cible = compteDePage(page);
+        if (b.reseau != null) cible.groupe = String(b.reseau).trim();
+        const r = assainirPartage(cible, { mode: b.partage, avec: Array.isArray(b.partage_avec) ? b.partage_avec : String(b.partage_avec || "").split(/[\s,;]+/).filter(Boolean) }, await chargerComptes());
+        if (!r.ok) return authResp(400, { error: r.erreur });
+        await ecrirePartage(page.id, r.valeur);
+      }
       if (b.tarifGroup != null) {
         await ensureProperty(DB.users, "Grille tarifaire", { select: {} });
         patch["Grille tarifaire"] = b.tarifGroup ? P.select(String(b.tarifGroup).slice(0, 100)) : { select: null };
