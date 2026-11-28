@@ -96,3 +96,39 @@ test("une nouvelle facture porte le compte qui l'émet ; l'ancien cache du carne
   const avis = readFileSync(new URL("../avis-valeur.js", import.meta.url), "utf8");
   assert.match(avis, /fidi:crm:cache:clients:v2/); assert.match(avis, /removeItem\('fidi:crm:cache:clients'\)/);
 });
+
+// ── Attribution des factures à un compte (administrateur) ────────────────────
+const { handler: documents, LOT_FACTURES } = await import("../netlify/functions/documents.mjs");
+const demandeDoc = (email, corps) => documents({ httpMethod: "POST", headers: session(email), body: JSON.stringify(corps) });
+
+test("attribuer une facture : administrateur seulement, vers un compte existant", async () => {
+  factures = [facture("ANC-1", "")]; ecritures = [];
+  assert.equal((await demandeDoc("agent@x.fr", { action: "attribuer", kind: "facture", ref: "ANC-1", email: "agent@x.fr" })).statusCode, 403, "un compte ordinaire ne s'attribue rien");
+  assert.equal((await demandeDoc("agent@x.fr", { action: "attribuer_factures", email: "agent@x.fr" })).statusCode, 403);
+  assert.equal(ecritures.length, 0);
+  assert.equal((await demandeDoc("admin@x.fr", { action: "attribuer", kind: "facture", ref: "ANC-1", email: "inconnu@x.fr" })).statusCode, 400);
+  const r = await demandeDoc("admin@x.fr", { action: "attribuer", kind: "facture", ref: "ANC-1", email: "voisin@x.fr" });
+  assert.equal(r.statusCode, 200);
+  assert.equal(ecritures[0].corps.properties["Propriétaire"].rich_text[0].text.content, "voisin@x.fr");
+});
+
+test("attribuer toutes les factures sans compte : par lots, seules les factures sans émetteur sont demandées", async () => {
+  factures = Array.from({ length: LOT_FACTURES + 3 }, (_, i) => facture("ANC-" + i, ""));
+  ecritures = []; requetes = [];
+  const r = JSON.parse((await demandeDoc("admin@x.fr", { action: "attribuer_factures", email: "voisin@x.fr" })).body);
+  assert.equal(r.faites, LOT_FACTURES); assert.equal(r.restantes, true, "il en reste : l'écran rappelle");
+  assert.equal(ecritures.length, LOT_FACTURES);
+  assert.deepEqual(requetes[requetes.length - 1].filtre, { property: "Propriétaire", rich_text: { is_empty: true } });
+  factures = [facture("ANC-1", "")]; ecritures = [];
+  const fin = JSON.parse((await demandeDoc("admin@x.fr", { action: "attribuer_factures", email: "voisin@x.fr" })).body);
+  assert.deepEqual([fin.faites, fin.restantes], [1, false]);
+});
+
+test("écran de facturation : compte émetteur affiché, attribution une à une et en une fois", () => {
+  const js = readFileSync(new URL("../compte-facturation.js", import.meta.url), "utf8");
+  assert.match(js, /bouton\('attribuer', 'bi-person-plus'/);
+  assert.match(js, /data-fa-form="attribuerTout"/);
+  assert.match(js, /action: 'attribuer_factures'/); assert.match(js, /kind: 'facture'/);
+  assert.match(js, /if \(r\.restantes && r\.faites\) return lot\(\);/, "s'arrête si un lot n'attribue rien");
+  assert.match(readFileSync(new URL("../netlify/functions/factures-admin.mjs", import.meta.url), "utf8"), /proprietaire: proprietaireDePage\(p\)/);
+});

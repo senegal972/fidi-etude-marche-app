@@ -5,6 +5,7 @@
 import { DB, hasToken, queryDatabase } from "./_notion.mjs";
 import { authResp, currentUser } from "./_auth.mjs";
 import { factureFromPage, factureHtmlUrl, reqOrigin } from "./_facture.mjs";
+import { proprietaireDePage } from "./_documents.mjs";
 
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return authResp(200, {});
@@ -64,6 +65,8 @@ export const handler = async (event) => {
         commission_eur: commissionEUR,
         reverser_eur: reverserEUR,
         collab: collabEmail,
+        // Compte émetteur (confidentialité : historique du client et annulation). Vide = facture antérieure, à attribuer.
+        proprietaire: proprietaireDePage(p),
         relances: relances,
         derniere_relance: derniereRelance,
         // Paiement constaté (en ligne ou enregistré à la main, voir facture-paiement.mjs)

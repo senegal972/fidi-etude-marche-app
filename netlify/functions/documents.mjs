@@ -5,8 +5,11 @@
 // GET                                   → { moi:{ email, nom, groupe, partage, avec[], admin }, membres:[{ email, nom }] }
 //                                          membres = comptes actifs du même groupe (ceux avec qui un partage est possible)
 // POST { action:"partage", mode, avec } → règle qui voit MES documents : "prive" | "groupe" | "choisi" (+ e-mails de mon groupe)
-// POST { action:"attribuer", kind, ref, email }   administrateur : donne un propriétaire à un dossier (ex. dossier antérieur)
-import { DB, P, hasToken, updatePage, ensureProperty } from "./_notion.mjs";
+// POST { action:"attribuer", kind, ref, email }   administrateur : donne un propriétaire à un dossier (ex. dossier antérieur) ;
+//                                                  kind = "etude" | "avis" | "facture" (ref = numéro de la facture)
+// POST { action:"attribuer_factures", email }      administrateur : attribue les factures SANS compte émetteur, par lots
+//                                                  → { faites, restantes } ; à rappeler tant que restantes > 0
+import { DB, P, hasToken, updatePage, ensureProperty, queryDatabase } from "./_notion.mjs";
 import { authResp, currentUser } from "./_auth.mjs";
 import { lecteurDe, chargerComptes, assainirPartage, memeGroupe, pageParRef, colonneProprietaire, PROP_PROPRIETAIRE, LIBELLE_PARTAGE } from "./_documents.mjs";
 
@@ -16,6 +19,8 @@ export async function ecrirePartage(pageId, valeur) {
   await ensureProperty(DB.users, "Partage avec", { rich_text: {} });
   await updatePage(pageId, { "Partage documents": P.select(LIBELLE_PARTAGE[valeur.mode]), "Partage avec": P.text((valeur.avec || []).join(", ").slice(0, 1900)) });
 }
+
+export const LOT_FACTURES = 25; // factures attribuées par appel
 
 export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return authResp(200, {});
@@ -46,14 +51,28 @@ export const handler = async (event) => {
     if (b.action === "attribuer") {
       if (!admin) return authResp(403, { error: "Réservé aux administrateurs." });
       const kind = String(b.kind || "").toLowerCase(), ref = String(b.ref || "").trim(), cible = String(b.email || "").trim().toLowerCase();
-      if (!["etude", "avis"].includes(kind) || !ref) return authResp(400, { error: "Dossier non précisé." });
+      if (!["etude", "avis", "facture"].includes(kind) || !ref) return authResp(400, { error: "Dossier non précisé." });
       if (!comptes.some((c) => c.email === cible)) return authResp(400, { error: "Compte inconnu : " + cible });
-      const base = kind === "etude" ? DB.etude : DB.avis;
+      const base = kind === "etude" ? DB.etude : kind === "avis" ? DB.avis : DB.facture;
       if (!(await colonneProprietaire(base))) return authResp(503, { error: "Attribution impossible pour l'instant, réessayez." });
-      const page = await pageParRef(base, ref);
+      const page = kind === "facture"
+        ? ((await queryDatabase(base, { filter: { property: "Numéro", title: { equals: ref } }, page_size: 1 })).results || [])[0] || null
+        : await pageParRef(base, ref);
       if (!page) return authResp(404, { error: "Dossier introuvable : " + ref });
       await updatePage(page.id, { [PROP_PROPRIETAIRE]: P.text(cible) });
       return authResp(200, { ok: true, ref, proprietaire: cible });
+    }
+    // Factures antérieures : aucune n'a de compte émetteur. Elles sont attribuées par lots (une fonction ne dure que quelques secondes).
+    if (b.action === "attribuer_factures") {
+      if (!admin) return authResp(403, { error: "Réservé aux administrateurs." });
+      const cible = String(b.email || "").trim().toLowerCase();
+      if (!comptes.some((c) => c.email === cible)) return authResp(400, { error: "Compte inconnu : " + cible });
+      if (!(await colonneProprietaire(DB.facture))) return authResp(503, { error: "Attribution impossible pour l'instant, réessayez." });
+      const sans = await queryDatabase(DB.facture, { filter: { property: PROP_PROPRIETAIRE, rich_text: { is_empty: true } }, page_size: LOT_FACTURES + 1 });
+      const pages = sans.results || [];
+      let faites = 0;
+      for (const pg of pages.slice(0, LOT_FACTURES)) { await updatePage(pg.id, { [PROP_PROPRIETAIRE]: P.text(cible) }); faites++; }
+      return authResp(200, { ok: true, faites, restantes: pages.length > LOT_FACTURES || !!sans.has_more, proprietaire: cible });
     }
     return authResp(400, { error: "Action inconnue." });
   } catch (e) {

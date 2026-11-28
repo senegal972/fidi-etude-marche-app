@@ -253,3 +253,11 @@
 .fa-diag-ok{background:#e9f7ef;color:#14532d;}
 .fa-diag-ko{background:var(--fa-rouge-fond);color:#7a1c1c;}
 .fa-diag i{flex:0 0 auto;margin-top:.15rem;}
+
+/* Factures sans compte émetteur : attribution en une fois (administrateur) */
+.fa-sans-compte{background:#fff7e0;border:1px solid #f0dca0;border-radius:10px;padding:.55rem .7rem;margin:0 0 .6rem;font-size:.84rem;color:#5c4400;}
+.fa-sans-compte-choix{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;margin-top:.4rem;}
+.fa-sans-compte-choix .form-select{flex:1 1 180px;min-width:0;font-size:.86rem;}
+@media (max-width:768px){.fa-sans-compte-choix .form-select{font-size:16px;}}
+.fa-sans-compte-ok{background:#e3f4ea;border-color:#b5dcc3;color:#1c5a30;}
+.fa-sans-compte-erreur{background:#fde4e4;border-color:#f1b5b5;color:#8a1c1c;}

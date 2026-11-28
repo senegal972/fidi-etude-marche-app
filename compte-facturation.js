@@ -228,6 +228,27 @@
       '<i class="bi bi-chevron-right fa-l-fleche" aria-hidden="true"></i></button>';
   }
 
+  // Comptes de l'application (pour attribuer une facture) : lus une fois, à la demande.
+  function chargerComptes() {
+    if (etat.comptes || etat.comptesEnCours) return;
+    etat.comptesEnCours = true;
+    appel('/api/admin/users', { action: 'list' }).then(function (r) { etat.comptesEnCours = false; etat.comptes = (r._ok && r.users) || []; afficher(); });
+  }
+  function nomCompte(email) { var c = (etat.comptes || []).filter(function (u) { return u.email === email; })[0]; return c && c.nom ? c.nom + ' (' + email + ')' : email; }
+  function selectComptes(id, choisi) {
+    if (!etat.comptes) { chargerComptes(); return '<p class="fa-sans">Lecture des comptes…</p>'; }
+    return '<select id="' + id + '" class="form-select" aria-label="Compte"><option value="">Choisir un compte…</option>' + etat.comptes.map(function (u) {
+      return '<option value="' + esc(u.email) + '"' + (u.email === choisi ? ' selected' : '') + '>' + esc(u.nom || u.email) + (u.reseau ? ' — ' + esc(u.reseau) : '') + '</option>'; }).join('') + '</select>';
+  }
+  // Factures sans compte émetteur (antérieures à la séparation par compte) : attribution en une fois.
+  function bandeauSansCompte() {
+    var n = etat.items.filter(function (f) { return !f.proprietaire; }).length;
+    var fin = etat.attributionFin ? '<div class="fa-sans-compte fa-sans-compte-' + (etat.attributionFin.ok ? 'ok' : 'erreur') + '" role="status">' + esc(etat.attributionFin.texte) + '</div>' : '';
+    if (!n) return fin;
+    if (etat.attribution) return '<div class="fa-sans-compte" role="status"><span class="spinner-border spinner-border-sm me-1"></span>' + esc(etat.attribution) + '</div>';
+    return fin + '<form class="fa-sans-compte" data-fa-form="attribuerTout" novalidate><div><b>' + n + ' facture' + (n > 1 ? 's' : '') + ' sans compte émetteur</b> — émise' + (n > 1 ? 's' : '') + ' avant la séparation par compte, visible' + (n > 1 ? 's' : '') + ' de l\'administrateur seul.</div>' +
+      '<div class="fa-sans-compte-choix">' + selectComptes('faCompteTout', '') + '<button type="submit" class="btn btn-sm fa-btn fa-btn-fort">Tout attribuer</button></div></form>';
+  }
   function vueFactures() {
     var l = liste();
     var puces = FILTRES.map(function (x) {
@@ -244,6 +265,7 @@
           '<select id="faTri" class="form-select" aria-label="Trier les factures">' +
             [['recent', 'Plus récentes'], ['ancien', 'Plus anciennes'], ['montant', 'Montant décroissant'], ['client', 'Client A → Z']].map(function (o) { return '<option value="' + o[0] + '"' + (etat.tri === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') +
           '</select></div>' +
+        bandeauSansCompte() +
         '<div class="fa-puces">' + puces + '</div>' +
         '<div class="fa-compte-liste">' + l.length + ' facture' + (l.length > 1 ? 's' : '') + ' · ' + eur(total) + '</div>' +
         '<div class="fa-liste" id="factListBody">' + listeHtml + '</div>' +
@@ -300,6 +322,8 @@
     if (impayee) actions.push(bouton('relancer', 'bi-bell', 'Relancer'));
     if (s === 'payee' && f.paiement_manuel) actions.push(bouton('annulerPaiement', 'bi-arrow-counterclockwise', 'Annuler le paiement', 'fa-action-danger'));
     if (impayee || s === 'brouillon') actions.push(bouton('annuler', 'bi-x-circle', 'Annuler la facture', 'fa-action-danger'));
+    // Compte émetteur : décide qui voit la facture dans l'historique d'un client et qui peut l'annuler.
+    actions.push(bouton('attribuer', 'bi-person-plus', f.proprietaire ? 'Changer de compte' : 'Attribuer à un compte'));
     // Une facture annulée par un avoir, comme l'avoir lui-même, est une pièce comptable : elle ne se supprime pas.
     if (s === 'annulee' && !f.avoir) actions.push(bouton('supprimer', 'bi-trash', 'Supprimer', 'fa-action-danger'));
 
@@ -317,6 +341,7 @@
         ligneInfo('Adresse du client', esc(contactDe(f) && contactDe(f).adresse)) +
         ligneInfo('Note', contactDe(f) && contactDe(f).note ? esc(contactDe(f).note).replace(/\n/g, '<br>') : '') +
         ligneInfo('Prestation', esc(f.libelle || f.type)) + ligneInfo('Bien', esc(f.adresse)) + ligneInfo('Dossier', esc(f.ref_dossier)) +
+        ligneInfo('Compte émetteur', f.proprietaire ? esc(nomCompte(f.proprietaire)) : '<span class="fa-sans">Aucun — facture antérieure, visible de l\'administrateur seul</span>') +
         ligneInfo('Encaissement', f.fidi_encaisse ? 'Pour le compte de ' + esc(f.collab || 'un collaborateur') + ' · commission ' + (f.commission_pct || 0) + ' % (' + eur(f.commission_eur) + '), à reverser ' + eur(f.reverser_eur) : '') +
       '</dl>' +
       (f.client ? '<div class="fa-bloc-pied"><button type="button" class="btn btn-sm fa-btn" data-fa-action="contact"><i class="bi bi-person-gear me-1"></i>Modifier le contact</button>' +
@@ -333,6 +358,13 @@
         '<div class="fa-panneau-pied"><button type="button" class="btn fa-btn" data-fa="fermerPanneau">Ne rien faire</button><button type="submit" class="btn fa-btn ' + (classe || 'fa-btn-plein') + '">' + bouton + '</button></div></form>';
     };
     if (etat.panneau === 'contact') return formulaireContact(f);
+    if (etat.panneau === 'attribuer') {
+      return '<form class="fa-panneau" data-fa-form="attribuer" novalidate><h4>' + (f.proprietaire ? 'Changer de compte émetteur' : 'Attribuer à un compte') + '</h4>' +
+        '<p>Le compte choisi verra cette facture dans l\'historique de ses clients et pourra l\'annuler. Les membres de son groupe la verront s\'il leur ouvre ses documents.</p>' +
+        selectComptes('faCompte', f.proprietaire) +
+        '<div class="fa-erreur-form d-none" id="faErreur" role="alert"></div>' +
+        '<div class="fa-panneau-pied"><button type="submit" class="btn fa-btn fa-btn-fort">Attribuer</button><button type="button" class="btn fa-btn" data-fa="fermerPanneau">Annuler</button></div></form>';
+    }
     if (etat.panneau === 'renvoyer') {
       var dest = emailsDe(f);
       return '<form class="fa-panneau" data-fa-form="renvoyer" novalidate><h4>Renvoyer au client</h4>' +
@@ -596,7 +628,32 @@
       try { localStorage.setItem('fidi:relance:seuilA', a); localStorage.setItem('fidi:relance:seuilB', b); } catch (x) {}
       afficher(); return;
     }
+    if (type === 'attribuerTout') {
+      var cibleTout = (document.getElementById('faCompteTout') || {}).value || '';
+      if (!cibleTout) { etat.attributionFin = { ok: false, texte: 'Choisissez d\'abord le compte à qui attribuer ces factures.' }; return afficher(); }
+      if (!window.confirm('Attribuer toutes les factures sans compte émetteur à ' + nomCompte(cibleTout) + ' ?\n\nChaque facture pourra ensuite être changée de compte une à une.')) return;
+      var total = 0; etat.attributionFin = null;
+      var lot = function () {
+        etat.attribution = 'Attribution en cours… ' + total + ' facture' + (total > 1 ? 's' : '') + ' traitée' + (total > 1 ? 's' : '') + '.'; afficher();
+        return appel('/api/documents', { action: 'attribuer_factures', email: cibleTout }).then(function (r) {
+          if (!r._ok) { etat.attribution = null; etat.attributionFin = { ok: false, texte: (r.error || 'Attribution impossible.') + (total ? ' ' + total + ' facture(s) déjà attribuée(s).' : '') }; return charger(); }
+          total += r.faites || 0;
+          if (r.restantes && r.faites) return lot();
+          etat.attribution = null; etat.attributionFin = { ok: true, texte: total + ' facture' + (total > 1 ? 's' : '') + ' attribuée' + (total > 1 ? 's' : '') + ' à ' + nomCompte(cibleTout) + '.' }; return charger();
+        });
+      };
+      return lot();
+    }
     if (!f) return;
+    if (type === 'attribuer') {
+      var cible = (document.getElementById('faCompte') || {}).value || '';
+      if (!cible) return erreurForm('Choisissez un compte.');
+      return appel('/api/documents', { action: 'attribuer', kind: 'facture', ref: f.ref, email: cible }).then(function (r) {
+        etat.panneau = null;
+        if (r._ok) dire('ok', 'Facture attribuée à ' + esc(nomCompte(cible)) + '.'); else dire('erreur', esc(r.error || 'Attribution impossible.'));
+        return charger();
+      });
+    }
     if (type === 'paiement') return validerPaiement(f);
     var motif = (document.getElementById('faMotif') || {}).value || '';
     var bouton = form.querySelector('[type=submit]'); if (bouton) bouton.disabled = true;

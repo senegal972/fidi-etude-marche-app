@@ -212,6 +212,10 @@ ou de l'habillage passe par ces fichiers, pas par du code ajouté dans `index.ht
   d'origine, sans compte, est réservé à l'administrateur. `facture.mjs` pose « Propriétaire » sur toute nouvelle facture (au mieux : sans la
   colonne, la facture est créée quand même) ; `/api/factures/client` filtre sur ce compte ; `/api/facture/cancel` n'agit que pour l'émetteur ou
   l'administrateur (404 sinon). Factures antérieures, sans compte : administrateur. Cache navigateur du carnet : `fidi:crm:cache:clients:v2`.
+- **Attribuer une facture** (administrateur) : `POST /api/documents { action:"attribuer", kind:"facture", ref:<numéro>, email }` et
+  `{ action:"attribuer_factures", email }` (factures **sans** compte seulement, `LOT_FACTURES` par appel → `{ faites, restantes }`, l'écran rappelle
+  tant qu'il en reste). `factures-admin` renvoie `proprietaire`. Écran (`compte-facturation.js`) : action `attribuer` de la fiche, ligne « Compte
+  émetteur », bandeau `bandeauSansCompte()` en tête de la liste.
 - Non couvert : les contacts mémorisés dans le navigateur (`localStorage` `fidi:clients`) sont propres au poste, pas au compte : deux personnes
   qui partagent un même navigateur les voient tous les deux.
   Tests : `tests/documents.test.mjs`, `tests/notion-session.test.mjs`, `tests/avis-store.test.mjs`.
